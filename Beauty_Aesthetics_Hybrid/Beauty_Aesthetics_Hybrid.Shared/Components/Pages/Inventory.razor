@@ -2971,7 +2971,7 @@
                                         </div>
                                         <div class="grn-form__system-note">
                                             <i class="bi bi-info-circle"></i>
-                                            <span>Price, tax, currency, supplier account and API document IDs are taken from the PO automatically.</span>
+                                            <span>Accounting fields and API document IDs are handled in the background from the PO and inventory setup.</span>
                                         </div>
                                     </section>
                                 </form>
@@ -3901,6 +3901,12 @@
         IsAddGRNFormVisible = true;
     }
 
+    private IEnumerable<PurchaseOrderItem> AvailableGRNPurchaseOrders =>
+        PurchaseOrders.Where(po =>
+            string.Equals(po.PoNo, NewGRNPONo, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(po.Status, "Approved", StringComparison.OrdinalIgnoreCase) ||
+            po.Status.Contains("Partial", StringComparison.OrdinalIgnoreCase));
+
     private void CloseAddGRNForm()
     {
         IsAddGRNFormVisible = false;
@@ -3965,6 +3971,13 @@
             return;
         }
 
+        if (!IsGRNEditMode && !AvailableGRNPurchaseOrders.Any(po =>
+                string.Equals(po.PoNo, NewGRNPONo, StringComparison.OrdinalIgnoreCase)))
+        {
+            GRNApiError = "Select an approved purchase order.";
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(NewGRNName))
         {
             GRNApiError = "Select an inventory item.";
@@ -3973,13 +3986,13 @@
 
         if (string.IsNullOrWhiteSpace(NewGRNInventoryId))
         {
-            GRNApiError = "The selected item does not have an API lineItemID.";
+            GRNApiError = "The PO item is not linked to an inventory record. Ask an administrator to check the item setup.";
             return;
         }
 
         if (string.IsNullOrWhiteSpace(NewGRNUom))
         {
-            GRNApiError = "Enter the API unitOfMeasurementID.";
+            GRNApiError = "The PO item does not have a unit of measure. Ask an administrator to check the item setup.";
             return;
         }
 
@@ -3991,7 +4004,7 @@
 
         if (string.IsNullOrWhiteSpace(NewGRNTransactionCurrencyId) || NewGRNExchangeRate <= 0)
         {
-            GRNApiError = "Currency ID and a positive exchange rate are required.";
+            GRNApiError = "The PO has incomplete currency information. Ask an administrator to check the purchase order.";
             return;
         }
 
@@ -4005,6 +4018,11 @@
 
         try
         {
+            if (!IsGRNEditMode)
+            {
+                NewGRNPostingDate = NewGRNDate;
+            }
+
             var grn = new StockGrnViewModel
             {
                 DocumentId = SelectedGRN?.DocumentId ?? string.Empty,
