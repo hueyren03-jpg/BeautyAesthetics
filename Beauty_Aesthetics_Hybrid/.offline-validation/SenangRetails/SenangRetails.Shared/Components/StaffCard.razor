@@ -1,0 +1,227 @@
+@using SenangRetails.Shared.Models
+<div class="staff-card" @onclick="OpenModal">
+    <div class="staff-card-main">
+        <div class="staff-avatar">
+            <div class="avatar-placeholder">
+                <i class="bi bi-person-fill"></i>
+            </div>
+        </div>
+
+        <div class="staff-column name-column">
+            <div class="staff-name">@Staff.Name</div>
+            <div class="staff-hours">@FormatHours(Staff.HoursWorked)</div>
+        </div>
+
+        <div class="staff-column time-column">
+            <div class="time-value">@FormatTime(Staff.FirstClockIn)</div>
+            <div class="time-label">First Clock In</div>
+        </div>
+
+        <div class="staff-column time-column">
+            <div class="time-value">@FormatTime(Staff.LastClockOut)</div>
+            <div class="time-label">Last Clock Out</div>
+        </div>
+    </div>
+
+    @if (Staff.IsLate)
+    {
+        <div class="late-warning">
+            <span class="warning-text">Late by @FormatHours(Staff.HoursLate)</span>
+        </div>
+    }
+    else
+    {
+        <div class="late-warning">
+            <span class="empty-text">On Time</span>
+        </div>
+    }
+</div>
+
+@if (showModal)
+{
+    <div class="sc-modal-overlay" @onclick="CloseModal">
+        <div class="sc-modal" @onclick:stopPropagation="true">
+            <!-- Header -->
+            <div class="sc-modal-header">
+                <button class="sc-close-btn" @onclick="CloseModal">
+                    <i class="bi bi-x"></i>
+                </button>
+                <div class="sc-header-date">@DateTime.Today.ToString("dddd, dd MMM yyyy")</div>
+                <div class="sc-header-spacer"></div>
+            </div>
+
+            <!-- Staff Info -->
+            <div class="sc-modal-body">
+                <div class="sc-staff-profile">
+                    <div class="sc-profile-avatar">
+                        <i class="bi bi-person-fill"></i>
+                    </div>
+                    <div class="sc-profile-info">
+                        <div class="sc-profile-name">@Staff.Name</div>
+                        <div class="sc-profile-hours-row">
+                            <div class="sc-hours-badge">
+                                <i class="bi bi-clock-fill"></i>
+                                <span>@FormatHoursDetailed(Staff.HoursWorked) worked today</span>
+                            </div>
+                            @if (Staff.IsLate)
+                            {
+                                <div class="sc-late-badge">
+                                    <i class="bi bi-exclamation-circle-fill"></i>
+                                    <span>Late @FormatHours(Staff.HoursLate)</span>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="sc-ontime-badge">
+                                    <i class="bi bi-check-circle-fill"></i>
+                                    <span>On Time</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <!-- History Section -->
+                <div class="sc-history-section">
+                    <div class="sc-section-title">
+                        <i class="bi bi-calendar3"></i>
+                        Clock History
+                    </div>
+                    <div class="sc-history-list">
+                        @foreach (var record in GetClockHistory())
+                        {
+                            <div class="sc-history-item">
+                                <div class="sc-history-date">
+                                    <div class="sc-history-date-main">@record.Date.ToString("dd/MM/yyyy")</div>
+                                    <div class="sc-history-date-day">@record.Date.ToString("ddd")</div>
+                                </div>
+                                <div class="sc-history-timeline">
+                                    <div class="sc-timeline-dot sc-dot-in"></div>
+                                    <div class="sc-timeline-line"></div>
+                                    <div class="sc-timeline-dot sc-dot-out"></div>
+                                </div>
+                                <div class="sc-history-times">
+                                    <div class="sc-clock-entry sc-clock-in">
+                                        <span class="sc-clock-label">IN</span>
+                                        <span class="sc-clock-time">@record.ClockIn</span>
+                                        @if (record.IsLate)
+                                        {
+                                            <span class="sc-inline-late">Late</span>
+                                        }
+                                    </div>
+                                    <div class="sc-clock-entry sc-clock-out">
+                                        <span class="sc-clock-label">OUT</span>
+                                        <span class="sc-clock-time">@(record.ClockOut ?? "-")</span>
+                                        @if (record.ClockOut == null)
+                                        {
+                                            <span class="sc-inline-active">Active</span>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="sc-history-duration">
+                                    @if (!string.IsNullOrEmpty(record.Duration))
+                                    {
+                                        <span class="sc-duration-value">@record.Duration</span>
+                                        <span class="sc-duration-label">total</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="sc-duration-ongoing">
+                                            <i class="bi bi-hourglass-split"></i>
+                                        </span>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public StaffAttendance Staff { get; set; } = new();
+
+    private bool showModal = false;
+
+    private void OpenModal() => showModal = true;
+    private void CloseModal() => showModal = false;
+
+    private string FormatHours(double hours)
+    {
+        var wholeHours = (int)hours;
+        var minutes = (int)((hours - wholeHours) * 60);
+        if (minutes > 0)
+            return $"{wholeHours}h {minutes}min";
+        return $"{wholeHours}h";
+    }
+
+    private string FormatHoursDetailed(double hours)
+    {
+        var wholeHours = (int)hours;
+        var minutes = (int)((hours - wholeHours) * 60);
+        if (minutes > 0)
+            return $"{wholeHours} hrs {minutes} mins";
+        return $"{wholeHours} hrs";
+    }
+
+    private string FormatTime(DateTime? dateTime)
+    {
+        if (dateTime == null) return "-";
+        return dateTime.Value.ToString("hh:mm tt");
+    }
+
+    private class ClockRecord
+    {
+        public DateTime Date { get; set; }
+        public string ClockIn { get; set; } = string.Empty;
+        public string? ClockOut { get; set; }
+        public string? Duration { get; set; }
+        public bool IsLate { get; set; }
+    }
+
+    private List<ClockRecord> GetClockHistory()
+    {
+        // Build today's record from actual Staff data
+        var history = new List<ClockRecord>();
+
+        // Today
+        history.Add(new ClockRecord
+        {
+            Date = DateTime.Today,
+            ClockIn = Staff.FirstClockIn.HasValue ? Staff.FirstClockIn.Value.ToString("hh:mm tt") : "--:--",
+            ClockOut = Staff.LastClockOut.HasValue ? Staff.LastClockOut.Value.ToString("hh:mm tt") : null,
+            Duration = Staff.LastClockOut.HasValue ? FormatHours(Staff.HoursWorked) : null,
+            IsLate = Staff.IsLate
+        });
+
+        // Mock previous days
+        // history.Add(new ClockRecord
+        // {
+        //     Date = DateTime.Today.AddDays(-1),
+        //     ClockIn = "09:00 AM",
+        //     ClockOut = "06:00 PM",
+        //     Duration = "9h",
+        //     IsLate = false
+        // });
+        // history.Add(new ClockRecord
+        // {
+        //     Date = DateTime.Today.AddDays(-2),
+        //     ClockIn = "09:30 AM",
+        //     ClockOut = "06:30 PM",
+        //     Duration = "9h",
+        //     IsLate = true
+        // });
+        // history.Add(new ClockRecord
+        // {
+        //     Date = DateTime.Today.AddDays(-3),
+        //     ClockIn = "08:55 AM",
+        //     ClockOut = "05:55 PM",
+        //     Duration = "9h",
+        //     IsLate = false
+        // });
+
+        return history;
+    }
+}

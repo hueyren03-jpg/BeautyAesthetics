@@ -1,0 +1,1216 @@
+@page "/prescription-builder"
+@using Beauty_Aesthetics_WebPos.Components.Layout
+@layout EmptyLayout
+@using Beauty_Aesthetics_WebPos.Components.ViewModels
+@using Microsoft.AspNetCore.Components
+@using Microsoft.JSInterop
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+
+<PageTitle>Manage Prescription - Beauty Aesthetics</PageTitle>
+
+<div class="prescription-builder-page">
+    <!-- Header -->
+    <header class="builder-header">
+        <div class="header-left">
+            <i class="bi bi-clipboard-check header-icon"></i>
+            <h1 class="header-title"> Manage Prescription</h1>
+        </div>
+        <div class="header-right">
+            <button type="button" class="mobile-new-drug" @onclick="StartNewDrug" aria-label="Add treatment or product">
+                <i class="bi bi-plus-lg"></i>
+            </button>
+            <a href="/case-note-prescription" class="btn-close-header" aria-label="Back to prescription">
+                <i class="bi bi-arrow-left"></i>
+            </a>
+        </div>
+    </header>
+
+    <nav class="builder-mobile-tabs" aria-label="Manage prescription sections">
+        <button type="button" class="@(_mobilePanel == "library" ? "active" : "")" @onclick='() => _mobilePanel = "library"'>
+            <i class="bi bi-capsule"></i><span>Library</span>
+        </button>
+        <button type="button" class="@(_mobilePanel == "editor" ? "active" : "")" @onclick='() => _mobilePanel = "editor"'>
+            <i class="bi bi-pencil-square"></i><span>@(ViewModel.IsEditingDrug ? "Edit" : "New")</span>
+        </button>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="builder-content prescription-content mobile-builder-@_mobilePanel">
+        <!-- Left Panel - Treatment / Product List -->
+        <div class="drug-list-panel">
+
+            <!-- Search and Filter -->
+            <div class="search-filter-section">
+                <div class="search-box">
+                    <i class="bi bi-search"></i>
+                    <input type="text" 
+                           class="search-input" 
+                           @bind="ViewModel.SearchTerm" 
+                           @bind:event="oninput"
+                           placeholder="Search treatments or products..." />
+                    @if (!string.IsNullOrWhiteSpace(ViewModel.SearchTerm))
+                    {
+                        <button class="search-clear-btn" @onclick="() => ViewModel.SearchTerm = string.Empty">
+                            <i class="bi bi-x-circle-fill"></i>
+                        </button>
+                    }
+                </div>
+                
+                <div class="category-filter">
+                    <label>Category:</label>
+                    <div class="custom-dropdown-wrapper">
+                        <div class="custom-dropdown-trigger @(_isCategoryDropdownOpen ? "open" : "")" @onclick="ToggleCategoryDropdown">
+                            <span>@(string.IsNullOrEmpty(ViewModel.SelectedCategory) ? "All Categories" : ViewModel.SelectedCategory)</span>
+                            <i class="bi bi-chevron-down dropdown-arrow"></i>
+                        </div>
+                        @if (_isCategoryDropdownOpen)
+                        {
+                            <div class="custom-dropdown-menu">
+                                <div class="dropdown-item @(string.IsNullOrEmpty(ViewModel.SelectedCategory) ? "selected" : "")" 
+                                     @onclick="@(() => SelectCategory(""))">
+                                    All Categories
+                                </div>
+                                @if (ViewModel.AvailableCategories != null)
+                                {
+                                    @foreach (var category in ViewModel.AvailableCategories)
+                                    {
+                                        <div class="dropdown-item @(ViewModel.SelectedCategory == category ? "selected" : "")" 
+                                             @onclick="@(() => SelectCategory(category))">
+                                            @category
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+                    </div>
+                    <button class="btn-manage-category" @onclick="OpenManageCategoryModal" title="Manage Categories">
+                        <i class="bi bi-gear"></i>
+                        <span>Manage Categories</span>
+                    </button>
+                    <button class="btn-excel-download" @onclick="DownloadExcelTemplate" title="Download Excel Template">
+                        <i class="bi bi-file-earmark-excel"></i>
+                        <span>Download Template</span>
+                    </button>
+                    <label class="btn-excel-upload" title="Import from Excel">
+                        <i class="bi bi-upload"></i>
+                        <span>@(_isImportingExcel ? "Importing..." : "Import Excel")</span>
+                        <InputFile OnChange="HandleExcelImport" accept=".xlsx,.xls" disabled="@_isImportingExcel" style="display: none;" />
+                    </label>
+                </div>
+                
+                <!-- Import Status Message -->
+                @if (_showImportStatus)
+                {
+                    <div class="import-status-message @(_isImportSuccess ? "success" : "error")">
+                        <i class="bi @(_isImportSuccess ? "bi-check-circle-fill" : "bi-exclamation-triangle-fill")"></i>
+                        <span style="white-space: pre-line;">@_importStatusMessage</span>
+                        <button type="button" class="btn-close-import-message" @onclick="CloseImportMessage" title="Close">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                }
+            </div>
+
+            <!-- Treatment / Product Table -->
+            <div class="drug-table-wrapper">
+                <table class="drug-table">
+                    <thead>
+                        <tr>
+                            <th class="col-drug">Treatments / Products</th>
+                            <th class="col-indication">Indication</th>
+                            <th class="col-restriction">Restriction</th>
+                            <th class="col-dosage">Dosage</th>
+                            <th class="col-actions">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (ViewModel.FilteredDrugs != null && ViewModel.FilteredDrugs.Any())
+                        {
+                            @foreach (var drug in GetPaginatedDrugs())
+                            {
+                                <tr class="drug-row @(ViewModel.SelectedDrugForEdit?.Id == drug.Id ? "selected" : "")">
+                                    <td class="col-drug">
+                                        <div class="drug-info-cell">
+                                            @if (ViewModel.SelectedDrugForEdit?.Id == drug.Id)
+                                            {
+                                                <i class="bi bi-circle-fill selected-dot"></i>
+                                            }
+                                            <div class="drug-details">
+                                                <div class="drug-name-row">@drug.Name</div>
+                                                <div class="drug-meta-row">
+                                                    <span class="meta-label">Drug Code:</span>
+                                                    <span class="meta-value">@drug.DrugCode</span>
+                                                </div>
+                                                @if (!string.IsNullOrEmpty(drug.Category))
+                                                {
+                                                    <div class="drug-meta-row">
+                                                        <span class="meta-label">Category:</span>
+                                                        <span class="meta-value">@drug.Category</span>
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="col-indication">
+                                        <div class="cell-content">@drug.Indication</div>
+                                    </td>
+                                    <td class="col-restriction">
+                                        <div class="cell-content">@drug.Restrictions</div>
+                                    </td>
+                                    <td class="col-dosage">
+                                        <div class="cell-content">@drug.Dosage</div>
+                                    </td>
+                                    <td class="col-actions">
+                                        <div class="action-buttons">
+                                            <button class="btn-edit" @onclick="() => EditDrug(drug)" title="Edit">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn-delete" @onclick="() => ConfirmDeleteDrug(drug.Id, drug.Name)" title="Delete">
+                                                <i class="bi bi-trash3"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="5" class="empty-state-cell">
+                                    <div class="empty-state">
+                                        <i class="bi bi-inbox"></i>
+                                        <p>No treatments or products found</p>
+                                        <span>Click "Add Treatment / Product" to create a new item</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                
+                <!-- Pagination Controls -->
+                @if (ViewModel.FilteredDrugs != null && ViewModel.FilteredDrugs.Any() && GetTotalPages() > 1)
+                {
+                    <div class="pagination-container">
+                        <div class="pagination-info">
+                            <span>Showing @((_currentPage - 1) * _itemsPerPage + 1) - @(Math.Min(_currentPage * _itemsPerPage, ViewModel.FilteredDrugs.Count())) of @ViewModel.FilteredDrugs.Count() treatments/products</span>
+                        </div>
+                        <div class="pagination-controls">
+                            <button class="btn-pagination" 
+                                    @onclick="GoToPreviousPage" 
+                                    disabled="@(_currentPage == 1)"
+                                    title="Previous Page">
+                                <i class="bi bi-chevron-left"></i>
+                                <span>Previous</span>
+                            </button>
+                            <div class="page-numbers">
+                                @for (int i = 1; i <= GetTotalPages(); i++)
+                                {
+                                    var pageNum = i;
+                                    @if (i == 1 || i == GetTotalPages() || (i >= _currentPage - 1 && i <= _currentPage + 1))
+                                    {
+                                        <button class="btn-page-number @(i == _currentPage ? "active" : "")" 
+                                                @onclick="() => GoToPage(pageNum)">
+                                            @i
+                                        </button>
+                                    }
+                                    else if (i == _currentPage - 2 || i == _currentPage + 2)
+                                    {
+                                        <span class="page-ellipsis">...</span>
+                                    }
+                                }
+                            </div>
+                            <button class="btn-pagination" 
+                                    @onclick="GoToNextPage" 
+                                    disabled="@(_currentPage >= GetTotalPages())"
+                                    title="Next Page">
+                                <span>Next</span>
+                                <i class="bi bi-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Panel Resizer -->
+        <div class="panel-resizer">
+            <div class="resizer-handle"></div>
+        </div>
+
+        <!-- Right Panel - Treatment / Product Form -->
+        <div class="drug-form-panel selected-drugs-panel">
+            <div class="form-panel-header">
+                <h3>
+                    <i class="bi @(ViewModel.IsEditingDrug ? "bi-pencil-square" : "bi-plus-circle")"></i>
+                    @(ViewModel.IsEditingDrug ? "Edit Treatment / Product" : "Add New Treatment / Product")
+                </h3>
+            </div>
+
+            <div class="form-panel-content">
+                <div class="drug-form">
+                    <div class="form-row">
+                        <label class="form-label">Treatment / Product Name *</label>
+                        <input type="text" 
+                               class="form-control" 
+                               @bind="ViewModel.DrugName" 
+                               placeholder="Enter treatment or product name" />
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label">Treatment / Product Code *</label>
+                        <input type="text" 
+                               class="form-control" 
+                               @bind="ViewModel.DrugCode" 
+                               placeholder="Enter treatment or product code" />
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label">Category</label>
+                        <div class="custom-dropdown-wrapper form-dropdown">
+                            <div class="custom-dropdown-trigger @(_isDrugCategoryDropdownOpen ? "open" : "")" @onclick="ToggleDrugCategoryDropdown">
+                                <span>@(string.IsNullOrEmpty(ViewModel.DrugCategory) ? "- Select Category -" : ViewModel.DrugCategory)</span>
+                                <i class="bi bi-chevron-down dropdown-arrow"></i>
+                            </div>
+                            @if (_isDrugCategoryDropdownOpen)
+                            {
+                                <div class="custom-dropdown-menu">
+                                    <div class="dropdown-item @(string.IsNullOrEmpty(ViewModel.DrugCategory) ? "selected" : "")" 
+                                         @onclick="@(() => SelectDrugCategory(""))">
+                                        - Select Category -
+                                    </div>
+                                    @if (ViewModel.AvailableCategories != null)
+                                    {
+                                        @foreach (var category in ViewModel.AvailableCategories)
+                                        {
+                                            <div class="dropdown-item @(ViewModel.DrugCategory == category ? "selected" : "")" 
+                                                 @onclick="@(() => SelectDrugCategory(category))">
+                                                @category
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label">Indication / Aesthetic Concern</label>
+                        <textarea class="form-control form-textarea" 
+                                  @bind="ViewModel.DrugIndication" 
+                                  rows="4"
+                                  placeholder="Enter indication"></textarea>
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label">Restrictions / Precautions</label>
+                        <textarea class="form-control form-textarea" 
+                                  @bind="ViewModel.DrugRestriction" 
+                                  rows="4"
+                                  placeholder="Enter restrictions"></textarea>
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label">Dosage / Usage Instructions</label>
+                        <input type="text" 
+                               class="form-control" 
+                               @bind="ViewModel.DrugDosage" 
+                               placeholder="e.g., single in-clinic session; apply once daily, etc." />
+                    </div>
+
+                    @if (_showSuccessMessage)
+                    {
+                        <div class="success-message">
+                            <i class="bi bi-check-circle-fill"></i>
+                            <span>@_successMessage</span>
+                        </div>
+                    }
+
+                    <div class="form-actions">
+                        @if (ViewModel.IsEditingDrug)
+                        {
+                            <button class="btn-cancel" @onclick="CancelEdit">
+                                <i class="bi bi-x-circle"></i>
+                                Cancel
+                            </button>
+                        }
+                        <button class="btn-save" @onclick="async () => await SaveDrug()">
+                            <i class="bi bi-check-circle"></i>
+                            @(ViewModel.IsEditingDrug ? "Update Treatment / Product" : "Create Treatment / Product")
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Manage Categories Modal -->
+@if (_showManageCategoryModal)
+{
+    <div class="modal-overlay" @onclick="CloseManageCategoryModal">
+        <div class="modal-container modal-category-manager" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <i class="bi bi-tags"></i>
+                <h3>Manage Categories</h3>
+                <button class="btn-close-modal" @onclick="CloseManageCategoryModal" title="Close">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <!-- Add New Category -->
+                <div class="category-add-section">
+                    <h4 class="section-title">
+                        <i class="bi bi-plus-circle"></i>
+                        Add New Category
+                    </h4>
+                    <div class="category-add-form">
+                        <input type="text" 
+                               class="form-control" 
+                               @bind="_newCategoryName" 
+                               @bind:event="oninput"
+                               @onkeypress="HandleCategoryKeyPress"
+                               placeholder="Enter category name" />
+                        <button class="btn-add-category" @onclick="AddCategory" disabled="@string.IsNullOrWhiteSpace(_newCategoryName)">
+                            <i class="bi bi-plus-circle"></i>
+                            Add
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Categories List -->
+                <div class="category-list-section">
+                    <h4 class="section-title">
+                        <i class="bi bi-list-ul"></i>
+                        Existing Categories (@(ViewModel.AvailableCategories?.Count ?? 0))
+                    </h4>
+                    @if (ViewModel.AvailableCategories != null && ViewModel.AvailableCategories.Any())
+                    {
+                        <div class="category-list">
+                            @foreach (var category in ViewModel.AvailableCategories)
+                            {
+                                <div class="category-item @(_editingCategory == category ? "editing" : "")">
+                                    @if (_editingCategory == category)
+                                    {
+                                        <input type="text" 
+                                               class="form-control category-edit-input" 
+                                               @bind="_editingCategoryName" 
+                                               @onkeypress="HandleCategoryEditKeyPress"
+                                               @onblur="CancelEditCategory"
+                                               autofocus />
+                                        <div class="category-item-actions">
+                                            <button class="btn-save-category" @onclick="() => SaveEditCategory(category)" title="Save">
+                                                <i class="bi bi-check-lg"></i>
+                                            </button>
+                                            <button class="btn-cancel-edit-category" @onclick="CancelEditCategory" title="Cancel">
+                                                <i class="bi bi-x-lg"></i>
+                                            </button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span class="category-name">@category</span>
+                                        <div class="category-item-actions">
+                                            <button class="btn-edit-category" @onclick="() => StartEditCategory(category)" title="Edit">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn-delete-category" @onclick="() => ConfirmDeleteCategory(category)" title="Delete">
+                                                <i class="bi bi-trash3"></i>
+                                            </button>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="empty-categories">
+                            <i class="bi bi-inbox"></i>
+                            <p>No categories yet. Add one above to get started.</p>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Delete Category Confirmation Modal -->
+@if (_showDeleteCategoryModal)
+{
+    <div class="modal-overlay" @onclick="CancelDeleteCategory">
+        <div class="modal-container" @onclick:stopPropagation="true">
+            <div class="modal-header modal-header-warning">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <h3>Delete Category</h3>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete this category <strong>"@_categoryToDelete"</strong>?</p>
+                @{
+                    var drugsUsingCategory = ViewModel.Drugs.Count(d => 
+                        !string.IsNullOrEmpty(d.Category) && 
+                        d.Category.Equals(_categoryToDelete, StringComparison.OrdinalIgnoreCase));
+                }
+                @if (drugsUsingCategory > 0)
+                {
+                    <div class="delete-warning" style="margin-top: 12px; padding: 12px; background: #fee2e2; border: 1px solid #ef4444; border-radius: 6px; color: #dc2626; display: flex; gap: 8px;">
+                        <i class="bi bi-exclamation-triangle-fill" style="font-size: 18px;"></i>
+                        <div>
+                            <p style="margin: 0; font-weight: 600;">Cannot delete this category.</p>
+                            <p style="margin: 4px 0 0 0;">There @(drugsUsingCategory == 1 ? "is" : "are") @drugsUsingCategory drug@(drugsUsingCategory == 1 ? "" : "s") still using this category. Please update or remove those drugs before deleting.</p>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="delete-info" style="margin-top: 12px; padding: 12px; background: #f0f9ff; border: 1px solid #1173d4; border-radius: 6px; color: #0c4a6e; display: flex; gap: 8px;">
+                        <i class="bi bi-info-circle-fill" style="font-size: 18px;"></i>
+                        <span><strong>@_categoryToDelete</strong> will be permanently removed.</span>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" @onclick="CancelDeleteCategory">
+                    <i class="bi bi-x-circle"></i>
+                    <span>Cancel</span>
+                </button>
+                <button class="btn-modal-delete" @onclick="ConfirmDeleteCategoryAction" disabled="@(drugsUsingCategory > 0 || !string.IsNullOrWhiteSpace(_categoryErrorMessage))" title="@(drugsUsingCategory > 0 ? "Cannot delete while drugs use this category" : null)">
+                    <i class="bi bi-trash3-fill"></i>
+                    <span>Delete Category</span>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Delete Confirmation Modal -->
+@if (_showDeleteModal)
+{
+    <div class="modal-overlay" @onclick="CancelDelete">
+        <div class="modal-container" @onclick:stopPropagation="true">
+            <div class="modal-header modal-header-warning">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <h3>Delete Drug</h3>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete this drug?</p>
+                <p class="modal-warning">
+                    <strong>@_drugToDeleteName</strong> will be permanently removed from the drug library.
+                </p>
+                <p class="modal-warning">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" @onclick="CancelDelete">
+                    <i class="bi bi-x-circle"></i>
+                    <span>Cancel</span>
+                </button>
+                <button class="btn-modal-delete" @onclick="ConfirmDelete">
+                    <i class="bi bi-trash3-fill"></i>
+                    <span>Delete Drug</span>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Import Error Modal -->
+@if (_showImportErrorModal)
+{
+    <div class="modal-overlay" @onclick="CloseImportErrorModal">
+        <div class="modal-container import-error-modal" @onclick:stopPropagation="true">
+            <div class="modal-header modal-header-warning">
+                <div class="modal-header-left">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <h3>Excel Import Errors</h3>
+                </div>
+                <div class="modal-header-actions">
+                    <button class="btn-copy-errors" @onclick="CopyImportErrorsToClipboard" title="Copy all errors to clipboard">
+                        <i class="bi bi-clipboard"></i>
+                        <span>Copy All</span>
+                    </button>
+                    <button class="btn-download-errors" @onclick="DownloadImportErrorsAsText" title="Download errors as text file">
+                        <i class="bi bi-download"></i>
+                        <span>Download .txt</span>
+                    </button>
+                    <button class="btn-close-modal" @onclick="CloseImportErrorModal" title="Close">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-body import-error-body">
+                <div class="import-error-content">
+                    <p style="margin-bottom: 16px; font-weight: 600; color: #dc2626;">
+                        <i class="bi bi-exclamation-circle-fill" style="margin-right: 8px;"></i>
+                        The following errors occurred during import:
+                    </p>
+                    <div class="import-error-list">
+                        @foreach (var errorLine in _importErrorMessage.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                        {
+                            <div class="import-error-item">
+                                <i class="bi bi-x-circle-fill"></i>
+                                <span>@errorLine</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<AppErrorPopup Title="Prescription request failed"
+               Message="@PrescriptionBuilderErrorMessage"
+               OnDismiss="DismissPrescriptionBuilderError" />
+
+@code {
+    private string? PrescriptionBuilderErrorMessage => new[]
+    {
+        _showValidationError ? _validationErrorMessage : null,
+        _categoryErrorMessage
+    }.FirstOrDefault(message => !string.IsNullOrWhiteSpace(message));
+
+    private void DismissPrescriptionBuilderError()
+    {
+        _showValidationError = false;
+        _validationErrorMessage = string.Empty;
+        _categoryErrorMessage = string.Empty;
+    }
+
+    private CaseNotePrescriptionBuilderViewModel ViewModel { get; set; } = new();
+    private string _mobilePanel = "library";
+    private string _importStatusMessage = string.Empty;
+    private bool _showImportStatus = false;
+    private bool _isImportSuccess = false;
+    private bool _isImportingExcel = false;
+    private bool _showImportErrorModal = false;
+    private string _importErrorMessage = string.Empty;
+    private bool _showValidationError = false;
+    private string _validationErrorMessage = string.Empty;
+    private bool _showSuccessMessage = false;
+    private string _successMessage = string.Empty;
+    private bool _showDeleteModal = false;
+    private int? _drugToDeleteId = null;
+    private string _drugToDeleteName = string.Empty;
+    
+    // Category Management
+    private bool _showManageCategoryModal = false;
+    private string _newCategoryName = string.Empty;
+    private string _editingCategory = string.Empty;
+    private string _editingCategoryName = string.Empty;
+    private bool _showDeleteCategoryModal = false;
+    private string _categoryToDelete = string.Empty;
+    private string _categoryErrorMessage = string.Empty;
+    
+    // Pagination
+    private int _currentPage = 1;
+    private const int _itemsPerPage = 10;
+
+    private void StartNewDrug()
+    {
+        ViewModel.StartNewDrug();
+        _showValidationError = false;
+        _showSuccessMessage = false;
+        _mobilePanel = "editor";
+        StateHasChanged();
+    }
+
+    private void EditDrug(CaseNotePrescriptionBuilderViewModel.Drug drug)
+    {
+        ViewModel.SelectDrugForEdit(drug);
+        _showValidationError = false;
+        _showSuccessMessage = false;
+        _mobilePanel = "editor";
+        StateHasChanged();
+    }
+
+    private void CancelEdit()
+    {
+        ViewModel.StartNewDrug();
+        _showValidationError = false;
+        _showSuccessMessage = false;
+        _mobilePanel = "library";
+        StateHasChanged();
+    }
+
+
+    private async Task SaveDrug()
+    {
+        _showValidationError = false;
+        _showSuccessMessage = false;
+        _validationErrorMessage = string.Empty;
+        _successMessage = string.Empty;
+
+        try
+        {
+            if (ViewModel.IsEditingDrug)
+            {
+                ViewModel.UpdateDrug();
+                _successMessage = "Drug updated successfully!";
+            }
+            else
+            {
+                ViewModel.CreateDrug();
+                _successMessage = "Drug created successfully!";
+            }
+
+            // Show success message
+            _showSuccessMessage = true;
+            _showValidationError = false;
+            StateHasChanged();
+
+            // Auto-hide success message after 1 second
+            await Task.Delay(1000);
+            _showSuccessMessage = false;
+            StateHasChanged();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _showValidationError = true;
+            _validationErrorMessage = ex.Message;
+            _showSuccessMessage = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            // Handle any unexpected errors
+            _showValidationError = true;
+            _validationErrorMessage = $"An error occurred: {ex.Message}";
+            _showSuccessMessage = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ConfirmDeleteDrug(int drugId, string drugName)
+    {
+        _drugToDeleteId = drugId;
+        _drugToDeleteName = drugName;
+        _showDeleteModal = true;
+        StateHasChanged();
+    }
+
+    private void CancelDelete()
+    {
+        _showDeleteModal = false;
+        _drugToDeleteId = null;
+        _drugToDeleteName = string.Empty;
+        StateHasChanged();
+    }
+
+    private void ConfirmDelete()
+    {
+        if (_drugToDeleteId.HasValue)
+        {
+            // Store current page before deletion
+            var currentPage = _currentPage;
+            
+            ViewModel.DeleteDrug(_drugToDeleteId.Value);
+            
+            // Restore current page after deletion
+            _currentPage = currentPage;
+            
+            // Adjust page if current page is now empty and not the first page
+            var totalPages = GetTotalPages();
+            if (_currentPage > totalPages && totalPages > 0)
+            {
+                _currentPage = totalPages;
+            }
+            
+            _showDeleteModal = false;
+            _drugToDeleteId = null;
+            _drugToDeleteName = string.Empty;
+            StateHasChanged();
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        ViewModel.PropertyChanged += (sender, args) => 
+        {
+            // Reset to first page only when search or filter changes
+            // Do NOT reset on FilteredDrugs change (which happens during deletion)
+            if (args.PropertyName == nameof(ViewModel.SearchTerm) || 
+                args.PropertyName == nameof(ViewModel.SelectedCategory))
+            {
+                _currentPage = 1;
+            }
+            
+            InvokeAsync(StateHasChanged);
+        };
+    }
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Initialize the resizer and download function after the component has rendered
+            await JS.InvokeVoidAsync("eval", @"
+                (function() {
+                    // File download function
+                    window.downloadFile = function(fileName, contentType, base64Data) {
+                        const linkSource = `data:${contentType};base64,${base64Data}`;
+                        const downloadLink = document.createElement('a');
+                        downloadLink.href = linkSource;
+                        downloadLink.download = fileName;
+                        downloadLink.click();
+                    };
+
+                    // Copy text to clipboard helper for import error messages
+                    window.copyTextToClipboard = function(text) {
+                        if (!navigator.clipboard || !navigator.clipboard.writeText) {
+                            console.error('Clipboard API not available');
+                            return;
+                        }
+                        navigator.clipboard.writeText(text).catch(function(err) {
+                            console.error('Failed to copy text: ', err);
+                        });
+                    };
+
+                    // Download text content as a .txt file
+                    window.downloadTextFile = function(fileName, textContent) {
+                        try {
+                            const blob = new Blob([textContent || ''], { type: 'text/plain;charset=utf-8' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = fileName || 'errors.txt';
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            URL.revokeObjectURL(url);
+                        } catch (err) {
+                            console.error('Failed to download text file:', err);
+                        }
+                    };
+
+                    function initializeResizer() {
+                        const resizer = document.querySelector('.prescription-builder-page .panel-resizer');
+                        const leftPanel = document.querySelector('.prescription-builder-page .drug-list-panel');
+                        const rightPanel = document.querySelector('.prescription-builder-page .selected-drugs-panel');
+                        const container = document.querySelector('.prescription-builder-page .prescription-content');
+
+                        if (!resizer || !leftPanel || !rightPanel || !container) {
+                            setTimeout(initializeResizer, 100);
+                            return;
+                        }
+
+                        let isResizing = false;
+
+                        // Remove any existing listeners by cloning the resizer
+                        const newResizer = resizer.cloneNode(true);
+                        resizer.parentNode.replaceChild(newResizer, resizer);
+
+                        newResizer.addEventListener('mousedown', function(e) {
+                            e.preventDefault();
+                            isResizing = true;
+                            document.body.style.cursor = 'col-resize';
+                            document.body.style.userSelect = 'none';
+                        });
+
+                        document.addEventListener('mousemove', function(e) {
+                            if (!isResizing) return;
+
+                            const containerRect = container.getBoundingClientRect();
+                            const containerWidth = containerRect.width;
+                            const mouseX = e.clientX - containerRect.left;
+
+                            // Calculate percentage
+                            let leftPercentage = (mouseX / containerWidth) * 100;
+
+                            // Constrain between 30% and 70%
+                            leftPercentage = Math.max(30, Math.min(70, leftPercentage));
+
+                            leftPanel.style.width = leftPercentage + '%';
+                            rightPanel.style.flex = '1';
+                        });
+
+                        document.addEventListener('mouseup', function() {
+                            if (isResizing) {
+                                isResizing = false;
+                                document.body.style.cursor = '';
+                                document.body.style.userSelect = '';
+                            }
+                        });
+                    }
+                    
+                    // Wait a bit for Blazor to fully render
+                    setTimeout(initializeResizer, 200);
+                })();
+            ");
+        }
+    }
+
+    // Category Management Methods
+    private void OpenManageCategoryModal()
+    {
+        _showManageCategoryModal = true;
+        _newCategoryName = string.Empty;
+        _editingCategory = string.Empty;
+        _editingCategoryName = string.Empty;
+        _categoryErrorMessage = string.Empty;
+        StateHasChanged();
+    }
+
+    private void CloseManageCategoryModal()
+    {
+        _showManageCategoryModal = false;
+        _newCategoryName = string.Empty;
+        _editingCategory = string.Empty;
+        _editingCategoryName = string.Empty;
+        _categoryErrorMessage = string.Empty;
+        StateHasChanged();
+    }
+
+    private async Task HandleCategoryKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_newCategoryName))
+        {
+            await AddCategory();
+        }
+    }
+
+    private async Task AddCategory()
+    {
+        _categoryErrorMessage = string.Empty;
+        try
+        {
+            ViewModel.AddCategory(_newCategoryName);
+            _newCategoryName = string.Empty;
+            StateHasChanged();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _categoryErrorMessage = ex.Message;
+            StateHasChanged();
+        }
+    }
+
+    private void StartEditCategory(string category)
+    {
+        _editingCategory = category;
+        _editingCategoryName = category;
+        _categoryErrorMessage = string.Empty;
+        StateHasChanged();
+    }
+
+    private void CancelEditCategory()
+    {
+        _editingCategory = string.Empty;
+        _editingCategoryName = string.Empty;
+        _categoryErrorMessage = string.Empty;
+        StateHasChanged();
+    }
+
+    private async Task HandleCategoryEditKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_editingCategoryName))
+        {
+            await SaveEditCategory(_editingCategory);
+        }
+        else if (e.Key == "Escape")
+        {
+            CancelEditCategory();
+        }
+    }
+
+    private async Task SaveEditCategory(string oldCategory)
+    {
+        _categoryErrorMessage = string.Empty;
+        try
+        {
+            ViewModel.UpdateCategory(oldCategory, _editingCategoryName);
+            _editingCategory = string.Empty;
+            _editingCategoryName = string.Empty;
+            StateHasChanged();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _categoryErrorMessage = ex.Message;
+            StateHasChanged();
+        }
+    }
+
+    private void ConfirmDeleteCategory(string category)
+    {
+        _categoryToDelete = category;
+        _categoryErrorMessage = string.Empty;
+        _showDeleteCategoryModal = true;
+        StateHasChanged();
+    }
+
+    private void CancelDeleteCategory()
+    {
+        _showDeleteCategoryModal = false;
+        _categoryToDelete = string.Empty;
+        _categoryErrorMessage = string.Empty;
+        StateHasChanged();
+    }
+
+    private async Task ConfirmDeleteCategoryAction()
+    {
+        if (string.IsNullOrEmpty(_categoryToDelete))
+        {
+            CancelDeleteCategory();
+            return;
+        }
+        
+        var categoryToDelete = _categoryToDelete;
+        
+        // Check if any drugs are using this category (case-insensitive comparison)
+        var drugsUsingCategory = ViewModel.Drugs.Where(d => 
+            !string.IsNullOrEmpty(d.Category) && 
+            d.Category.Equals(categoryToDelete, StringComparison.OrdinalIgnoreCase)).ToList();
+        
+        if (drugsUsingCategory.Count > 0)
+        {
+            // Prevent deletion - show error message
+            _categoryErrorMessage = $"Cannot delete category. There {(drugsUsingCategory.Count == 1 ? "is" : "are")} {drugsUsingCategory.Count} drug{(drugsUsingCategory.Count == 1 ? "" : "s")} still using this category. Please update or remove those drugs before deleting.";
+            StateHasChanged();
+            return;
+        }
+        
+        _categoryErrorMessage = string.Empty;
+        try
+        {
+            ViewModel.DeleteCategory(_categoryToDelete);
+            _showDeleteCategoryModal = false;
+            _categoryToDelete = string.Empty;
+            StateHasChanged();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _categoryErrorMessage = ex.Message;
+            StateHasChanged();
+        }
+    }
+    
+    // Pagination Methods
+    private IEnumerable<CaseNotePrescriptionBuilderViewModel.Drug> GetPaginatedDrugs()
+    {
+        if (ViewModel.FilteredDrugs == null || !ViewModel.FilteredDrugs.Any())
+            return Enumerable.Empty<CaseNotePrescriptionBuilderViewModel.Drug>();
+            
+        var filtered = ViewModel.FilteredDrugs.ToList();
+        var startIndex = (_currentPage - 1) * _itemsPerPage;
+        return filtered.Skip(startIndex).Take(_itemsPerPage);
+    }
+    
+    private int GetTotalPages()
+    {
+        if (ViewModel.FilteredDrugs == null || !ViewModel.FilteredDrugs.Any())
+            return 0;
+            
+        var totalDrugs = ViewModel.FilteredDrugs.Count();
+        return (int)Math.Ceiling((double)totalDrugs / _itemsPerPage);
+    }
+    
+    private void GoToPage(int page)
+    {
+        if (page >= 1 && page <= GetTotalPages())
+        {
+            _currentPage = page;
+            StateHasChanged();
+        }
+    }
+    
+    private void GoToNextPage()
+    {
+        if (_currentPage < GetTotalPages())
+        {
+            _currentPage++;
+            StateHasChanged();
+        }
+    }
+    
+    private void GoToPreviousPage()
+    {
+        if (_currentPage > 1)
+        {
+            _currentPage--;
+            StateHasChanged();
+        }
+    }
+    
+    // Excel Import/Export Methods
+    private async Task DownloadExcelTemplate()
+    {
+        try
+        {
+            var excelBytes = ViewModel.GenerateExcelTemplate();
+            var fileName = $"Prescription_Template_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+            
+            await JS.InvokeVoidAsync("downloadFile", fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", Convert.ToBase64String(excelBytes));
+        }
+        catch (Exception ex)
+        {
+            _showValidationError = true;
+            _validationErrorMessage = $"Error generating template: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+    
+    private async Task HandleExcelImport(InputFileChangeEventArgs e)
+    {
+        _showImportStatus = false;
+        _showValidationError = false;
+        _showSuccessMessage = false;
+        
+        var file = e.File;
+        if (file == null) return;
+        
+        // Validate file size (max 5MB)
+        const long maxFileSize = 5 * 1024 * 1024;
+        if (file.Size > maxFileSize)
+        {
+            _showValidationError = true;
+            _validationErrorMessage = "File size exceeds 5MB limit.";
+            StateHasChanged();
+            return;
+        }
+        
+        // Validate file extension
+        var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+        if (extension != ".xlsx" && extension != ".xls")
+        {
+            _showValidationError = true;
+            _validationErrorMessage = "Invalid file format. Please upload an Excel file (.xlsx or .xls).";
+            StateHasChanged();
+            return;
+        }
+
+        try
+        {
+            // Show loading indicator immediately
+            _isImportingExcel = true;
+            _showImportStatus = true;
+            _isImportSuccess = true;
+            _importStatusMessage = "Importing Excel file...";
+            await InvokeAsync(StateHasChanged);
+            
+            using var stream = file.OpenReadStream(maxFileSize);
+            using var memoryStream = new MemoryStream();
+            await stream.CopyToAsync(memoryStream);
+            memoryStream.Position = 0;
+            
+            List<CaseNotePrescriptionBuilderViewModel.Drug> importedDrugs;
+            
+            try
+            {
+                // Offload heavy Excel processing to background thread
+                importedDrugs = await Task.Run(() => ViewModel.ImportDrugsFromExcel(memoryStream));
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Handle validation errors (duplicates, missing fields, etc.)
+                // Show errors in modal popup instead of inline message
+                _importErrorMessage = ex.Message;
+                _showImportErrorModal = true;
+                _showImportStatus = false;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+            
+            // Update UI with success message
+            _isImportSuccess = true;
+            _importStatusMessage = $"Successfully imported {importedDrugs.Count} drug(s) from Excel.";
+            await InvokeAsync(StateHasChanged);
+            
+            // Auto-hide success message after 3 seconds (in background)
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(3000);
+                _showImportStatus = false;
+                await InvokeAsync(StateHasChanged);
+            });
+        }
+        catch (Exception ex)
+        {
+            // Handle unexpected errors - show in modal
+            _importErrorMessage = $"Error importing Excel file: {ex.Message}";
+            _showImportErrorModal = true;
+            _showImportStatus = false;
+            await InvokeAsync(StateHasChanged);
+        }
+        finally
+        {
+            _isImportingExcel = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+    
+    private void CloseImportMessage()
+    {
+        _showImportStatus = false;
+        _importStatusMessage = string.Empty;
+        StateHasChanged();
+    }
+    
+    private void CloseImportErrorModal()
+    {
+        _showImportErrorModal = false;
+        _importErrorMessage = string.Empty;
+        StateHasChanged();
+    }
+
+    private async Task CopyImportErrorsToClipboard()
+    {
+        if (string.IsNullOrWhiteSpace(_importErrorMessage))
+            return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("copyTextToClipboard", _importErrorMessage);
+        }
+        catch
+        {
+            // Swallow any clipboard errors silently
+        }
+    }
+
+    private async Task DownloadImportErrorsAsText()
+    {
+        if (string.IsNullOrWhiteSpace(_importErrorMessage))
+            return;
+
+        try
+        {
+            var fileName = $"ExcelImportErrors_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
+            await JS.InvokeVoidAsync("downloadTextFile", fileName, _importErrorMessage);
+        }
+        catch
+        {
+            // Swallow any download errors silently
+        }
+    }
+    // Custom Dropdown Logic
+    private bool _isCategoryDropdownOpen = false;
+    private bool _isDrugCategoryDropdownOpen = false;
+
+    private void ToggleCategoryDropdown()
+    {
+        _isCategoryDropdownOpen = !_isCategoryDropdownOpen;
+        StateHasChanged();
+    }
+
+    private void SelectCategory(string category)
+    {
+        ViewModel.SelectedCategory = category;
+        _isCategoryDropdownOpen = false;
+        StateHasChanged();
+    }
+
+    private void ToggleDrugCategoryDropdown()
+    {
+        _isDrugCategoryDropdownOpen = !_isDrugCategoryDropdownOpen;
+        StateHasChanged();
+    }
+
+    private void SelectDrugCategory(string category)
+    {
+        ViewModel.DrugCategory = category;
+        _isDrugCategoryDropdownOpen = false;
+        StateHasChanged();
+    }
+}
+

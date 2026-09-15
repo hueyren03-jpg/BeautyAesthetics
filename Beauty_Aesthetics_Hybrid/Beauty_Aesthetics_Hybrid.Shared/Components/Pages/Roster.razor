@@ -1,0 +1,1380 @@
+@page "/roster"
+@using Beauty_Aesthetics_WebPos.Components.Models
+@using Beauty_Aesthetics_WebPos.Components.Services.Employees
+@using Beauty_Aesthetics_WebPos.Components.Services.Inventory
+@inject Beauty_Aesthetics_WebPos.Components.Services.RosterService RosterService
+@inject IEmployeeService EmployeeService
+@inject IBranchLookupService BranchLookupService
+@inject IJSRuntime JS
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L
+
+<style>
+    /* ==================================== MAIN LAYOUT ==================================== */
+    .roster-page {
+        padding: 32px;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        box-sizing: border-box;
+    }
+
+    .roster-container {
+        display: flex;
+        gap: 24px;
+        flex: 1;
+        min-height: 0;
+    }
+
+    /* ==================================== LEFT PANEL - EMPLOYEE LIST ==================================== */
+    .employee-list-panel {
+        width: 280px;
+        min-width: 200px;
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        border: 1px solid #e5e7eb;
+    }
+
+    .employee-list-header {
+        padding: 16px 20px;
+        background: linear-gradient(135deg, #164CA6 0%, #0F3575 100%);
+        color: white;
+        font-weight: 700;
+        font-size: 16px;
+        border-bottom: 1px solid #e5e7eb;
+        flex-shrink: 0;
+    }
+
+    .employee-list {
+        overflow-y: auto;
+        flex: 1;
+        padding: 8px 0;
+    }
+
+    .employee-list-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 20px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        border-left: 3px solid transparent;
+        position: relative;
+    }
+
+        .employee-list-item:hover {
+            background: #f3f4f6;
+        }
+
+        .employee-list-item.active {
+            background: #eff6ff;
+            border-left-color: #164CA6;
+        }
+
+        .employee-list-item .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #e5e7eb;
+            flex-shrink: 0;
+        }
+
+        .employee-list-item .info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .employee-list-item .name {
+            font-weight: 600;
+            font-size: 14px;
+            color: #1f2937;
+        }
+
+        .employee-list-item .title {
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        .employee-list-item .shift-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+            .employee-list-item .shift-indicator.has-shift {
+                background: #10b981;
+            }
+
+            .employee-list-item .shift-indicator.no-shift {
+                background: #d1d5db;
+            }
+
+    /* ==================================== RIGHT PANEL - SCHEDULE VIEW ==================================== */
+    .schedule-panel {
+        flex: 1;
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        border: 1px solid #e5e7eb;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        min-width: 0;
+    }
+
+    /* Schedule Header */
+    .schedule-header {
+        padding: 16px 24px;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+        flex-shrink: 0;
+    }
+
+    .schedule-header-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex: 1;
+        min-width: 200px;
+    }
+
+        .schedule-header-left .avatar-large {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #e5e7eb;
+            flex-shrink: 0;
+        }
+
+        .schedule-header-left .employee-details .name {
+            font-weight: 700;
+            font-size: 18px;
+            color: #1f2937;
+        }
+
+        .schedule-header-left .employee-details .title {
+            font-size: 13px;
+            color: #6b7280;
+        }
+
+    .schedule-header-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    /* Schedule Controls */
+    .schedule-controls {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        background: #f3f4f6;
+        padding: 4px;
+        border-radius: 8px;
+    }
+
+        .schedule-controls .btn-sm {
+            padding: 4px 10px;
+            font-size: 12px;
+            background: transparent;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            color: #6b7280;
+            transition: all 0.2s;
+        }
+
+            .schedule-controls .btn-sm.active {
+                background: white;
+                color: #164CA6;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            }
+
+            .schedule-controls .btn-sm:hover:not(.active) {
+                background: rgba(255, 255, 255, 0.5);
+            }
+
+    .schedule-nav {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+    }
+
+        .schedule-nav .nav-btn {
+            padding: 4px 8px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            font-size: 16px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+            .schedule-nav .nav-btn:hover {
+                background: #f3f4f6;
+            }
+
+        .schedule-nav .date-label {
+            font-weight: 600;
+            font-size: 14px;
+            color: #1f2937;
+            min-width: 120px;
+            text-align: center;
+        }
+
+    /* TOP BAR STYLES */
+    .top-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        padding: 0 4px;
+        width: 100%;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+        .top-bar .page-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #2d3748;
+            margin: 0;
+        }
+
+        .top-bar .branch-selector {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
+            background-color: white;
+            color: #2d3748;
+            font-size: 14px;
+            min-width: 160px;
+            cursor: pointer;
+        }
+
+            .top-bar .branch-selector:focus {
+                border-color: #164CA6;
+                outline: none;
+            }
+
+    /* Employee Selector Dropdown */
+    .employee-selector-wrapper {
+        display: none;
+    }
+
+    /* ==================================== SCHEDULE BODY ==================================== */
+    .schedule-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px 24px;
+    }
+
+    /* Week View */
+    .week-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 8px;
+        height: 100%;
+    }
+
+    .day-card {
+        background: #f9fafb;
+        border-radius: 12px;
+        padding: 12px;
+        border: 1px solid #e5e7eb;
+        min-height: 200px;
+        display: flex;
+        flex-direction: column;
+    }
+
+        .day-card.today {
+            background: #eff6ff;
+            border-color: #93c5fd;
+        }
+
+        .day-card .day-header {
+            text-align: center;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+            .day-card .day-header .day-name {
+                font-weight: 600;
+                font-size: 13px;
+                color: #4b5563;
+            }
+
+            .day-card .day-header .day-date {
+                font-size: 20px;
+                font-weight: 700;
+                color: #1f2937;
+            }
+
+                .day-card .day-header .day-date.today-date {
+                    color: #164CA6;
+                }
+
+        .day-card .shift-slot {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .day-card .shift-block-schedule {
+            background: linear-gradient(135deg, #4da1ff 0%, #3b8eeb 100%);
+            color: white;
+            padding: 8px 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+
+            .day-card .shift-block-schedule:hover {
+                transform: scale(1.02);
+                box-shadow: 0 2px 8px rgba(61, 145, 255, 0.3);
+            }
+
+            .day-card .shift-block-schedule .time {
+                font-size: 11px;
+                opacity: 0.9;
+            }
+
+            .day-card .shift-block-schedule .branch {
+                font-size: 10px;
+                opacity: 0.8;
+                background: rgba(255, 255, 255, 0.2);
+                padding: 1px 8px;
+                border-radius: 12px;
+                display: inline-block;
+                margin-top: 2px;
+            }
+
+        .day-card .day-off {
+            color: #ef4444;
+            font-weight: 600;
+            font-size: 13px;
+            text-align: center;
+            padding: 16px 0;
+        }
+
+        .day-card .no-shift {
+            color: #9ca3af;
+            font-size: 12px;
+            text-align: center;
+            padding: 16px 0;
+        }
+
+        .day-card .add-shift-btn {
+            border: 2px dashed #d1d5db;
+            border-radius: 8px;
+            padding: 8px;
+            text-align: center;
+            cursor: pointer;
+            color: #9ca3af;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            margin-top: auto;
+        }
+
+            .day-card .add-shift-btn:hover {
+                border-color: #164CA6;
+                color: #164CA6;
+                background: #eff6ff;
+            }
+
+    /* Month View */
+    .month-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 4px;
+    }
+
+    .month-day-cell {
+        aspect-ratio: 1 / 1;
+        background: #f9fafb;
+        border-radius: 8px;
+        padding: 4px;
+        border: 1px solid #e5e7eb;
+        display: flex;
+        flex-direction: column;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        min-height: 60px;
+        position: relative;
+    }
+
+        .month-day-cell:hover {
+            background: #f3f4f6;
+            border-color: #164CA6;
+        }
+
+        .month-day-cell.today {
+            background: #eff6ff;
+            border-color: #93c5fd;
+        }
+
+        .month-day-cell .date-num {
+            font-size: 12px;
+            font-weight: 600;
+            color: #4b5563;
+            text-align: right;
+            padding: 2px 4px;
+        }
+
+            .month-day-cell .date-num.today-num {
+                color: #164CA6;
+                background: #dbeafe;
+                border-radius: 50%;
+                width: 24px;
+                height: 24px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin-left: auto;
+            }
+
+        .month-day-cell .shift-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4da1ff;
+            margin: 2px auto;
+            cursor: pointer;
+            transition: transform 0.15s ease, background 0.15s ease;
+        }
+
+            .month-day-cell .shift-dot:hover {
+                background: #164CA6;
+                transform: scale(1.4);
+            }
+
+        .month-day-cell .shift-count-badge {
+            background: #4da1ff;
+            color: white;
+            font-size: 9px;
+            font-weight: 700;
+            border-radius: 12px;
+            padding: 2px 6px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin: 2px auto;
+            cursor: pointer;
+            transition: background 0.15s ease;
+            white-space: nowrap;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+            .month-day-cell .shift-count-badge:hover {
+                background: #164CA6;
+            }
+
+        .month-day-cell .month-shift-mini {
+            background: linear-gradient(135deg, #4da1ff 0%, #3b8eeb 100%);
+            color: white;
+            font-size: 9px;
+            font-weight: 600;
+            border-radius: 4px;
+            padding: 1px 4px;
+            margin: 1px 0;
+            cursor: pointer;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            transition: background 0.15s ease;
+        }
+
+            .month-day-cell .month-shift-mini:hover {
+                background: linear-gradient(135deg, #164CA6 0%, #0F3575 100%);
+            }
+
+        .month-day-cell .day-off-label {
+            font-size: 8px;
+            color: #ef4444;
+            font-weight: 600;
+            text-align: center;
+            margin-top: auto;
+        }
+
+    /* ==================================== MODAL ==================================== */
+    .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 900;
+        backdrop-filter: blur(2px);
+    }
+
+    .modal-container {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 500px;
+        max-width: 92%;
+        max-height: 92vh;
+        overflow-y: auto;
+        background: white;
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+        z-index: 1000;
+        animation: slideIn 0.2s ease-out;
+    }
+
+    @@keyframes slideIn {
+        from {
+            transform: translate(-50%, -48%);
+            opacity: 0;
+        }
+
+        to {
+            transform: translate(-50%, -50%);
+            opacity: 1;
+        }
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+        .modal-header h3 {
+            margin: 0;
+            font-size: 1.2rem;
+        }
+
+    .modal-close-btn {
+        background: #ff4d4d;
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 36px;
+        height: 36px;
+        font-size: 18px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .modal-body label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 4px;
+        font-size: 14px;
+    }
+
+    .modal-body .input {
+        padding: 8px 12px;
+        border-radius: 6px;
+        border: 1px solid #e2e8f0;
+        background-color: white;
+        color: #2d3748;
+        width: 100%;
+        box-sizing: border-box;
+        transition: border-color 0.2s;
+    }
+
+        .modal-body .input:focus {
+            border-color: #164CA6;
+            outline: none;
+        }
+
+    .modal-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 16px;
+        flex-wrap: wrap;
+    }
+
+        .modal-actions .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s;
+            flex: 1;
+            min-width: 80px;
+            text-align: center;
+        }
+
+        .modal-actions .btn-primary {
+            background: #164CA6;
+            color: white;
+        }
+
+            .modal-actions .btn-primary:hover {
+                background: #0F3575;
+            }
+
+        .modal-actions .btn-danger {
+            background: #e53e3e;
+            color: white;
+        }
+
+            .modal-actions .btn-danger:hover {
+                background: #c53030;
+            }
+
+        .modal-actions .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+            .modal-actions .btn-secondary:hover {
+                background: #4b5563;
+            }
+
+    .break-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 6px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+        .break-row select {
+            flex: 1;
+            min-width: 60px;
+        }
+
+    /* ==================================== RESPONSIVE ==================================== */
+    @@media (max-width: 1024px) {
+        .employee-list-panel {
+            width: 220px;
+            min-width: 160px;
+        }
+
+        .week-grid {
+            gap: 4px;
+        }
+
+        .day-card {
+            padding: 8px;
+            min-height: 150px;
+        }
+
+            .day-card .day-header .day-date {
+                font-size: 16px;
+            }
+    }
+
+    @@media (max-width: 768px) {
+        .roster-page {
+            padding: 16px;
+            height: auto;
+        }
+
+        .roster-container {
+            flex-direction: column;
+            height: auto;
+            min-height: 100vh;
+            gap: 12px;
+        }
+
+        .employee-list-panel {
+            width: 100%;
+            min-width: unset;
+            max-height: 200px;
+        }
+
+        .employee-list {
+            display: flex;
+            overflow-x: auto;
+            padding: 8px 12px;
+            gap: 8px;
+            flex: 0 0 auto;
+        }
+
+        .employee-list-item {
+            flex-direction: column;
+            padding: 10px 14px;
+            min-width: 80px;
+            text-align: center;
+            border-left: none;
+            border-bottom: 3px solid transparent;
+            border-radius: 8px;
+        }
+
+            .employee-list-item.active {
+                border-left: none;
+                border-bottom-color: #164CA6;
+                background: #eff6ff;
+            }
+
+            .employee-list-item .info .name {
+                font-size: 12px;
+            }
+
+            .employee-list-item .info .title {
+                font-size: 10px;
+            }
+
+            .employee-list-item .avatar {
+                width: 32px;
+                height: 32px;
+            }
+
+        .employee-list-header {
+            padding: 10px 16px;
+            font-size: 14px;
+        }
+
+        .schedule-panel {
+            min-height: 500px;
+        }
+
+        .schedule-header {
+            padding: 12px 16px;
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .schedule-header-left .avatar-large {
+            width: 36px;
+            height: 36px;
+        }
+
+        .schedule-header-left .employee-details .name {
+            font-size: 15px;
+        }
+
+        .schedule-header-right {
+            justify-content: space-between;
+        }
+
+        .schedule-body {
+            padding: 12px;
+        }
+
+        .week-grid {
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+            overflow-x: auto;
+            min-width: 600px;
+        }
+
+        .day-card {
+            min-height: 120px;
+            padding: 6px;
+        }
+
+            .day-card .day-header .day-name {
+                font-size: 10px;
+            }
+
+            .day-card .day-header .day-date {
+                font-size: 14px;
+            }
+
+            .day-card .shift-block-schedule {
+                font-size: 10px;
+                padding: 4px 6px;
+            }
+
+                .day-card .shift-block-schedule .time {
+                    font-size: 9px;
+                }
+
+                .day-card .shift-block-schedule .branch {
+                    font-size: 8px;
+                }
+
+        .month-grid {
+            grid-template-columns: repeat(7, 1fr);
+            gap: 2px;
+            min-width: 500px;
+        }
+
+        .month-day-cell {
+            min-height: 40px;
+            padding: 2px;
+        }
+
+            .month-day-cell .date-num {
+                font-size: 10px;
+            }
+
+        .modal-container {
+            padding: 16px;
+            max-width: 96%;
+        }
+
+        .top-bar {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+            .top-bar .page-title {
+                text-align: left;
+            }
+
+            .top-bar .branch-selector {
+                width: 100%;
+            }
+    }
+
+    @@media (max-width: 480px) {
+        .employee-list-item {
+            min-width: 60px;
+            padding: 6px 10px;
+        }
+
+            .employee-list-item .avatar {
+                width: 24px;
+                height: 24px;
+            }
+
+            .employee-list-item .info .name {
+                font-size: 10px;
+            }
+
+        .schedule-nav .date-label {
+            font-size: 12px;
+            min-width: 80px;
+        }
+
+        .schedule-controls .btn-sm {
+            font-size: 10px;
+            padding: 2px 8px;
+        }
+    }
+
+    /* Scrollbar styling */
+    .employee-list::-webkit-scrollbar,
+    .schedule-body::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
+    }
+
+    .employee-list::-webkit-scrollbar-track,
+    .schedule-body::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .employee-list::-webkit-scrollbar-thumb,
+    .schedule-body::-webkit-scrollbar-thumb {
+        background: #d1d5db;
+        border-radius: 4px;
+    }
+
+        .employee-list::-webkit-scrollbar-thumb:hover,
+        .schedule-body::-webkit-scrollbar-thumb:hover {
+            background: #9ca3af;
+        }
+</style>
+
+<div class="roster-page">
+
+<!-- TOP BAR: Roster Title + Branch Dropdown -->
+<div class="top-bar">
+    <h1 class="page-title">@L["Roster"]</h1>
+    <select @bind="selectedBranch" @bind:after="OnBranchChanged" class="branch-selector">
+        <option value="">@L["All Branches"]</option>
+        @foreach (var branch in branches)
+        {
+            <option value="@branch.Id">@branch.DisplayName</option>
+        }
+    </select>
+</div>
+
+<AppErrorPopup Title="Unable to load roster" Message="@loadError" />
+
+<div class="roster-container">
+    <!-- LEFT PANEL: Employee List -->
+    <div class="employee-list-panel">
+        <div class="employee-list-header">
+            👤 @L["Employees"]
+        </div>
+        <div class="employee-list">
+            @foreach (var emp in employees)
+            {
+                var hasShiftsToday = shifts.Any(s => s.EmployeeId == emp.Id && s.Date.Date == DateTime.Today);
+                <div class="employee-list-item @(selectedEmployee?.Id == emp.Id ? "active" : "")"
+                     @onclick="() => SelectEmployee(emp)">
+                    <img src="@emp.PhotoUrl" alt="@emp.Name" class="avatar" />
+                    <div class="info">
+                        <div class="name">@emp.Name</div>
+                        <div class="title">@emp.Title</div>
+                    </div>
+                    <div class="shift-indicator @(hasShiftsToday ? "has-shift" : "no-shift")"
+                         title="@(hasShiftsToday ? "Has shift today" : "No shift today")"></div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- RIGHT PANEL: Schedule View -->
+    <div class="schedule-panel">
+        <!-- Header -->
+        <div class="schedule-header">
+            <div class="schedule-header-left">
+                <img src="@(selectedEmployee?.PhotoUrl ?? "/images/default-user.png")" class="avatar-large" />
+                <div class="employee-details">
+                    <div class="name">@(selectedEmployee?.Name ?? "Select an Employee")</div>
+                    <div class="title">@(selectedEmployee?.Title ?? "Click an employee to view their schedule")</div>
+                </div>
+            </div>
+            <div class="schedule-header-right">
+                <div class="schedule-nav">
+                    <button class="nav-btn" @onclick="PrevPeriod">‹</button>
+                    <span class="date-label">@displayRange</span>
+                    <button class="nav-btn" @onclick="NextPeriod">›</button>
+                    <button class="nav-btn" @onclick="GoToday" title="Go to today">📅</button>
+                </div>
+                <div class="schedule-controls">
+                    <button class="btn-sm @(currentView == ViewMode.Week ? "active" : "")" @onclick="() => SetView(ViewMode.Week)">
+                        @L["Week"]
+                    </button>
+                    <button class="btn-sm @(currentView == ViewMode.Month ? "active" : "")" @onclick="() => SetView(ViewMode.Month)">
+                        @L["Month"]
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Body -->
+        <div class="schedule-body">
+            @if (selectedEmployee == null)
+            {
+                <div style="display:flex; align-items:center; justify-content:center; height:100%; color:#9ca3af; font-size:16px;">
+                    👈 @L["Select an employee to view their schedule"]
+                </div>
+            }
+            else if (currentView == ViewMode.Week)
+            {
+                <div class="week-grid">
+                    @foreach (var d in weekDays)
+                    {
+                        var isToday = d.Date == DateTime.Today;
+                        var cellShifts = shifts.Where(s => s.EmployeeId == selectedEmployee.Id && s.Date.Date == d.Date && (string.IsNullOrEmpty(selectedBranch) || s.BranchId == selectedBranch)).ToList();
+
+                        <div class="day-card @(isToday ? "today" : "")">
+                            <div class="day-header">
+                                <div class="day-name">@d.ToString("ddd")</div>
+                                <div class="day-date @(isToday ? "today-date" : "")">@d.ToString("dd")</div>
+                            </div>
+                            <div class="shift-slot">
+                                @if (cellShifts.Any())
+                                {
+                                    foreach (var s in cellShifts)
+                                    {
+                                        <div class="shift-block-schedule" @onclick="() => EditShift(s)" title="@s.Remarks">
+                                            <div class="time">@s.DisplayTime</div>
+                                            <div class="branch">@(string.IsNullOrEmpty(s.BranchId) ? "Main" : s.BranchId)</div>
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    <div class="no-shift">@L["No shifts planned"]</div>
+                                }
+                                <div class="add-shift-btn" @onclick="() => OpenNewShift(selectedEmployee.Id, d.Date)">
+                                    + @L["Add"]
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else if (currentView == ViewMode.Month)
+            {
+                <div class="month-grid">
+                    @foreach (var d in monthDays)
+                    {
+                        var isToday = d.Date == DateTime.Today;
+                        var cellShifts = shifts.Where(s => s.EmployeeId == selectedEmployee.Id && s.Date.Date == d.Date && (string.IsNullOrEmpty(selectedBranch) || s.BranchId == selectedBranch)).ToList();
+
+                        <div class="month-day-cell @(isToday ? "today" : "")" @onclick="() => OpenNewShift(selectedEmployee.Id, d.Date)">
+                            <div class="date-num @(isToday ? "today-num" : "")">@d.ToString("dd")</div>
+                            @if (cellShifts.Any())
+                            {
+                                @foreach (var ms in cellShifts)
+                                {
+                                    var capturedShift = ms;
+                                    <div class="month-shift-mini"
+                                         title="@capturedShift.DisplayTime"
+                                         @onclick="() => EditShift(capturedShift)"
+                                         @onclick:stopPropagation="true">
+                                        @capturedShift.DisplayTime
+                                    </div>
+                                }
+                            }
+                            @if (d.DayOfWeek == DayOfWeek.Sunday || d.DayOfWeek == DayOfWeek.Saturday)
+                            {
+                                <div class="day-off-label">@L["Day off"]</div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- MODAL -->
+@if (showEditor)
+{
+    <div class="modal-backdrop" @onclick="CloseEditor"></div>
+    <div class="modal-container">
+        <div class="modal-header">
+            <h3>@(editing ? L["EditShift"] : L["AddShift"])</h3>
+            <button @onclick="CloseEditor" class="modal-close-btn">✕</button>
+        </div>
+
+        <div style="text-align:center; margin:12px 0;">
+            <img src="@editingEmployee?.PhotoUrl" style="width:72px; height:72px; border-radius:50%; object-fit:cover; border:2px solid #e5e7eb;" />
+            <div style="font-size:16px; font-weight:600; margin-top:4px;">@editingEmployee?.Name</div>
+        </div>
+
+        <div class="modal-body">
+            <div>
+                <label>@L["Date"]</label>
+                <input type="date" @bind="editorModel.Date" class="input" />
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div>
+                    <label>@L["StartTime"]</label>
+                    <select @bind="startTimeString" class="input">
+                        @foreach (var t in TimeOptions)
+                        {
+                            <option value="@t">@t</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label>@L["EndTime"]</label>
+                    <select @bind="endTimeString" class="input">
+                        @foreach (var t in TimeOptions)
+                        {
+                            <option value="@t">@t</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <div>
+                <label>@L["Remarks"]</label>
+                <textarea @bind="editorModel.Remarks" class="input" style="height:60px; resize:vertical;"></textarea>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-primary" @onclick="SaveEditor">💾 @L["Save"]</button>
+                @if (editing)
+                {
+                    <button class="btn btn-danger" @onclick="DeleteEditor">@L["Delete"]</button>
+                }
+                <button class="btn btn-secondary" @onclick="CloseEditor">@L["Cancel"]</button>
+            </div>
+        </div>
+    </div>
+}
+</div>
+
+@code {
+    enum ViewMode { Week, Month }
+
+    class EmpStub
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string BranchId { get; set; } = "";
+        public string PhotoUrl { get; set; } = "/images/default-user.png";
+    }
+
+    private List<EmpStub> allEmployees = new();
+    private List<EmpStub> employees = new();
+
+    private List<RosterShift> shifts = new();
+    private List<BranchLookupItem> branches = new();
+    private string selectedBranch = "";
+    private string? loadError;
+    private EmpStub? selectedEmployee;
+    private DateTime weekStart;
+    private DateTime monthStart;
+    private List<DateTime> weekDays = new();
+    private List<DateTime> monthDays = new();
+    private ViewMode currentView = ViewMode.Week;
+
+    private string displayRange
+    {
+        get
+        {
+            return currentView switch
+            {
+                ViewMode.Week => $"{weekStart:MMM dd} - {weekStart.AddDays(6):MMM dd, yyyy}",
+                ViewMode.Month => monthStart.ToString("MMMM yyyy"),
+                _ => ""
+            };
+        }
+    }
+
+    private bool showEditor = false;
+    private bool editing = false;
+    private RosterShift editorModel = new();
+    private EmpStub? editingEmployee;
+    private string startTimeString = "09:00";
+    private string endTimeString = "18:00";
+    private List<string> TimeOptions = Enumerable.Range(0, 48).Select(i => TimeSpan.FromMinutes(30 * i).ToString(@"hh\:mm")).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var today = DateTime.Today;
+        int daysSinceSunday = (int)today.DayOfWeek;
+        weekStart = today.AddDays(-daysSinceSunday);
+        monthStart = new DateTime(today.Year, today.Month, 1);
+
+        await LoadLookupsAsync();
+        await LoadData();
+    }
+
+    private async Task LoadLookupsAsync()
+    {
+        loadError = null;
+
+        var employeeResult = await EmployeeService.GetAllEmployeesAsync();
+        if (employeeResult.Success && employeeResult.Value is not null)
+        {
+            allEmployees = employeeResult.Value
+                .Where(employee => !string.Equals(employee.Status, "Inactive", StringComparison.OrdinalIgnoreCase))
+                .Where(employee => !string.IsNullOrWhiteSpace(employee.Code))
+                .Select(employee => new EmpStub
+                {
+                    Id = employee.Code,
+                    Name = string.IsNullOrWhiteSpace(employee.Name) ? employee.Code : employee.Name,
+                    Title = FirstNonEmpty(employee.JobTitle, employee.EmployeeLevel, employee.WorkingShift, "Employee"),
+                    BranchId = employee.BranchId,
+                    PhotoUrl = "/images/default-user.png"
+                })
+                .DistinctBy(employee => employee.Id, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(employee => employee.Name)
+                .ToList();
+        }
+        else
+        {
+            loadError = employeeResult.ErrorMessage ?? "Unable to load employees.";
+        }
+
+        var branchResult = await BranchLookupService.LoadBranchesAsync();
+        if (branchResult.Success && branchResult.Value is not null)
+        {
+            branches = branchResult.Value.ToList();
+        }
+        else
+        {
+            loadError = string.Join(" ", new[]
+            {
+                loadError,
+                branchResult.ErrorMessage ?? "Unable to load branches."
+            }.Where(message => !string.IsNullOrWhiteSpace(message)));
+        }
+
+        ApplyEmployeeBranchFilter();
+    }
+
+    async Task LoadData()
+    {
+        if (currentView == ViewMode.Week)
+        {
+            BuildWeekDays();
+            shifts = await RosterService.GetShiftsForWeekAsync(selectedBranch, weekStart);
+        }
+        else
+        {
+            BuildMonthDays();
+            var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+            shifts = await RosterService.GetShiftsForDateRangeAsync(selectedBranch, monthStart, monthEnd);
+        }
+    }
+
+    void BuildWeekDays()
+    {
+        weekDays = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToList();
+    }
+
+    void BuildMonthDays()
+    {
+        var daysInMonth = DateTime.DaysInMonth(monthStart.Year, monthStart.Month);
+        monthDays = Enumerable.Range(0, daysInMonth).Select(i => monthStart.AddDays(i)).ToList();
+    }
+
+    void SelectEmployee(EmpStub emp)
+    {
+        selectedEmployee = emp;
+        StateHasChanged();
+    }
+
+    async Task SetView(ViewMode mode)
+    {
+        currentView = mode;
+        await LoadData();
+    }
+
+    async Task PrevPeriod()
+    {
+        if (currentView == ViewMode.Week)
+        {
+            weekStart = weekStart.AddDays(-7);
+        }
+        else
+        {
+            monthStart = monthStart.AddMonths(-1);
+        }
+        await LoadData();
+    }
+
+    async Task NextPeriod()
+    {
+        if (currentView == ViewMode.Week)
+        {
+            weekStart = weekStart.AddDays(7);
+        }
+        else
+        {
+            monthStart = monthStart.AddMonths(1);
+        }
+        await LoadData();
+    }
+
+    async Task GoToday()
+    {
+        var today = DateTime.Today;
+
+        if (currentView == ViewMode.Week)
+        {
+            int daysSinceSunday = (int)today.DayOfWeek;
+            weekStart = today.AddDays(-daysSinceSunday);
+        }
+        else
+        {
+            monthStart = new DateTime(today.Year, today.Month, 1);
+        }
+
+        await LoadData();
+    }
+
+    async Task OnBranchChanged()
+    {
+        ApplyEmployeeBranchFilter();
+        await LoadData();
+    }
+
+    private void ApplyEmployeeBranchFilter()
+    {
+        employees = allEmployees
+            .Where(employee => string.IsNullOrWhiteSpace(selectedBranch) ||
+                string.Equals(employee.BranchId, selectedBranch, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (selectedEmployee is null || employees.All(employee => employee.Id != selectedEmployee.Id))
+        {
+            selectedEmployee = employees.FirstOrDefault();
+        }
+    }
+
+    private static string FirstNonEmpty(params string[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+
+    void OpenNewShift(string employeeId, DateTime date)
+    {
+        editing = false;
+        editingEmployee = employees.FirstOrDefault(e => e.Id == employeeId);
+        editorModel = new RosterShift
+        {
+            EmployeeId = employeeId,
+            BranchId = FirstNonEmpty(selectedBranch, editingEmployee?.BranchId ?? string.Empty),
+            Date = date,
+            StartTime = new TimeSpan(9, 0, 0),
+            EndTime = new TimeSpan(18, 0, 0),
+            Breaks = new List<BreakPeriod>(),
+            Remarks = ""
+        };
+
+        startTimeString = "09:00";
+        endTimeString = "18:00";
+        showEditor = true;
+    }
+
+    void EditShift(RosterShift s)
+    {
+        editing = true;
+        editorModel = new RosterShift
+        {
+            Id = s.Id,
+            EmployeeId = s.EmployeeId,
+            BranchId = s.BranchId,
+            Date = s.Date,
+            StartTime = s.StartTime,
+            EndTime = s.EndTime,
+            IsOvernight = s.IsOvernight,
+            RepeatsWeekly = s.RepeatsWeekly,
+            RepeatEndDate = s.RepeatEndDate,
+            Breaks = s.Breaks.Select(b => new BreakPeriod { Start = b.Start, End = b.End }).ToList(),
+            Remarks = s.Remarks
+        };
+
+        startTimeString = s.StartTime.ToString(@"hh\:mm");
+        endTimeString = s.EndTime.ToString(@"hh\:mm");
+        editingEmployee = employees.FirstOrDefault(e => e.Id == s.EmployeeId);
+        showEditor = true;
+    }
+
+    async Task SaveEditor()
+    {
+        if (TimeSpan.TryParse(startTimeString, out var st))
+            editorModel.StartTime = st;
+
+        if (TimeSpan.TryParse(endTimeString, out var et))
+            editorModel.EndTime = et;
+
+        await RosterService.AddOrUpdateShiftAsync(editorModel);
+        showEditor = false;
+        await LoadData();
+    }
+
+    async Task DeleteEditor()
+    {
+        if (editing)
+        {
+            bool confirmed = await JS.InvokeAsync<bool>("confirm", "Are you sure you want to delete this shift?");
+            if (confirmed)
+            {
+                await RosterService.DeleteShiftAsync(editorModel.Id);
+                showEditor = false;
+                await LoadData();
+            }
+        }
+    }
+
+    void CloseEditor()
+    {
+        showEditor = false;
+    }
+}

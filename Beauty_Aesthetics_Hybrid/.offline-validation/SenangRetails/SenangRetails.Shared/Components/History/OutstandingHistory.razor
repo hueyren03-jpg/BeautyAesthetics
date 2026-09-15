@@ -1,0 +1,51 @@
+@using SenangRetails.Shared.Enums
+@using SenangRetails.Shared.Components.Modals
+
+<div class="outstanding-container">
+    <h3 class="view-title">Outstanding</h3>
+    @if (GetMockOrders == null)
+    {
+        <p>Loading orders...</p>
+    }
+    else
+    {
+        <div class="summary-section">
+            <div class="total-text">Total - @GetMockOrders().Count</div>
+        </div>
+        <div class="outstanding-list">
+            @foreach (var record in GetMockOrders())
+            {
+                <div class="outstanding-card @(View == HistoryView.OutstandingCollection ? "is-collection" : "")" @onclick="() => OpenReceipt(record)">
+                    <div class="card-main">
+                        <div class="left-section">
+                            <span class="text-bold">📄 #@record.OrderNo</span>
+                            <span class="text-muted">@record.Time</span>
+                        </div>
+                        <div class="middle-section">
+                            <span class="text-bold">@record.CustomerName</span>
+                            <span class="text-bold text-muted">@record.CustomerPhone</span>
+                        </div>
+                        <div class="right-section text-right">
+                            <span class="text-bold">@record.PaidAmount</span>
+                            <span class="text-muted">@record.ItemCount Items</span>
+                        </div>
+                    </div>
+
+                    <div class="card-footer">
+                        <div class="badge-group">
+                            <span class="payment-badge">Cash : @record.PaidAmount</span>
+                            <span class="outstanding-badge">Outstanding : @record.OwedAmount</span>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<HistoryDetailsModal Visible="@ShowReceiptModal"
+                     OnClose="@CloseReceipt" />
+
+@code {
+
+}

@@ -1,0 +1,254 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject NavigationManager NavigationManager
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L
+@inject NavigationManager NavManager
+@inject Beauty_Aesthetics_Hybrid.Shared.Services.IFormFactor FormFactor
+@inject IAuthService AuthService
+@inject Beauty_Aesthetics_WebPos.Components.Services.AppState AppState
+@inject IBranchSessionService BranchSession
+
+<div class="MainLayout">
+    @* This is the side bar *@
+
+    @* This is the main body *@
+    <div class="PageWrapper">
+        @* move this back up if broken *@
+        <div class="SidebarWrapper @(isSidebarOpen ? "" : "sidebarClose") @(!isMobileLayout ? "desktop-sidebar" : "")">
+            <div class="Sidebar">
+                <div class="SidebarLogoWrapper">
+                    <img src="images/EBI_Logo.png" class="SidebarLogo" />
+                </div>
+                <div class="SidebarHeader" @onclick="ToggleSideBar">
+                    <i class="fa-solid fa-bars SidebarItemIcon"></i>
+                    <h5>@L["Menu"]</h5>
+                </div>
+                <div class="@GetSidebarItemClass("dashboard")" @onclick='() => NavigateToRoute("/")'>
+                    <i class="fa-solid fa-chart-column SidebarItemIcon  @(isSidebarOpen ? "" : "HideIcon")"></i>
+                    <h5>@L["Dashboard"]</h5>
+                </div>            
+                <div class="@GetSidebarItemClass("appointments")" @onclick='() => NavigateToRoute("/appointments")'>
+                    <i class="fa-regular fa-calendar-check SidebarItemIcon"></i>
+                    <h5>@L["Appointment"]</h5>
+                </div>
+                <div class="@GetSidebarItemClass("customers")" @onclick='() => NavigateToRoute("/customers")'>
+                    <i class="fa-solid fa-users SidebarItemIcon"></i>
+                    <h5>@L["Customers"]</h5>
+                </div>
+                <div class="@GetSidebarItemClass("sales")" @onclick='() => NavigateToRoute("/sales")'>
+                    <i class="fa-solid fa-bag-shopping SidebarItemIcon"></i>
+                    <h5>@L["Sales"]</h5>
+                </div>
+                <div class="@GetSidebarItemClass("roster")" @onclick='() => NavigateToRoute("/roster")'>
+                    <i class="fa-solid fa-user-group SidebarItemIcon"></i>
+                    <h5>@L["Roster"]</h5>
+                </div>
+                <div class="@GetSidebarItemClass("inventory")" @onclick='() => NavigateToRoute("/inventory")'>
+                    <i class="fa-solid fa-warehouse SidebarItemIcon"></i>
+                    <h5>@L["Inventory"]</h5>
+                </div>
+                <div class="@GetSidebarItemClass("services")" @onclick='() => NavigateToRoute("/services")'>
+                    <i class="fa-solid fa-briefcase SidebarItemIcon"></i>
+                    <h5>@L["Services"]</h5>
+                </div>
+                <div class="@GetSidebarItemClass("employee")" @onclick='() => NavigateToRoute("/employee")'>
+                    <i class="fa-solid fa-user-tie SidebarItemIcon"></i>
+                    <h5>@L["Employee"]</h5>
+                </div>
+                <div class="@GetSidebarItemClass("voucher")" @onclick='() => NavigateToRoute("/voucher")'>
+                    <i class="fa-solid fa-ticket SidebarItemIcon"></i>
+                    <h5>@L["Voucher"]</h5>
+                </div>
+                <div class="@GetSidebarItemClass("passcode")" @onclick='() => NavigateToRoute("/passcode")'>
+                    <i class="fa-solid fa-key SidebarItemIcon"></i>
+                    <h5>@L["Passcode"]</h5>
+                </div>
+                <div class="@GetSidebarItemClass("reportmenu")" @onclick='() => NavigateToRoute("/ReportMenu")'>
+                    <i class="fa-solid fa-file SidebarItemIcon"></i>
+                    <h5>@L["Report"]</h5>
+                </div>
+                <div class="@GetSidebarItemClass("configurations")" @onclick='() => NavigateToRoute("/config")'>
+                    <i class="fa-solid fa-gear SidebarItemIcon"></i>
+                    <h5>@L["Configurations"]</h5>
+                </div>
+                
+            </div>
+        </div>
+        <div class="SidebarOverlay @(isSidebarOpen ? "visible" : "") @(!isMobileLayout ? "desktop-overlay" : "")"
+             @onclick="CloseSidebar"
+             aria-hidden="true"></div>
+        <div class="page">
+            <div class="HeaderWrapper">
+                <button type="button" class="mobile-nav-toggle" @onclick="ToggleSideBar" title="Open Menu" aria-label="Toggle Menu">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+                <div class="header">
+                    <div @onclick="ToggleProfile" class="profile">
+                        <i class="fa-solid fa-user ProfileIcon"></i>
+                        <i class="fa-solid fa-caret-down ProfileDropdown"></i>
+                        <div class="ProfileSelection @(isProfileOpen ? "" : "isProfileClose")">
+                            <p class="ProfileUserName">Tay Keng Aik</p>
+                            <p class="ProfileEmail">taykengaik@gmail.com</p>
+                            <div class="ProfileBranchSummary">
+                                <i class="fa-solid fa-building"></i>
+                                <span>
+                                    <small>Working branch</small>
+                                    <strong>@(BranchSession.CurrentBranch?.DisplayName ?? "Not selected")</strong>
+                                </span>
+                            </div>
+                            @if (BranchSession.AvailableBranches.Count > 1)
+                            {
+                                <button type="button"
+                                        class="ProfileBranchSwitch"
+                                        @onclick="OpenBranchPicker"
+                                        @onclick:stopPropagation="true">
+                                    <i class="fa-solid fa-arrow-right-arrow-left"></i>
+                                    Switch branch
+                                </button>
+                            }
+                            <div class="ProfileSelectionItemGroup" @onclick='() => NavigateToRoute("/profile")'>
+                                <i class="fa-solid fa-user-gear ProfileSelectionIcon"></i>
+                                <p class="ProfileSelectionItem">@L["Profile"]</p>
+                            </div>
+                            <p class="ProfileSelectionLogout" @onclick="LogoutAsync">@L["Logout"]</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="content">
+                @Body
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    private bool isProfileOpen = false;
+    private bool isSidebarOpen = false;
+    private bool isMobileLayout = true;
+
+    protected override void OnInitialized()
+    {
+        AppState.AuthenticationChanged += HandleAuthenticationChanged;
+        AppState.BranchChanged += HandleBranchChanged;
+
+        try
+        {
+            var factor = FormFactor.GetFormFactor();
+            if (factor == "Desktop" || factor == "Web" || factor == "Tablet")
+            {
+                isSidebarOpen = true;
+                isMobileLayout = false;
+            }
+        }
+        catch
+        {
+            isSidebarOpen = false;
+            isMobileLayout = true;
+        }
+    }
+
+    public void Dispose()
+    {
+        AppState.AuthenticationChanged -= HandleAuthenticationChanged;
+        AppState.BranchChanged -= HandleBranchChanged;
+    }
+
+    private void HandleAuthenticationChanged()
+    {
+        if (AppState.IsAuthenticated)
+        {
+            return;
+        }
+
+        _ = InvokeAsync(() =>
+        {
+            if (!NavigationManager.ToBaseRelativePath(NavigationManager.Uri).StartsWith("login", StringComparison.OrdinalIgnoreCase))
+            {
+                NavigationManager.NavigateTo("/login", replace: true);
+            }
+        });
+    }
+
+    private void ToggleSideBar()
+    {
+        isSidebarOpen = !isSidebarOpen;
+    }
+
+    private void HandleBranchChanged()
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OpenBranchPicker()
+    {
+        isProfileOpen = false;
+        var relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        var returnUrl = string.IsNullOrWhiteSpace(relativePath) ? "/" : $"/{relativePath}";
+        NavigationManager.NavigateTo($"/select-branch?returnUrl={Uri.EscapeDataString(returnUrl)}");
+    }
+
+    private void CloseSidebar()
+    {
+        if (isSidebarOpen)
+        {
+            isSidebarOpen = false;
+        }
+    }
+
+    private void ToggleProfile()
+    {
+        isProfileOpen = !isProfileOpen;
+    }
+
+    private void NavigateToRoute(string route)
+    {
+        var target = string.IsNullOrWhiteSpace(route) ? "/" : route;
+
+        if (isMobileLayout || isSidebarOpen)
+        {
+            isSidebarOpen = false;
+        }
+
+        if (!NavigationManager.Uri.EndsWith(target, StringComparison.OrdinalIgnoreCase))
+        {
+            NavigationManager.NavigateTo(target);
+        }
+    }
+
+    private async Task LogoutAsync()
+    {
+        await BranchSession.ClearAsync();
+        await AuthService.LogoutAsync();
+        NavigationManager.NavigateTo("/login", replace: true);
+    }
+
+    private string GetSidebarItemClass(string matchPrefix)
+    {
+        var css = "SidebarItem";
+        if (IsActive(matchPrefix))
+        {
+            css += " active";
+        }
+
+        return css;
+    }
+    private bool IsActive(string matchPrefix)
+    {
+        var relativeUri = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).TrimEnd('/');
+        var normalizedPrefix = matchPrefix.Trim('/');
+
+        if (string.IsNullOrEmpty(normalizedPrefix))
+        {
+            return string.IsNullOrEmpty(relativeUri);
+        }
+
+        return relativeUri.StartsWith(normalizedPrefix, StringComparison.OrdinalIgnoreCase);
+    }
+}

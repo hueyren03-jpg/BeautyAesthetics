@@ -1,0 +1,305 @@
+﻿@page "/employee"
+@using Beauty_Aesthetics_WebPos.Components.Layout
+@using Beauty_Aesthetics_WebPos.Components.ViewModels
+@using Beauty_Aesthetics_WebPos.Components.Models.Employee
+@layout MainLayout
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L
+
+<div class="employee-page">
+        <header class="employee-page-heading">
+        <div>
+            <h1>@L["Employees"]</h1>
+            <p>Manage staff profiles, roles, branches and availability.</p>
+        </div>
+        <button class="employee-heading-add" @onclick="NavigateToAddEmployeeAsync">
+            <i class="bi bi-person-plus"></i>
+            <span>@L["AddEmployee"]</span>
+        </button>
+    </header>
+
+    <section class="employee-summary" aria-label="Employee summary">
+        <div class="employee-summary-item summary-total">
+            <span class="employee-summary-icon"><i class="bi bi-people"></i></span>
+            <span><small>Total Staff</small><strong>@VM.Employees.Count</strong></span>
+        </div>
+        <div class="employee-summary-item summary-active">
+            <span class="employee-summary-icon"><i class="bi bi-person-check"></i></span>
+            <span><small>@L["Active"]</small><strong>@VM.Employees.Count(e => e.Status == "Active")</strong></span>
+        </div>
+        <div class="employee-summary-item summary-service">
+            <span class="employee-summary-icon"><i class="bi bi-stars"></i></span>
+            <span><small>Service Staff</small><strong>@VM.Employees.Count(e => e.IsServiceStaff)</strong></span>
+        </div>
+        <div class="employee-summary-item summary-inactive">
+            <span class="employee-summary-icon"><i class="bi bi-person-dash"></i></span>
+            <span><small>@L["Inactive"]</small><strong>@VM.Employees.Count(e => e.Status == "Inactive")</strong></span>
+        </div>
+    </section>
+    <div class="employee-header">
+        <div class="search-box">
+            <span><img src="images/search_icon.png"/></span>
+            <input @bind="VM.SearchTerm" @bind:event="oninput" @bind:after="ResetEmployeePage" placeholder="@L["SearchPlaceholder"]" />
+        </div>
+
+        <select @bind="VM.SelectedStatus" @bind:after="ResetEmployeePage">
+            <option>@L["AllStatus"]</option>
+            <option>@L["Active"]</option>
+            <option>@L["Inactive"]</option>
+        </select>
+
+        <select @bind="VM.SelectedLevel" @bind:after="ResetEmployeePage">
+            <option>@L["AllLevels"]</option>
+            <option>@L["Admin"]</option>
+            <option>@L["Staff"]</option>
+        </select>
+
+        <button class="add-btn" @onclick="NavigateToAddEmployeeAsync">
+            <img src="images/add_icon.png"/>
+            <span>@L["AddEmployee"]</span>
+        </button>
+    </div>
+
+    <div class="employee-table-desktop desktop-view">
+        <table class="employee-table">
+            <thead>
+                <tr>
+                    <th>@L["Code"]</th>
+                    <th>@L["Name"]</th>
+                    <th>@L["SalesPersonCode"]</th>
+                    <th>@L["EmployeeLevel"]</th>
+                    <th>@L["JobTitle"]</th>
+                    <th>@L["BranchId"]</th>
+                    <th>@L["Status"]</th>
+                    <th>@L["Actions"]</th>
+                </tr>
+            </thead>
+            <tbody>
+                @{
+                    var desktopEmployees = PagedEmployees;
+                }
+                @if (VM.IsLoading)
+                {
+                    <tr><td colspan="8" class="text-center">@L["LoadingEmployees"]</td></tr>
+                }
+                else if (!desktopEmployees.Any())
+                {
+                    <tr><td colspan="8" class="text-center">No employees found.</td></tr>
+                }
+                else
+                {
+                    @foreach (var emp in desktopEmployees)
+                    {
+                        <tr class="employee-row @(IsEmployeeActive(emp.Status) ? "row-active" : "row-inactive")">
+                            <td>@emp.Code</td>
+                            <td>
+                                <div class="employee-name-cell">
+                                    <span class="employee-avatar">@(string.IsNullOrWhiteSpace(emp.Name) ? "?" : emp.Name.Trim()[0].ToString().ToUpperInvariant())</span>
+                                    <strong>@emp.Name</strong>
+                                </div>
+                            </td>
+                            <td>@emp.SalesPersonCode</td>
+                            <td>@emp.EmployeeLevel</td>
+                            <td>@emp.JobTitle</td>
+                            <td>@emp.BranchId</td>
+                            <td>
+                                <span class="@(IsEmployeeActive(emp.Status) ? "status-active" : "status-inactive")">
+                                    @(IsEmployeeActive(emp.Status) ? L["Active"] : L["Inactive"])
+                                </span>
+                            </td>
+                            <td class="employee-actions">
+                                <div class="employee-action-group">
+                                    <button class="btn-action view" type="button" title="View employee details" aria-label="View employee details" @onclick="() => ViewEmployeeDetailsAsync(emp)">
+                                        <i class="bi bi-eye" aria-hidden="true"></i>
+                                    </button>
+                                    <button class="btn-action edit" type="button" title="Edit employee" aria-label="Edit employee" @onclick="() => NavigateToEditEmployeeAsync(emp.Code)">
+                                        <i class="bi bi-pencil" aria-hidden="true"></i>
+                                    </button>
+                                    <button class="btn-action deactivate" type="button" title="Set inactive" aria-label="Set employee inactive" @onclick="() => DeleteEmployeeAsync(emp.Code)">
+                                        <i class="bi bi-person-dash" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <section class="employee-mobile mobile-view" aria-label="Employee list">
+        <div class="employee-mobile__search">
+            <i class="bi bi-search"></i>
+            <input @bind="VM.SearchTerm" @bind:event="oninput" @bind:after="ResetEmployeePage" placeholder="Search employees by name, ID or role..." />
+        </div>
+
+        <div class="employee-mobile__filter-row">
+            <span class="employee-mobile__filter-label">Filters:</span>
+            <button class="employee-mobile__filter @(VM.SelectedStatus == "All Status" ? "active" : "")"
+                    @onclick='() => SetEmployeeStatus("All Status")'>All Status</button>
+            <button class="employee-mobile__filter @(VM.SelectedStatus == "Active" ? "active" : "")"
+                    @onclick='() => SetEmployeeStatus("Active")'>Active</button>
+            <button class="employee-mobile__filter @(VM.SelectedStatus == "Inactive" ? "active" : "")"
+                    @onclick='() => SetEmployeeStatus("Inactive")'>Inactive</button>
+        </div>
+
+        <div class="employee-mobile__filter-row employee-mobile__filter-row--levels">
+            <button class="employee-mobile__filter @(VM.SelectedLevel == "All Levels" ? "active" : "")"
+                    @onclick='() => SetEmployeeLevel("All Levels")'>All Levels</button>
+            <button class="employee-mobile__filter @(VM.SelectedLevel == "Admin" ? "active" : "")"
+                    @onclick='() => SetEmployeeLevel("Admin")'>Admin</button>
+            <button class="employee-mobile__filter @(VM.SelectedLevel == "Staff" ? "active" : "")"
+                    @onclick='() => SetEmployeeLevel("Staff")'>Staff</button>
+        </div>
+
+        <div class="employee-mobile__results">
+            @{
+                var mobileEmployees = PagedEmployees;
+            }
+            @if (VM.IsLoading)
+            {
+                <div class="employee-mobile__state">@L["LoadingEmployees"]</div>
+            }
+            else if (!mobileEmployees.Any())
+            {
+                <div class="employee-mobile__state">No employees found.</div>
+            }
+
+            else
+            {
+                @foreach (var emp in mobileEmployees)
+                {
+                    <article class="employee-mobile-card @(IsEmployeeActive(emp.Status) ? "card-active" : "card-inactive")">
+                        <div class="employee-mobile-card__top">
+                            <div class="employee-mobile-card__avatar" aria-hidden="true">
+                                @(string.IsNullOrWhiteSpace(emp.Name) ? "?" : emp.Name.Trim()[0].ToString().ToUpperInvariant())
+                            </div>
+                            <div class="employee-mobile-card__identity">
+                                <strong>@emp.Name</strong>
+                                <span>@(string.IsNullOrWhiteSpace(emp.Code) ? "-" : emp.Code)</span>
+                            </div>
+                            <span class="employee-mobile-card__status @(IsEmployeeActive(emp.Status) ? "active" : "inactive")">
+                                @(IsEmployeeActive(emp.Status) ? L["Active"] : L["Inactive"])
+                            </span>
+                        </div>
+
+                        <div class="employee-mobile-card__position">
+                            <span>Position</span>
+                            <strong>@(string.IsNullOrWhiteSpace(emp.JobTitle) ? "Not assigned" : emp.JobTitle)</strong>
+                        </div>
+
+                        <div class="employee-mobile-card__footer">
+                            <div><span>Dept</span><strong>@(string.IsNullOrWhiteSpace(emp.BranchId) ? "-" : emp.BranchId)</strong></div>
+                            <div><span>Joined</span><strong>@(emp.DateHired.HasValue ? emp.DateHired.Value.ToString("MMM yyyy") : "-")</strong></div>
+                            <div class="employee-mobile-card__actions">
+                                <button type="button" title="View details" @onclick="() => ViewEmployeeDetailsAsync(emp)">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                                <button type="button" title="Edit employee" @onclick="() => NavigateToEditEmployeeAsync(emp.Code)">
+                                    <i class="bi bi-pencil-fill"></i>
+                                </button>
+                                @if (IsEmployeeActive(emp.Status))
+                                {
+                                    <button type="button" class="deactivate" title="Set inactive" aria-label="Set employee inactive" @onclick="() => DeleteEmployeeAsync(emp.Code)">
+                                        <i class="bi bi-person-dash"></i>
+                                    </button>
+                                }
+                            </div>
+                        </div>
+</article>
+                }
+            }
+        </div>
+
+        <button type="button" class="employee-mobile__add" title="Add employee" @onclick="NavigateToAddEmployeeAsync">
+            <i class="bi bi-plus-lg"></i>
+        </button>
+    </section>
+
+    @if (!VM.IsLoading && FilteredEmployeeCount > 0)
+    {
+        <nav class="employee-pagination" aria-label="Employee pages">
+            <button type="button" title="Previous page" disabled="@(EmployeeCurrentPage <= 1)" @onclick="PreviousEmployeePage"><i class="bi bi-chevron-left"></i></button>
+            <span>Page <strong>@EmployeeCurrentPage</strong> of <strong>@EmployeeTotalPages</strong></span>
+            <button type="button" title="Next page" disabled="@(EmployeeCurrentPage >= EmployeeTotalPages)" @onclick="NextEmployeePage"><i class="bi bi-chevron-right"></i></button>
+            <small class="pagination-summary">@FilteredEmployeeCount records</small>
+        </nav>
+    }
+
+    @if (SelectedEmployee is not null)
+    {
+        <div class="employee-details-overlay" role="presentation" @onclick="CloseEmployeeDetails">
+            <section class="employee-details-dialog" role="dialog" aria-modal="true" aria-labelledby="employee-details-title" @onclick:stopPropagation="true">
+                <header class="employee-details-header">
+                    <div class="employee-details-heading">
+                        <span class="employee-details-heading__icon"><i class="bi bi-person-vcard"></i></span>
+                        <div>
+                            <div class="employee-details-title-row">
+                                <h2 id="employee-details-title">Employee Details</h2>
+                                <span class="employee-details-status @(SelectedEmployee.Status == "Active" ? "active" : "inactive")">@SelectedEmployee.Status</span>
+                            </div>
+                            <p>Staff profile, employment and access information.</p>
+                        </div>
+                    </div>
+                    <button type="button" class="employee-details-close" title="Close" @onclick="CloseEmployeeDetails"><i class="bi bi-x-lg"></i></button>
+                </header>
+
+                <div class="employee-details-body">
+                    @if (IsEmployeeDetailsLoading)
+                    {
+                        <div class="employee-details-state"><span class="spinner-border spinner-border-sm"></span> Loading employee details...</div>
+                    }
+                    else
+                    {
+                        <section class="employee-details-profile">
+                            <div class="employee-details-avatar">@(string.IsNullOrWhiteSpace(SelectedEmployee.Name) ? "?" : SelectedEmployee.Name.Trim()[0].ToString().ToUpperInvariant())</div>
+                            <div class="employee-details-profile__identity">
+                                <h3>@DisplayEmployeeValue(SelectedEmployee.Name)</h3>
+                                <span>@DisplayEmployeeValue(SelectedEmployee.JobTitle, "Position not assigned")</span>
+                                <small>@DisplayEmployeeValue(SelectedEmployee.Code)</small>
+                            </div>
+                            <button type="button" class="employee-details-edit" @onclick="() => NavigateToEditEmployeeAsync(SelectedEmployee.Code)"><i class="bi bi-pencil"></i> Edit Employee</button>
+                        </section>
+
+                        <h3 class="employee-details-section-title">Employment Information</h3>
+                        <div class="employee-details-grid">
+                            <div><span>Employee ID</span><strong>@DisplayEmployeeValue(SelectedEmployee.Code)</strong></div>
+                            <div><span>Sales Person Code</span><strong>@DisplayEmployeeValue(SelectedEmployee.SalesPersonCode)</strong></div>
+                            <div><span>Employee Type</span><strong>@DisplayEmployeeValue(SelectedEmployee.EmployeeLevel)</strong></div>
+                            <div><span>Branch</span><strong>@DisplayEmployeeValue(SelectedEmployee.BranchId)</strong></div>
+                            <div><span>Working Shift</span><strong>@DisplayEmployeeValue(SelectedEmployee.WorkingShift)</strong></div>
+                            <div><span>Date Hired</span><strong>@DisplayEmployeeDate(SelectedEmployee.DateHired)</strong></div>
+                            <div><span>Date Resigned</span><strong>@DisplayEmployeeDate(SelectedEmployee.DateResigned)</strong></div>
+                            <div><span>Service Staff</span><strong>@(SelectedEmployee.IsServiceStaff ? "Yes" : "No")</strong></div>
+                        </div>
+
+                        <h3 class="employee-details-section-title">Personal & Contact</h3>
+                        <div class="employee-details-grid">
+                            <div><span>Mobile Phone</span><strong>@DisplayEmployeeValue(SelectedEmployee.MobilePhone)</strong></div>
+                            <div><span>Gender</span><strong>@DisplayEmployeeValue(SelectedEmployee.Gender)</strong></div>
+                            <div><span>Identification No.</span><strong>@DisplayEmployeeValue(SelectedEmployee.Nric)</strong></div>
+                            <div><span>Date of Birth</span><strong>@DisplayEmployeeDate(SelectedEmployee.DateOfBirth)</strong></div>
+                        </div>
+
+                        <h3 class="employee-details-section-title">Limits & Commission</h3>
+                        <div class="employee-details-grid">
+                            <div><span>Maximum Discount</span><strong>@SelectedEmployee.MaxDiscountLimit.ToString("N2")%</strong></div>
+                            <div><span>Monthly Purchase Limit</span><strong>MYR @SelectedEmployee.MaxPurchaseAmount.ToString("N2")</strong></div>
+                            <div><span>Commission Scheme</span><strong>@DisplayEmployeeValue(SelectedEmployee.CommissionScheme)</strong></div>
+                            <div><span>Auto Allocation Group</span><strong>@DisplayEmployeeValue(SelectedEmployee.AutoAllocationGroup)</strong></div>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(SelectedEmployee.Remark))
+                        {
+                            <h3 class="employee-details-section-title">Remarks</h3>
+                            <div class="employee-details-remarks">@SelectedEmployee.Remark</div>
+                        }
+                    }
+                </div>
+            </section>
+        </div>
+    }</div>
+
+<AppErrorPopup Title="Employee request failed"
+               Message="@(string.IsNullOrWhiteSpace(EmployeeDetailsError) ? VM.ErrorMessage : EmployeeDetailsError)" />
+
+

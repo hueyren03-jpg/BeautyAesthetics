@@ -1,0 +1,51 @@
+@using SenangRetails.Shared.Components.Common
+@using SenangRetails.Shared.Models
+
+<BaseModal Visible="Visible" OnClose="OnClose" Size="BaseModal.ModalSize.Medium">
+    <header class="details-header">
+        <button type="button" class="custom-close-btn" @onclick="OnClose">
+            <i class="oi oi-x"></i>
+        </button>
+        <h2 class="title">Details</h2>
+    </header>
+    @if (Visible && MemberModel != null && ReceiptList != null)
+    {
+        <main class="details-content">
+            <div class="item-card">
+                <div class="cust-icon">👤</div>
+                <div class="cust-info">
+                    <div class="cust-name">@MemberModel?.Name</div>
+                    <div class="cust-num">@MemberModel?.PhoneNumber</div>
+                </div>
+            </div>
+
+            <div class="section-label">Orders</div>
+
+            <div class="receipt-items-scroll">
+                @foreach (var receipt in ReceiptList)
+                {
+                    <div class="item-card vertical" @onclick="() => HandleReceiptClick(receipt)">
+                        <div class="item-main">
+                            <span class="order-id">#@receipt.ReceiptNo</span>
+                            <span class="price-highlight">RM @receipt.Items?.Sum(i => i.Price * i.Quantity).ToString("N2")</span>
+                        </div>
+
+                        <hr class="card-divider" />
+
+                        @foreach (var pay in receipt.Payments)
+                        {
+                            <div class="item-sub">
+                                <span class="payment-method">@pay.MethodName</span>
+                                <span class="payment-amount">@pay.Amount.ToString("N2")</span>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </main>
+    }
+</BaseModal>
+
+@code {
+
+}

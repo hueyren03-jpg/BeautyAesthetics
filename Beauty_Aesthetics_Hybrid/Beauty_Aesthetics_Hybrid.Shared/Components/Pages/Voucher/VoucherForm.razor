@@ -1,0 +1,417 @@
+@page "/voucherform"
+@namespace Beauty_Aesthetics_WebPos.Components.Pages.Voucher
+@using Beauty_Aesthetics_WebPos.Components.Layout
+@using Beauty_Aesthetics_WebPos.ViewModels
+@using Beauty_Aesthetics_WebPos.Components.Models
+@layout MainLayout
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L
+
+<main class="voucher-page">
+    <header class="voucher-form-header">
+        <div class="header-left">
+            <a class="btn-back" href="/voucher" aria-label="Back to vouchers">
+                <i class="bi bi-arrow-left" aria-hidden="true"></i>
+            </a>
+            <div>
+                <span class="header-eyebrow">Voucher campaign</span>
+                <h1>@L["VoucherGeneration"]</h1>
+            </div>
+        </div>
+
+        <div class="header-actions">
+            <button type="button" class="btn-cancel" @onclick="Cancel">
+                <i class="bi bi-x-lg" aria-hidden="true"></i>
+                <span>@L["Cancel"]</span>
+            </button>
+            <button type="button"
+                    class="btn-generate"
+                    disabled="@(ViewModel.Voucher.TotalQuantity <= 0)"
+                    @onclick="Generate">
+                <i class="bi bi-lightning-charge" aria-hidden="true"></i>
+                <span>@L["Generate"]</span>
+            </button>
+            <button type="button" class="btn-save" @onclick="Save">
+                <i class="bi bi-check-lg" aria-hidden="true"></i>
+                <span>@L["Save"]</span>
+            </button>
+        </div>
+    </header>
+
+    <AppErrorPopup Title="Unable to save voucher" Message="@ViewModel.ErrorMessage" />
+
+    <div class="voucher-form-layout">
+        <div class="voucher-form-main">
+            <section class="section-box voucher-details-section" aria-labelledby="voucher-details-title">
+                <div class="section-heading">
+                    <span class="section-icon" aria-hidden="true"><i class="bi bi-ticket-perforated"></i></span>
+                    <div>
+                        <h2 id="voucher-details-title">@L["VoucherDetails"]</h2>
+                        <p>Define what the customer receives from this campaign.</p>
+                    </div>
+                </div>
+
+                <div class="form-grid">
+                    <div class="field-group form-span-full">
+                        <label for="voucher-name">@L["VoucherName"] <span class="required">*</span></label>
+                        <input id="voucher-name"
+                               class="custom-input"
+                               @bind="ViewModel.Voucher.Name"
+                               placeholder="e.g. Grand Opening 30% Discount" />
+                    </div>
+
+                    <div class="field-group">
+                        <label for="voucher-type">@L["VoucherType"]</label>
+                        <select id="voucher-type" class="custom-input" @bind="ViewModel.Voucher.DiscountType">
+                            @foreach (var type in ViewModel.VoucherTypes)
+                            {
+                                <option value="@type">@type</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="field-group">
+                        <label for="voucher-amount">@L["VoucherAmount"] <span class="required">*</span></label>
+                        <div class="input-with-prefix">
+                            <span>MYR</span>
+                            <input id="voucher-amount"
+                                   class="custom-input"
+                                   type="number"
+                                   min="0"
+                                   step="0.01"
+                                   @bind="ViewModel.Voucher.VoucherAmount" />
+                        </div>
+                    </div>
+
+                    <div class="field-group">
+                        <label for="voucher-discount">@L["VoucherDiscount"]</label>
+                        <div class="input-with-suffix">
+                            <input id="voucher-discount"
+                                   class="custom-input"
+                                   type="number"
+                                   min="0"
+                                   max="100"
+                                   @bind="ViewModel.Voucher.DiscountValue" />
+                            <span>%</span>
+                        </div>
+                    </div>
+
+                    @if (ViewModel.Voucher.ImmediateRedeemable)
+                    {
+                        <div class="field-group">
+                            <label for="sales-amount">@L["SalesAmount"]</label>
+                            <div class="input-with-prefix">
+                                <span>MYR</span>
+                                <input id="sales-amount"
+                                       class="custom-input"
+                                       type="number"
+                                       min="0"
+                                       step="0.01"
+                                       @bind="ViewModel.Voucher.SalesAmount" />
+                            </div>
+                        </div>
+                    }
+
+                    <div class="toggle-row form-span-full">
+                        <div>
+                            <span class="field-label">@L["ImmediateRedeemable"]</span>
+                            <small>Allow this voucher to be redeemed immediately after it is issued.</small>
+                        </div>
+                        <label class="toggle-switch" for="immediate-redeemable">
+                            <InputCheckbox id="immediate-redeemable"
+                                           @bind-Value="ViewModel.Voucher.ImmediateRedeemable" />
+                            <span aria-hidden="true"></span>
+                            <span class="visually-hidden">@L["ImmediateRedeemable"]</span>
+                        </label>
+                    </div>
+                </div>
+            </section>
+
+            <section class="section-box general-info-section" aria-labelledby="general-info-title">
+                <div class="section-heading">
+                    <span class="section-icon" aria-hidden="true"><i class="bi bi-sliders"></i></span>
+                    <div>
+                        <h2 id="general-info-title">@L["GeneralInfo"]</h2>
+                        <p>Configure numbering, campaign volume and validity.</p>
+                    </div>
+                </div>
+
+                <div class="form-grid">
+                    <div class="field-group">
+                        <label for="voucher-prefix">@L["Prefix"]</label>
+                        <input id="voucher-prefix"
+                               class="custom-input"
+                               maxlength="8"
+                               @bind="ViewModel.Prefix"
+                               placeholder="e.g. PROMO" />
+                    </div>
+
+                    <div class="field-group">
+                        <label for="creation-mode">@L["NoCreationMode"]</label>
+                        <select id="creation-mode" class="custom-input" @bind="ViewModel.NumberCreationMode">
+                            <option value="Auto">@L["Auto"]</option>
+                            <option value="Manual">@L["Manual"]</option>
+                        </select>
+                    </div>
+
+                    <div class="field-group">
+                        <label for="range-from">@L["RangeFrom"]</label>
+                        <input id="range-from"
+                               class="custom-input"
+                               type="number"
+                               min="0"
+                               @bind="ViewModel.RangeFrom" />
+                    </div>
+
+                    <div class="field-group">
+                        <label for="range-to">@L["RangeTo"]</label>
+                        <input id="range-to"
+                               class="custom-input"
+                               type="number"
+                               min="0"
+                               @bind="ViewModel.RangeTo" />
+                    </div>
+
+                    <div class="field-group">
+                        <label for="voucher-length">@L["VoucherNoCharacterLength"]</label>
+                        <input id="voucher-length"
+                               class="custom-input"
+                               type="number"
+                               min="4"
+                               max="24"
+                               @bind="ViewModel.VoucherNumberLength" />
+                    </div>
+
+                    <div class="field-group">
+                        <label for="voucher-quantity">@L["TotalVouchersToGenerate"] <span class="required">*</span></label>
+                        <input id="voucher-quantity"
+                               class="custom-input"
+                               type="number"
+                               min="1"
+                               @bind="ViewModel.Voucher.TotalQuantity" />
+                    </div>
+
+                    <div class="field-group">
+                        <label for="effective-date">@L["EffectiveDate"]</label>
+                        <input id="effective-date"
+                               class="custom-input"
+                               type="date"
+                               @bind="ViewModel.Voucher.StartDate" />
+                    </div>
+
+                    <div class="field-group">
+                        <label for="expiry-date">@L["ExpiryDate"]</label>
+                        <input id="expiry-date"
+                               class="custom-input"
+                               type="date"
+                               @bind="ViewModel.Voucher.EndDate" />
+                    </div>
+                </div>
+            </section>
+
+            <section class="section-box redemption-section">
+                <button type="button"
+                        class="collapsible-header"
+                        aria-expanded="@showSales"
+                        aria-controls="redemption-controls"
+                        @onclick="() => showSales = !showSales">
+                    <span class="section-heading">
+                        <span class="section-icon" aria-hidden="true"><i class="bi bi-arrow-repeat"></i></span>
+                        <span>
+                            <span class="section-button-title">@L["SalesAndRedemptionControl"]</span>
+                            <span class="section-button-copy">Choose where and when vouchers can be used.</span>
+                        </span>
+                    </span>
+                    <i class="bi bi-chevron-down arrow @(showSales ? "open" : "")" aria-hidden="true"></i>
+                </button>
+
+                @if (showSales)
+                {
+                    <div id="redemption-controls" class="collapsible-content">
+                        <div class="form-grid">
+                            <div class="field-group">
+                                <label for="expiry-type">@L["ExpiryType"]</label>
+                                <select id="expiry-type" class="custom-input" @bind="ViewModel.SelectedExpiryType">
+                                    @foreach (var type in ViewModel.ExpiryTypes)
+                                    {
+                                        <option value="@type">@type</option>
+                                    }
+                                </select>
+                            </div>
+
+                            <div class="field-group">
+                                <label for="expiry-days">@L["ExpiryDays"]</label>
+                                <input id="expiry-days"
+                                       class="custom-input"
+                                       type="number"
+                                       min="0"
+                                       @bind="ViewModel.Voucher.ExpiryDays" />
+                            </div>
+
+                            <div class="field-group">
+                                <label for="sell-branch">@L["CanSellAtBranch"]</label>
+                                <select id="sell-branch" class="custom-input" @bind="ViewModel.Voucher.CanSellBranch">
+                                    @foreach (var branch in ViewModel.BranchList)
+                                    {
+                                        <option value="@branch">@branch</option>
+                                    }
+                                </select>
+                            </div>
+
+                            <div class="field-group">
+                                <label for="redeem-branch">@L["CanRedeemAtBranch"]</label>
+                                <select id="redeem-branch" class="custom-input" @bind="ViewModel.Voucher.CanRedeemBranch">
+                                    @foreach (var branch in ViewModel.BranchList)
+                                    {
+                                        <option value="@branch">@branch</option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </section>
+        </div>
+
+        <aside class="voucher-preview" aria-label="Voucher campaign summary">
+            <div class="preview-heading">
+                <span class="preview-icon" aria-hidden="true"><i class="bi bi-ticket-perforated"></i></span>
+                <div>
+                    <span>Campaign preview</span>
+                    <small>Updates as you complete the form</small>
+                </div>
+            </div>
+
+            <div class="preview-ticket">
+                <span class="preview-type">@GetPreviewType()</span>
+                <strong>@GetPreviewName()</strong>
+                <span class="preview-amount">@GetPreviewValue()</span>
+                <span class="preview-validity">@GetPreviewValidity()</span>
+            </div>
+
+            <dl class="preview-facts">
+                <div>
+                    <dt>Quantity</dt>
+                    <dd>@ViewModel.Voucher.TotalQuantity</dd>
+                </div>
+                <div>
+                    <dt>Voucher numbers</dt>
+                    <dd>@GetPreviewRange()</dd>
+                </div>
+                <div>
+                    <dt>Sell at</dt>
+                    <dd>@ViewModel.Voucher.CanSellBranch</dd>
+                </div>
+                <div>
+                    <dt>Redeem at</dt>
+                    <dd>@ViewModel.Voucher.CanRedeemBranch</dd>
+                </div>
+            </dl>
+
+            <div class="readiness-block">
+                <span class="readiness-title">Ready to generate</span>
+                <div class="readiness-item @(HasVoucherName ? "is-ready" : "")">
+                    <i class="bi @(HasVoucherName ? "bi-check-circle-fill" : "bi-circle")" aria-hidden="true"></i>
+                    <span>Voucher name</span>
+                </div>
+                <div class="readiness-item @(HasQuantity ? "is-ready" : "")">
+                    <i class="bi @(HasQuantity ? "bi-check-circle-fill" : "bi-circle")" aria-hidden="true"></i>
+                    <span>Generation quantity</span>
+                </div>
+                <div class="readiness-item @(HasValidDates ? "is-ready" : "")">
+                    <i class="bi @(HasValidDates ? "bi-check-circle-fill" : "bi-circle")" aria-hidden="true"></i>
+                    <span>Valid date range</span>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <section class="section-box generated-section">
+        <button type="button"
+                class="collapsible-header"
+                aria-expanded="@showGenerated"
+                aria-controls="generated-voucher-list"
+                @onclick="() => showGenerated = !showGenerated">
+            <span class="section-heading">
+                <span class="section-icon" aria-hidden="true"><i class="bi bi-list-check"></i></span>
+                <span>
+                    <span class="section-button-title">@L["GeneratedVouchers"]</span>
+                    <span class="section-button-copy">@ViewModel.GeneratedList.Count voucher numbers prepared</span>
+                </span>
+            </span>
+            <i class="bi bi-chevron-down arrow @(showGenerated ? "open" : "")" aria-hidden="true"></i>
+        </button>
+
+        @if (showGenerated)
+        {
+            <div id="generated-voucher-list" class="collapsible-content">
+                @if (ViewModel.GeneratedList.Count == 0)
+                {
+                    <div class="generated-empty-state">
+                        <i class="bi bi-ticket-detailed" aria-hidden="true"></i>
+                        <strong>No voucher numbers generated yet</strong>
+                        <span>Set the quantity above, then select Generate.</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="generated-toolbar">
+                        <span>@ViewModel.GeneratedList.Count generated vouchers</span>
+                        <button type="button" class="btn-remove-all" @onclick="RemoveAll">
+                            <i class="bi bi-trash3" aria-hidden="true"></i>
+                            <span>@L["RemoveAll"]</span>
+                        </button>
+                    </div>
+
+                    <div class="generated-table-shell">
+                        <table class="table-voucher">
+                            <caption class="visually-hidden">Generated voucher numbers</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">@L["VoucherNo"]</th>
+                                    <th scope="col">@L["Name"]</th>
+                                    <th scope="col">@L["SellableAt"]</th>
+                                    <th scope="col">@L["RedeemableAt"]</th>
+                                    <th scope="col">@L["ExpiryDays"]</th>
+                                    <th scope="col">@L["EffectiveDate"]</th>
+                                    <th scope="col">@L["ExpiryDate"]</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in ViewModel.GeneratedList)
+                                {
+                                    <tr>
+                                        <td><strong>@row.VoucherNo</strong></td>
+                                        <td>@row.Name</td>
+                                        <td>@row.SellableAt</td>
+                                        <td>@row.RedeemableAt</td>
+                                        <td>@row.ExpiryDays</td>
+                                        <td>@row.EffectiveDate</td>
+                                        <td>@row.ExpiryDate</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="generated-mobile-list">
+                        @foreach (var row in ViewModel.GeneratedList)
+                        {
+                            <article class="generated-mobile-row">
+                                <div class="generated-row-title">
+                                    <strong>@row.VoucherNo</strong>
+                                    <span>@row.Name</span>
+                                </div>
+                                <div class="generated-row-grid">
+                                    <span><small>@L["SellableAt"]</small><strong>@row.SellableAt</strong></span>
+                                    <span><small>@L["RedeemableAt"]</small><strong>@row.RedeemableAt</strong></span>
+                                    <span><small>@L["EffectiveDate"]</small><strong>@row.EffectiveDate</strong></span>
+                                    <span><small>@L["ExpiryDate"]</small><strong>@row.ExpiryDate</strong></span>
+                                </div>
+                            </article>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </section>
+</main>

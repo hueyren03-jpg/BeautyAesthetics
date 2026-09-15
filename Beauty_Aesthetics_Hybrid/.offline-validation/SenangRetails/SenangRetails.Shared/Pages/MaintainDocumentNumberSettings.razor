@@ -1,0 +1,2297 @@
+@using SenangRetails.Shared.Models.DTOs
+@using SenangRetails.Shared.Services.MaintainDocumentNumberService
+@inject IMaintainDocumentNumberService DocNumberService
+@inject IJSRuntime JS
+
+<div class="mdn-wrapper">
+    <!-- HEADER BAR -->
+    <div class="mdn-header">
+        <div class="mdn-title-group">
+            <div class="mdn-header-icon-wrap">
+                <i class="fa-solid fa-hashtag"></i>
+            </div>
+            <div>
+                <div class="mdn-title-with-badge">
+                    <h2 class="mdn-title">Maintain Document Number</h2>
+                    <span class="mdn-count-badge">@documentRules.Count(r => r.Category == activeCategory) rules</span>
+                </div>
+                <p class="mdn-subtitle">Configure auto-sequence document prefixes, padding lengths, and running numbers.</p>
+            </div>
+        </div>
+
+        <button class="mdn-btn-primary touch-target mdn-desktop-save-btn" @onclick="SaveDocumentNumbers" disabled="@isSaving">
+            @if (isSaving)
+            {
+                <i class="fa-solid fa-spinner fa-spin"></i>
+                <span>Saving...</span>
+            }
+            else
+            {
+                <i class="fa-solid fa-floppy-disk"></i>
+                <span>Save All Changes</span>
+            }
+        </button>
+    </div>
+
+    <!-- ALERT NOTIFICATION -->
+    @if (!string.IsNullOrEmpty(alertMessage))
+    {
+        <div class="mdn-alert @(isSuccess ? "success" : "error")">
+            <i class="fa-solid @(isSuccess ? "fa-circle-check" : "fa-circle-exclamation")"></i>
+            <span>@alertMessage</span>
+        </div>
+    }
+
+    <!-- PRIMARY CATEGORY TABS -->
+    <div class="mdn-tabs-container">
+        <div class="mdn-tabs">
+            <button class="mdn-tab-pill touch-target @(activeCategory == "Document" ? "active" : "")" @onclick='() => SwitchCategory("Document")'>
+                <i class="fa-solid fa-file-invoice"></i>
+                <span>Documents &amp; Sales</span>
+                <span class="mdn-tab-count">@documentRules.Count(r => r.Category == "Document")</span>
+            </button>
+            <button class="mdn-tab-pill touch-target @(activeCategory == "Account" ? "active" : "")" @onclick='() => SwitchCategory("Account")'>
+                <i class="fa-solid fa-address-book"></i>
+                <span>Accounts &amp; Master</span>
+                <span class="mdn-tab-count">@documentRules.Count(r => r.Category == "Account")</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- SEARCH & FILTER TOOLBAR -->
+    <div class="mdn-toolbar">
+        <div class="mdn-search-box">
+            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <input type="text"
+                   placeholder="Search rules by name, code or prefix..."
+                   @bind="searchQuery"
+                   @bind:event="oninput" />
+            @if (!string.IsNullOrEmpty(searchQuery))
+            {
+                <button class="mdn-search-clear" aria-label="Clear search" @onclick='() => searchQuery = ""'>
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            }
+        </div>
+
+        @if (activeCategory == "Document")
+        {
+            <div class="mdn-subfilter-chips">
+                <button class="mdn-subchip @(subFilter == "ALL" ? "active" : "")" @onclick='() => subFilter = "ALL"'>All</button>
+                <button class="mdn-subchip @(subFilter == "SALES" ? "active" : "")" @onclick='() => subFilter = "SALES"'>Sales</button>
+                <button class="mdn-subchip @(subFilter == "INVENTORY" ? "active" : "")" @onclick='() => subFilter = "INVENTORY"'>Stock</button>
+                <button class="mdn-subchip @(subFilter == "PURCHASE" ? "active" : "")" @onclick='() => subFilter = "PURCHASE"'>Purchase</button>
+                <button class="mdn-subchip @(subFilter == "FINANCE" ? "active" : "")" @onclick='() => subFilter = "FINANCE"'>Finance</button>
+            </div>
+        }
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="mdn-loading">
+            <i class="fa-solid fa-spinner fa-spin mdn-spinner-icon"></i>
+            <p>Loading document number sequence rules...</p>
+        </div>
+    }
+    else if (!FilteredRules.Any())
+    {
+        <div class="mdn-empty">
+            <div class="mdn-empty-icon-wrap">
+                <i class="fa-solid fa-hashtag"></i>
+            </div>
+            <h4>No sequence rules found</h4>
+            <p>No document sequence rules matched your current search filters.</p>
+            @if (!string.IsNullOrEmpty(searchQuery) || subFilter != "ALL")
+            {
+                <button class="mdn-btn-subtle" @onclick='() => { searchQuery = ""; subFilter = "ALL"; }'>Clear Filters</button>
+            }
+        </div>
+    }
+    else
+    {
+        <!-- MOBILE CARDS VIEW -->
+        <div class="mdn-mobile-cards-list">
+            @foreach (var rule in FilteredRules)
+            {
+                var iconClass = GetDocumentIcon(rule.Name, rule.Category);
+                var colorTheme = GetDocumentTheme(rule.Name, rule.Category);
+
+                <article class="mdn-card-item @colorTheme @(expandedMobileRule == rule ? "is-expanded" : "")">
+                    <div class="mdn-card-header">
+                        <div class="mdn-card-avatar @colorTheme">
+                            <i class="fa-solid @iconClass"></i>
+                        </div>
+                        <div class="mdn-card-title-group">
+                            <div class="mdn-card-name-row">
+                                <h4 class="mdn-card-name">@FormatDisplayName(rule.Name)</h4>
+                                <span class="mdn-id-chip">#@rule.DocType</span>
+                            </div>
+                            <span class="mdn-category-sub">@rule.Category Type Sequence</span>
+                        </div>
+                        <div class="mdn-card-actions">
+                            <button class="mdn-btn-config" title="Advanced settings" aria-label="Open advanced settings for @FormatDisplayName(rule.Name)" @onclick="() => OpenConfigureModal(rule)">
+                                <i class="fa-solid fa-sliders"></i>
+                            </button>
+                            <button class="mdn-btn-expand" title="@(expandedMobileRule == rule ? "Collapse" : "Edit rule")"
+                                    aria-label="@(expandedMobileRule == rule ? "Collapse" : "Edit") @FormatDisplayName(rule.Name)"
+                                    aria-expanded="@(expandedMobileRule == rule)"
+                                    @onclick="() => ToggleMobileRule(rule)">
+                                <i class="fa-solid @(expandedMobileRule == rule ? "fa-chevron-up" : "fa-chevron-down")"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <button type="button" class="mdn-sequence-summary" @onclick="() => ToggleMobileRule(rule)">
+                        <span class="mdn-summary-label">Current format</span>
+                        <span class="mdn-summary-code">
+                            @if (!string.IsNullOrEmpty(rule.Prefix))
+                            {
+                                <span class="mdn-seg-prefix">@rule.Prefix</span>
+                                <span class="mdn-seg-divider">-</span>
+                            }
+                            <span class="mdn-seg-number">@GetPaddedRunningNumber(rule)</span>
+                        </span>
+                        <span class="mdn-summary-next">Next <strong>@GetNextSequencePreview(rule)</strong></span>
+                    </button>
+
+                    @if (expandedMobileRule == rule)
+                    {
+                        <div class="mdn-card-editor">
+                            <div class="mdn-editor-heading">
+                                <span><i class="fa-solid fa-pen-to-square"></i> Sequence setup</span>
+                                <span class="mdn-editor-length">@rule.CharacterCount total characters</span>
+                            </div>
+
+                            <div class="mdn-card-controls">
+                                <div class="mdn-ctrl-row">
+                                    <label class="mdn-ctrl-lbl" for="mdn-prefix-@rule.Category-@rule.DocType">
+                                        <i class="fa-solid fa-font"></i> Prefix
+                                    </label>
+                                    <div class="mdn-prefix-input-wrap">
+                                        <input id="mdn-prefix-@rule.Category-@rule.DocType"
+                                               type="text"
+                                               class="mdn-input-prefix text-uppercase text-mono"
+                                               placeholder="None"
+                                               maxlength="10"
+                                               @bind="rule.Prefix"
+                                               @bind:event="oninput" />
+                                        @if (!string.IsNullOrEmpty(rule.Prefix))
+                                        {
+                                            <button type="button" class="mdn-prefix-clear" aria-label="Clear prefix" @onclick='() => rule.Prefix = ""'>
+                                                <i class="fa-solid fa-xmark"></i>
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+
+                                <div class="mdn-ctrl-row">
+                                    <label class="mdn-ctrl-lbl">
+                                        <i class="fa-solid fa-ruler-horizontal"></i> Total length
+                                    </label>
+                                    <div class="mdn-stepper-wrap">
+                                        <button type="button" class="mdn-step-btn" aria-label="Decrease total length"
+                                                @onclick="() => StepDigits(rule, -1)" disabled="@(rule.CharacterCount <= 2)">
+                                            <i class="fa-solid fa-minus"></i>
+                                        </button>
+                                        <button type="button" class="mdn-step-val-box" @onclick='() => OpenKeypad(rule, "CharacterCount", rule.CharacterCount)'>
+                                            <span class="mdn-step-val">@rule.CharacterCount</span>
+                                            <span class="mdn-step-unit">characters</span>
+                                        </button>
+                                        <button type="button" class="mdn-step-btn" aria-label="Increase total length"
+                                                @onclick="() => StepDigits(rule, 1)" disabled="@(rule.CharacterCount >= 30)">
+                                            <i class="fa-solid fa-plus"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="mdn-ctrl-row">
+                                    <label class="mdn-ctrl-lbl">
+                                        <i class="fa-solid fa-arrow-down-9-1"></i> Last number
+                                    </label>
+                                    <div class="mdn-stepper-wrap">
+                                        <button type="button" class="mdn-step-btn" aria-label="Decrease last number"
+                                                @onclick="() => StepRunningNumber(rule, -1)" disabled="@(rule.LastNumberUsed <= 0)">
+                                            <i class="fa-solid fa-minus"></i>
+                                        </button>
+                                        <button type="button" class="mdn-step-val-box mdn-running-box" @onclick='() => OpenKeypad(rule, "LastNumberUsed", rule.LastNumberUsed)'>
+                                            <span class="mdn-step-val">@rule.LastNumberUsed</span>
+                                            <span class="mdn-step-unit">tap to enter</span>
+                                        </button>
+                                        <button type="button" class="mdn-step-btn" aria-label="Increase last number" @onclick="() => StepRunningNumber(rule, 1)">
+                                            <i class="fa-solid fa-plus"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </article>
+            }
+        </div>
+
+        <!-- DESKTOP TABLE VIEW (Displayed on wide screens) -->
+        <div class="mdn-desktop-table-card">
+            <div class="mdn-table-scroll">
+                <table class="mdn-table">
+                    <thead>
+                        <tr>
+                            <th style="min-width: 200px;">Document / Account Name</th>
+                            <th style="min-width: 130px;">Prefix</th>
+                            <th style="min-width: 140px; text-align: center;">Total Length</th>
+                            <th style="min-width: 180px; text-align: right;">Last Number Used</th>
+                            <th style="min-width: 240px;">Formatted Sample Preview</th>
+                            <th style="width: 80px; text-align: center;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var rule in FilteredRules)
+                        {
+                            var iconClass = GetDocumentIcon(rule.Name, rule.Category);
+                            var colorTheme = GetDocumentTheme(rule.Name, rule.Category);
+
+                            <tr>
+                                <td>
+                                    <div class="mdn-table-type-row">
+                                        <div class="mdn-table-icon-avatar @colorTheme">
+                                            <i class="fa-solid @iconClass"></i>
+                                        </div>
+                                        <div>
+                                            <div class="rule-name-with-badge">
+                                                <strong class="rule-name">@FormatDisplayName(rule.Name)</strong>
+                                                <span class="mdn-id-chip">#@rule.DocType</span>
+                                            </div>
+                                            <span class="mdn-category-sub">@rule.Category Type</span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <input type="text"
+                                           class="rule-input text-uppercase text-mono"
+                                           placeholder="None"
+                                           maxlength="10"
+                                           @bind="rule.Prefix" />
+                                </td>
+                                <td style="text-align: center;">
+                                    <div class="touch-num-box" @onclick='() => OpenKeypad(rule, "CharacterCount", rule.CharacterCount)'>
+                                        <span>@rule.CharacterCount Digits</span>
+                                        <i class="fa-solid fa-calculator" style="color: #94A3B8; font-size: 0.85rem; margin-left: 6px;"></i>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="touch-num-box text-right text-bold" @onclick='() => OpenKeypad(rule, "LastNumberUsed", rule.LastNumberUsed)'>
+                                        <span># @rule.LastNumberUsed</span>
+                                        <i class="fa-solid fa-calculator" style="color: #94A3B8; font-size: 0.85rem; margin-left: 6px;"></i>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="preview-badge">
+                                        <i class="fa-solid fa-eye"></i>
+                                        <span>@rule.GetFormattedPreview()</span>
+                                    </div>
+                                </td>
+                                <td style="text-align: center;">
+                                    <button class="mdn-btn-table-cfg" title="Configure" @onclick="() => OpenConfigureModal(rule)">
+                                        <i class="fa-solid fa-sliders"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- MOBILE STICKY SAVE BAR -->
+        <div class="mdn-mobile-save-bar">
+            <button class="mdn-btn-primary touch-target mdn-mobile-save-btn" @onclick="SaveDocumentNumbers" disabled="@isSaving">
+                @if (isSaving)
+                {
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    <span>Saving Sequence Rules...</span>
+                }
+                else
+                {
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    <span>Save All @(activeCategory == "Document" ? "Document" : "Account") Rules</span>
+                }
+            </button>
+        </div>
+    }
+</div>
+
+<!-- DETAILED TOUCH CONFIGURE MODAL (BOTTOM SHEET ON MOBILE) -->
+@if (showConfigureModal && selectedRuleForModal != null)
+{
+    <div class="modal-overlay" @onclick="CloseConfigureModal">
+        <div class="modal-container mdn-config-modal" @onclick:stopPropagation>
+            <!-- STICKY MODAL HEADER -->
+            <div class="modal-header">
+                <div class="mdn-modal-header-left">
+                    <div class="mdn-modal-icon-badge @GetDocumentTheme(selectedRuleForModal.Name, selectedRuleForModal.Category)">
+                        <i class="fa-solid @GetDocumentIcon(selectedRuleForModal.Name, selectedRuleForModal.Category)"></i>
+                    </div>
+                    <div>
+                        <h3 class="mdn-modal-title">@FormatDisplayName(selectedRuleForModal.Name)</h3>
+                        <span class="mdn-modal-sub">Sequence Rule (ID: @selectedRuleForModal.DocType &bull; @selectedRuleForModal.Category)</span>
+                    </div>
+                </div>
+                <button class="close-btn" @onclick="CloseConfigureModal" aria-label="Close">✕</button>
+            </div>
+
+            <!-- MODAL BODY (SCROLLABLE & BOUNDED) -->
+            <div class="modal-body">
+                <!-- Live Simulator Hero Card -->
+                <div class="mdn-sim-hero-card">
+                    <div class="mdn-sim-hero-header">
+                        <span class="mdn-sim-lbl"><i class="fa-solid fa-wand-magic-sparkles"></i> Live Formatted Sequence Preview</span>
+                        <span class="mdn-sim-next-badge"><i class="fa-solid fa-forward"></i> Next: @GetNextSequencePreview(selectedRuleForModal)</span>
+                    </div>
+                    <div class="mdn-sim-display">
+                        <span class="mdn-sim-prefix">@(string.IsNullOrEmpty(selectedRuleForModal.Prefix) ? "[No Prefix]" : selectedRuleForModal.Prefix)</span>
+                        <span class="mdn-sim-sep">-</span>
+                        <span class="mdn-sim-num">@GetPaddedRunningNumber(selectedRuleForModal)</span>
+                    </div>
+                </div>
+
+                <!-- Section 1: Prefix Configuration -->
+                <div class="mdn-sec-box">
+                    <div class="mdn-sec-header">
+                        <i class="fa-solid fa-font"></i>
+                        <span>Document Prefix Format</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Prefix Text (Upper-case identifier)</label>
+                        <input type="text"
+                               class="form-control text-uppercase text-mono"
+                               placeholder="e.g. CS, INV, SO, PO"
+                               maxlength="10"
+                               @bind="selectedRuleForModal.Prefix"
+                               @bind:event="oninput" />
+                        <span class="mdn-field-hint">Leave blank if no prefix is required (e.g. pure numbers).</span>
+                    </div>
+                </div>
+
+                <!-- Section 2: Padding & Total Digits Length -->
+                <div class="mdn-sec-box">
+                    <div class="mdn-sec-header">
+                        <i class="fa-solid fa-ruler-combined"></i>
+                        <span>Total Characters &amp; Zero-Padding</span>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="mdn-flex-between">
+                            <label class="form-label">Total Digits Length: <strong>@selectedRuleForModal.CharacterCount digits</strong></label>
+                            <span class="mdn-calc-hint">Numeric Pad: @Math.Max(1, selectedRuleForModal.CharacterCount - selectedRuleForModal.Prefix.Length) zeros</span>
+                        </div>
+
+                        <!-- Quick Length Presets -->
+                        <div class="mdn-preset-chips">
+                            @foreach (var len in new[] { 6, 8, 10, 12, 15, 20 })
+                            {
+                                <button type="button"
+                                        class="mdn-preset-btn @(selectedRuleForModal.CharacterCount == len ? "active" : "")"
+                                        @onclick="() => selectedRuleForModal.CharacterCount = len">
+                                    @len Digits
+                                </button>
+                            }
+                        </div>
+
+                        <!-- Fine Adjustment Stepper -->
+                        <div class="mdn-modal-stepper">
+                            <button type="button" class="mdn-modal-step-btn" @onclick="() => StepDigits(selectedRuleForModal, -1)" disabled="@(selectedRuleForModal.CharacterCount <= 2)">
+                                <i class="fa-solid fa-minus"></i>
+                            </button>
+                            <div class="mdn-modal-step-display" @onclick='() => OpenKeypad(selectedRuleForModal, "CharacterCount", selectedRuleForModal.CharacterCount)'>
+                                <span class="mdn-modal-step-num">@selectedRuleForModal.CharacterCount</span>
+                                <span class="mdn-modal-step-sub">Total Characters (Tap Keypad)</span>
+                            </div>
+                            <button type="button" class="mdn-modal-step-btn" @onclick="() => StepDigits(selectedRuleForModal, 1)" disabled="@(selectedRuleForModal.CharacterCount >= 30)">
+                                <i class="fa-solid fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 3: Last Number Used Sequence -->
+                <div class="mdn-sec-box">
+                    <div class="mdn-sec-header">
+                        <i class="fa-solid fa-arrow-down-9-1"></i>
+                        <span>Running Number Sequence Counter</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Current Counter (Last number used)</label>
+                        <div class="mdn-running-card" @onclick='() => OpenKeypad(selectedRuleForModal, "LastNumberUsed", selectedRuleForModal.LastNumberUsed)'>
+                            <div class="mdn-running-card-left">
+                                <span class="mdn-running-card-title">Counter Value</span>
+                                <span class="mdn-running-card-num"># @selectedRuleForModal.LastNumberUsed</span>
+                            </div>
+                            <div class="mdn-running-card-right">
+                                <span class="mdn-keypad-trigger-badge"><i class="fa-solid fa-calculator"></i> Enter Value</span>
+                            </div>
+                        </div>
+
+                        <div class="mdn-counter-quick-actions">
+                            <button type="button" class="mdn-quick-act-btn" @onclick="() => selectedRuleForModal.LastNumberUsed = 0">
+                                Reset to 0
+                            </button>
+                            <button type="button" class="mdn-quick-act-btn" @onclick="() => selectedRuleForModal.LastNumberUsed = 1">
+                                Reset to 1
+                            </button>
+                            <button type="button" class="mdn-quick-act-btn" @onclick="() => StepRunningNumber(selectedRuleForModal, 10)">
+                                +10 Jump
+                            </button>
+                            <button type="button" class="mdn-quick-act-btn" @onclick="() => StepRunningNumber(selectedRuleForModal, 100)">
+                                +100 Jump
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 4: Next 5 Sample Numbers Preview -->
+                <div class="mdn-sec-box">
+                    <div class="mdn-sec-header">
+                        <i class="fa-solid fa-list-ol"></i>
+                        <span>Upcoming Sequence Samples</span>
+                    </div>
+                    <div class="mdn-sample-list">
+                        @for (int i = 1; i <= 4; i++)
+                        {
+                            var offset = i;
+                            <div class="mdn-sample-item">
+                                <span class="mdn-sample-idx">+#@offset</span>
+                                <span class="mdn-sample-val">@GetSampleFormatted(selectedRuleForModal, selectedRuleForModal.LastNumberUsed + offset)</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- STICKY MODAL FOOTER -->
+            <div class="prod-modal-footer">
+                <button class="prod-modal-cancel-btn touch-target" @onclick="CloseConfigureModal">Done</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- TOUCH CALCULATOR KEYPAD MODAL -->
+@if (showKeypad)
+{
+    <div class="modal-overlay" @onclick="CloseKeypad">
+        <div class="touch-keypad-modal" @onclick:stopPropagation>
+            <div class="keypad-header">
+                <span class="keypad-title">Enter @keypadTitle</span>
+                <span class="keypad-display"># @keypadValueString</span>
+            </div>
+            <div class="keypad-grid">
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("7")'>7</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("8")'>8</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("9")'>9</button>
+                <button type="button" class="kp-btn kp-action" @onclick="KeypadClear">CE</button>
+
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("4")'>4</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("5")'>5</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("6")'>6</button>
+                <button type="button" class="kp-btn kp-action" @onclick="KeypadBackspace">⌫</button>
+
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("1")'>1</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("2")'>2</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("3")'>3</button>
+                <button type="button" class="kp-btn kp-cancel" @onclick="CloseKeypad">Cancel</button>
+
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("0")'>0</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("00")'>00</button>
+                <button type="button" class="kp-btn" disabled>.</button>
+                <button type="button" class="kp-btn kp-submit" @onclick="KeypadSave">OK</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    /* ══════════════════════════════════════════════════
+       BASE & LAYOUT
+       ══════════════════════════════════════════════════ */
+    .mdn-wrapper {
+        padding: 1.25rem;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    .mdn-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.25rem;
+        width: 100%;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .mdn-title-group {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .mdn-header-icon-wrap {
+        width: 46px;
+        height: 46px;
+        border-radius: 12px;
+        background: var(--bg-surface-2, #FFF7ED);
+        color: var(--primary, #F2600C);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.35rem;
+        flex-shrink: 0;
+        border: 1px solid rgba(var(--primary-rgb, 242, 96, 12), 0.15);
+    }
+
+    .mdn-title-with-badge {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .mdn-title {
+        font-size: 1.35rem;
+        font-weight: 800;
+        color: #0F172A;
+        margin: 0;
+    }
+
+    .mdn-count-badge {
+        font-size: 0.75rem;
+        font-weight: 700;
+        background: #EFF6FF;
+        color: #2563EB;
+        padding: 3px 9px;
+        border-radius: 12px;
+        border: 1px solid #BFDBFE;
+    }
+
+    .mdn-subtitle {
+        font-size: 0.86rem;
+        color: #64748B;
+        margin: 0.2rem 0 0 0;
+    }
+
+    .touch-target {
+        height: 48px !important;
+        min-height: 48px !important;
+        font-size: 0.95rem !important;
+        border-radius: 10px !important;
+    }
+
+    .mdn-btn-primary {
+        background: var(--primary, #F2600C);
+        color: #FFFFFF;
+        border: none;
+        padding: 0 1.3rem;
+        font-weight: 700;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 2px 8px rgba(var(--primary-rgb, 242, 96, 12), 0.25);
+    }
+    .mdn-btn-primary:hover {
+        background: var(--primary-dark, #EA580C);
+        transform: translateY(-1px);
+    }
+
+    /* Alert */
+    .mdn-alert {
+        padding: 0.85rem 1rem;
+        border-radius: 12px;
+        font-size: 0.9rem;
+        font-weight: 700;
+        margin-bottom: 1.25rem;
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+    }
+    .mdn-alert.success { background: #DCFCE7; border: 1px solid #86EFAC; color: #16A34A; }
+    .mdn-alert.error { background: #FEF2F2; border: 1px solid #FCA5A5; color: #DC2626; }
+
+    /* ══════════════════════════════════════════════════
+       TAB PILLS & SUB-FILTERS
+       ══════════════════════════════════════════════════ */
+    .mdn-tabs-container {
+        margin-bottom: 1rem;
+        width: 100%;
+    }
+
+    .mdn-tabs {
+        display: flex;
+        gap: 8px;
+        width: 100%;
+        background: #F1F5F9;
+        padding: 4px;
+        border-radius: 12px;
+        box-sizing: border-box;
+    }
+
+    .mdn-tab-pill {
+        flex: 1;
+        background: transparent;
+        border: none;
+        color: #64748B;
+        font-weight: 700;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border-radius: 8px !important;
+        height: 42px !important;
+        font-size: 0.9rem !important;
+        transition: all 0.15s ease;
+    }
+    .mdn-tab-pill.active {
+        background: #FFFFFF;
+        color: var(--primary, #F2600C);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+    }
+
+    .mdn-tab-count {
+        background: #E2E8F0;
+        color: #475569;
+        padding: 2px 7px;
+        border-radius: 8px;
+        font-size: 0.75rem;
+        font-weight: 800;
+    }
+    .mdn-tab-pill.active .mdn-tab-count {
+        background: var(--bg-surface-2, #FFF7ED);
+        color: var(--primary, #F2600C);
+    }
+
+    /* Toolbar & Subchip Row */
+    .mdn-toolbar {
+        margin-bottom: 1.25rem;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .mdn-search-box {
+        position: relative;
+        width: 100%;
+    }
+
+    .mdn-search-box input {
+        width: 100%;
+        padding: 0 38px 0 38px;
+        height: 44px;
+        border: 1.5px solid #CBD5E1;
+        border-radius: 10px;
+        font-size: 0.9rem;
+        outline: none;
+        background: #FFFFFF;
+        box-sizing: border-box;
+        transition: border-color 0.15s;
+    }
+    .mdn-search-box input:focus {
+        border-color: var(--primary, #F2600C);
+        box-shadow: 0 0 0 3px rgba(var(--primary-rgb, 242, 96, 12), 0.12);
+    }
+
+    .mdn-search-box .search-icon {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #94A3B8;
+        font-size: 0.95rem;
+    }
+
+    .mdn-search-clear {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        color: #94A3B8;
+        cursor: pointer;
+        font-size: 0.9rem;
+        padding: 4px;
+    }
+
+    .mdn-subfilter-chips {
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 2px;
+    }
+
+    .mdn-subchip {
+        padding: 6px 12px;
+        border-radius: 8px;
+        background: #F8FAFC;
+        border: 1.5px solid #E2E8F0;
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #64748B;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: all 0.15s ease;
+    }
+    .mdn-subchip.active {
+        background: var(--bg-surface-2, #FFF7ED);
+        border-color: var(--primary, #F2600C);
+        color: var(--primary, #F2600C);
+    }
+
+    /* ══════════════════════════════════════════════════
+       EMPTY & LOADING
+       ══════════════════════════════════════════════════ */
+    .mdn-loading, .mdn-empty {
+        padding: 3.5rem 1.5rem;
+        text-align: center;
+        color: #64748B;
+        background: #FFFFFF;
+        border-radius: 16px;
+        border: 1px solid #E2E8F0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .mdn-spinner-icon {
+        font-size: 2.2rem;
+        color: var(--primary, #F2600C);
+    }
+
+    .mdn-empty-icon-wrap {
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        background: #F1F5F9;
+        color: #94A3B8;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.8rem;
+    }
+
+    .mdn-empty h4 {
+        margin: 0;
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #1E293B;
+    }
+
+    .mdn-empty p {
+        margin: 0;
+        font-size: 0.88rem;
+        color: #64748B;
+        max-width: 380px;
+    }
+
+    .mdn-btn-subtle {
+        background: #F1F5F9;
+        border: 1px solid #CBD5E1;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    /* ══════════════════════════════════════════════════
+       NEXT-GEN MOBILE CARDS
+       ══════════════════════════════════════════════════ */
+    .mdn-mobile-cards-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        width: 100%;
+        box-sizing: border-box;
+        margin-bottom: 88px;
+    }
+
+    .mdn-card-item {
+        background: #FFFFFF;
+        border: 1px solid #DCE3EC;
+        border-radius: 8px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+        transition: all 0.18s ease;
+    }
+    .mdn-card-item:hover {
+        border-color: #CBD5E1;
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.07);
+    }
+    .mdn-card-item.is-expanded {
+        border-color: #CBD5E1;
+        box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+    }
+
+    /* Theme Variations */
+    .mdn-card-item.theme-orange { --mdn-card-accent: #F2600C; }
+    .mdn-card-item.theme-blue { --mdn-card-accent: #2563EB; }
+    .mdn-card-item.theme-green { --mdn-card-accent: #16A34A; }
+    .mdn-card-item.theme-purple { --mdn-card-accent: #7C3AED; }
+    .mdn-card-item.theme-slate { --mdn-card-accent: #64748B; }
+
+    .mdn-card-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .mdn-card-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        flex-shrink: 0;
+    }
+    .mdn-card-avatar.theme-orange { background: #FFF7ED; color: #F2600C; }
+    .mdn-card-avatar.theme-blue { background: #EFF6FF; color: #2563EB; }
+    .mdn-card-avatar.theme-green { background: #F0FDF4; color: #16A34A; }
+    .mdn-card-avatar.theme-purple { background: #FAF5FF; color: #9333EA; }
+    .mdn-card-avatar.theme-slate { background: #F1F5F9; color: #475569; }
+
+    .mdn-card-title-group {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .mdn-card-name-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .mdn-card-name {
+        margin: 0;
+        font-size: 0.94rem;
+        font-weight: 800;
+        color: #1E293B;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .mdn-id-chip {
+        font-size: 0.72rem;
+        font-weight: 800;
+        background: #F1F5F9;
+        color: #64748B;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-family: monospace;
+    }
+
+    .mdn-category-sub {
+        font-size: 0.74rem;
+        color: #64748B;
+        font-weight: 600;
+    }
+
+    .mdn-card-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+    }
+
+    .mdn-btn-config,
+    .mdn-btn-expand {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        border: 1px solid #DCE3EC;
+        background: #F8FAFC;
+        color: #475569;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.95rem;
+        transition: all 0.15s ease;
+    }
+    .mdn-btn-config:hover {
+        background: var(--bg-surface-2, #FFF7ED);
+        color: var(--primary, #F2600C);
+        border-color: var(--primary, #F2600C);
+    }
+
+    .mdn-btn-expand {
+        background: #FFFFFF;
+        color: var(--mdn-card-accent, #64748B);
+    }
+
+    .mdn-sequence-summary {
+        width: 100%;
+        min-height: 58px;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        background: #F8FAFC;
+        padding: 8px 10px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas:
+            "label next"
+            "code next";
+        gap: 3px 10px;
+        text-align: left;
+        cursor: pointer;
+        color: #0F172A;
+    }
+
+    .mdn-sequence-summary:active { background: #F1F5F9; }
+
+    .mdn-summary-label {
+        grid-area: label;
+        color: #64748B;
+        font-size: 0.68rem;
+        font-weight: 800;
+        text-transform: uppercase;
+    }
+
+    .mdn-summary-code {
+        grid-area: code;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        overflow-x: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 1rem;
+        font-weight: 800;
+    }
+
+    .mdn-summary-next {
+        grid-area: next;
+        align-self: center;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        color: #64748B;
+        font-size: 0.68rem;
+        font-weight: 700;
+    }
+
+    .mdn-summary-next strong {
+        color: #15803D;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.76rem;
+        white-space: nowrap;
+    }
+
+    .mdn-sequence-summary .mdn-seg-prefix,
+    .mdn-sequence-summary .mdn-seg-number {
+        background: transparent;
+        padding: 0;
+        color: #0F172A;
+    }
+
+    .mdn-sequence-summary .mdn-seg-prefix { color: var(--mdn-card-accent, #F2600C); }
+    .mdn-sequence-summary .mdn-seg-divider { color: #94A3B8; padding: 0 3px; }
+
+    .mdn-card-editor {
+        border-top: 1px solid #E2E8F0;
+        padding-top: 10px;
+    }
+
+    .mdn-editor-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 8px;
+        color: #334155;
+        font-size: 0.76rem;
+        font-weight: 800;
+    }
+
+    .mdn-editor-heading i { color: var(--mdn-card-accent, #F2600C); margin-right: 4px; }
+    .mdn-editor-length { color: #64748B; font-weight: 600; }
+
+    /* Live Hero Sequence Strip */
+    .mdn-hero-box {
+        background: #0F172A;
+        border-radius: 12px;
+        padding: 10px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        cursor: pointer;
+        transition: transform 0.12s;
+    }
+    .mdn-hero-box:active { transform: scale(0.99); }
+
+    .mdn-hero-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .mdn-hero-tag {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: #94A3B8;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .mdn-next-badge {
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #86EFAC;
+        background: rgba(34, 197, 94, 0.15);
+        padding: 2px 7px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-family: monospace;
+    }
+
+    .mdn-hero-preview-strip {
+        display: flex;
+        align-items: center;
+        font-family: monospace;
+        font-size: 1.15rem;
+        font-weight: 900;
+        letter-spacing: 0.5px;
+        overflow-x: auto;
+        padding: 2px 0;
+    }
+
+    .mdn-seg-prefix {
+        color: #FB923C;
+        background: rgba(251, 146, 60, 0.15);
+        padding: 2px 6px;
+        border-radius: 4px;
+    }
+
+    .mdn-seg-divider {
+        color: #64748B;
+        padding: 0 4px;
+    }
+
+    .mdn-seg-number {
+        color: #38BDF8;
+        background: rgba(56, 189, 248, 0.12);
+        padding: 2px 6px;
+        border-radius: 4px;
+    }
+
+    /* Controls Grid */
+    .mdn-card-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        background: transparent;
+        padding: 0;
+        border-radius: 0;
+        border: 0;
+    }
+
+    .mdn-ctrl-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        min-height: 44px;
+    }
+
+    .mdn-ctrl-lbl {
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: #475569;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 104px;
+    }
+    .mdn-ctrl-lbl i { color: #94A3B8; font-size: 0.82rem; }
+
+    .mdn-prefix-input-wrap {
+        position: relative;
+        flex: 1;
+        max-width: 190px;
+    }
+
+    .mdn-input-prefix {
+        width: 100%;
+        height: 42px;
+        padding: 0 28px 0 10px;
+        border: 1.5px solid #CBD5E1;
+        border-radius: 7px;
+        font-size: 0.88rem;
+        font-weight: 800;
+        outline: none;
+        box-sizing: border-box;
+        background: #FFFFFF;
+    }
+    .mdn-input-prefix:focus {
+        border-color: var(--primary, #F2600C);
+        box-shadow: 0 0 0 2px rgba(var(--primary-rgb, 242, 96, 12), 0.12);
+    }
+
+    .mdn-prefix-clear {
+        position: absolute;
+        right: 6px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        color: #94A3B8;
+        cursor: pointer;
+        padding: 2px 6px;
+        font-size: 0.8rem;
+    }
+
+    /* Steppers */
+    .mdn-stepper-wrap {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex: 1;
+        max-width: 190px;
+        justify-content: flex-end;
+    }
+
+    .mdn-step-btn {
+        width: 42px;
+        height: 42px;
+        border-radius: 7px;
+        border: 1px solid #CBD5E1;
+        background: #FFFFFF;
+        color: #334155;
+        font-size: 0.85rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.12s ease;
+    }
+    .mdn-step-btn:hover:not(:disabled) {
+        border-color: var(--primary, #F2600C);
+        color: var(--primary, #F2600C);
+        background: var(--bg-surface-2, #FFF7ED);
+    }
+    .mdn-step-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .mdn-step-val-box {
+        flex: 1;
+        height: 42px;
+        border: 1px solid #CBD5E1;
+        border-radius: 7px;
+        background: #FFFFFF;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0 4px;
+        font-family: inherit;
+    }
+    .mdn-step-val-box:hover {
+        border-color: var(--primary, #F2600C);
+        background: var(--bg-surface-2, #FFF7ED);
+    }
+
+    .mdn-step-val {
+        font-size: 0.86rem;
+        font-weight: 800;
+        color: #1E293B;
+        line-height: 1;
+    }
+
+    .mdn-step-unit {
+        font-size: 0.65rem;
+        color: #94A3B8;
+        font-weight: 600;
+    }
+
+    .mdn-running-box .mdn-step-val {
+        font-family: monospace;
+        color: #0F172A;
+        font-size: 0.9rem;
+    }
+
+    /* ══════════════════════════════════════════════════
+       DESKTOP TABLE
+       ══════════════════════════════════════════════════ */
+    .mdn-desktop-table-card {
+        display: none;
+        background: #FFFFFF;
+        border-radius: 14px;
+        border: 1px solid #E2E8F0;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+        overflow: hidden;
+    }
+
+    .mdn-table-scroll {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .mdn-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+        text-align: left;
+    }
+
+    .mdn-table th {
+        background: #F8FAFC;
+        padding: 0.9rem 1rem;
+        border-bottom: 1px solid #E2E8F0;
+        color: #1E293B;
+        font-weight: 700;
+    }
+
+    .mdn-table td {
+        padding: 0.85rem 1rem;
+        border-bottom: 1px solid #F1F5F9;
+        vertical-align: middle;
+    }
+
+    .mdn-table-type-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .mdn-table-icon-avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+    }
+    .mdn-table-icon-avatar.theme-orange { background: #FFF7ED; color: #F2600C; }
+    .mdn-table-icon-avatar.theme-blue { background: #EFF6FF; color: #2563EB; }
+    .mdn-table-icon-avatar.theme-green { background: #F0FDF4; color: #16A34A; }
+    .mdn-table-icon-avatar.theme-purple { background: #FAF5FF; color: #9333EA; }
+    .mdn-table-icon-avatar.theme-slate { background: #F1F5F9; color: #475569; }
+
+    .rule-name-with-badge {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .rule-name { color: #1E293B; font-weight: 700; font-size: 0.92rem; }
+
+    .rule-input {
+        width: 100%;
+        height: 42px;
+        padding: 0 12px;
+        border: 1.5px solid #CBD5E1;
+        border-radius: 8px;
+        outline: none;
+        background: #FFFFFF;
+        box-sizing: border-box;
+    }
+    .rule-input:focus { border-color: var(--primary, #F2600C); }
+
+    .touch-num-box {
+        height: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 14px;
+        border: 1.5px solid #CBD5E1;
+        border-radius: 8px;
+        background: #F8FAFC;
+        cursor: pointer;
+        font-weight: 800;
+        font-size: 0.9rem;
+        transition: all 0.15s ease;
+    }
+    .touch-num-box:hover {
+        border-color: var(--primary, #F2600C);
+        background: var(--bg-surface-2, #FFF7ED);
+        color: var(--primary, #F2600C);
+    }
+
+    .preview-badge {
+        background: #0F172A;
+        padding: 0.45rem 0.85rem;
+        border-radius: 8px;
+        font-weight: 800;
+        color: #38BDF8;
+        font-family: monospace;
+        font-size: 0.92rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .preview-badge i { color: #94A3B8; font-size: 0.8rem; }
+
+    .text-right { justify-content: flex-end; text-align: right; }
+    .text-bold { font-weight: 800; color: #1E293B; }
+
+    .mdn-btn-table-cfg {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        border: 1px solid #CBD5E1;
+        background: #FFFFFF;
+        color: #475569;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+    }
+    .mdn-btn-table-cfg:hover {
+        background: var(--bg-surface-2, #FFF7ED);
+        color: var(--primary, #F2600C);
+        border-color: var(--primary, #F2600C);
+    }
+
+    /* ══════════════════════════════════════════════════
+       MOBILE STICKY SAVE BAR
+       ══════════════════════════════════════════════════ */
+    .mdn-mobile-save-bar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: rgba(255, 255, 255, 0.96);
+        padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+        box-shadow: 0 -6px 20px rgba(15, 23, 42, 0.08);
+        border-top: 1px solid #E2E8F0;
+        z-index: 100;
+        display: none;
+        backdrop-filter: blur(10px);
+    }
+
+    .mdn-mobile-save-btn {
+        width: 100%;
+        height: 50px;
+        justify-content: center;
+        border-radius: 8px !important;
+        box-shadow: 0 4px 10px rgba(var(--primary-rgb, 242, 96, 12), 0.22);
+    }
+
+    /* ══════════════════════════════════════════════════
+       BOUNDED MODAL & DETAILED CONFIGURE SHEET
+       ══════════════════════════════════════════════════ */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100%;
+        height: 100%;
+        max-height: 100vh;
+        max-height: 100dvh;
+        background: rgba(15, 23, 42, 0.55);
+        backdrop-filter: blur(4px);
+        z-index: 2000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        box-sizing: border-box;
+        overflow: hidden;
+    }
+
+    .modal-container {
+        background: #FFFFFF;
+        border-radius: 18px;
+        width: 100%;
+        max-width: 600px;
+        max-height: calc(100vh - 2rem);
+        max-height: calc(100dvh - 2rem);
+        box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+        display: flex;
+        flex-direction: column;
+        box-sizing: border-box;
+        overflow: hidden;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1.1rem 1.4rem;
+        background: #F8FAFC;
+        border-bottom: 1px solid #E2E8F0;
+        flex-shrink: 0;
+    }
+
+    .mdn-modal-header-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .mdn-modal-icon-badge {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.15rem;
+    }
+    .mdn-modal-icon-badge.theme-orange { background: #FFF7ED; color: #F2600C; }
+    .mdn-modal-icon-badge.theme-blue { background: #EFF6FF; color: #2563EB; }
+    .mdn-modal-icon-badge.theme-green { background: #F0FDF4; color: #16A34A; }
+    .mdn-modal-icon-badge.theme-purple { background: #FAF5FF; color: #9333EA; }
+    .mdn-modal-icon-badge.theme-slate { background: #F1F5F9; color: #475569; }
+
+    .mdn-modal-title {
+        font-size: 1.15rem;
+        font-weight: 800;
+        color: #0F172A;
+        margin: 0;
+    }
+
+    .mdn-modal-sub {
+        font-size: 0.78rem;
+        color: #64748B;
+        display: block;
+        margin-top: 1px;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        font-size: 1.3rem;
+        cursor: pointer;
+        color: #64748B;
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+    }
+    .close-btn:hover { background: #E2E8F0; color: #0F172A; }
+
+    .modal-body {
+        padding: 1.25rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+        box-sizing: border-box;
+        width: 100%;
+        flex: 1 1 auto;
+        min-height: 0;
+        background: #F8FAFC;
+    }
+
+    /* Modal Simulator Card */
+    .mdn-sim-hero-card {
+        background: #0F172A;
+        border-radius: 14px;
+        padding: 14px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .mdn-sim-hero-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .mdn-sim-lbl {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #94A3B8;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .mdn-sim-next-badge {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #86EFAC;
+        background: rgba(34, 197, 94, 0.15);
+        padding: 3px 8px;
+        border-radius: 6px;
+        font-family: monospace;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .mdn-sim-display {
+        font-family: monospace;
+        font-size: 1.35rem;
+        font-weight: 900;
+        display: flex;
+        align-items: center;
+        letter-spacing: 1px;
+    }
+
+    .mdn-sim-prefix { color: #FB923C; background: rgba(251, 146, 60, 0.15); padding: 2px 8px; border-radius: 6px; }
+    .mdn-sim-sep { color: #64748B; padding: 0 6px; }
+    .mdn-sim-num { color: #38BDF8; background: rgba(56, 189, 248, 0.12); padding: 2px 8px; border-radius: 6px; }
+
+    /* Section Boxes */
+    .mdn-sec-box {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 14px;
+        padding: 1.1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .mdn-sec-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.88rem;
+        font-weight: 700;
+        color: #1E293B;
+    }
+    .mdn-sec-header i { color: var(--primary, #F2600C); font-size: 0.95rem; }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .form-label {
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: #334155;
+    }
+
+    .mdn-flex-between {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .mdn-calc-hint {
+        font-size: 0.75rem;
+        color: #2563EB;
+        font-weight: 700;
+    }
+
+    .mdn-field-hint {
+        font-size: 0.72rem;
+        color: #94A3B8;
+    }
+
+    .form-control {
+        width: 100%;
+        height: 44px;
+        padding: 0 12px;
+        border: 1.5px solid #CBD5E1;
+        border-radius: 10px;
+        font-size: 0.9rem;
+        outline: none;
+        box-sizing: border-box;
+        background: #FFFFFF;
+        transition: border-color 0.15s;
+    }
+    .form-control:focus {
+        border-color: var(--primary, #F2600C);
+        box-shadow: 0 0 0 3px rgba(var(--primary-rgb, 242, 96, 12), 0.12);
+    }
+
+    .text-mono { font-family: monospace; font-size: 1.05rem !important; font-weight: 800; }
+    .text-uppercase { text-transform: uppercase; }
+
+    /* Length Presets */
+    .mdn-preset-chips {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin: 4px 0 8px 0;
+    }
+
+    .mdn-preset-btn {
+        padding: 6px 12px;
+        border-radius: 8px;
+        border: 1.5px solid #E2E8F0;
+        background: #F8FAFC;
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: #475569;
+        cursor: pointer;
+        transition: all 0.12s;
+    }
+    .mdn-preset-btn:hover { border-color: #CBD5E1; }
+    .mdn-preset-btn.active {
+        background: var(--bg-surface-2, #FFF7ED);
+        border-color: var(--primary, #F2600C);
+        color: var(--primary, #F2600C);
+    }
+
+    .mdn-modal-stepper {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+    }
+
+    .mdn-modal-step-btn {
+        width: 48px;
+        height: 48px;
+        border-radius: 10px;
+        border: 1.5px solid #CBD5E1;
+        background: #FFFFFF;
+        color: #1E293B;
+        font-size: 1rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .mdn-modal-step-btn:hover:not(:disabled) {
+        border-color: var(--primary, #F2600C);
+        color: var(--primary, #F2600C);
+    }
+    .mdn-modal-step-btn:disabled { opacity: 0.4; }
+
+    .mdn-modal-step-display {
+        flex: 1;
+        height: 48px;
+        border: 1.5px solid #CBD5E1;
+        border-radius: 10px;
+        background: #FFFFFF;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+    }
+    .mdn-modal-step-display:hover {
+        border-color: var(--primary, #F2600C);
+        background: var(--bg-surface-2, #FFF7ED);
+    }
+
+    .mdn-modal-step-num {
+        font-size: 1.05rem;
+        font-weight: 900;
+        color: #0F172A;
+    }
+    .mdn-modal-step-sub {
+        font-size: 0.65rem;
+        color: #94A3B8;
+        font-weight: 600;
+    }
+
+    /* Running Card */
+    .mdn-running-card {
+        border: 2px solid #FED7AA;
+        background: #FFF7ED;
+        border-radius: 12px;
+        padding: 12px 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .mdn-running-card:hover { border-color: var(--primary, #F2600C); background: #FFEDD5; }
+
+    .mdn-running-card-left { display: flex; flex-direction: column; gap: 2px; }
+    .mdn-running-card-title { font-size: 0.72rem; font-weight: 700; color: #C2410C; text-transform: uppercase; }
+    .mdn-running-card-num { font-size: 1.4rem; font-weight: 900; color: var(--primary, #F2600C); font-family: monospace; }
+
+    .mdn-keypad-trigger-badge {
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: var(--primary-darker, #C2410C);
+        background: #FFFFFF;
+        padding: 6px 10px;
+        border-radius: 8px;
+        border: 1px solid #FED7AA;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .mdn-counter-quick-actions {
+        display: flex;
+        gap: 6px;
+        margin-top: 6px;
+        flex-wrap: wrap;
+    }
+
+    .mdn-quick-act-btn {
+        background: #F1F5F9;
+        border: 1px solid #CBD5E1;
+        padding: 5px 10px;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #334155;
+        cursor: pointer;
+    }
+    .mdn-quick-act-btn:hover { background: #E2E8F0; }
+
+    /* Sample List */
+    .mdn-sample-list {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+    }
+
+    .mdn-sample-item {
+        background: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        padding: 6px 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-family: monospace;
+    }
+
+    .mdn-sample-idx { font-size: 0.72rem; font-weight: 800; color: #94A3B8; }
+    .mdn-sample-val { font-size: 0.85rem; font-weight: 800; color: #0F172A; }
+
+    /* Sticky Modal Footer */
+    .prod-modal-footer {
+        padding: 1rem 1.4rem;
+        background: #F8FAFC;
+        border-top: 1px solid #E2E8F0;
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.75rem;
+        flex-shrink: 0;
+    }
+
+    .prod-modal-cancel-btn {
+        background: #FFFFFF;
+        border: 1.5px solid #CBD5E1;
+        padding: 0 1.5rem;
+        font-weight: 700;
+        color: #475569;
+        cursor: pointer;
+    }
+
+    /* Keypad Modal */
+    .touch-keypad-modal {
+        background: #FFFFFF;
+        border-radius: 20px;
+        width: 100%;
+        max-width: 360px;
+        padding: 1.25rem;
+        box-shadow: 0 25px 50px rgba(0,0,0,0.25);
+    }
+    .keypad-header { text-align: center; margin-bottom: 1rem; }
+    .keypad-title { font-size: 0.85rem; font-weight: 700; color: #64748B; text-transform: uppercase; display: block; }
+    .keypad-display {
+        font-size: 1.8rem;
+        font-weight: 800;
+        color: var(--primary, #F2600C);
+        display: block;
+        margin-top: 0.25rem;
+        padding: 0.5rem;
+        background: #F8FAFC;
+        border-radius: 10px;
+        border: 1.5px solid #E2E8F0;
+    }
+    .keypad-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.6rem; }
+    .kp-btn {
+        height: 56px;
+        font-size: 1.25rem;
+        font-weight: 700;
+        border: 1px solid #CBD5E1;
+        border-radius: 12px;
+        background: #FFFFFF;
+        color: #1E293B;
+        cursor: pointer;
+        transition: background 0.1s;
+    }
+    .kp-btn:active { background: #E2E8F0; }
+    .kp-action { background: #F1F5F9; color: #475569; font-size: 1rem; }
+    .kp-cancel { background: #FEF2F2; color: #DC2626; font-size: 0.9rem; border-color: #FCA5A5; }
+    .kp-submit { background: var(--primary, #F2600C); color: #FFFFFF; border: none; font-size: 1.1rem; }
+
+    /* ══════════════════════════════════════════════════
+       RESPONSIVE BREAKPOINTS
+       ══════════════════════════════════════════════════ */
+    @@media (min-width: 769px) {
+        .mdn-mobile-cards-list { display: none; }
+        .mdn-desktop-table-card { display: block; }
+        .mdn-mobile-save-bar { display: none !important; }
+    }
+
+    @@media (max-width: 768px) {
+        .mdn-wrapper {
+            padding: 0.85rem 0.75rem;
+            background: #F7F9FC;
+        }
+
+        .mdn-header {
+            margin-bottom: 0.9rem;
+        }
+
+        .mdn-title-group {
+            width: 100%;
+            align-items: flex-start;
+        }
+
+        .mdn-header-icon-wrap {
+            width: 42px;
+            height: 42px;
+            border-radius: 8px;
+        }
+
+        .mdn-title-with-badge {
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .mdn-title {
+            font-size: 1.18rem;
+            line-height: 1.2;
+        }
+
+        .mdn-count-badge {
+            flex-shrink: 0;
+            padding: 3px 7px;
+            border-radius: 7px;
+        }
+
+        .mdn-subtitle {
+            margin-top: 0.3rem;
+            font-size: 0.8rem;
+            line-height: 1.45;
+        }
+
+        .mdn-tabs-container { margin-bottom: 0.75rem; }
+
+        .mdn-tabs {
+            gap: 4px;
+            padding: 3px;
+            border-radius: 8px;
+        }
+
+        .mdn-tab-pill {
+            min-width: 0;
+            height: 48px !important;
+            padding: 0 8px;
+            border-radius: 6px !important;
+            font-size: 0.78rem !important;
+            line-height: 1.2;
+        }
+
+        .mdn-tab-pill > span:not(.mdn-tab-count) {
+            white-space: normal;
+        }
+
+        .mdn-tab-count { padding: 2px 6px; }
+
+        .mdn-toolbar {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            margin: 0 -0.75rem 0.75rem;
+            padding: 8px 0.75rem 6px;
+            background: rgba(247, 249, 252, 0.96);
+            backdrop-filter: blur(10px);
+        }
+
+        .mdn-search-box input {
+            height: 46px;
+            border-width: 1px;
+            border-radius: 8px;
+        }
+
+        .mdn-subfilter-chips {
+            margin-right: -0.75rem;
+            padding-right: 0.75rem;
+            scrollbar-width: none;
+        }
+
+        .mdn-subfilter-chips::-webkit-scrollbar { display: none; }
+
+        .mdn-subchip {
+            min-height: 34px;
+            border-width: 1px;
+            border-radius: 7px;
+        }
+
+        .mdn-desktop-save-btn { display: none; }
+        .mdn-mobile-save-bar { display: block; }
+
+        .mdn-sample-list { grid-template-columns: 1fr; }
+
+        /* PERFECT VIEWPORT BOUNDED BOTTOM SHEET */
+        .modal-overlay {
+            padding: 0 !important;
+            align-items: flex-end !important;
+            justify-content: center !important;
+            height: 100% !important;
+            max-height: 100dvh !important;
+            overflow: hidden !important;
+        }
+
+        .modal-container,
+        .mdn-config-modal {
+            width: 100% !important;
+            max-width: 100% !important;
+            height: auto !important;
+            max-height: 85vh !important;
+            max-height: 85dvh !important;
+            border-radius: 20px 20px 0 0 !important;
+            margin: 0 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            overflow: hidden !important;
+        }
+
+        .modal-header {
+            padding: 10px 14px !important;
+            flex-shrink: 0 !important;
+        }
+
+        .modal-body {
+            padding: 12px 14px !important;
+            gap: 12px !important;
+            flex: 1 1 auto !important;
+            min-height: 0 !important;
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+            -webkit-overflow-scrolling: touch !important;
+        }
+
+        .prod-modal-footer {
+            padding: 10px 14px 14px 14px !important;
+            flex-shrink: 0 !important;
+        }
+
+        .prod-modal-cancel-btn {
+            width: 100%;
+            height: 48px;
+            justify-content: center;
+        }
+
+        .touch-keypad-modal {
+            width: 95vw;
+            max-width: 95vw;
+            border-radius: 16px;
+            padding: 1rem;
+        }
+    }
+</style>
+
+@code {
+    private List<MaintainDocumentNumberModel> documentRules = new();
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private string activeCategory = "Document";
+    private string subFilter = "ALL";
+    private string searchQuery = "";
+    private string alertMessage = "";
+    private bool isSuccess = true;
+    private MaintainDocumentNumberModel? expandedMobileRule;
+
+    // Detailed Modal State
+    private bool showConfigureModal = false;
+    private MaintainDocumentNumberModel? selectedRuleForModal;
+
+    // Keypad State
+    private bool showKeypad = false;
+    private string keypadTitle = "";
+    private string keypadField = "";
+    private string keypadValueString = "0";
+    private MaintainDocumentNumberModel? activeRuleForKeypad;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDocumentNumbers();
+    }
+
+    private async Task LoadDocumentNumbers()
+    {
+        isLoading = true;
+        try
+        {
+            documentRules = await DocNumberService.GetDocumentNumbersAsync();
+            expandedMobileRule = documentRules.FirstOrDefault(r => r.Category == activeCategory);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void SwitchCategory(string category)
+    {
+        activeCategory = category;
+        subFilter = "ALL";
+        expandedMobileRule = documentRules.FirstOrDefault(r => r.Category == category);
+    }
+
+    private void ToggleMobileRule(MaintainDocumentNumberModel rule)
+    {
+        expandedMobileRule = expandedMobileRule == rule ? null : rule;
+    }
+
+    private IEnumerable<MaintainDocumentNumberModel> FilteredRules
+    {
+        get
+        {
+            var result = documentRules.Where(r => r.Category == activeCategory);
+
+            if (activeCategory == "Document" && subFilter != "ALL")
+            {
+                result = subFilter switch
+                {
+                    "SALES" => result.Where(r => r.Name.Contains("Sale", StringComparison.OrdinalIgnoreCase) ||
+                                                 r.Name.Contains("Quotation", StringComparison.OrdinalIgnoreCase) ||
+                                                 r.Name.Contains("Invoice", StringComparison.OrdinalIgnoreCase) ||
+                                                 r.Name.Contains("Order", StringComparison.OrdinalIgnoreCase) ||
+                                                 r.Name.Contains("POS", StringComparison.OrdinalIgnoreCase) ||
+                                                 r.Name.Contains("Credit Note", StringComparison.OrdinalIgnoreCase) ||
+                                                 r.Name.Contains("Debit Note", StringComparison.OrdinalIgnoreCase)),
+                    "INVENTORY" => result.Where(r => r.Name.Contains("Inventory", StringComparison.OrdinalIgnoreCase) ||
+                                                     r.Name.Contains("Stock", StringComparison.OrdinalIgnoreCase) ||
+                                                     r.Name.Contains("Transfer", StringComparison.OrdinalIgnoreCase) ||
+                                                     r.Name.Contains("GRN", StringComparison.OrdinalIgnoreCase) ||
+                                                     r.Name.Contains("GIN", StringComparison.OrdinalIgnoreCase) ||
+                                                     r.Name.Contains("Adjustment", StringComparison.OrdinalIgnoreCase)),
+                    "PURCHASE" => result.Where(r => r.Name.Contains("Purchase", StringComparison.OrdinalIgnoreCase) ||
+                                                    r.Name.Contains("PO", StringComparison.OrdinalIgnoreCase) ||
+                                                    r.Name.Contains("Supplier", StringComparison.OrdinalIgnoreCase)),
+                    "FINANCE" => result.Where(r => r.Name.Contains("Cash", StringComparison.OrdinalIgnoreCase) ||
+                                                   r.Name.Contains("Bank", StringComparison.OrdinalIgnoreCase) ||
+                                                   r.Name.Contains("Deposit", StringComparison.OrdinalIgnoreCase) ||
+                                                   r.Name.Contains("Transfer", StringComparison.OrdinalIgnoreCase) ||
+                                                   r.Name.Contains("Journal", StringComparison.OrdinalIgnoreCase) ||
+                                                   r.Name.Contains("Instalment", StringComparison.OrdinalIgnoreCase) ||
+                                                   r.Name.Contains("Point", StringComparison.OrdinalIgnoreCase)),
+                    _ => result
+                };
+            }
+
+            if (!string.IsNullOrWhiteSpace(searchQuery))
+            {
+                result = result.Where(r => (r.Name?.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                                           (r.Prefix?.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                                           r.DocType.ToString().Contains(searchQuery));
+            }
+
+            return result;
+        }
+    }
+
+    private string FormatDisplayName(string rawName)
+    {
+        if (string.IsNullOrWhiteSpace(rawName)) return "Document";
+
+        // Insert spaces before capital letters if CamelCase without spaces
+        if (!rawName.Contains(' '))
+        {
+            var spaced = System.Text.RegularExpressions.Regex.Replace(rawName, "([a-z])([A-Z])", "$1 $2");
+            return spaced;
+        }
+
+        return rawName;
+    }
+
+    private string GetDocumentIcon(string name, string category)
+    {
+        if (category == "Account")
+        {
+            if (name.Contains("Customer", StringComparison.OrdinalIgnoreCase)) return "fa-user-tag";
+            if (name.Contains("Employee", StringComparison.OrdinalIgnoreCase) || name.Contains("HR", StringComparison.OrdinalIgnoreCase)) return "fa-id-card-clip";
+            if (name.Contains("Creditor", StringComparison.OrdinalIgnoreCase) || name.Contains("Supplier", StringComparison.OrdinalIgnoreCase)) return "fa-truck-field";
+            if (name.Contains("Bank", StringComparison.OrdinalIgnoreCase)) return "fa-building-columns";
+            if (name.Contains("Inventory", StringComparison.OrdinalIgnoreCase) || name.Contains("Stock", StringComparison.OrdinalIgnoreCase)) return "fa-boxes-stacked";
+            if (name.Contains("Student", StringComparison.OrdinalIgnoreCase)) return "fa-graduation-cap";
+            return "fa-address-book";
+        }
+
+        // Document Categories
+        if (name.Contains("Quotation", StringComparison.OrdinalIgnoreCase)) return "fa-file-signature";
+        if (name.Contains("POS", StringComparison.OrdinalIgnoreCase) || name.Contains("Receipt", StringComparison.OrdinalIgnoreCase)) return "fa-receipt";
+        if (name.Contains("Invoice", StringComparison.OrdinalIgnoreCase)) return "fa-file-invoice-dollar";
+        if (name.Contains("SalesOrder", StringComparison.OrdinalIgnoreCase) || name.Contains("Sales Order", StringComparison.OrdinalIgnoreCase)) return "fa-cart-shopping";
+        if (name.Contains("Purchase", StringComparison.OrdinalIgnoreCase) || name.Contains("PO", StringComparison.OrdinalIgnoreCase)) return "fa-bag-shopping";
+        if (name.Contains("Credit Note", StringComparison.OrdinalIgnoreCase) || name.Contains("CN", StringComparison.OrdinalIgnoreCase)) return "fa-hand-holding-dollar";
+        if (name.Contains("Debit Note", StringComparison.OrdinalIgnoreCase) || name.Contains("DN", StringComparison.OrdinalIgnoreCase)) return "fa-money-bill-transfer";
+        if (name.Contains("Inventory", StringComparison.OrdinalIgnoreCase) || name.Contains("Adjustment", StringComparison.OrdinalIgnoreCase)) return "fa-box-archive";
+        if (name.Contains("Transfer", StringComparison.OrdinalIgnoreCase)) return "fa-dolly";
+        if (name.Contains("Point", StringComparison.OrdinalIgnoreCase) || name.Contains("Redemption", StringComparison.OrdinalIgnoreCase)) return "fa-coins";
+        if (name.Contains("Delivery", StringComparison.OrdinalIgnoreCase) || name.Contains("DO", StringComparison.OrdinalIgnoreCase)) return "fa-truck-fast";
+        if (name.Contains("Bank", StringComparison.OrdinalIgnoreCase) || name.Contains("Deposit", StringComparison.OrdinalIgnoreCase) || name.Contains("Fund", StringComparison.OrdinalIgnoreCase)) return "fa-vault";
+
+        return "fa-file-lines";
+    }
+
+    private string GetDocumentTheme(string name, string category)
+    {
+        if (category == "Account")
+        {
+            if (name.Contains("Customer", StringComparison.OrdinalIgnoreCase)) return "theme-purple";
+            if (name.Contains("Bank", StringComparison.OrdinalIgnoreCase)) return "theme-blue";
+            if (name.Contains("Inventory", StringComparison.OrdinalIgnoreCase)) return "theme-green";
+            return "theme-slate";
+        }
+
+        if (name.Contains("Invoice", StringComparison.OrdinalIgnoreCase) || name.Contains("POS", StringComparison.OrdinalIgnoreCase)) return "theme-orange";
+        if (name.Contains("Quotation", StringComparison.OrdinalIgnoreCase) || name.Contains("Order", StringComparison.OrdinalIgnoreCase)) return "theme-blue";
+        if (name.Contains("Credit Note", StringComparison.OrdinalIgnoreCase) || name.Contains("Deposit", StringComparison.OrdinalIgnoreCase)) return "theme-green";
+        if (name.Contains("Transfer", StringComparison.OrdinalIgnoreCase) || name.Contains("Adjustment", StringComparison.OrdinalIgnoreCase)) return "theme-purple";
+
+        return "theme-slate";
+    }
+
+    private string GetPaddedRunningNumber(MaintainDocumentNumberModel rule)
+    {
+        int padLength = Math.Max(1, rule.CharacterCount - rule.Prefix.Length);
+        return rule.LastNumberUsed.ToString().PadLeft(padLength, '0');
+    }
+
+    private string GetNextSequencePreview(MaintainDocumentNumberModel rule)
+    {
+        long nextNum = rule.LastNumberUsed + 1;
+        int padLength = Math.Max(1, rule.CharacterCount - rule.Prefix.Length);
+        string formattedNum = nextNum.ToString().PadLeft(padLength, '0');
+        return string.IsNullOrEmpty(rule.Prefix) ? formattedNum : $"{rule.Prefix}-{formattedNum}";
+    }
+
+    private string GetSampleFormatted(MaintainDocumentNumberModel rule, long num)
+    {
+        int padLength = Math.Max(1, rule.CharacterCount - rule.Prefix.Length);
+        string formattedNum = num.ToString().PadLeft(padLength, '0');
+        return string.IsNullOrEmpty(rule.Prefix) ? formattedNum : $"{rule.Prefix}-{formattedNum}";
+    }
+
+    private void StepDigits(MaintainDocumentNumberModel rule, int delta)
+    {
+        rule.CharacterCount = Math.Clamp(rule.CharacterCount + delta, 2, 30);
+    }
+
+    private void StepRunningNumber(MaintainDocumentNumberModel rule, int delta)
+    {
+        rule.LastNumberUsed = Math.Max(0, rule.LastNumberUsed + delta);
+    }
+
+    private void OpenConfigureModal(MaintainDocumentNumberModel rule)
+    {
+        selectedRuleForModal = rule;
+        showConfigureModal = true;
+    }
+
+    private void CloseConfigureModal()
+    {
+        showConfigureModal = false;
+        selectedRuleForModal = null;
+    }
+
+    private async Task SaveDocumentNumbers()
+    {
+        isSaving = true;
+        alertMessage = "";
+        try
+        {
+            var success = await DocNumberService.SaveDocumentNumbersAsync(documentRules);
+            if (success)
+            {
+                isSuccess = true;
+                alertMessage = "Maintain Document Numbers saved successfully!";
+            }
+            else
+            {
+                isSuccess = false;
+                alertMessage = "Failed to save document numbers.";
+            }
+        }
+        catch (Exception ex)
+        {
+            isSuccess = false;
+            alertMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    // Touch Keypad Methods
+    private void OpenKeypad(MaintainDocumentNumberModel rule, string field, long currentVal)
+    {
+        activeRuleForKeypad = rule;
+        keypadField = field;
+        keypadTitle = field switch
+        {
+            "CharacterCount" => "Total Digits Length",
+            "LastNumberUsed" => "Running Number Counter",
+            _ => field
+        };
+        keypadValueString = currentVal.ToString();
+        showKeypad = true;
+    }
+
+    private void KeypadAppend(string val)
+    {
+        if (keypadValueString == "0")
+            keypadValueString = val;
+        else
+            keypadValueString += val;
+    }
+
+    private void KeypadClear() => keypadValueString = "0";
+
+    private void KeypadBackspace()
+    {
+        if (keypadValueString.Length > 1)
+            keypadValueString = keypadValueString.Substring(0, keypadValueString.Length - 1);
+        else
+            keypadValueString = "0";
+    }
+
+    private void KeypadSave()
+    {
+        if (activeRuleForKeypad != null && long.TryParse(keypadValueString, out var num))
+        {
+            if (keypadField == "CharacterCount") activeRuleForKeypad.CharacterCount = (int)Math.Clamp(num, 2, 30);
+            else if (keypadField == "LastNumberUsed") activeRuleForKeypad.LastNumberUsed = Math.Max(0, num);
+        }
+        showKeypad = false;
+    }
+
+    private void CloseKeypad() => showKeypad = false;
+}

@@ -1,0 +1,25 @@
+@page "/culture/set"
+@inject NavigationManager NavigationManager
+@inject Beauty_Aesthetics_WebPos.Components.Services.ICultureSettings CultureSettings
+
+@code {
+    [Parameter]
+    [SupplyParameterFromQuery]
+    public string? culture { get; set; }
+
+    [Parameter]
+    [SupplyParameterFromQuery]
+    public string? redirectUri { get; set; }
+
+    protected override void OnInitialized()
+    {
+        var targetCulture = culture ?? "en";
+        var redirect = string.IsNullOrWhiteSpace(redirectUri) ? "/" : redirectUri;
+
+        // Apply culture using the platform implementation
+        CultureSettings.SetCulture(targetCulture);
+
+        // Perform force reload redirect to refresh UI elements and apply resources
+        NavigationManager.NavigateTo(redirect, forceLoad: true);
+    }
+}

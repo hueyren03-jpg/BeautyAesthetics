@@ -1,0 +1,535 @@
+@page "/incoming-stock-details/{DocNo}"
+@inherits SenangRetails.Shared.Pages.BasePage
+@inject NavigationManager NavigationManager
+@inject AppState AppState
+@using SenangRetails.Shared.Services.InventoryService
+@inject IInventoryService InventoryService
+@using SenangRetails.Shared.Components.Common
+@using SenangRetails.Shared.Components.Inventory
+@using SenangRetails.Shared.Models.DTOs
+@using SenangRetails.Shared.Services.BranchService
+@inject IBranchService BranchService
+
+<div class="view-body">
+    <!-- Top Navigation -->
+    <div class="header">
+        <div @onclick="GoBack" class="back-button-custom" style="cursor: pointer; color: var(--color-primary, #007bff); display: flex; align-items: center;">
+            <i class="bi bi-chevron-left" style="font-size: 22px; font-weight: bold;"></i>
+            <span>Back</span>
+        </div>
+        <div class="header-title">@DocNo</div>
+        <div style="position: relative; justify-self: end;">
+            <button class="more-options-circle-btn" @onclick="ToggleMoreOptions">
+                <i class="bi bi-three-dots"></i>
+            </button>
+            @if (moreOptionsIsOpen)
+            {
+                <div @onclick="CloseMoreOptions" @onclick:stopPropagation="true" class="all-modal-backdrop-no-color"></div>
+                <div class="more-options-dropdown-menu">
+                    <span class="dropdown-item-custom" @onclick="StartEdit" @onclick:stopPropagation="true">Edit Transfer</span>
+                    <span class="dropdown-item-custom delete" @onclick="DeleteTransfer" @onclick:stopPropagation="true">Delete Transfer</span>
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (transfer == null)
+    {
+        <div style="padding: 40px; text-align: center; color: #666;">
+            <h4>Transfer not found</h4>
+            <p>The requested document number <strong>@DocNo</strong> could not be located.</p>
+            <button class="confirm-btn" @onclick="GoBack">Return to Inventory</button>
+        </div>
+    }
+    else
+    {
+        <div style="flex: 1; min-height: 0; overflow-y: auto; padding: 20px 0; display: flex; flex-direction: column; gap: 20px;">
+            @if (isEditing)
+            {
+                <!-- EDIT FORM -->
+                <div class="form-card custom-shadow-sm">
+                    <div class="form-row border-bottom" @onclick='() => OpenBranchSelectModal("to")'>
+                        <div class="left-icon-label">
+                            <i class="bi bi-building-down purple-icon"></i>
+                            <span>To Branch</span>
+                        </div>
+                        <div class="right-selection">
+                            <span>@editToBranch</span>
+                            <i class="bi bi-chevron-down"></i>
+                        </div>
+                    </div>
+
+                    <div class="form-row border-bottom" @onclick='() => OpenBranchSelectModal("from")'>
+                        <div class="left-icon-label">
+                            <i class="bi bi-building-up purple-icon"></i>
+                            <span>From Branch</span>
+                        </div>
+                        <div class="right-selection">
+                            <span>@editFromBranch</span>
+                            <i class="bi bi-chevron-down"></i>
+                        </div>
+                    </div>
+
+                    <div class="form-row border-bottom" @onclick="OpenDateModal">
+                        <div class="left-icon-label">
+                            <i class="bi bi-calendar3 purple-icon"></i>
+                            <span>Date</span>
+                        </div>
+                        <div class="right-selection">
+                            <span>@(editDate?.ToString("dd/MM/yyyy") ?? "Not Set")</span>
+                            <i class="bi bi-chevron-down"></i>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="left-icon-label">
+                            <i class="bi bi-chat-text purple-icon"></i>
+                            <span>Remarks</span>
+                        </div>
+                        <div class="right-selection" style="width: 60%;">
+                            <input type="text" class="custom-input" @bind="editRemarks" style="border: none; text-align: right; outline: none; width: 100%; font-size: 14px; font-weight: 500;" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="product-section-card custom-shadow-sm">
+                    <div class="add-product-row" @onclick="OpenAddProductModal">
+                        <div class="left-icon-label">
+                            <i class="bi bi-box-seam purple-icon"></i>
+                            <span class="text-blue font-bold">Add Product</span>
+                        </div>
+                        <i class="bi bi-chevron-right"></i>
+                    </div>
+                </div>
+
+                @if (editItems.Any())
+                {
+                    <div class="stock-balance-table custom-shadow-sm">
+                        <div class="added-product-grid-header">
+                            <span>Product</span>
+                            <span class="text-align-center">Matrix</span>
+                            <span class="text-align-center">Quantity</span>
+                            <span class="text-align-center">Action</span>
+                        </div>
+                        @foreach (var prod in editItems)
+                        {
+                            <div class="added-product-grid-row">
+                                <div class="stock-in-details">
+                                    <span class="stock-in-title">@prod.ItemName</span>
+                                    <span class="stock-in-subtitle">Code: @prod.ItemCode</span>
+                                </div>
+                                <div class="text-align-center">
+                                    <span class="number-button compact-number-btn" @onclick="() => EditProductDetails(prod)">
+                                        @(string.IsNullOrEmpty(prod.Matrix) ? "Specify Matrix" : prod.Matrix)
+                                    </span>
+                                </div>
+                                <div class="text-align-center">
+                                    <span class="number-button compact-number-btn" @onclick="() => EditProductQty(prod)">@prod.Qty</span>
+                                </div>
+                                <div class="text-align-center">
+                                    <button class="btn-delete" @onclick="() => RemoveProduct(prod)"><i class="bi bi-trash-fill"></i></button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <div style="display: flex; gap: 15px; margin: 0 20px;">
+                    <button class="confirm-btn secondary-btn" style="flex: 1; background: #666;" @onclick="CancelEdit">Cancel</button>
+                    <button class="confirm-btn" style="flex: 1;" disabled="@IsSaveDisabled" @onclick="SaveEdit">Save Changes</button>
+                </div>
+            }
+            else
+            {
+                <!-- STATIC DISPLAY -->
+                <div class="grn-summary-card custom-shadow-sm">
+                    <div class="grn-summary-card-top">
+                        <div class="grn-summary-card-top-left">
+                            <i class="bi bi-arrow-left-right cart-icon"></i>
+                            <span class="grn-number-text">@transfer.DocNo</span>
+                            <span class="grn-timestamp-text">@transfer.Date.ToString("dd/MM/yyyy")</span>
+                        </div>
+                        <div class="grn-summary-card-top-right">
+                            <div class="distinct-items-badge">
+                                <i class="bi bi-box-seam"></i>
+                                <span class="distinct-count">@transfer.DistinctItemsCount Items</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grn-summary-card-bottom">
+                        <div class="grn-summary-card-bottom-left">
+                            <span class="grn-label">DESTINATION BRANCH</span>
+                            <span class="grn-value">@transfer.Branch</span>
+                        </div>
+                        <div class="grn-summary-card-bottom-right">
+                            <div class="grn-staff-info" style="text-align: right;">
+                                <span class="grn-label">ORIGIN BRANCH</span>
+                                <span class="grn-value">@transfer.FromBranch</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="remarks-display-row">
+                        <span class="grn-label">REMARKS:</span>
+                        <span class="grn-value">@(string.IsNullOrWhiteSpace(transfer.Remarks) ? "No remarks" : transfer.Remarks)</span>
+                    </div>
+                </div>
+
+                <div class="grn-details-section-header">
+                    <span class="grn-details-section-title">Transfer Contents</span>
+                </div>
+
+                <div class="stock-movement-table custom-shadow-sm">
+                    <div class="details-table-grid-header">
+                        <span>Product Code / Name</span>
+                        <span class="text-align-center">Matrix Details</span>
+                        <span class="text-align-right">Quantity</span>
+                    </div>
+                    
+                    @foreach (var item in transfer.Items)
+                    {
+                        <div class="details-table-grid-row">
+                            <div class="product-info-cell">
+                                <div class="green-thumbnail">
+                                    <div class="item-thumbnail-inner">
+                                        <i class="bi bi-box-fill"></i>
+                                    </div>
+                                </div>
+                                <div class="product-text-details">
+                                    <span class="product-name">@item.ItemName</span>
+                                    <span class="product-price">Doc: @item.DocNo</span>
+                                </div>
+                            </div>
+                            <div class="text-align-center" style="font-size: 13px; color: #555;">
+                                @(string.IsNullOrEmpty(item.Matrix) ? "-" : item.Matrix)
+                            </div>
+                            <div class="text-align-right font-bold" style="color: #333; font-size: 15px; font-weight: 700;">
+                                @item.Qty
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<!-- SHARED POPUPS FOR EDIT MODE -->
+<div class="transaction-modal-root">
+    <!-- SELECT BRANCH MODAL -->
+    <SlideModal IsOpen="@branchModalIsOpen" CssClass="supplier-details-modal" ZIndexBackdrop="4000" ZIndexModal="4001" OnClose="CloseBranchSelectModal">
+        <div class="header">
+            <div @onclick="CloseBranchSelectModal" style="cursor: pointer;">
+                <i class="bi bi-x-lg"></i>
+            </div>
+            <div class="header-title">Select @(branchSelectContext == "to" ? "Destination" : "Origin") Branch</div>
+            <div style="width: 24px;"></div>
+        </div>
+        <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-top: 10px;">
+            @foreach (var branchName in Branches)
+            {
+                <div class="option-card custom-shadow-sm cursor-pointer" @onclick="() => SelectBranch(branchName)" style="padding: 15px; background: white; border-radius: 8px; border: 1px solid var(--border); display: flex; flex-direction: column;">
+                    <span style="font-weight: bold; color: #333;">@branchName</span>
+                </div>
+            }
+        </div>
+    </SlideModal>
+
+    <!-- DATE MODAL -->
+    <SlideModal IsOpen="@dateModalIsOpen" CssClass="supplier-details-modal" ZIndexBackdrop="4000" ZIndexModal="4001" OnClose="CloseDateModal">
+        <div class="header">
+            <div @onclick="CloseDateModal" style="cursor: pointer;">
+                <i class="bi bi-x-lg"></i>
+            </div>
+            <div class="header-title">Transfer Date</div>
+            <div style="width: 24px;"></div>
+        </div>
+        <div class="details-form-container">
+            <div class="form-group">
+                <label>Select Date</label>
+                <MobileDatePicker @bind-Value="tempDate" DateFormat="dd/MM/yyyy" />
+            </div>
+        </div>
+        <button class="confirm-btn" @onclick="SaveDate" style="margin-top: 15px;">Save</button>
+    </SlideModal>
+
+    <!-- ADD PRODUCT MODAL -->
+    <InventoryAddProductModal IsOpen="@addProductModalIsOpen" OnClose="CloseAddProductModal" OnProductSelected="HandleProductSelected" />
+
+    <!-- ITEM DETAIL MODAL -->
+    <SlideModal IsOpen="@productDetailsModalIsOpen" CssClass="supplier-details-modal" ZIndexBackdrop="6000" ZIndexModal="6001" OnClose="CloseProductDetailsModal">
+        <div class="header">
+            <div @onclick="CloseProductDetailsModal" style="cursor: pointer;">
+                <i class="bi bi-x-lg"></i>
+            </div>
+            <div class="header-title">Item Details</div>
+            <div style="width: 24px;"></div>
+        </div>
+        <div class="details-form-container">
+            <div class="form-group">
+                <label>Product</label>
+                <input type="text" class="custom-input" value="@editingProductName" readonly />
+            </div>
+            <div class="form-group">
+                <label>Item Code</label>
+                <input type="text" class="custom-input" value="@editingProductCode" readonly />
+            </div>
+            <div class="form-group">
+                <label>Matrix (Batch/Size/Color)</label>
+                <input type="text" class="custom-input" placeholder="e.g. Size: L, Color: White" @bind="editingProductMatrix" style="padding-left: 10px;" />
+            </div>
+            <div class="form-group">
+                <label>Quantity</label>
+                <div class="input-wrapper" @onclick="OpenQuantityCalculator" style="cursor: pointer;">
+                    <input type="number" class="custom-input" value="@editingProductQuantity" readonly style="padding-left: 10px;" />
+                </div>
+            </div>
+        </div>
+        <button class="confirm-btn" @onclick="ConfirmProductDetails" style="margin-top: 15px;">Confirm &amp; Add</button>
+    </SlideModal>
+
+    <!-- QUANTITY CALCULATOR -->
+    <Calculator IsOpen="@quantityCalculatorIsOpen" Title="Quantity" InitialValue="@editingProductQuantity" OnSave="HandleQuantitySave" OnClose="CloseQuantityCalculator" />
+</div>
+
+@code {
+    [Parameter] public string DocNo { get; set; } = "";
+
+    private StockTransferModel? transfer;
+    private bool moreOptionsIsOpen = false;
+    private bool isEditing = false;
+
+    // Form fields for editing
+    private string editToBranch = "";
+    private string editFromBranch = "";
+    private DateTime? editDate;
+    private string editRemarks = "";
+    private List<StockTransferDetailModel> editItems = new();
+
+    // Select Modals
+    private bool branchModalIsOpen = false;
+    private string branchSelectContext = ""; // "to" or "from"
+    private bool dateModalIsOpen = false;
+    private DateTime tempDate = DateTime.Today;
+
+    // Product Modals
+    private bool addProductModalIsOpen = false;
+    private bool productDetailsModalIsOpen = false;
+    private string editingProductName = "";
+    private string editingProductCode = "";
+    private string editingProductMatrix = "";
+    private int editingProductQuantity = 1;
+    private bool quantityCalculatorIsOpen = false;
+    private bool isEditingProductItem = false;
+    private StockTransferDetailModel? editingProductItemRef = null;
+
+    private List<string> Branches = new()
+    {
+        "Headquarters", "Cheras Branch", "Puchong Branch", "Kuching Branch", "Miri Branch"
+    };
+
+    private bool IsSaveDisabled => string.IsNullOrWhiteSpace(editToBranch) ||
+                                   string.IsNullOrWhiteSpace(editFromBranch) ||
+                                   editDate == null ||
+                                   !editItems.Any() ||
+                                   editToBranch == editFromBranch;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+
+        // Load branches dynamically from application state
+        if (AppState.AvailableBranches != null && AppState.AvailableBranches.Any())
+        {
+            var branchList = new List<string>();
+            foreach (var bId in AppState.AvailableBranches)
+            {
+                var (details, _) = await BranchService.GetBranchDetailsAsync(bId);
+                if (details != null && !string.IsNullOrWhiteSpace(details.Branch))
+                {
+                    branchList.Add(details.Branch);
+                }
+            }
+            if (branchList.Any())
+            {
+                Branches = branchList;
+            }
+        }
+
+        LoadTransfer();
+    }
+
+    private void LoadTransfer()
+    {
+        transfer = IncomingStockTransfer.StockTransfers.FirstOrDefault(t => t.DocNo.Equals(DocNo, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void GoBack()
+    {
+        // Go back to the main inventory page and switch back to the stock transfer tab
+        NavigationManager.NavigateTo("/inventory?tab=stocktransfer");
+    }
+
+    private void ToggleMoreOptions() => moreOptionsIsOpen = !moreOptionsIsOpen;
+    private void CloseMoreOptions() => moreOptionsIsOpen = false;
+
+    private void StartEdit()
+    {
+        if (transfer == null) return;
+
+        editToBranch = transfer.Branch;
+        editFromBranch = transfer.FromBranch;
+        editDate = transfer.Date;
+        editRemarks = transfer.Remarks;
+        editItems = transfer.Items.Select(i => new StockTransferDetailModel
+        {
+            DocNo = i.DocNo,
+            ItemCode = i.ItemCode,
+            ItemName = i.ItemName,
+            Matrix = i.Matrix,
+            Qty = i.Qty
+        }).ToList();
+
+        isEditing = true;
+        moreOptionsIsOpen = false;
+    }
+
+    private void CancelEdit()
+    {
+        isEditing = false;
+    }
+
+    private void SaveEdit()
+    {
+        if (transfer == null || IsSaveDisabled) return;
+
+        transfer.Branch = editToBranch;
+        transfer.FromBranch = editFromBranch;
+        transfer.Date = editDate ?? DateTime.Today;
+        transfer.Remarks = editRemarks;
+        transfer.Items = editItems;
+
+        // Update items' DocNo just in case
+        foreach (var item in transfer.Items)
+        {
+            item.DocNo = transfer.DocNo;
+        }
+
+        isEditing = false;
+    }
+
+    private void DeleteTransfer()
+    {
+        if (transfer != null)
+        {
+            IncomingStockTransfer.StockTransfers.Remove(transfer);
+        }
+        moreOptionsIsOpen = false;
+        GoBack();
+    }
+
+    // Branch selection
+    private void OpenBranchSelectModal(string context)
+    {
+        branchSelectContext = context;
+        branchModalIsOpen = true;
+    }
+    private void CloseBranchSelectModal() => branchModalIsOpen = false;
+    private void SelectBranch(string name)
+    {
+        if (branchSelectContext == "to")
+            editToBranch = name;
+        else if (branchSelectContext == "from")
+            editFromBranch = name;
+        branchModalIsOpen = false;
+    }
+
+    // Date
+    private void OpenDateModal()
+    {
+        tempDate = editDate ?? DateTime.Today;
+        dateModalIsOpen = true;
+    }
+    private void CloseDateModal() => dateModalIsOpen = false;
+    private void SaveDate()
+    {
+        editDate = tempDate;
+        dateModalIsOpen = false;
+    }
+
+    // Add Product
+    private void OpenAddProductModal() => addProductModalIsOpen = true;
+    private void CloseAddProductModal() => addProductModalIsOpen = false;
+
+    private async Task HandleProductSelected(string masterAccountId)
+    {
+        addProductModalIsOpen = false;
+        isEditingProductItem = false;
+
+        var product = await InventoryService.LoadItemAsync(masterAccountId);
+        if (product != null)
+        {
+            editingProductName = product.AccountName ?? "Unknown Product";
+            editingProductCode = product.DisplayCode ?? product.ProductCode ?? product.AlphaCode ?? "N/A";
+            editingProductMatrix = "";
+            editingProductQuantity = 1;
+            productDetailsModalIsOpen = true;
+        }
+    }
+    private void CloseProductDetailsModal() => productDetailsModalIsOpen = false;
+
+    private void ConfirmProductDetails()
+    {
+        if (isEditingProductItem && editingProductItemRef != null)
+        {
+            editingProductItemRef.Matrix = editingProductMatrix;
+            editingProductItemRef.Qty = editingProductQuantity;
+        }
+        else
+        {
+            editItems.Add(new StockTransferDetailModel
+            {
+                DocNo = DocNo,
+                ItemCode = editingProductCode,
+                ItemName = editingProductName,
+                Matrix = editingProductMatrix,
+                Qty = editingProductQuantity
+            });
+        }
+        productDetailsModalIsOpen = false;
+    }
+
+    private void OpenQuantityCalculator() => quantityCalculatorIsOpen = true;
+    private void CloseQuantityCalculator() => quantityCalculatorIsOpen = false;
+    private void HandleQuantitySave(double value)
+    {
+        editingProductQuantity = (int)value;
+        quantityCalculatorIsOpen = false;
+    }
+
+    private void EditProductQty(StockTransferDetailModel prod)
+    {
+        isEditingProductItem = true;
+        editingProductItemRef = prod;
+        editingProductName = prod.ItemName;
+        editingProductCode = prod.ItemCode;
+        editingProductMatrix = prod.Matrix;
+        editingProductQuantity = prod.Qty;
+        quantityCalculatorIsOpen = true;
+    }
+
+    private void EditProductDetails(StockTransferDetailModel prod)
+    {
+        isEditingProductItem = true;
+        editingProductItemRef = prod;
+        editingProductName = prod.ItemName;
+        editingProductCode = prod.ItemCode;
+        editingProductMatrix = prod.Matrix;
+        editingProductQuantity = prod.Qty;
+        productDetailsModalIsOpen = true;
+    }
+
+    private void RemoveProduct(StockTransferDetailModel prod)
+    {
+        editItems.Remove(prod);
+    }
+}

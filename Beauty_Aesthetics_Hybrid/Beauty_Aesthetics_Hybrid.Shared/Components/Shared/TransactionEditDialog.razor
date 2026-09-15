@@ -1,0 +1,167 @@
+@using Beauty_Aesthetics_WebPos.Components.Models
+@using Beauty_Aesthetics_WebPos.Components.Services.Inventory
+@using Beauty_Aesthetics_WebPos.Models.DTOs
+
+<div class="transaction-dialog-backdrop" @onclick="OnClose"></div>
+<section class="transaction-dialog" role="dialog" aria-modal="true" aria-labelledby="transaction-edit-title">
+    <header class="transaction-dialog-header">
+        <h3 id="transaction-edit-title"><i class="bi bi-pencil-square edit-icon"></i> Edit Transaction</h3>
+        <button type="button" title="Close" aria-label="Close edit transaction" @onclick="OnClose"><i class="bi bi-x-lg"></i></button>
+    </header>
+    <div class="transaction-dialog-content">
+        <div class="form-grid">
+            <label><span>Invoice</span><input value="@Transaction.InvoiceNumber" readonly /></label>
+            <label><span>Customer</span><select @bind="Transaction.AccountId" @bind:after="ApplyCustomer"><option value="">Select customer</option>@foreach (var customer in Customers){<option value="@customer.SystemID">@CustomerLabel(customer)</option>}</select></label>
+            <label><span>Transaction Date</span><input type="date" @bind="Transaction.Date" /></label>
+            <label><span>Outlet / Branch</span><select @bind="Transaction.BranchId">@foreach (var branch in Branches){<option value="@branch.Id">@branch.Name</option>}</select></label>
+            <label><span>Transaction Type</span><select @bind="Transaction.Type"><option value="Service">Service</option><option value="Product">Product</option><option value="Package">Package</option><option value="Voucher">Voucher</option></select></label>
+            <label><span>Status</span><select @bind="Transaction.Status"><option value="Paid">Paid</option><option value="Pending">Pending</option><option value="Completed">Completed</option><option value="Cancelled">Cancelled</option></select></label>
+            <label><span>Amount (MYR)</span><input type="number" min="0" step="0.01" @bind="Transaction.Amount" /></label>
+            <label><span>Contact</span><input @bind="Transaction.CustomerContact" /></label>
+            <label><span>Email</span><input type="email" @bind="Transaction.CustomerEmail" /></label>
+            <label class="wide-field"><span>Notes</span><textarea rows="3" @bind="Transaction.Notes"></textarea></label>
+        </div>
+
+        <section class="payment-editor" aria-labelledby="payment-allocation-title">
+            <div class="payment-editor-heading">
+                <div>
+                    <h4 id="payment-allocation-title"><i class="bi bi-wallet2"></i> Payment Allocation</h4>
+                    <p>Split this transaction across one or more payment methods.</p>
+                </div>
+                <button type="button" class="add-payment-button" @onclick="AddPayment" disabled="@(!CanAddPayment || IsSaving)">
+                    <i class="bi bi-plus-lg"></i> Add Method
+                </button>
+            </div>
+
+            <div class="payment-lines">
+                @foreach (var payment in Transaction.Payments)
+                {
+                    <div class="payment-line" @key="payment">
+                        <label>
+                            <span>Payment Method</span>
+                            <select @bind="payment.PaymentTypeId" @bind:after="@(() => ApplyPaymentName(payment))">
+                                <option value="0">Select method</option>
+                                @foreach (var option in PaymentTypes)
+                                {
+                                    <option value="@option.POSPaymentTypeID" disabled="@IsMethodUsedByAnotherLine(option.POSPaymentTypeID, payment)">@option.POSPaymentTypeName</option>
+                                }
+                            </select>
+                        </label>
+                        <label>
+                            <span>Amount (MYR)</span>
+                            <input type="number" min="0" step="0.01" @bind="payment.Amount" />
+                        </label>
+                        <button type="button" class="remaining-button" @onclick="() => UseRemaining(payment)" disabled="@(RemainingFor(payment) <= 0 || IsSaving)">Use remaining</button>
+                        <button type="button" class="remove-payment-button" title="Remove payment method" aria-label="Remove payment method" @onclick="() => RemovePayment(payment)" disabled="@(Transaction.Payments.Count <= 1 || IsSaving)"><i class="bi bi-trash3"></i></button>
+                    </div>
+                }
+            </div>
+
+            <div class="payment-summary">
+                <div><span>Transaction total</span><strong>MYR @Transaction.Amount.ToString("N2")</strong></div>
+                <div><span>Allocated</span><strong>MYR @AllocatedAmount.ToString("N2")</strong></div>
+                <div class="remaining @(IsBalanced ? "balanced" : "")"><span>Remaining</span><strong>MYR @RemainingAmount.ToString("N2")</strong></div>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(PaymentError))
+            {
+                <div class="payment-error" role="alert"><i class="bi bi-exclamation-circle"></i> @PaymentError</div>
+            }
+        </section>
+
+        <footer class="dialog-actions">
+            <button type="button" class="secondary-button" @onclick="OnClose" disabled="@IsSaving">Cancel</button>
+            <button type="button" class="primary-button" @onclick="SaveAsync" disabled="@(!CanSave)"><i class="bi bi-check-lg"></i> Save Changes</button>
+        </footer>
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Transaction Transaction { get; set; } = default!;
+    [Parameter] public IReadOnlyList<Customer> Customers { get; set; } = Array.Empty<Customer>();
+    [Parameter] public IReadOnlyList<BranchLookupItem> Branches { get; set; } = Array.Empty<BranchLookupItem>();
+    [Parameter] public IReadOnlyList<CashSalesPaymentTypeDTO> PaymentTypes { get; set; } = Array.Empty<CashSalesPaymentTypeDTO>();
+    [Parameter] public bool IsSaving { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnSave { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (Transaction.Payments.Count == 0)
+        {
+            Transaction.Payments.Add(new TransactionPayment
+            {
+                PaymentTypeId = Transaction.PaymentTypeId,
+                PaymentMethod = Transaction.PaymentMethod,
+                Amount = Transaction.Amount
+            });
+        }
+
+        foreach (var payment in Transaction.Payments)
+            ApplyPaymentName(payment);
+    }
+
+    private decimal AllocatedAmount => Transaction.Payments.Sum(payment => Math.Max(0, payment.Amount));
+    private decimal RemainingAmount => decimal.Round(Transaction.Amount - AllocatedAmount, 2);
+    private bool IsBalanced => Math.Abs(RemainingAmount) < 0.01m;
+    private bool HasDuplicateMethods => Transaction.Payments.Where(payment => payment.PaymentTypeId != 0).GroupBy(payment => payment.PaymentTypeId).Any(group => group.Count() > 1);
+    private bool CanAddPayment => Transaction.Payments.Count < PaymentTypes.Count(option => option.POSPaymentTypeID != 0);
+    private bool CanSave => !IsSaving && Transaction.Amount > 0 && Transaction.Payments.Count > 0 && Transaction.Payments.All(payment => payment.PaymentTypeId != 0 && payment.Amount > 0) && !HasDuplicateMethods && IsBalanced;
+    private string PaymentError
+    {
+        get
+        {
+            if (Transaction.Payments.Any(payment => payment.PaymentTypeId == 0)) return "Select a payment method for every allocation.";
+            if (Transaction.Payments.Any(payment => payment.Amount <= 0)) return "Every payment amount must be greater than zero.";
+            if (HasDuplicateMethods) return "Each payment method can only be used once.";
+            if (RemainingAmount > 0.009m) return $"Allocate the remaining MYR {RemainingAmount:N2}.";
+            if (RemainingAmount < -0.009m) return $"Allocated amount exceeds the total by MYR {Math.Abs(RemainingAmount):N2}.";
+            return string.Empty;
+        }
+    }
+
+    private void AddPayment()
+    {
+        var next = PaymentTypes.FirstOrDefault(option => option.POSPaymentTypeID != 0 && Transaction.Payments.All(payment => payment.PaymentTypeId != option.POSPaymentTypeID));
+        Transaction.Payments.Add(new TransactionPayment
+        {
+            PaymentTypeId = next?.POSPaymentTypeID ?? 0,
+            PaymentMethod = next?.POSPaymentTypeName ?? string.Empty,
+            Amount = Math.Max(0, RemainingAmount)
+        });
+    }
+
+    private void RemovePayment(TransactionPayment payment) => Transaction.Payments.Remove(payment);
+    private decimal RemainingFor(TransactionPayment payment) => decimal.Round(Transaction.Amount - Transaction.Payments.Where(item => !ReferenceEquals(item, payment)).Sum(item => Math.Max(0, item.Amount)), 2);
+    private void UseRemaining(TransactionPayment payment) => payment.Amount = Math.Max(0, RemainingFor(payment));
+    private bool IsMethodUsedByAnotherLine(int paymentTypeId, TransactionPayment current) => Transaction.Payments.Any(payment => !ReferenceEquals(payment, current) && payment.PaymentTypeId == paymentTypeId);
+
+    private void ApplyPaymentName(TransactionPayment payment)
+    {
+        payment.PaymentMethod = PaymentTypes.FirstOrDefault(option => option.POSPaymentTypeID == payment.PaymentTypeId)?.POSPaymentTypeName ?? payment.PaymentMethod;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!CanSave) return;
+        foreach (var payment in Transaction.Payments) ApplyPaymentName(payment);
+        Transaction.PaymentTypeId = Transaction.Payments[0].PaymentTypeId;
+        Transaction.PaymentMethod = string.Join(" + ", Transaction.Payments.Select(payment => payment.PaymentMethod).Where(name => !string.IsNullOrWhiteSpace(name)).Distinct(StringComparer.OrdinalIgnoreCase));
+        await OnSave.InvokeAsync();
+    }
+
+    private void ApplyCustomer()
+    {
+        var customer = Customers.FirstOrDefault(item => item.SystemID == Transaction.AccountId);
+        if (customer is null) return;
+        Transaction.CustomerName = $"{customer.FirstName} {customer.LastName}".Trim();
+        Transaction.CustomerContact = customer.ContactNumber1;
+        Transaction.CustomerEmail = customer.Email;
+    }
+
+    private static string CustomerLabel(Customer customer)
+    {
+        var name = $"{customer.FirstName} {customer.LastName}".Trim();
+        if (string.IsNullOrWhiteSpace(name)) name = customer.SystemID ?? "Customer";
+        return string.IsNullOrWhiteSpace(customer.ContactNumber1) ? name : $"{name} - {customer.ContactNumber1}";
+    }
+}

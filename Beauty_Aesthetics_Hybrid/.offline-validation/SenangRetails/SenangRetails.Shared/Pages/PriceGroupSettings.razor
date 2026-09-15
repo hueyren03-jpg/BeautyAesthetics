@@ -1,0 +1,2157 @@
+@using EBI.DM
+@using SenangRetails.Shared.Models.DTOs
+@using SenangRetails.Shared.Services
+@using SenangRetails.Shared.Services.InventoryService
+@using SenangRetails.Shared.Services.PriceGroupService
+@inject IPriceGroupService PriceGroupSvc
+@inject ProductCacheService CacheService
+@inject LocalImageCacheService LocalImageCache
+@inject IInventoryService InventorySvc
+@inject AppState AppState
+@inject IJSRuntime JS
+
+<div class="pg-settings-container">
+    <!-- HEADER BAR -->
+    <div class="pg-header-row">
+        <div class="pg-title-group">
+            <div class="pg-header-icon-wrap">
+                <i class="fa-solid fa-tags"></i>
+            </div>
+            <div>
+                <div class="pg-title-with-badge">
+                    <h2 class="pg-title">Price Group Setup</h2>
+                    <span class="pg-count-badge">@priceGroups.Count active</span>
+                </div>
+                <p class="pg-subtitle">Configure special selling prices, branch access, and MLM targets.</p>
+            </div>
+        </div>
+        <button class="pg-add-btn touch-target" title="Add price group" aria-label="Add price group" @onclick="OpenAddModal">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span>Add Price Group</span>
+        </button>
+    </div>
+
+    <!-- SEARCH TOOLBAR -->
+    <div class="pg-toolbar-row">
+        <div class="pg-search-box">
+            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <input type="text"
+                   placeholder="Search price group code or name..."
+                   @bind="listSearchQuery"
+                   @bind:event="oninput" />
+            @if (!string.IsNullOrEmpty(listSearchQuery))
+            {
+                <button class="pg-search-clear" @onclick='() => listSearchQuery = ""'>✕</button>
+            }
+        </div>
+    </div>
+
+    <!-- CONTENT SECTION -->
+    @if (isLoading)
+    {
+        <div class="pg-loading-state">
+            <i class="fa-solid fa-spinner fa-spin pg-spinner-icon"></i>
+            <p>Loading price groups...</p>
+        </div>
+    }
+    else if (!FilteredPriceGroups.Any())
+    {
+        <div class="pg-empty-state">
+            <div class="pg-empty-icon-wrap">
+                <i class="fa-solid fa-tags"></i>
+            </div>
+            @if (!string.IsNullOrEmpty(listSearchQuery))
+            {
+                <h4>No matching price groups</h4>
+                <p>No price groups matched "<strong>@listSearchQuery</strong>".</p>
+                <button class="pg-btn-subtle" @onclick='() => listSearchQuery = ""'>Clear Search</button>
+            }
+            else
+            {
+                <h4>No price groups configured yet</h4>
+                <p>Create special pricing rules for memberships, wholesalers, or promotional branch pricing.</p>
+                <button class="pg-add-btn touch-target" @onclick="OpenAddModal">+ Add First Group</button>
+            }
+        </div>
+    }
+    else
+    {
+        <!-- MOBILE CARDS VIEW (Displayed on mobile & small tablets) -->
+        <div class="pg-mobile-cards-list">
+            @foreach (var item in FilteredPriceGroups)
+            {
+                <article class="pg-card-item" @onclick="() => OpenEditModal(item)">
+                    <div class="pg-mobile-card-head">
+                        <div class="pg-mobile-card-icon"><i class="fa-solid fa-layer-group"></i></div>
+                        <div class="pg-mobile-card-title">
+                            <h4 class="pg-card-name">@item.Name</h4>
+                            <span class="pg-code-badge">@item.Code</span>
+                        </div>
+                        <div class="pg-mobile-price">
+                            <span>Selling price</span>
+                            <strong>RM @item.Price.ToString("N2")</strong>
+                        </div>
+                    </div>
+
+                    <div class="pg-mobile-metrics">
+                        <div><i class="fa-solid fa-box"></i><strong>@(item.AppliedProductIds?.Count ?? 0)</strong><span>Items</span></div>
+                        <div><i class="fa-solid fa-percent"></i><strong>@item.MlmCommRate.ToString("0.##")%</strong><span>Commission</span></div>
+                        <div><i class="fa-solid fa-bullseye"></i><strong>RM @item.MlmSalesTarget.ToString("N0")</strong><span>Sales target</span></div>
+                    </div>
+
+                    <div class="pg-mobile-card-foot">
+                        <div class="pg-card-branches">
+                            <span class="pg-branch-lbl"><i class="fa-solid fa-shop"></i></span>
+                            @if (item.VisibleBranchIds != null && item.VisibleBranchIds.Any())
+                            {
+                                <span>@item.VisibleBranchIds.Count branch@(item.VisibleBranchIds.Count == 1 ? "" : "es")</span>
+                            }
+                            else
+                            {
+                                <span>All branches</span>
+                            }
+                        </div>
+                        <div class="pg-card-actions" @onclick:stopPropagation>
+                            <button class="pg-icon-btn pg-edit-btn" title="Edit price group" aria-label="Edit @item.Name" @onclick="() => OpenEditModal(item)">
+                                <i class="fa-solid fa-pen"></i>
+                            </button>
+                            <button class="pg-icon-btn pg-del-btn" title="Delete price group" aria-label="Delete @item.Name" @onclick="() => DeleteGroup(item.Code)">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+                    </div>
+                </article>
+            }
+        </div>
+
+        <!-- DESKTOP TABLE VIEW (Displayed on wide screens) -->
+        <div class="pg-desktop-table-card">
+            <div class="pg-table-responsive">
+                <table class="pg-table">
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Group Name</th>
+                            <th>Selling Price (RM)</th>
+                            <th>Applied Products</th>
+                            <th>MLM Comm Rate %</th>
+                            <th>MLM Target (RM)</th>
+                            <th>Branches</th>
+                            <th style="text-align: right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in FilteredPriceGroups)
+                        {
+                            <tr class="pg-touch-row" @onclick="() => OpenEditModal(item)">
+                                <td><span class="pg-code-badge">@item.Code</span></td>
+                                <td><strong class="pg-name-text">@item.Name</strong></td>
+                                <td><span class="pg-val-text text-success">RM @item.Price.ToString("N2")</span></td>
+                                <td>
+                                    <span class="pg-prod-count">
+                                        <i class="fa-solid fa-box"></i> @(item.AppliedProductIds?.Count ?? 0) item(s)
+                                    </span>
+                                </td>
+                                <td><span class="pg-val-text text-orange">@item.MlmCommRate.ToString("0.00") %</span></td>
+                                <td><span class="pg-val-text text-success">RM @item.MlmSalesTarget.ToString("N2")</span></td>
+                                <td>
+                                    @if (item.VisibleBranchIds != null && item.VisibleBranchIds.Any())
+                                    {
+                                        <div class="pg-branch-tags">
+                                            @foreach (var b in item.VisibleBranchIds)
+                                            {
+                                                <span class="pg-chip">@b</span>
+                                            }
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span class="pg-no-branch-txt">None selected</span>
+                                    }
+                                </td>
+                                <td style="text-align: right;">
+                                    <button class="pg-icon-btn pg-edit-btn" title="Edit" @onclick="() => OpenEditModal(item)" @onclick:stopPropagation>
+                                        <i class="fa-solid fa-pen-to-square"></i>
+                                    </button>
+                                    <button class="pg-icon-btn pg-del-btn" title="Delete" @onclick="() => DeleteGroup(item.Code)" @onclick:stopPropagation>
+                                        <i class="fa-solid fa-trash-can"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+<!-- ADD / EDIT MODAL -->
+@if (showModal)
+{
+    <div class="pg-modal-overlay" @onclick="CloseModal">
+        <div class="pg-modal-card pg-modal-large" @onclick:stopPropagation>
+            <!-- STICKY MODAL HEADER -->
+            <div class="pg-modal-header">
+                <div class="pg-modal-header-left">
+                    <div class="pg-modal-icon-badge">
+                        <i class="fa-solid fa-tags"></i>
+                    </div>
+                    <div>
+                        <h3 class="pg-modal-title">@(isEditMode ? "Edit Price Group" : "New Price Group")</h3>
+                        <span class="pg-modal-sub">@(isEditMode ? $"Updating {currentGroup.Code}" : "Configure pricing, commission, and assigned items")</span>
+                    </div>
+                </div>
+                <button class="pg-modal-close" @onclick="CloseModal" aria-label="Close">✕</button>
+            </div>
+
+            <!-- MODAL BODY (SCROLLABLE & BOUNDED) -->
+            <div class="pg-modal-body">
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <div class="pg-alert-error">
+                        <i class="fa-solid fa-circle-exclamation"></i>
+                        <span>@errorMessage</span>
+                    </div>
+                }
+
+                <div class="pg-grid-2col">
+                    <!-- LEFT COLUMN: GENERAL, PRICE & COMMISSIONS -->
+                    <div class="pg-col">
+                        <!-- 1. Basic Info Section -->
+                        <div class="pg-section-box">
+                            <div class="pg-section-header">
+                                <i class="fa-solid fa-circle-info"></i>
+                                <span>General Information</span>
+                            </div>
+
+                            <div class="pg-form-group">
+                                <label>Price Group Code <span class="req">*</span></label>
+                                <input type="text"
+                                       class="pg-input text-uppercase text-mono @(isEditMode ? "readonly" : "")"
+                                       placeholder="e.g. VIP-GOLD"
+                                       @bind="currentGroup.Code"
+                                       disabled="@isEditMode" />
+                                @if (isEditMode)
+                                {
+                                    <span class="pg-field-hint">Code is unique and locked after creation.</span>
+                                }
+                            </div>
+
+                            <div class="pg-form-group">
+                                <label>Group Name <span class="req">*</span></label>
+                                <input type="text"
+                                       class="pg-input"
+                                       placeholder="e.g. VIP Member Gold Tier"
+                                       @bind="currentGroup.Name" />
+                            </div>
+                        </div>
+
+                        <!-- 2. Pricing & MLM Section -->
+                        <div class="pg-section-box">
+                            <div class="pg-section-header">
+                                <i class="fa-solid fa-calculator"></i>
+                                <span>Pricing &amp; MLM Targets</span>
+                            </div>
+
+                            <!-- Selling Price Tap Card (Keypad trigger) -->
+                            <div class="pg-price-tap-card" @onclick='() => OpenKeypad("Price", currentGroup.Price, "Selling Price (RM)")'>
+                                <div class="pg-price-tap-left">
+                                    <span class="pg-price-tap-label">Group Selling Price (RM) <span class="req">*</span></span>
+                                    <span class="pg-price-tap-number">RM @currentGroup.Price.ToString("N2")</span>
+                                </div>
+                                <div class="pg-price-tap-btn">
+                                    <i class="fa-solid fa-calculator"></i>
+                                    <span>Tap to edit</span>
+                                </div>
+                            </div>
+
+                            <div class="pg-form-row">
+                                <div class="pg-form-group">
+                                    <label>MLM Comm Rate (%)</label>
+                                    <div class="pg-mini-tap-card" @onclick='() => OpenKeypad("MlmCommRate", currentGroup.MlmCommRate, "MLM Comm Rate (%)")'>
+                                        <span class="pg-mini-val">@currentGroup.MlmCommRate.ToString("0.##") %</span>
+                                        <i class="fa-solid fa-calculator pg-mini-icon"></i>
+                                    </div>
+                                </div>
+
+                                <div class="pg-form-group">
+                                    <label>MLM Sales Target (RM)</label>
+                                    <div class="pg-mini-tap-card" @onclick='() => OpenKeypad("MlmSalesTarget", currentGroup.MlmSalesTarget, "MLM Target (RM)")'>
+                                        <span class="pg-mini-val">RM @currentGroup.MlmSalesTarget.ToString("N2")</span>
+                                        <i class="fa-solid fa-calculator pg-mini-icon"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 3. Branch Access Section -->
+                        <div class="pg-section-box">
+                            <div class="pg-section-header-row">
+                                <div class="pg-section-header">
+                                    <i class="fa-solid fa-shop"></i>
+                                    <span>Branch Access</span>
+                                </div>
+                                @if (AppState.AvailableBranches != null && AppState.AvailableBranches.Any())
+                                {
+                                    <label class="pg-select-all-pill">
+                                        <input type="checkbox"
+                                               checked="@IsAllBranchesSelected()"
+                                               @onchange="ToggleSelectAllBranches" />
+                                        <span>Select All</span>
+                                    </label>
+                                }
+                            </div>
+
+                            @if (AppState.AvailableBranches != null && AppState.AvailableBranches.Any())
+                            {
+                                <div class="pg-branch-chip-grid">
+                                    @foreach (var branch in AppState.AvailableBranches)
+                                    {
+                                        var isSelected = currentGroup.VisibleBranchIds.Contains(branch);
+                                        <button type="button"
+                                                class="pg-branch-chip @(isSelected ? "selected" : "")"
+                                                @onclick="() => ToggleBranchSelection(branch)">
+                                            <i class="fa-solid @(isSelected ? "fa-circle-check" : "fa-circle")"></i>
+                                            <span>@branch</span>
+                                        </button>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <p class="pg-empty-branches-txt">No branches configured in current profile.</p>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- RIGHT COLUMN: APPLICABLE PRODUCTS PICKER -->
+                    <div class="pg-col">
+                        <div class="pg-section-box pg-picker-section">
+                            <div class="pg-picker-header-bar">
+                                <div>
+                                    <div class="pg-section-header" style="margin-bottom: 2px;">
+                                        <i class="fa-solid fa-boxes-stacked"></i>
+                                        <span>Applied Products</span>
+                                    </div>
+                                    <span class="pg-picker-counter">
+                                        <strong>@(currentGroup.AppliedProductIds?.Count ?? 0)</strong> items assigned
+                                    </span>
+                                </div>
+                                <div class="pg-picker-quick-actions">
+                                    <button type="button" class="pg-picker-quick-btn" @onclick="SelectAllFilteredProducts">
+                                        Select All (@FilteredProductsForPicker.Count())
+                                    </button>
+                                    @if (currentGroup.AppliedProductIds != null && currentGroup.AppliedProductIds.Any())
+                                    {
+                                        <button type="button" class="pg-picker-quick-btn danger" @onclick="ClearAllProducts">
+                                            Clear All
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+
+                            <!-- Search & Category Filters -->
+                            <div class="pg-picker-filter-row">
+                                <div class="pg-picker-search-wrap">
+                                    <i class="fa-solid fa-magnifying-glass"></i>
+                                    <input type="text"
+                                           class="pg-picker-search"
+                                           placeholder="Search items..."
+                                           @bind="prodSearchQuery"
+                                           @bind:event="oninput" />
+                                </div>
+                                <select class="pg-picker-cat" @bind="prodCategoryFilter">
+                                    <option value="">All Categories</option>
+                                    @foreach (var cat in availableCategories)
+                                    {
+                                        <option value="@cat">@cat</option>
+                                    }
+                                </select>
+                            </div>
+
+                            <!-- Scrollable Product List -->
+                            <div class="pg-picker-list">
+                                @if (!FilteredProductsForPicker.Any())
+                                {
+                                    <div class="pg-empty-picker">
+                                        <i class="fa-solid fa-box-open" style="font-size: 2rem; color: #CBD5E1; margin-bottom: 0.5rem;"></i>
+                                        <p>No products found matching filter.</p>
+                                    </div>
+                                }
+                                else
+                                {
+                                    @foreach (var prod in FilteredProductsForPicker)
+                                    {
+                                        var isChecked = !string.IsNullOrEmpty(prod.MasterAccountID) && currentGroup.AppliedProductIds.Any(id => string.Equals(id?.Trim(), prod.MasterAccountID.Trim(), StringComparison.OrdinalIgnoreCase));
+                                        var imgUrl = GetDisplayImageUrl(prod);
+
+                                        <div class="pg-prod-card @(isChecked ? "selected" : "")"
+                                             @onclick="() => ToggleProductSelection(prod.MasterAccountID ?? string.Empty)">
+                                            <!-- Checkbox Badge -->
+                                            <div class="pg-prod-check-badge">
+                                                <i class="fa-solid @(isChecked ? "fa-circle-check" : "fa-circle")"></i>
+                                            </div>
+
+                                            <!-- Thumbnail -->
+                                            @if (!string.IsNullOrEmpty(imgUrl))
+                                            {
+                                                <img src="@imgUrl" alt="@prod.AccountName" class="pg-prod-thumb" />
+                                            }
+                                            else
+                                            {
+                                                <div class="pg-prod-thumb-icon">
+                                                    <i class="fa-solid fa-box"></i>
+                                                </div>
+                                            }
+
+                                            <!-- Details -->
+                                            <div class="pg-prod-details">
+                                                <span class="pg-prod-title">@prod.AccountName</span>
+                                                <div class="pg-prod-meta-row">
+                                                    @if (!string.IsNullOrEmpty(prod.ItemGroupName))
+                                                    {
+                                                        <span class="pg-cat-tag">@prod.ItemGroupName</span>
+                                                    }
+                                                    <span class="pg-orig-price">Orig: RM @prod.SalesPrice.ToString("N2")</span>
+                                                    @if (isChecked && currentGroup.Price > 0)
+                                                    {
+                                                        <span class="pg-new-price">➔ RM @currentGroup.Price.ToString("N2")</span>
+                                                    }
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STICKY MODAL FOOTER -->
+            <div class="pg-modal-footer">
+                <button class="pg-btn-cancel touch-target" @onclick="CloseModal">Cancel</button>
+                <button class="pg-btn-save touch-target" @onclick="SaveGroup" disabled="@isSaving">
+                    @if (isSaving)
+                    {
+                        <i class="fa-solid fa-spinner fa-spin"></i>
+                        <span>Saving...</span>
+                    }
+                    else
+                    {
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>Save Price Group</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- TOUCH CALCULATOR KEYPAD MODAL -->
+@if (showKeypad)
+{
+    <div class="pg-modal-overlay" @onclick="CloseKeypad">
+        <div class="touch-keypad-modal" @onclick:stopPropagation>
+            <div class="keypad-header">
+                <span class="keypad-title">Enter @keypadTitle</span>
+                <span class="keypad-display">@keypadValueString</span>
+            </div>
+            <div class="keypad-grid">
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("7")'>7</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("8")'>8</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("9")'>9</button>
+                <button type="button" class="kp-btn kp-action" @onclick="KeypadClear">CE</button>
+
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("4")'>4</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("5")'>5</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("6")'>6</button>
+                <button type="button" class="kp-btn kp-action" @onclick="KeypadBackspace">⌫</button>
+
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("1")'>1</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("2")'>2</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("3")'>3</button>
+                <button type="button" class="kp-btn kp-cancel" @onclick="CloseKeypad">Cancel</button>
+
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("0")'>0</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("00")'>00</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend(".")'>.</button>
+                <button type="button" class="kp-btn kp-submit" @onclick="KeypadSave">OK</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    /* ══════════════════════════════════════════════════
+       BASE & LAYOUT
+       ══════════════════════════════════════════════════ */
+    .pg-settings-container {
+        padding: 1.25rem;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+        font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    .pg-header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.25rem;
+        width: 100%;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .pg-title-group {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .pg-header-icon-wrap {
+        width: 46px;
+        height: 46px;
+        border-radius: 12px;
+        background: var(--bg-surface-2, #FFF7ED);
+        color: var(--primary, #F2600C);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.35rem;
+        flex-shrink: 0;
+        border: 1px solid rgba(var(--primary-rgb, 242, 96, 12), 0.15);
+    }
+
+    .pg-title-with-badge {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .pg-title {
+        font-size: 1.35rem;
+        font-weight: 800;
+        color: #0F172A;
+        margin: 0;
+    }
+
+    .pg-count-badge {
+        font-size: 0.75rem;
+        font-weight: 700;
+        background: #EFF6FF;
+        color: #2563EB;
+        padding: 3px 9px;
+        border-radius: 12px;
+        border: 1px solid #BFDBFE;
+    }
+
+    .pg-subtitle {
+        font-size: 0.86rem;
+        color: #64748B;
+        margin: 0.2rem 0 0 0;
+    }
+
+    .touch-target {
+        height: 48px !important;
+        min-height: 48px !important;
+        font-size: 0.95rem !important;
+        border-radius: 10px !important;
+    }
+
+    .pg-add-btn {
+        background: var(--primary, #F2600C);
+        color: #FFFFFF;
+        border: none;
+        padding: 0 1.3rem;
+        font-weight: 700;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 2px 8px rgba(var(--primary-rgb, 242, 96, 12), 0.25);
+    }
+    .pg-add-btn:hover {
+        background: var(--primary-dark, #EA580C);
+        transform: translateY(-1px);
+    }
+
+    /* ══════════════════════════════════════════════════
+       TOOLBAR
+       ══════════════════════════════════════════════════ */
+    .pg-toolbar-row {
+        margin-bottom: 1.25rem;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .pg-search-box {
+        position: relative;
+        width: 100%;
+        max-width: 420px;
+    }
+
+    .pg-search-box input {
+        width: 100%;
+        padding: 0 38px 0 38px;
+        height: 44px;
+        border: 1.5px solid #CBD5E1;
+        border-radius: 10px;
+        font-size: 0.9rem;
+        outline: none;
+        background: #FFFFFF;
+        box-sizing: border-box;
+        transition: border-color 0.15s;
+    }
+    .pg-search-box input:focus {
+        border-color: var(--primary, #F2600C);
+        box-shadow: 0 0 0 3px rgba(var(--primary-rgb, 242, 96, 12), 0.12);
+    }
+
+    .pg-search-box .search-icon {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #94A3B8;
+        font-size: 0.95rem;
+    }
+
+    .pg-search-clear {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        color: #94A3B8;
+        cursor: pointer;
+        font-size: 0.9rem;
+        padding: 4px;
+    }
+
+    /* ══════════════════════════════════════════════════
+       EMPTY & LOADING
+       ══════════════════════════════════════════════════ */
+    .pg-loading-state, .pg-empty-state {
+        padding: 3.5rem 1.5rem;
+        text-align: center;
+        color: #64748B;
+        background: #FFFFFF;
+        border-radius: 16px;
+        border: 1px solid #E2E8F0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .pg-spinner-icon {
+        font-size: 2.2rem;
+        color: var(--primary, #F2600C);
+    }
+
+    .pg-empty-icon-wrap {
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        background: #F1F5F9;
+        color: #94A3B8;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.8rem;
+    }
+
+    .pg-empty-state h4 {
+        margin: 0;
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #1E293B;
+    }
+
+    .pg-empty-state p {
+        margin: 0;
+        font-size: 0.88rem;
+        color: #64748B;
+        max-width: 380px;
+    }
+
+    .pg-btn-subtle {
+        background: #F1F5F9;
+        border: 1px solid #CBD5E1;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    /* ══════════════════════════════════════════════════
+       MOBILE CARDS VIEW
+       ══════════════════════════════════════════════════ */
+    .pg-mobile-cards-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .pg-card-item {
+        background: #FFFFFF;
+        border: 1.5px solid #E2E8F0;
+        border-radius: 14px;
+        padding: 14px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        cursor: pointer;
+        transition: all 0.18s ease;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+    }
+    .pg-card-item:hover, .pg-card-item:active {
+        border-color: var(--primary, #F2600C);
+        box-shadow: 0 4px 12px rgba(var(--primary-rgb, 242, 96, 12), 0.08);
+    }
+
+    .pg-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .pg-card-title-area {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .pg-card-name {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 700;
+        color: #1E293B;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .pg-card-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .pg-icon-btn {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        border: 1px solid #E2E8F0;
+        background: #F8FAFC;
+        color: #475569;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.95rem;
+        transition: all 0.15s ease;
+    }
+    .pg-icon-btn.pg-edit-btn:hover {
+        background: var(--bg-surface-2, #FFF7ED);
+        color: var(--primary, #F2600C);
+        border-color: var(--primary, #F2600C);
+    }
+    .pg-icon-btn.pg-del-btn:hover {
+        background: #FEF2F2;
+        color: #DC2626;
+        border-color: #FCA5A5;
+    }
+
+    .pg-card-price-hero {
+        background: #F0FDF4;
+        border: 1px solid #BBF7D0;
+        border-radius: 10px;
+        padding: 10px 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .pg-hero-price-label {
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: #15803D;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+
+    .pg-hero-price-val {
+        font-size: 1.25rem;
+        font-weight: 800;
+        color: #16A34A;
+    }
+
+    .pg-card-stats {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+
+    .pg-stat-pill {
+        background: #F1F5F9;
+        color: #475569;
+        font-size: 0.78rem;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 6px;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+    .pg-stat-pill.orange {
+        background: #FFF7ED;
+        color: #C2410C;
+        border: 1px solid #FED7AA;
+    }
+    .pg-stat-pill.green {
+        background: #F0FDF4;
+        color: #15803D;
+        border: 1px solid #BBF7D0;
+    }
+
+    .pg-card-branches {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.8rem;
+        flex-wrap: wrap;
+        padding-top: 4px;
+        border-top: 1px solid #F1F5F9;
+    }
+
+    .pg-branch-lbl {
+        color: #64748B;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .pg-branch-chips {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+    }
+
+    .pg-chip {
+        background: #F8FAFC;
+        border: 1px solid #CBD5E1;
+        color: #334155;
+        font-size: 0.75rem;
+        font-weight: 600;
+        padding: 2px 7px;
+        border-radius: 5px;
+    }
+
+    .pg-no-branch-txt {
+        color: #94A3B8;
+        font-style: italic;
+        font-size: 0.78rem;
+    }
+
+    /* ══════════════════════════════════════════════════
+       DESKTOP TABLE
+       ══════════════════════════════════════════════════ */
+    .pg-desktop-table-card {
+        display: none;
+        background: #FFFFFF;
+        border-radius: 14px;
+        border: 1px solid var(--border, #E2E8F0);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+        overflow: hidden;
+    }
+
+    .pg-table-responsive {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .pg-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+        text-align: left;
+    }
+
+    .pg-table th {
+        background: var(--bg-surface, #F8FAFC);
+        padding: 0.9rem 1.1rem;
+        font-weight: 700;
+        color: #1E293B;
+        border-bottom: 1px solid #E2E8F0;
+    }
+
+    .pg-table td {
+        padding: 0.9rem 1.1rem;
+        border-bottom: 1px solid #F1F5F9;
+        color: #334155;
+        vertical-align: middle;
+    }
+
+    .pg-touch-row {
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+    .pg-touch-row:hover {
+        background: var(--bg-surface, #F8FAFC);
+    }
+
+    .pg-code-badge {
+        background: #F1F5F9;
+        color: #1E293B;
+        font-family: monospace;
+        font-weight: 800;
+        padding: 0.25rem 0.6rem;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        border: 1px solid #CBD5E1;
+    }
+
+    .pg-name-text {
+        color: #1E293B;
+        font-size: 0.95rem;
+    }
+
+    .pg-val-text { font-weight: 700; }
+
+    .pg-prod-count {
+        background: #F1F5F9;
+        color: #475569;
+        font-weight: 700;
+        padding: 0.25rem 0.6rem;
+        border-radius: 6px;
+        font-size: 0.82rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+
+    .text-orange { color: var(--primary, #F2600C); }
+    .text-success { color: #16A34A; }
+    .text-mono { font-family: monospace; }
+    .text-uppercase { text-transform: uppercase; font-weight: 700; }
+
+    /* ══════════════════════════════════════════════════
+       BOUNDED MODAL & FORM SYSTEM
+       ══════════════════════════════════════════════════ */
+    .pg-modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100%;
+        height: 100%;
+        max-height: 100vh;
+        max-height: 100dvh;
+        background: rgba(15, 23, 42, 0.55);
+        backdrop-filter: blur(4px);
+        z-index: 2000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        box-sizing: border-box;
+        overflow: hidden;
+    }
+
+    .pg-modal-card {
+        background: #FFFFFF;
+        border-radius: 18px;
+        width: 100%;
+        max-width: 960px;
+        min-width: 0;
+        max-height: calc(100vh - 2rem);
+        max-height: calc(100dvh - 2rem);
+        box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+        display: flex;
+        flex-direction: column;
+        box-sizing: border-box;
+        overflow: hidden;
+    }
+
+    .pg-modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1.1rem 1.4rem;
+        background: #F8FAFC;
+        border-bottom: 1px solid #E2E8F0;
+        flex-shrink: 0;
+        min-width: 0;
+    }
+
+    .pg-modal-header-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+        flex: 1;
+    }
+
+    .pg-modal-header-left > div:last-child { min-width: 0; }
+
+    .pg-modal-icon-badge {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        background: var(--bg-surface-2, #FFF7ED);
+        color: var(--primary, #F2600C);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.15rem;
+    }
+
+    .pg-modal-title {
+        font-size: 1.15rem;
+        font-weight: 800;
+        color: #0F172A;
+        margin: 0;
+    }
+
+    .pg-modal-sub {
+        font-size: 0.78rem;
+        color: #64748B;
+        display: block;
+        margin-top: 1px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .pg-modal-close {
+        background: none;
+        border: none;
+        font-size: 1.3rem;
+        cursor: pointer;
+        color: #64748B;
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+    }
+    .pg-modal-close:hover {
+        background: #E2E8F0;
+        color: #0F172A;
+    }
+
+    .pg-modal-body {
+        padding: 1.25rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+        box-sizing: border-box;
+        width: 100%;
+        flex: 1 1 auto;
+        min-height: 0;
+        background: #F8FAFC;
+    }
+
+    .pg-alert-error {
+        background: #FEF2F2;
+        border: 1px solid #FCA5A5;
+        color: #DC2626;
+        padding: 0.75rem 1rem;
+        border-radius: 10px;
+        font-size: 0.88rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .pg-grid-2col {
+        display: grid;
+        grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+        gap: 1rem;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .pg-col {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        width: 100%;
+        box-sizing: border-box;
+        min-width: 0;
+    }
+
+    /* Section Boxes */
+    .pg-section-box {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 14px;
+        padding: 1.1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+    }
+
+    .pg-section-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: #1E293B;
+    }
+    .pg-section-header i {
+        color: var(--primary, #F2600C);
+        font-size: 0.95rem;
+    }
+
+    .pg-form-row {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .pg-form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        width: 100%;
+        box-sizing: border-box;
+        min-width: 0;
+    }
+
+    .pg-form-group label {
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: #334155;
+    }
+    .pg-form-group .req { color: #DC2626; }
+
+    .pg-field-hint {
+        font-size: 0.72rem;
+        color: #94A3B8;
+    }
+
+    .pg-input {
+        border: 1.5px solid #CBD5E1;
+        padding: 0 14px;
+        outline: none;
+        width: 100%;
+        height: 44px;
+        box-sizing: border-box;
+        border-radius: 10px;
+        font-size: 0.9rem;
+        background: #FFFFFF;
+        transition: border-color 0.15s;
+        min-width: 0;
+        max-width: 100%;
+    }
+    .pg-input:focus {
+        border-color: var(--primary, #F2600C);
+        box-shadow: 0 0 0 3px rgba(var(--primary-rgb, 242, 96, 12), 0.12);
+    }
+    .pg-input.readonly {
+        background: #F8FAFC;
+        color: #64748B;
+        cursor: not-allowed;
+    }
+
+    /* Price Tap Card */
+    .pg-price-tap-card {
+        background: #FFF7ED;
+        border: 2px solid #FED7AA;
+        border-radius: 12px;
+        padding: 12px 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+    }
+    .pg-price-tap-card:hover, .pg-price-tap-card:active {
+        background: #FFEDD5;
+        border-color: var(--primary, #F2600C);
+        transform: scale(1.01);
+    }
+
+    .pg-price-tap-left {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .pg-price-tap-label {
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: var(--primary-darker, #C2410C);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+
+    .pg-price-tap-number {
+        font-size: 1.5rem;
+        font-weight: 900;
+        color: var(--primary, #F2600C);
+        letter-spacing: -0.5px;
+    }
+
+    .pg-price-tap-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: var(--primary-darker, #C2410C);
+        background: #FFFFFF;
+        padding: 6px 12px;
+        border-radius: 8px;
+        border: 1px solid #FED7AA;
+    }
+
+    /* Mini Tap Card */
+    .pg-mini-tap-card {
+        height: 44px;
+        border: 1.5px solid #CBD5E1;
+        border-radius: 10px;
+        padding: 0 12px;
+        background: #FFFFFF;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .pg-mini-tap-card:hover, .pg-mini-tap-card:active {
+        border-color: var(--primary, #F2600C);
+        background: var(--bg-surface-2, #FFF7ED);
+    }
+
+    .pg-mini-val {
+        font-size: 0.92rem;
+        font-weight: 700;
+        color: #1E293B;
+    }
+    .pg-mini-icon {
+        color: #94A3B8;
+        font-size: 0.9rem;
+    }
+
+    /* Branch Section */
+    .pg-section-header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .pg-select-all-pill {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: #475569;
+        cursor: pointer;
+        background: #F1F5F9;
+        padding: 3px 8px;
+        border-radius: 6px;
+    }
+
+    .pg-branch-chip-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+        gap: 6px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .pg-branch-chip {
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: #F8FAFC;
+        border: 1.5px solid #E2E8F0;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #475569;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.15s ease;
+    }
+    .pg-branch-chip.selected {
+        background: var(--bg-surface-2, #FFF7ED);
+        border-color: var(--primary, #F2600C);
+        color: var(--primary-darker, #C2410C);
+        font-weight: 700;
+    }
+    .pg-branch-chip.selected i { color: var(--primary, #F2600C); }
+
+    /* Product Picker */
+    .pg-picker-section {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        padding: 1rem;
+    }
+
+    .pg-picker-header-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .pg-picker-counter {
+        font-size: 0.78rem;
+        color: #64748B;
+    }
+
+    .pg-picker-quick-actions {
+        display: flex;
+        gap: 6px;
+    }
+
+    .pg-picker-quick-btn {
+        background: #F1F5F9;
+        border: 1px solid #CBD5E1;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #334155;
+        cursor: pointer;
+    }
+    .pg-picker-quick-btn.danger {
+        background: #FEF2F2;
+        border-color: #FCA5A5;
+        color: #DC2626;
+    }
+
+    .pg-picker-filter-row {
+        display: flex;
+        gap: 6px;
+        margin-top: 4px;
+    }
+
+    .pg-picker-search-wrap {
+        position: relative;
+        flex: 1;
+    }
+    .pg-picker-search-wrap i {
+        position: absolute;
+        left: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #94A3B8;
+        font-size: 0.8rem;
+    }
+
+    .pg-picker-search {
+        width: 100%;
+        padding: 0 10px 0 30px;
+        height: 38px;
+        border: 1.5px solid #CBD5E1;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        outline: none;
+        box-sizing: border-box;
+    }
+    .pg-picker-search:focus { border-color: var(--primary, #F2600C); }
+
+    .pg-picker-cat {
+        height: 38px;
+        border: 1.5px solid #CBD5E1;
+        border-radius: 8px;
+        font-size: 0.82rem;
+        padding: 0 8px;
+        background: #FFFFFF;
+        max-width: 140px;
+        outline: none;
+    }
+
+    .pg-picker-list {
+        flex: 1 1 auto;
+        overflow-y: auto;
+        overflow-x: hidden;
+        max-height: 320px;
+        min-height: 180px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 4px 2px;
+        box-sizing: border-box;
+    }
+
+    .pg-empty-picker {
+        padding: 2.5rem 1rem;
+        text-align: center;
+        color: #94A3B8;
+        font-size: 0.85rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .pg-prod-card {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        background: #FFFFFF;
+        border: 1.5px solid #E2E8F0;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        box-sizing: border-box;
+        width: 100%;
+    }
+    .pg-prod-card:hover { border-color: #CBD5E1; background: #F8FAFC; }
+    .pg-prod-card.selected {
+        border-color: var(--primary, #F2600C);
+        background: var(--bg-surface-2, #FFF7ED);
+    }
+
+    .pg-prod-check-badge {
+        font-size: 1.15rem;
+        color: #CBD5E1;
+        flex-shrink: 0;
+    }
+    .pg-prod-card.selected .pg-prod-check-badge {
+        color: var(--primary, #F2600C);
+    }
+
+    .pg-prod-thumb {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        object-fit: cover;
+        border: 1px solid #E2E8F0;
+        flex-shrink: 0;
+    }
+
+    .pg-prod-thumb-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        background: #F1F5F9;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #94A3B8;
+        font-size: 1.1rem;
+        flex-shrink: 0;
+    }
+
+    .pg-prod-details {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-width: 0;
+        gap: 2px;
+    }
+
+    .pg-prod-title {
+        font-size: 0.88rem;
+        font-weight: 700;
+        color: #1E293B;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .pg-prod-meta-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.76rem;
+        flex-wrap: wrap;
+    }
+
+    .pg-cat-tag {
+        background: #EEF2FF;
+        color: #4F46E5;
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-weight: 600;
+    }
+
+    .pg-orig-price { color: #64748B; }
+    .pg-new-price { color: #16A34A; font-weight: 800; }
+
+    /* Sticky Footer */
+    .pg-modal-footer {
+        padding: 1rem 1.4rem;
+        background: #F8FAFC;
+        border-top: 1px solid #E2E8F0;
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.75rem;
+        flex-shrink: 0;
+    }
+
+    .pg-btn-cancel {
+        background: #FFFFFF;
+        border: 1.5px solid #CBD5E1;
+        padding: 0 1.3rem;
+        font-weight: 700;
+        color: #475569;
+        cursor: pointer;
+    }
+
+    .pg-btn-save {
+        background: var(--primary, #F2600C);
+        border: none;
+        padding: 0 1.5rem;
+        font-weight: 700;
+        color: #FFFFFF;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: background 0.15s;
+    }
+    .pg-btn-save:hover { background: var(--primary-dark, #EA580C); }
+
+    /* Keypad Modal */
+    .touch-keypad-modal {
+        background: #FFFFFF;
+        border-radius: 20px;
+        width: 100%;
+        max-width: 360px;
+        padding: 1.25rem;
+        box-shadow: 0 25px 50px rgba(0,0,0,0.25);
+    }
+    .keypad-header { text-align: center; margin-bottom: 1rem; }
+    .keypad-title { font-size: 0.85rem; font-weight: 700; color: #64748B; text-transform: uppercase; display: block; }
+    .keypad-display {
+        font-size: 1.8rem;
+        font-weight: 800;
+        color: var(--primary, #F2600C);
+        display: block;
+        margin-top: 0.25rem;
+        padding: 0.5rem;
+        background: #F8FAFC;
+        border-radius: 10px;
+        border: 1.5px solid #E2E8F0;
+    }
+    .keypad-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.6rem; }
+    .kp-btn {
+        height: 56px;
+        font-size: 1.25rem;
+        font-weight: 700;
+        border: 1px solid #CBD5E1;
+        border-radius: 12px;
+        background: #FFFFFF;
+        color: #1E293B;
+        cursor: pointer;
+        transition: background 0.1s;
+    }
+    .kp-btn:active { background: #E2E8F0; }
+    .kp-action { background: #F1F5F9; color: #475569; font-size: 1rem; }
+    .kp-cancel { background: #FEF2F2; color: #DC2626; font-size: 0.9rem; border-color: #FCA5A5; }
+    .kp-submit { background: var(--primary, #F2600C); color: #FFFFFF; border: none; font-size: 1.1rem; }
+
+    /* ══════════════════════════════════════════════════
+       RESPONSIVE BREAKPOINTS
+       ══════════════════════════════════════════════════ */
+    @@media (min-width: 769px) {
+        .pg-mobile-cards-list { display: none; }
+        .pg-desktop-table-card { display: block; }
+    }
+
+    @@media (max-width: 768px) {
+        .pg-settings-container {
+            padding: 0.75rem;
+            overflow-x: clip;
+            background: #F7F9FC;
+        }
+
+        .pg-header-row {
+            flex-direction: row;
+            align-items: flex-start;
+            flex-wrap: nowrap;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .pg-add-btn {
+            width: 44px;
+            min-width: 44px;
+            height: 44px !important;
+            min-height: 44px !important;
+            padding: 0;
+            justify-content: center;
+            border-radius: 8px !important;
+        }
+
+        .pg-add-btn > span { display: none; }
+        .pg-title-group { min-width: 0; flex: 1; align-items: flex-start; gap: 10px; }
+        .pg-header-icon-wrap { width: 40px; height: 40px; border-radius: 8px; }
+        .pg-title-group > div:last-child { min-width: 0; }
+        .pg-title-with-badge { align-items: flex-start; flex-wrap: wrap; gap: 5px 7px; }
+        .pg-title { font-size: 1.08rem; line-height: 1.2; }
+        .pg-count-badge { border-radius: 6px; padding: 2px 6px; }
+        .pg-subtitle { font-size: 0.78rem; line-height: 1.35; }
+
+        .pg-toolbar-row {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            margin: 0 -0.75rem 10px;
+            padding: 6px 0.75rem 8px;
+            background: rgba(247, 249, 252, 0.96);
+            backdrop-filter: blur(10px);
+        }
+        .pg-search-box { max-width: 100%; }
+
+        .pg-mobile-cards-list { gap: 10px; }
+
+        .pg-card-item {
+            padding: 12px;
+            gap: 10px;
+            border: 1px solid #DCE3EC;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+            min-width: 0;
+        }
+
+        .pg-mobile-card-head {
+            display: grid;
+            grid-template-columns: 38px minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 9px;
+            min-width: 0;
+        }
+
+        .pg-mobile-card-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 8px;
+            background: #EFF6FF;
+            color: #2563EB;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .pg-mobile-card-title { min-width: 0; }
+        .pg-card-name { font-size: 0.94rem; }
+        .pg-code-badge { display: inline-block; margin-top: 3px; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; }
+
+        .pg-mobile-price {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+        }
+
+        .pg-mobile-price span { color: #64748B; font-size: 0.62rem; text-transform: uppercase; font-weight: 800; }
+        .pg-mobile-price strong { color: #15803D; font-size: 0.94rem; white-space: nowrap; }
+
+        .pg-mobile-metrics {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            border: 1px solid #E2E8F0;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .pg-mobile-metrics > div {
+            min-width: 0;
+            padding: 8px 4px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            text-align: center;
+            border-right: 1px solid #E2E8F0;
+        }
+
+        .pg-mobile-metrics > div:last-child { border-right: 0; }
+        .pg-mobile-metrics i { color: #94A3B8; font-size: 0.72rem; }
+        .pg-mobile-metrics strong { color: #1E293B; font-size: 0.78rem; max-width: 100%; overflow-wrap: anywhere; }
+        .pg-mobile-metrics span { color: #64748B; font-size: 0.64rem; }
+
+        .pg-mobile-card-foot {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #EEF2F6;
+        }
+
+        .pg-card-branches { min-width: 0; padding: 0; border: 0; }
+        .pg-card-actions { flex-shrink: 0; }
+        .pg-icon-btn { width: 40px; height: 40px; }
+
+        /* PERFECT VIEWPORT BOUNDED BOTTOM SHEET */
+        .pg-modal-overlay {
+            inset: 0 !important;
+            width: 100vw !important;
+            max-width: 100vw !important;
+            padding: 0 !important;
+            align-items: flex-end !important;
+            justify-content: center !important;
+            height: 100% !important;
+            max-height: 100dvh !important;
+            overflow: hidden !important;
+        }
+
+        .pg-modal-card,
+        .pg-modal-large {
+            width: 100% !important;
+            max-width: 100% !important;
+            height: auto !important;
+            max-height: 85vh !important;
+            max-height: 85dvh !important;
+            border-radius: 20px 20px 0 0 !important;
+            margin: 0 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            overflow: hidden !important;
+            box-sizing: border-box !important;
+        }
+
+        .pg-modal-header {
+            padding: 10px 14px !important;
+            flex-shrink: 0 !important;
+        }
+
+        .pg-modal-body {
+            padding: 12px 14px !important;
+            gap: 12px !important;
+            flex: 1 1 auto !important;
+            min-height: 0 !important;
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+            -webkit-overflow-scrolling: touch !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+        }
+
+        .pg-grid-2col {
+            grid-template-columns: minmax(0, 1fr);
+            gap: 12px;
+            min-width: 0;
+            max-width: 100%;
+        }
+
+        .pg-form-row {
+            grid-template-columns: minmax(0, 1fr);
+            gap: 8px;
+        }
+
+        .pg-col,
+        .pg-section-box,
+        .pg-form-group,
+        .pg-picker-section,
+        .pg-picker-header-bar,
+        .pg-picker-filter-row,
+        .pg-prod-card {
+            min-width: 0;
+            max-width: 100%;
+        }
+
+        .pg-input,
+        .pg-picker-search,
+        .pg-picker-cat {
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+        }
+
+        .pg-price-tap-card {
+            gap: 8px;
+            padding: 10px 12px;
+        }
+
+        .pg-price-tap-left { min-width: 0; }
+        .pg-price-tap-number { font-size: 1.2rem; overflow-wrap: anywhere; }
+        .pg-price-tap-btn { flex-shrink: 0; }
+
+        .pg-mini-tap-card {
+            min-width: 0;
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+
+        .pg-section-header-row,
+        .pg-picker-header-bar,
+        .pg-picker-quick-actions {
+            flex-wrap: wrap;
+        }
+
+        .pg-modal-title {
+            font-size: 1rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .pg-modal-icon-badge,
+        .pg-modal-close { flex-shrink: 0; }
+
+        .pg-picker-filter-row {
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .pg-picker-cat {
+            max-width: 100%;
+            width: 100%;
+        }
+
+        .pg-picker-list {
+            max-height: 200px;
+            min-height: 120px;
+        }
+
+        .pg-modal-footer {
+            padding: 10px 14px 14px 14px !important;
+            flex-shrink: 0 !important;
+            flex-direction: column !important;
+            gap: 8px !important;
+        }
+
+        .pg-btn-cancel,
+        .pg-btn-save {
+            width: 100%;
+            height: 48px;
+            justify-content: center;
+        }
+
+        .touch-keypad-modal {
+            width: 95vw;
+            max-width: 95vw;
+            border-radius: 16px;
+            padding: 1rem;
+        }
+    }
+</style>
+
+@code {
+    private List<PriceGroupModel> priceGroups = new();
+    private PriceGroupModel currentGroup = new();
+    private List<InventoryDM> availableProducts = new();
+    private bool isLoading = true;
+    private bool showModal = false;
+    private bool isEditMode = false;
+    private bool isSaving = false;
+    private string errorMessage = "";
+
+    // List Search filter
+    private string listSearchQuery = "";
+
+    // Product Picker filters
+    private string prodSearchQuery = "";
+    private string prodCategoryFilter = "";
+
+    // Keypad State
+    private bool showKeypad = false;
+    private string keypadTitle = "";
+    private string keypadField = "";
+    private string keypadValueString = "0";
+
+    private IEnumerable<PriceGroupModel> FilteredPriceGroups
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(listSearchQuery))
+                return priceGroups;
+            return priceGroups.Where(g =>
+                (g.Code ?? "").Contains(listSearchQuery, StringComparison.OrdinalIgnoreCase) ||
+                (g.Name ?? "").Contains(listSearchQuery, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private IEnumerable<string> availableCategories =>
+        availableProducts
+            .Select(p => p.ItemGroupName ?? "")
+            .Where(c => !string.IsNullOrEmpty(c))
+            .Distinct()
+            .OrderBy(c => c);
+
+    private IEnumerable<InventoryDM> FilteredProductsForPicker
+    {
+        get
+        {
+            var query = availableProducts.AsEnumerable();
+            if (!string.IsNullOrWhiteSpace(prodCategoryFilter))
+                query = query.Where(p => string.Equals(p.ItemGroupName, prodCategoryFilter, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(prodSearchQuery))
+                query = query.Where(p => (p.AccountName ?? "").Contains(prodSearchQuery, StringComparison.OrdinalIgnoreCase) ||
+                                         (p.DisplayCode ?? "").Contains(prodSearchQuery, StringComparison.OrdinalIgnoreCase));
+            return query;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        isLoading = true;
+        try
+        {
+            priceGroups = await PriceGroupSvc.GetPriceGroupsAsync();
+            if (CacheService.HasCache && CacheService.Items != null)
+            {
+                availableProducts = CacheService.Items;
+            }
+            else
+            {
+                var liveItems = await InventorySvc.LoadItemsAsync("");
+                availableProducts = liveItems ?? new List<InventoryDM>();
+            }
+        }
+        catch
+        {
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private string GetDisplayImageUrl(InventoryDM item)
+    {
+        return CacheService.GetImage(item.MasterAccountID ?? "")
+            ?? LocalImageCache.GetImage(item.MasterAccountID ?? "")
+            ?? ((!string.IsNullOrEmpty(item.ImagePath) && !string.IsNullOrEmpty(item.ImageFileName))
+                ? $"{item.ImagePath}/{item.ImageFileName}" : "");
+    }
+
+    private void OpenAddModal()
+    {
+        currentGroup = new PriceGroupModel
+        {
+            Price = 0.00m,
+            VisibleBranchIds = AppState.AvailableBranches != null ? AppState.AvailableBranches.ToList() : new List<string>(),
+            AppliedProductIds = new List<string>()
+        };
+        isEditMode = false;
+        errorMessage = "";
+        prodSearchQuery = "";
+        prodCategoryFilter = "";
+        showModal = true;
+    }
+
+    private void OpenEditModal(PriceGroupModel item)
+    {
+        currentGroup = new PriceGroupModel
+        {
+            Code = item.Code,
+            Name = item.Name,
+            Price = item.Price,
+            MlmCommRate = item.MlmCommRate,
+            MlmSalesTarget = item.MlmSalesTarget,
+            VisibleBranchIds = item.VisibleBranchIds != null ? item.VisibleBranchIds.ToList() : new List<string>(),
+            AppliedProductIds = item.AppliedProductIds != null ? item.AppliedProductIds.ToList() : new List<string>(),
+            CreatedAt = item.CreatedAt
+        };
+        isEditMode = true;
+        errorMessage = "";
+        prodSearchQuery = "";
+        prodCategoryFilter = "";
+        showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+    }
+
+    private bool IsAllBranchesSelected()
+    {
+        if (AppState.AvailableBranches == null || !AppState.AvailableBranches.Any()) return false;
+        return AppState.AvailableBranches.All(b => currentGroup.VisibleBranchIds.Contains(b));
+    }
+
+    private void ToggleSelectAllBranches(ChangeEventArgs e)
+    {
+        var isChecked = e.Value is bool b && b;
+        if (isChecked && AppState.AvailableBranches != null)
+        {
+            currentGroup.VisibleBranchIds = AppState.AvailableBranches.ToList();
+        }
+        else
+        {
+            currentGroup.VisibleBranchIds.Clear();
+        }
+    }
+
+    private void ToggleBranchSelection(string branchId)
+    {
+        if (currentGroup.VisibleBranchIds.Contains(branchId))
+        {
+            currentGroup.VisibleBranchIds.Remove(branchId);
+        }
+        else
+        {
+            currentGroup.VisibleBranchIds.Add(branchId);
+        }
+    }
+
+    private void ToggleProductSelection(string productId)
+    {
+        if (string.IsNullOrWhiteSpace(productId)) return;
+        var trimmedId = productId.Trim();
+        var existing = currentGroup.AppliedProductIds.FirstOrDefault(id => string.Equals(id?.Trim(), trimmedId, StringComparison.OrdinalIgnoreCase));
+        if (existing != null)
+            currentGroup.AppliedProductIds.Remove(existing);
+        else
+            currentGroup.AppliedProductIds.Add(trimmedId);
+    }
+
+    private void SelectAllFilteredProducts()
+    {
+        foreach (var p in FilteredProductsForPicker)
+        {
+            if (!string.IsNullOrWhiteSpace(p.MasterAccountID))
+            {
+                var trimmed = p.MasterAccountID.Trim();
+                if (!currentGroup.AppliedProductIds.Any(id => string.Equals(id?.Trim(), trimmed, StringComparison.OrdinalIgnoreCase)))
+                    currentGroup.AppliedProductIds.Add(trimmed);
+            }
+        }
+    }
+
+    private void ClearAllProducts()
+    {
+        currentGroup.AppliedProductIds.Clear();
+    }
+
+    private async Task SaveGroup()
+    {
+        errorMessage = "";
+        if (string.IsNullOrWhiteSpace(currentGroup.Code))
+        {
+            errorMessage = "Price Group Code is required.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(currentGroup.Name))
+        {
+            errorMessage = "Price Group Name is required.";
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            var success = await PriceGroupSvc.SavePriceGroupAsync(currentGroup, !isEditMode);
+            if (success)
+            {
+                CacheService.ClearLocalPatches();
+                CacheService.TriggerBackgroundRefresh();
+
+                showModal = false;
+                await LoadDataAsync();
+            }
+            else
+            {
+                errorMessage = isEditMode ? "Failed to save price group." : "A price group with this Code already exists.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task DeleteGroup(string code)
+    {
+        if (await JS.InvokeAsync<bool>("confirm", $"Are you sure you want to delete Price Group '{code}'?"))
+        {
+            await PriceGroupSvc.DeletePriceGroupAsync(code);
+            CacheService.ClearLocalPatches();
+            CacheService.TriggerBackgroundRefresh();
+            await LoadDataAsync();
+        }
+    }
+
+    // Touch Keypad Methods
+    private void OpenKeypad(string field, decimal currentVal, string title)
+    {
+        keypadField = field;
+        keypadTitle = title;
+        keypadValueString = currentVal == 0 ? "0" : currentVal.ToString("0.##");
+        showKeypad = true;
+    }
+
+    private void KeypadAppend(string val)
+    {
+        if (keypadValueString == "0" && val != ".")
+            keypadValueString = val;
+        else if (!(val == "." && keypadValueString.Contains(".")))
+            keypadValueString += val;
+    }
+
+    private void KeypadClear() => keypadValueString = "0";
+
+    private void KeypadBackspace()
+    {
+        if (keypadValueString.Length > 1)
+            keypadValueString = keypadValueString.Substring(0, keypadValueString.Length - 1);
+        else
+            keypadValueString = "0";
+    }
+
+    private void KeypadSave()
+    {
+        if (decimal.TryParse(keypadValueString, out var val))
+        {
+            if (keypadField == "Price") currentGroup.Price = Math.Max(0, val);
+            else if (keypadField == "MlmCommRate") currentGroup.MlmCommRate = Math.Max(0, val);
+            else if (keypadField == "MlmSalesTarget") currentGroup.MlmSalesTarget = Math.Max(0, val);
+        }
+        showKeypad = false;
+    }
+
+    private void CloseKeypad() => showKeypad = false;
+}

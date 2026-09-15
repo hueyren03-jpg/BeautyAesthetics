@@ -1,0 +1,278 @@
+@namespace SenangRetails.Shared.Components.Reports
+@inherits SenangRetails.Shared.Pages.BasePage
+@using Microsoft.AspNetCore.Components
+@using BlazorBootstrap
+@using Microsoft.JSInterop
+@using System.Text
+
+<div class="balance-transaction-report-container">
+    <div class="balance-transaction-report-list-container">
+        <!-- Date Filter Section -->
+        <div class="report-date-filter">
+            <div class="date-filter-controls">
+                <!-- Quick Date Range Buttons -->
+                <div class="quick-date-buttons">
+                    <button class="quick-date-btn @(selectedDateRange == "Today" ? "active" : "")" @onclick='() => SetDateRange("Today")'>
+                        @LangSvc.GetText("Today")
+                    </button>
+                    <button class="quick-date-btn @(selectedDateRange == "Week" ? "active" : "")" @onclick='() => SetDateRange("Week")'>
+                        @LangSvc.GetText("This Week")
+                    </button>
+                    <button class="quick-date-btn @(selectedDateRange == "Month" ? "active" : "")" @onclick='() => SetDateRange("Month")'>
+                        @LangSvc.GetText("This Month")
+                    </button>
+                    <button class="quick-date-btn @(selectedDateRange == "Year" ? "active" : "")" @onclick='() => SetDateRange("Year")'>
+                        @LangSvc.GetText("This Year")
+                    </button>
+                </div>
+
+                <!-- Date Picker -->
+                <div class="date-picker-group">
+                    <div class="date-picker-item">
+                        <label class="date-picker-label">@LangSvc.GetText("Date")</label>
+                        <MobileDatePicker @bind-Value="selectedDate"
+                                          DateFormat="dd/MM/yyyy"
+                                          Placeholder="Select Date" />
+                    </div>
+                    <button class="refresh-btn" @onclick="RefreshDataAsync" title="Refresh">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+
+                <!-- Export Dropdown Button -->
+                <div class="export-dropdown">
+                    <button class="export-btn" @onclick="ToggleExportDropdown" @onclick:preventDefault="true">
+                        <i class="bi bi-download"></i>
+                        <span class="action-btn-text">@LangSvc.GetText("Export")</span>
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+                    @if (showExportDropdown)
+                    {
+                        <div class="export-dropdown-menu">
+                            <button class="export-dropdown-item" @onclick="ExportToCSV">
+                                <i class="bi bi-file-spreadsheet"></i>
+                                @LangSvc.GetText("Export CSV")
+                            </button>
+                            <button class="export-dropdown-item" @onclick="ExportToPDF">
+                                <i class="bi bi-file-pdf"></i>
+                                @LangSvc.GetText("Export PDF")
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter Tabs for Balance Type -->
+        <div class="report-type-tabs">
+            <button class="type-tab @(selectedBalanceType == "Outstanding" ? "active" : "")"
+                    @onclick="@(() => SelectBalanceType("Outstanding"))">
+                <i class="bi bi-currency-dollar"></i>
+                @LangSvc.GetText("Outstanding")
+            </button>
+            <button class="type-tab @(selectedBalanceType == "Point" ? "active" : "")"
+                    @onclick="@(() => SelectBalanceType("Point"))">
+                <i class="bi bi-star"></i>
+                @LangSvc.GetText("Point")
+            </button>
+        </div>
+
+        <!-- KPI Summary Cards -->
+        <div class="kpi-cards">
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-receipt"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">@filteredTransactions.Count.ToString("N0")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("Total Transactions")</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-calculator"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">RM @filteredTransactions.Sum(t => t.Amount).ToString("N2")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("Total Amount")</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-people"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">@filteredTransactions.Select(t => t.CustomerName).Distinct().Count().ToString("N0")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("Unique Members")</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Balance Transaction Table -->
+        <div class="balance-transaction-table-wrapper">
+            <div class="balance-transaction-table">
+                <div class="balance-transaction-table-header">
+                    <div class="balance-transaction-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Member")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder="Filter..."
+                               @bind-value="memberFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="balance-transaction-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Phone")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder="Filter..."
+                               @bind-value="phoneFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="balance-transaction-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Invoice No")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder="Filter..."
+                               @bind-value="invoiceFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="balance-transaction-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Date")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder="Filter..."
+                               @bind-value="dateFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="balance-transaction-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Amount")</span>
+                        <input type="text"
+                               class="filter-input numeric-filter"
+                               placeholder="Filter..."
+                               @bind-value="amountFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="balance-transaction-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Balance")</span>
+                        <input type="text"
+                               class="filter-input numeric-filter"
+                               placeholder="Filter..."
+                               @bind-value="balanceFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                </div>
+                <div class="filter-badge-container">
+                    @if (HasActiveFilters())
+                    {
+                        <button class="clear-filters-btn" @onclick="ClearFilters">
+                            <i class="bi bi-x-circle"></i> Clear All Filters
+                        </button>
+                    }
+                </div>
+                <div class="balance-transaction-table-body">
+                    @if (isLoading)
+                    {
+                        <div class="text-center py-5">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Medium" />
+                            <p>Loading data...</p>
+                        </div>
+                    }
+                    else if (!string.IsNullOrEmpty(exportMessage))
+                    {
+                        <div class="alert alert-@alertType">@exportMessage</div>
+                    }
+                    else if (filteredTransactions.Any())
+                    {
+                        @foreach (var transaction in filteredTransactions)
+                        {
+                            <div class="balance-transaction-table-row">
+                                <div class="balance-transaction-table-cell" data-label="@LangSvc.GetText("Member")">
+                                    <div class="member-info-cell">
+                                        <div class="member-icon">
+                                            <i class="bi bi-person-circle"></i>
+                                        </div>
+                                        <div class="member-details">
+                                            <span class="member-name">@transaction.CustomerName</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="balance-transaction-table-cell" data-label="@LangSvc.GetText("Phone")">
+                                    @transaction.Phone
+                                </div>
+                                <div class="balance-transaction-table-cell" data-label="@LangSvc.GetText("Invoice No")">
+                                    @transaction.BillNo
+                                </div>
+                                <div class="balance-transaction-table-cell" data-label="@LangSvc.GetText("Date")">
+                                    @transaction.FinancialDate.ToString("dd/MM/yyyy")
+                                </div>
+                                <div class="balance-transaction-table-cell amount-cell" data-label="@LangSvc.GetText("Amount")">
+                                    <span>@transaction.Amount.ToString("N2")</span>
+                                </div>
+                                <div class="balance-transaction-table-cell balance-cell" data-label="@LangSvc.GetText("Balance")">
+                                    <span>@transaction.Balance.ToString("N2")</span>
+                                </div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="text-center py-3 text-muted">No data available</div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+    @if (showAlertDialogModal)
+    {
+        <div class="modal-overlay" @onclick="CloseAlertDialog">
+            <div class="modal-content" @onclick:stopPropagation="true">
+                <div class="appointment-modal-header">
+                    <div class="appt-title">@alertDialogTitle</div>
+                </div>
+                <div class="modal-body">
+                    <p>@alertDialogMessage</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="appt-btn-primary" style="flex: 1;" @onclick="CloseAlertDialog">
+                        OK
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>

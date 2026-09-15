@@ -1,0 +1,314 @@
+@inherits SenangRetails.Shared.Pages.BasePage
+@using BlazorBootstrap
+@using SenangRetails.Shared.Services
+@using System.Net.Http.Json
+@using System.Text
+@using QuestPDF.Fluent
+@using QuestPDF.Helpers
+@using QuestPDF.Infrastructure
+
+<div class="top-selling-report-container">
+    <div class="top-selling-report-list-container">
+        <!-- Date Filter Section -->
+        <div class="report-date-filter">
+            <div class="date-filter-controls">
+                <!-- Quick Date Range Buttons -->
+                <div class="quick-date-buttons">
+                    <button class="quick-date-btn @(selectedDateRange == "Today" ? "active" : "")" @onclick='() => SetDateRange("Today")'>
+                        @LangSvc.GetText("Today")
+                    </button>
+                    <button class="quick-date-btn @(selectedDateRange == "Week" ? "active" : "")" @onclick='() => SetDateRange("Week")'>
+                        @LangSvc.GetText("This Week")
+                    </button>
+                    <button class="quick-date-btn @(selectedDateRange == "Month" ? "active" : "")" @onclick='() => SetDateRange("Month")'>
+                        @LangSvc.GetText("This Month")
+                    </button>
+                    <button class="quick-date-btn @(selectedDateRange == "Year" ? "active" : "")" @onclick='() => SetDateRange("Year")'>
+                        @LangSvc.GetText("This Year")
+                    </button>
+                </div>
+
+                <!-- Date Pickers -->
+                <div class="date-picker-group">
+                    <div class="date-picker-item">
+                        <label class="date-picker-label">@LangSvc.GetText("Start Date")</label>
+                        <MobileDatePicker @bind-Value="startDate"
+                                          DateFormat="dd/MM/yyyy"
+                                          Placeholder="Select Date" />
+                    </div>
+                    <div class="date-picker-item">
+                        <label class="date-picker-label">@LangSvc.GetText("End Date")</label>
+                        <MobileDatePicker @bind-Value="endDate"
+                                          DateFormat="dd/MM/yyyy"
+                                          Placeholder="Select Date" />
+                    </div>
+                    <button class="refresh-btn" @onclick="RefreshData" title="Refresh">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+
+                <!-- Export Dropdown Button -->
+                <div class="export-dropdown">
+                    <button class="export-btn" @onclick="ToggleExportDropdown" @onclick:preventDefault="true">
+                        <i class="bi bi-download"></i>
+                        <span class="action-btn-text">@LangSvc.GetText("Export")</span>
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+                    @if (showExportDropdown)
+                    {
+                        <div class="export-dropdown-menu">
+                            <button class="export-dropdown-item" @onclick="ExportToCSV">
+                                <i class="bi bi-file-spreadsheet"></i>
+                                @LangSvc.GetText("Export CSV")
+                            </button>
+                            <button class="export-dropdown-item" @onclick="ExportToPDF">
+                                <i class="bi bi-file-pdf"></i>
+                                @LangSvc.GetText("Export PDF")
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter Tabs for Type Selection -->
+        <div class="report-type-tabs">
+            <button class="type-tab @(selectedTypeTab == "All" ? "active" : "")"
+                    @onclick="@(() => SelectTypeTab("All"))">
+                <i class="bi bi-grid"></i>
+                @LangSvc.GetText("ReportAll")
+            </button>
+            <button class="type-tab @(selectedTypeTab == "Service" ? "active" : "")"
+                    @onclick="@(() => SelectTypeTab("Service"))">
+                <i class="bi bi-star"></i>
+                @LangSvc.GetText("ReportService")
+            </button>
+            <button class="type-tab @(selectedTypeTab == "Product" ? "active" : "")"
+                    @onclick="@(() => SelectTypeTab("Product"))">
+                <i class="bi bi-box"></i>
+                @LangSvc.GetText("ReportProduct")
+            </button>
+            <button class="type-tab @(selectedTypeTab == "Package" ? "active" : "")"
+                    @onclick="@(() => SelectTypeTab("Package"))">
+                <i class="bi bi-gift"></i>
+                @LangSvc.GetText("ReportPackage")
+            </button>
+            <button class="type-tab @(selectedTypeTab == "TopUp" ? "active" : "")"
+                    @onclick="@(() => SelectTypeTab("TopUp"))">
+                <i class="bi bi-plus-circle"></i>
+                @LangSvc.GetText("ReportTopUp")
+            </button>
+        </div>
+
+        <!-- Additional Filters: Rank By and Show Records -->
+        <div class="additional-filters">
+            <div class="filter-group">
+                <label class="filter-label">@LangSvc.GetText("Rank By")</label>
+                <div class="rank-buttons">
+                    <button class="rank-btn @(selectedRankBy == "Amount" ? "active" : "")"
+                            @onclick="@(() => SelectRankBy("Amount"))">
+                        <i class="bi bi-currency-dollar"></i>
+                        @LangSvc.GetText("By Amount")
+                    </button>
+                    <button class="rank-btn @(selectedRankBy == "Quantity" ? "active" : "")"
+                            @onclick="@(() => SelectRankBy("Quantity"))">
+                        <i class="bi bi-bar-chart"></i>
+                        @LangSvc.GetText("By Quantity")
+                    </button>
+                </div>
+            </div>
+
+            <div class="filter-group">
+                <label class="filter-label">@LangSvc.GetText("Show Records")</label>
+                <div class="records-input-group">
+                    <input type="number"
+                           class="records-input"
+                           @bind="recordCount"
+                           @bind:event="oninput"
+                           min="1"
+                           max="500" />
+                    <button class="apply-records-btn" @onclick="ApplyRecordCount">
+                        <i class="bi bi-check-lg"></i>
+                        @LangSvc.GetText("Apply")
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- KPI Summary Cards -->
+        <div class="kpi-cards">
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-cash-stack"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">RM @totalAmount.ToString("N2")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("Total Sales")</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-box-seam"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">@totalQuantity.ToString("N2")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("Total Quantity")</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-list-ul"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">@items.Count</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("Showing Records")</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Selling Table -->
+        <div class="top-selling-table-wrapper">
+            <div class="top-selling-table">
+                <div class="top-selling-table-header">
+                    <div class="top-selling-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("ReportItemName")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder="Filter..."
+                               @bind-value="skuFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="top-selling-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("ReportSales")</span>
+                        <input type="text"
+                               class="filter-input numeric-filter"
+                               placeholder="Filter..."
+                               @bind-value="salesFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="top-selling-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("ReportRedeemed")</span>
+                        <input type="text"
+                               class="filter-input numeric-filter"
+                               placeholder="Filter..."
+                               @bind-value="redeemedFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="top-selling-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("ReportTotal")</span>
+                        <input type="text"
+                               class="filter-input numeric-filter"
+                               placeholder="Filter..."
+                               @bind-value="totalFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                </div>
+                <div class="filter-badge-container">
+                    @if (HasActiveFilters())
+                    {
+                        <button class="clear-filters-btn" @onclick="ClearFilters">
+                            <i class="bi bi-x-circle"></i> Clear All Filters
+                        </button>
+                    }
+                </div>
+                <div class="top-selling-table-body">
+                    @if (isLoading)
+                    {
+                        <div class="text-center py-5">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Medium" />
+                            <p>Loading data...</p>
+                        </div>
+                    }
+                    else if (!string.IsNullOrEmpty(exportMessage))
+                    {
+                        <div class="alert alert-@alertType">@exportMessage</div>
+                    }
+                    else if (filteredItems.Any())
+                    {
+                        @foreach (var item in filteredItems)
+                        {
+                            <div class="top-selling-table-row">
+                                <div class="top-selling-table-cell item-name-cell" data-label="@LangSvc.GetText("ReportItemName")" title="@item.itemName">
+                                    <div class="item-icon">
+                                        <i class="bi bi-tag"></i>
+                                    </div>
+                                    <div class="item-info">
+                                        <div class="item-name">@item.itemName</div>
+                                        <div class="item-id">@item.ItemID</div>
+                                    </div>
+                                </div>
+                                <div class="top-selling-table-cell amount-cell" data-label="@LangSvc.GetText("ReportSales")">
+                                    <div class="cell-value">RM @item.SalesAmount.ToString("N2")</div>
+                                    <div class="cell-secondary">Qty: @item.SalesQuantity.ToString("N2")</div>
+                                </div>
+                                <div class="top-selling-table-cell amount-cell" data-label="@LangSvc.GetText("ReportRedeemed")">
+                                    <div class="cell-value">RM @item.RedeemAmount.ToString("N2")</div>
+                                    <div class="cell-secondary">Qty: @item.RedeemQuantity.ToString("N2")</div>
+                                </div>
+                                <div class="top-selling-table-cell amount-cell" data-label="@LangSvc.GetText("ReportTotal")">
+                                    <div class="cell-value">RM @item.TotalAmount.ToString("N2")</div>
+                                    <div class="cell-secondary">Qty: @item.TotalQuantity.ToString("N2")</div>
+                                </div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="text-center py-3 text-muted">No data available</div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+    @if (showAlertDialogModal)
+    {
+        <div class="modal-overlay" @onclick="CloseAlertDialog">
+            <div class="modal-content" @onclick:stopPropagation="true">
+                <div class="appointment-modal-header">
+                    <div class="appt-title">@alertDialogTitle</div>
+                </div>
+                <div class="modal-body">
+                    <p>@alertDialogMessage</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="appt-btn-primary" style="flex: 1;" @onclick="CloseAlertDialog">
+                        OK
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>

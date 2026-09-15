@@ -1,0 +1,331 @@
+@using System.Text.Json
+@using SenangRetails.Shared.Models.DTOs
+@using SenangRetails.Shared.Services.AuthService
+@inherits LayoutComponentBase
+@inject SenangRetails.Shared.Services.LanguageService LangSvc
+@inject Microsoft.JSInterop.IJSRuntime JS
+@implements IDisposable
+@inject AppState AppState
+@inject NavigationManager Nav
+@inject IStoreTokenService StoreTokenService
+@inject SenangRetails.Shared.Services.ThemeService.IThemeService ThemeService
+
+<CascadingValue Value="@LangSvc.CurrentLanguage" Name="CurrentLanguage">
+    @if (ShowSidebar)
+    {
+        <!-- Hamburger Toggle Button - show on ALL screen sizes -->
+        <button class="sidebar-toggle-btn" @onclick="ToggleSidebar" aria-label="Toggle menu">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+        </button>
+
+        <!-- Sidebar Overlay (only on mobile when sidebar is open) -->
+        @if (IsSidebarOpen && IsMobile)
+        {
+            <div class="sidebar-overlay" @onclick="CloseSidebar"></div>
+        }
+
+        <aside class="app-sidebar @(IsSidebarOpen ? "sidebar-open" : "sidebar-closed")">
+            <div class="sidebar-logo-wrap">
+                <img src="/_content/SenangRetails.Shared/images/senang_logo.png" alt="Senang by EBI" class="sidebar-logo-img" />
+            </div>
+
+            <nav class="sidebar-nav">
+                <a class="sidebar-item @(IsActive("/home") ? "active" : "")" href="/home" @onclick="OnMobileNavClick">
+                    <i class="fa-solid fa-house"></i>
+                    <span>@LangSvc.GetText("Home")</span>
+                </a>
+                <a class="sidebar-item @(IsActive("/dashboard") ? "active" : "")" href="/dashboard" @onclick="OnMobileNavClick">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a class="sidebar-item @(IsActive("/orders") ? "active" : "")" href="/orders" @onclick="OnMobileNavClick">
+                    <i class="fa-solid fa-receipt"></i>
+                    <span>Billing &amp; Checkout</span>
+                </a>
+                <a class="sidebar-item @(IsActive("/menu") ? "active" : "")" href="/menu" @onclick="OnMobileNavClick">
+                    <i class="fa-solid fa-bars-staggered"></i>
+                    <span>Menu</span>
+                </a>
+                <a class="sidebar-item @(IsActive("/EInvoices") ? "active" : "")" href="/EInvoices" @onclick="OnMobileNavClick">
+                    <i class="fa-solid fa-file-invoice"></i>
+                    <span>E-Invoice</span>
+                </a>
+                <a class="sidebar-item @(IsActive("/members") ? "active" : "")" href="/members" @onclick="OnMobileNavClick">
+                    <i class="fa-solid fa-users"></i>
+                    <span>Customers</span>
+                </a>
+                <a class="sidebar-item @(IsActive("/inventory") ? "active" : "")" href="/inventory" @onclick="OnMobileNavClick">
+                    <i class="fa-solid fa-boxes-stacked"></i>
+                    <span>Inventory</span>
+                </a>
+                <a class="sidebar-item @(IsActive("/report") ? "active" : "")" href="/report" @onclick="OnMobileNavClick">
+                    <i class="fa-solid fa-chart-bar"></i>
+                    <span>Reporting</span>
+                </a>
+                <a class="sidebar-item @(IsActive("/setting") ? "active" : "")" href="/setting" @onclick="OnMobileNavClick">
+                    <i class="fa-solid fa-gear"></i>
+                    <span>@LangSvc.GetText("Settings")</span>
+                </a>
+                <a class="sidebar-item @(IsActive("/usercontrol") ? "active" : "")" href="/usercontrol" @onclick="OnMobileNavClick">
+                    <i class="fa-solid fa-user-shield"></i>
+                    <span>User Control</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="sidebar-logout-btn" @onclick="HandleLogout">
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                    <span>Logout</span>
+                </button>
+            </div>
+        </aside>
+    }
+
+    <!-- Main content area with click handler to close sidebar -->
+    <div class="@GetLayoutBodyClasses()" @onclick="HandleMainContentClick">
+        @Body
+    </div>
+
+    @if (IsLogoutConfirmVisible)
+    {
+        <div class="modal-overlay" @onclick="CancelLogout">
+            <div class="modal-box logout-confirm-box" @onclick:stopPropagation="true">
+                <div class="logout-confirm-icon">
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                </div>
+                <div class="modal-title logout-confirm-title">@LangSvc.GetText("ConfirmLogout")</div>
+                <div class="modal-text logout-confirm-text">@LangSvc.GetText("LogoutMessage")</div>
+                <div class="modal-actions">
+                    <button class="modal-btn cancel" @onclick="CancelLogout">@LangSvc.GetText("Cancel")</button>
+                    <button class="modal-btn confirm logout-confirm" @onclick="ConfirmLogout">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                        @LangSvc.GetText("Logout")
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</CascadingValue>
+
+@code {
+    private bool IsLogoutConfirmVisible = false;
+    private bool IsSidebarOpen = false; // Changed from true to false
+    private bool IsMobile = false;
+
+    private static readonly HashSet<string> HiddenPaths = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "",
+        "select-branch",
+        "menu",
+        "report",
+        "orders",
+        "cartpayment",
+        "complete-sales",
+        "sales-history",
+        "setting",
+        "inventory"
+    };
+
+    private static readonly string[] HiddenPrefixes = { "usercontrol" };
+
+    private bool ShowSidebar
+    {
+        get
+        {
+            var path = Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0].TrimEnd('/');
+            if (HiddenPaths.Contains(path)) return false;
+            foreach (var prefix in HiddenPrefixes)
+                if (path.Equals(prefix, StringComparison.OrdinalIgnoreCase) ||
+                    path.StartsWith(prefix + "/", StringComparison.OrdinalIgnoreCase))
+                    return false;
+            return true;
+        }
+    }
+
+    private bool IsActive(string route)
+    {
+        var path = "/" + Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0].TrimEnd('/');
+        if (route == "/report" && path.Equals("/dashboard", StringComparison.OrdinalIgnoreCase))
+            return false;
+        return path.Equals(route, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string GetLayoutBodyClasses()
+    {
+        var classes = "layout-body";
+
+        if (!ShowSidebar)
+        {
+            // When sidebar is completely hidden
+            classes += " layout-body-full";
+        }
+        // No need to add any class when sidebar exists but is closed
+        // The layout-body always has padding-top: 60px now
+
+        return classes;
+    }
+
+    protected override void OnInitialized()
+    {
+        LangSvc.OnLanguageChanged += OnLanguageChanged;
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        // Auto-close sidebar when navigating (on all devices)
+        if (IsSidebarOpen && ShowSidebar)
+        {
+            IsSidebarOpen = false;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task DetectMobileAndApplySidebar()
+    {
+        try
+        {
+            IsMobile = await JS.InvokeAsync<bool>("window.matchMedia", "(max-width: 768px)");
+
+            // Always start with sidebar closed on first load
+            // Don't load saved state - always start closed
+            IsSidebarOpen = false;
+
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    private async Task LoadSidebarState()
+    {
+        if (!ShowSidebar) return;
+
+        // Removed - we don't want to load saved state anymore
+        // Always keep sidebar closed by default
+        IsSidebarOpen = false;
+    }
+
+    private async Task ToggleSidebar()
+    {
+        if (!ShowSidebar) return;
+
+        IsSidebarOpen = !IsSidebarOpen;
+        try
+        {
+            // Save state to localStorage (optional - you can keep or remove this)
+            await JS.InvokeVoidAsync("localStorage.setItem", "sidebar_collapsed", (!IsSidebarOpen).ToString().ToLower());
+        }
+        catch { }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void CloseSidebar()
+    {
+        if (IsSidebarOpen && ShowSidebar)
+        {
+            IsSidebarOpen = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OnMobileNavClick()
+    {
+        // Auto-close sidebar on ALL devices when a link is clicked
+        if (ShowSidebar)
+        {
+            IsSidebarOpen = false;
+        }
+    }
+
+    // New method to handle clicking on the main content area
+    private void HandleMainContentClick()
+    {
+        // Close sidebar when clicking on the main content
+        if (IsSidebarOpen && ShowSidebar)
+        {
+            IsSidebarOpen = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadLanguageFromStorage()
+    {
+        try
+        {
+            var lang = await JS.InvokeAsync<string?>("localStorage.getItem", "app_language");
+            if (!string.IsNullOrEmpty(lang) && lang != LangSvc.CurrentLanguage)
+                LangSvc.SetLanguage(lang);
+        }
+        catch { }
+    }
+
+    private async void OnLanguageChanged()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", "app_language", LangSvc.CurrentLanguage);
+        }
+        catch { }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    void HandleLogout() => IsLogoutConfirmVisible = true;
+    void CancelLogout() => IsLogoutConfirmVisible = false;
+
+    async Task ConfirmLogout()
+    {
+        IsLogoutConfirmVisible = false;
+        AppState.SelectedBranchID = string.Empty;
+        AppState.CurrentBranch = null;
+        AppState.SelectedBranchGroupID = string.Empty;
+        await JS.InvokeVoidAsync("localStorage.removeItem", "currentBranch");
+        await JS.InvokeVoidAsync("localStorage.removeItem", "currentBranchDetails");
+        await JS.InvokeVoidAsync("localStorage.removeItem", "available_branches");
+        await StoreTokenService.ClearAsync();
+        Nav.NavigateTo("/");
+    }
+
+    public void Dispose()
+    {
+        LangSvc.OnLanguageChanged -= OnLanguageChanged;
+        Nav.LocationChanged -= OnLocationChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var savedId = await JS.InvokeAsync<string>("localStorage.getItem", "currentBranch");
+            var savedDetails = await JS.InvokeAsync<string>("localStorage.getItem", "currentBranchDetails");
+            var branchesJson = await JS.InvokeAsync<string>("localStorage.getItem", "available_branches");
+            if (!string.IsNullOrEmpty(branchesJson))
+            {
+                AppState.AvailableBranches = JsonSerializer.Deserialize<List<string>>(branchesJson) ?? new();
+            }
+            if (!string.IsNullOrEmpty(savedDetails))
+            {
+                AppState.CurrentBranch = JsonSerializer.Deserialize<BranchItem>(savedDetails);
+                AppState.SelectedBranchGroupID = AppState.CurrentBranch?.BranchGroupID ?? "";
+            }
+
+            var effectiveBranchId = !string.IsNullOrEmpty(savedId) ? savedId : AppState.CurrentBranch?.BranchID;
+            if (!string.IsNullOrEmpty(effectiveBranchId))
+            {
+                AppState.SelectedBranchID = effectiveBranchId;
+                StateHasChanged();
+            }
+
+            await LoadLanguageFromStorage();
+            await DetectMobileAndApplySidebar();
+            try
+            {
+                await ThemeService.InitializeThemeAsync();
+            }
+            catch { }
+        }
+    }
+}

@@ -1,0 +1,309 @@
+Created At: 2026-07-10T08:30:48Z
+Completed At: 2026-07-10T08:30:48Z
+File Path: `file:///C:/Users/ebiso/Desktop/Beauty_Aesthetics_Hybrid/Beauty_Aesthetics_Hybrid/Beauty_Aesthetics_Hybrid.Shared/Components/Pages/Inventory.razor`
+Total Lines: 8710
+Total Bytes: 415455
+Showing lines 7200 to 7500
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+7200:         ExpandedMobileGinNo = ExpandedMobileGinNo == returnedStock.ReturnedStockNo ? null : returnedStock.ReturnedStockNo;
+7201:     }
+7202: 
+7203:     private void ShowEditReturnedStockModal()
+7204:     {
+7205:         if (SelectedReturnedStock == null)
+7206:         {
+7207:             return;
+7208:         }
+7209: 
+7210:         EditReturnedStock = CloneReturnedStock(SelectedReturnedStock);
+7211:         ShowEditReturnedStockModalWindow = true;
+7212:     }
+7213: 
+7214:     private void CloseEditReturnedStockModal()
+7215:     {
+7216:         ShowEditReturnedStockModalWindow = false;
+7217:         EditReturnedStock = null;
+7218:     }
+7219: 
+7220:     private void HandleEditReturnedStock()
+7221:     {
+7222:         if (EditReturnedStock == null)
+7223:         {
+7224:             CloseEditReturnedStockModal();
+7225:             return;
+7226:         }
+7227: 
+7228:         var index = ReturnedStockList.FindIndex(item => item.ReturnedStockNo == EditReturnedStock.ReturnedStockNo);
+7229:         if (index >= 0)
+7230:         {
+7231:             ReturnedStockList[index] = CloneReturnedStock(EditReturnedStock);
+7232:             SelectedReturnedStock = ReturnedStockList[index];
+7233:         }
+7234: 
+7235:         CloseEditReturnedStockModal();
+7236:     }
+7237: 
+7238:     private void ToggleReturnedStockDeleteMode()
+7239:     {
+7240:         IsReturnedStockDeleteMode = !IsReturnedStockDeleteMode;
+7241:         if (!IsReturnedStockDeleteMode)
+7242:         {
+7243:             SelectedReturnedStocksForDeletion.Clear();
+7244:         }
+7245:     }
+7246: 
+7247:     private void CancelReturnedStockDeleteMode()
+7248:     {
+7249:         IsReturnedStockDeleteMode = false;
+7250:         SelectedReturnedStocksForDeletion.Clear();
+7251:     }
+7252: 
+7253:     private void ToggleReturnedStockForDeletion(ReturnedStockItem item)
+7254:     {
+7255:         if (!SelectedReturnedStocksForDeletion.Add(item))
+7256:         {
+7257:             SelectedReturnedStocksForDeletion.Remove(item);
+7258:         }
+7259:     }
+7260: 
+7261:     private void ToggleReturnedStockForPrintSelection(ReturnedStockItem item)
+7262:     {
+7263:         if (!SelectedReturnedStocksForPrint.Add(item))
+7264:         {
+7265:             SelectedReturnedStocksForPrint.Remove(item);
+7266:         }
+7267: 
+7268:         StateHasChanged();
+7269:     }
+7270: 
+7271:     private void ToggleAllReturnedStocksSelection(ChangeEventArgs args)
+7272:     {
+7273:         var isChecked = args.Value is bool value && value;
+7274: 
+7275:         if (isChecked)
+7276:         {
+7277:             SelectedReturnedStocksForDeletion = FilteredReturnedStock.ToHashSet();
+7278:         }
+7279:         else
+7280:         {
+7281:             SelectedReturnedStocksForDeletion.Clear();
+7282:         }
+7283:     }
+7284: 
+7285:     private void DeleteSelectedReturnedStocks()
+7286:     {
+7287:         if (!SelectedReturnedStocksForDeletion.Any())
+7288:         {
+7289:             return;
+7290:         }
+7291: 
+7292:         foreach (var item in SelectedReturnedStocksForDeletion.ToList())
+7293:         {
+7294:             ReturnedStockList.Remove(item);
+7295: 
+7296:             if (SelectedReturnedStock == item)
+7297:             {
+7298:                 SelectedReturnedStock = null;
+7299:             }
+7300: 
+7301:             SelectedReturnedStocksForPrint.Remove(item);
+7302:         }
+7303: 
+7304:         SelectedReturnedStocksForDeletion.Clear();
+7305:         IsReturnedStockDeleteMode = false;
+7306: 
+7307:         var remainingCount = FilteredReturnedStock.Count();
+7308:         var totalPages = Math.Max(1, (int)Math.Ceiling(remainingCount / 5.0));
+7309: 
+7310:         if (GINCurrentPage > totalPages)
+7311:         {
+7312:             GINCurrentPage = totalPages;
+7313:         }
+7314:     }
+7315: 
+7316:     private void ActivateReturnedStockPrintMode()
+7317:     {
+7318:         IsReturnedStockPrintModeActive = true;
+7319:         SelectedReturnedStocksForPrint.Clear();
+7320:         SelectedReturnedStock = null;
+7321:     }
+7322: 
+7323:     private void CancelReturnedStockPrintMode()
+7324:     {
+7325:         IsReturnedStockPrintModeActive = false;
+7326:         SelectedReturnedStocksForPrint.Clear();
+7327:         SelectedReturnedStock = null;
+7328:     }
+7329: 
+7330:     private async Task ConfirmReturnedStockPrint()
+7331:     {
+7332:         var itemsToPrint = ReturnedStockList
+7333:             .Where(item => SelectedReturnedStocksForPrint.Contains(item))
+7334:             .ToList();
+7335:         if (itemsToPrint.Any())
+7336:         {
+7337:             await PrintGIN(itemsToPrint);
+7338:         }
+7339: 
+7340:         IsReturnedStockPrintModeActive = false;
+7341:         SelectedReturnedStocksForPrint.Clear();
+7342:         SelectedReturnedStock = null;
+7343:     }
+7344: 
+7345:     private void ActivateGRNPrintMode()
+7346:     {
+7347:         IsGRNPrintModeActive = true;
+7348:         SelectedGRNsForPrint.Clear();
+7349:         SelectedGRN = null;
+7350:     }
+7351: 
+7352:     private void CancelGRNPrintMode()
+7353:     {
+7354:         IsGRNPrintModeActive = false;
+7355:         SelectedGRNsForPrint.Clear();
+7356:         SelectedGRN = null;
+7357:     }
+7358: 
+7359:     private async Task ConfirmGRNPrint()
+7360:     {
+7361:         var itemsToPrint = GRNs
+7362:             .Where(item => SelectedGRNsForPrint.Contains(item))
+7363:             .ToList();
+7364:         if (itemsToPrint.Any())
+7365:         {
+7366:             await PrintGRN(itemsToPrint);
+7367:         }
+7368: 
+7369:         IsGRNPrintModeActive = false;
+7370:         SelectedGRNsForPrint.Clear();
+7371:         SelectedGRN = null;
+7372:     }
+7373: 
+7374:     private async Task ExportGIN()
+7375:     {
+7376:         try
+7377:         {
+7378:             var builder = new StringBuilder();
+7379: 
+7380:             // CSV Header
+7381:             builder.AppendLine("GIN No,Date Issued,Issued By,Issued To,Ref No,Type,Amount,Void");
+7382: 
+7383:             // CSV Data
+7384:             var ginList = FilteredReturnedStock.ToList();
+7385:             foreach (var gin in ginList)
+7386:             {
+7387:                 builder.AppendLine(string.Join(',',
+7388:                     CsvEscape(gin.ReturnedStockNo),
+7389:                     $"=\"{gin.DateIssued:dd/MM/yyyy}\"",
+7390:                     CsvEscape(gin.IssuedBy),
+7391:                     CsvEscape(gin.IssuedTo),
+7392:                     "",
+7393:                     "Return",
+7394:                     $"\"{gin.Amount:N2}\"",
+7395:                     ""));
+7396:             }
+7397: 
+7398:             // Total row
+7399:             builder.AppendLine($",,,,,,,Total Entries: {ginList.Count}");
+7400: 
+7401:             var bytes = Encoding.UTF8.GetBytes(builder.ToString());
+7402:             var base64 = Convert.ToBase64String(bytes);
+7403:             var fileName = $"GIN_Export_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+7404: 
+7405:             await EnsureInventoryModuleAsync();
+7406: 
+7407:             if (_inventoryModule == null)
+7408:             {
+7409:                 Console.WriteLine("Inventory interop module not loaded; unable to export GIN.");
+7410:                 return;
+7411:             }
+7412: 
+7413:             await _inventoryModule.InvokeVoidAsync("downloadFile", fileName, base64, "text/csv");
+7414:         }
+7415:         catch (Exception ex)
+7416:         {
+7417:             Console.WriteLine($"Error exporting GIN: {ex.Message}");
+7418:         }
+7419:     }
+7420: 
+7421:     private async Task ExportGRN()
+7422:     {
+7423:         try
+7424:         {
+7425:             var builder = new StringBuilder();
+7426: 
+7427:             // CSV Header
+7428:             builder.AppendLine("Doc Branch,Date,Doc No,Name,PO No.,Ref No,Type,Amount,Void");
+7429: 
+7430:             // CSV Data
+7431:             var grnList = FilteredGRNs.ToList();
+7432:             foreach (var grn in grnList)
+7433:             {
+7434:                 builder.AppendLine(string.Join(',',
+7435:                     CsvEscape(grn.DOCBranch),
+7436:                     $"=\"{grn.Date:dd/MM/yyyy}\"",
+7437:                     CsvEscape(grn.DOCNo),
+7438:                     CsvEscape(grn.Name),
+7439:                     CsvEscape(grn.PONo),
+7440:                     "",
+7441:                     "Purchase",
+7442:                     $"\"{grn.Amount:N2}\"",
+7443:                     ""));
+7444:             }
+7445: 
+7446:             // Total row
+7447:             builder.AppendLine($",,,,,,,,Total Entries: {grnList.Count}");
+7448: 
+7449:             var bytes = Encoding.UTF8.GetBytes(builder.ToString());
+7450:             var base64 = Convert.ToBase64String(bytes);
+7451:             var fileName = $"GRN_Export_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+7452: 
+7453:             await EnsureInventoryModuleAsync();
+7454: 
+7455:             if (_inventoryModule == null)
+7456:             {
+7457:                 Console.WriteLine("Inventory interop module not loaded; unable to export GRN.");
+7458:                 return;
+7459:             }
+7460: 
+7461:             await _inventoryModule.InvokeVoidAsync("downloadFile", fileName, base64, "text/csv");
+7462:         }
+7463:         catch (Exception ex)
+7464:         {
+7465:             Console.WriteLine($"Error exporting GRN: {ex.Message}");
+7466:         }
+7467:     }
+7468: 
+7469:     private async Task PrintGIN(IEnumerable<ReturnedStockItem> itemsToPrint)
+7470:     {
+7471:         var ginItems = itemsToPrint.ToList();
+7472:         if (!ginItems.Any())
+7473:         {
+7474:             return;
+7475:         }
+7476: 
+7477:         try
+7478:         {
+7479:             await EnsureInventoryModuleAsync();
+7480: 
+7481:             if (_inventoryModule == null)
+7482:             {
+7483:                 Console.WriteLine("Inventory interop module not loaded; unable to print GIN.");
+7484:                 return;
+7485:             }
+7486: 
+7487:             var generatedDate = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
+7488:             var htmlBuilder = new StringBuilder();
+7489: 
+7490:             htmlBuilder.AppendLine("<!DOCTYPE html>");
+7491:             htmlBuilder.AppendLine("<html><head><title>GIN Batch Print</title>");
+7492:             htmlBuilder.AppendLine(@"<style>
+7493:                 :root {
+7494:                     --primary: #2c3e50;
+7495:                     --accent: #728091;
+7496:                     --border: #d1d5db;
+7497:                     --text: #1f2937;
+7498:                 }
+7499:                 * { box-sizing: border-box; }
+7500:                 body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 40px; color: var(--text); background: #fff; }
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

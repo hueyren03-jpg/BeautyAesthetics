@@ -1,0 +1,349 @@
+@namespace SenangRetails.Shared.Pages
+@inherits SenangRetails.Shared.Pages.BasePage
+@using BlazorBootstrap
+@using SenangRetails.Shared.Services
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Text
+
+<div class="member-list-report-container">
+    <div class="member-list-report-list-container">
+        <!-- Date Filter Section -->
+        <div class="report-date-filter">
+            <div class="date-filter-controls">
+                <!-- Quick Date Range Buttons -->
+                <div class="quick-date-buttons">
+                    <button class="quick-date-btn @(selectedDateRange == "Today" ? "active" : "")" @onclick='() => SetDateRange("Today")'>
+                        @LangSvc.GetText("Today")
+                    </button>
+                    <button class="quick-date-btn @(selectedDateRange == "Week" ? "active" : "")" @onclick='() => SetDateRange("Week")'>
+                        @LangSvc.GetText("This Week")
+                    </button>
+                    <button class="quick-date-btn @(selectedDateRange == "Month" ? "active" : "")" @onclick='() => SetDateRange("Month")'>
+                        @LangSvc.GetText("This Month")
+                    </button>
+                    <button class="quick-date-btn @(selectedDateRange == "Year" ? "active" : "")" @onclick='() => SetDateRange("Year")'>
+                        @LangSvc.GetText("This Year")
+                    </button>
+                </div>
+
+                <!-- Date Pickers -->
+                <div class="date-picker-group">
+                    <div class="date-picker-item">
+                        <label class="date-picker-label">@LangSvc.GetText("Start Date")</label>
+                        <MobileDatePicker @bind-Value="startDate"
+                                          DateFormat="dd/MM/yyyy"
+                                          Placeholder="Select Date" />
+                    </div>
+                    <div class="date-picker-item">
+                        <label class="date-picker-label">@LangSvc.GetText("End Date")</label>
+                        <MobileDatePicker @bind-Value="endDate"
+                                          DateFormat="dd/MM/yyyy"
+                                          Placeholder="Select Date" />
+                    </div>
+                    <button class="refresh-btn" @onclick="RefreshData" title="Refresh">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+
+                <!-- Export Dropdown Button -->
+                <div class="export-dropdown">
+                    <button class="export-btn" @onclick="ToggleExportDropdown" @onclick:preventDefault="true">
+                        <i class="bi bi-download"></i>
+                        <span class="action-btn-text">@LangSvc.GetText("Export")</span>
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+                    @if (showExportDropdown)
+                    {
+                        <div class="export-dropdown-menu">
+                            <button class="export-dropdown-item" @onclick="ExportToCSV">
+                                <i class="bi bi-file-spreadsheet"></i>
+                                @LangSvc.GetText("Export CSV")
+                            </button>
+                            <button class="export-dropdown-item" @onclick="ExportToPDF">
+                                <i class="bi bi-file-pdf"></i>
+                                @LangSvc.GetText("Export PDF")
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Gender Filter Tabs -->
+        <div class="report-type-tabs">
+            <button class="type-tab @(selectedGender == "All" ? "active" : "")" @onclick='() => SelectGender("All")'>
+                <i class="bi bi-people"></i>
+                @LangSvc.GetText("All")
+            </button>
+            <button class="type-tab @(selectedGender == "Male" ? "active" : "")" @onclick='() => SelectGender("Male")'>
+                <i class="bi bi-gender-male"></i>
+                @LangSvc.GetText("Male")
+            </button>
+            <button class="type-tab @(selectedGender == "Female" ? "active" : "")" @onclick='() => SelectGender("Female")'>
+                <i class="bi bi-gender-female"></i>
+                @LangSvc.GetText("Female")
+            </button>
+        </div>
+
+        <!-- KPI Summary Cards -->
+        <div class="kpi-cards">
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-people-fill"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">@totalMembers.ToString("N0")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("ReportTotalMembers")</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-calendar-day"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">@todayMembers.ToString("N0")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("Today")</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-calendar-month"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">@thisMonthMembers.ToString("N0")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("ReportThisMonth")</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-calendar-week"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">@lastMonthMembers.ToString("N0")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("ReportLastMonthLabel")</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-graph-up"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">@monthlyGrowthRate.ToString("N2")%</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("ReportMonthlyGrowthRate")</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pagination Controls -->
+        <div class="pagination-controls">
+            <div class="page-size-selector">
+                <label>@LangSvc.GetText("Show Records")</label>
+                <select class="page-size-select" value="@pageSize" @onchange="OnPageSizeChanged">
+                    <option value="5">5</option>
+                    <option value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            <div class="page-navigation">
+                <button class="page-btn" @onclick="GoToFirstPage" disabled="@(currentPage == 1)">
+                    <i class="bi bi-chevron-double-left"></i>
+                </button>
+                <button class="page-btn" @onclick="GoToPreviousPage" disabled="@(currentPage == 1)">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <span class="page-info">Page @currentPage of @totalPages</span>
+                <button class="page-btn" @onclick="GoToNextPage" disabled="@(!hasMoreData)">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+                <button class="page-btn" @onclick="GoToLastPage" disabled="@(currentPage == totalPages || totalPages == 0)">
+                    <i class="bi bi-chevron-double-right"></i>
+                </button>
+            </div>
+            <div class="total-records-info">
+                <span>@LangSvc.GetText("Showing") @members.Count @LangSvc.GetText("of") @totalFilteredCount @LangSvc.GetText("records")</span>
+            </div>
+        </div>
+
+        <!-- Member List Table with Filter Inputs -->
+        <div class="member-list-table-wrapper">
+            <div class="member-list-table">
+                <div class="member-list-table-header">
+                    <div class="member-list-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Member / Member ID")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder="Filter..."
+                               @bind-value="memberFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="member-list-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("ReportContactIC")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder="Filter..."
+                               @bind-value="contactFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="member-list-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("ReportGender")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder="Filter..."
+                               @bind-value="genderFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="member-list-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("ReportBirthday")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder="Filter..."
+                               @bind-value="birthdayFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="member-list-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("ReportCreateDate")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder="Filter..."
+                               @bind-value="createdDateFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                </div>
+                <div class="filter-badge-container">
+                    @if (HasActiveFilters())
+                    {
+                        <button class="clear-filters-btn" @onclick="ClearFilters">
+                            <i class="bi bi-x-circle"></i> Clear All Filters
+                        </button>
+                    }
+                </div>
+                <div class="member-list-table-body">
+                    @if (isLoading)
+                    {
+                        <div class="text-center py-5">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Medium" />
+                            <p>Loading data...</p>
+                        </div>
+                    }
+                    else if (!string.IsNullOrEmpty(exportMessage))
+                    {
+                        <div class="alert alert-@alertType">@exportMessage</div>
+                    }
+                    else if (members.Any())  
+                    {
+                        @foreach (var member in members)  
+                        {
+                            <div class="member-list-table-row">
+                                <div class="member-list-table-cell" data-label="@LangSvc.GetText("Member / Member ID")">
+                                    <div class="member-info-cell">
+                                        <div class="member-icon">
+                                            <i class="bi bi-person-circle"></i>
+                                        </div>
+                                        <div class="member-details">
+                                            <div class="member-name">@member.AccountName</div>
+                                            <div class="member-id">@member.MasterAccountID</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="member-list-table-cell" data-label="@LangSvc.GetText("ReportContactIC")">
+                                    <div class="contact-details">
+                                        <div class="contact-phone">@member.Phone</div>
+                                        <div class="contact-ic">@member.NRIC</div>
+                                    </div>
+                                </div>
+                                <div class="member-list-table-cell" data-label="@LangSvc.GetText("ReportGender")">
+                                    @GetGenderDisplay(member.Gender)
+                                </div>
+                                <div class="member-list-table-cell" data-label="@LangSvc.GetText("ReportBirthday")">
+                                    @GetBirthday(member)
+                                </div>
+                                <div class="member-list-table-cell" data-label="@LangSvc.GetText("ReportCreateDate")">
+                                    @member.AccountSince.ToString("dd/MM/yyyy")
+                                </div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="text-center py-3 text-muted">No data available</div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+    @if (showAlertDialogModal)
+    {
+        <div class="modal-overlay" @onclick="CloseAlertDialog">
+            <div class="modal-content" @onclick:stopPropagation="true">
+                <div class="appointment-modal-header">
+                    <div class="appt-title">@alertDialogTitle</div>
+                </div>
+                <div class="modal-body">
+                    <p>@alertDialogMessage</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="appt-btn-primary" style="flex: 1;" @onclick="CloseAlertDialog">
+                        OK
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>

@@ -1,0 +1,45 @@
+@page "/select-branch"
+@inherits SenangRetails.Shared.Pages.BasePage
+@inject AppState AppState
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>@LangSvc.GetText("SelectBranchTitle")</PageTitle>
+
+<div class="branch-page">
+    <div class="branch-topbar">
+        <button class="logout-btn" title="Logout" @onclick="Logout">
+            <i class="bi bi-box-arrow-left"></i>
+            <span>Logout</span>
+        </button>
+    </div>
+
+    <div class="branch-content">
+        <h1 class="branch-heading">@LangSvc.GetText("SelectBranchTitle")</h1>
+        <p class="branch-sub">Select a branch to continue</p>
+
+        <div class="branch-grid">
+            @if (AppState.AvailableBranches.Any())
+            {
+                @foreach (var branch in AppState.AvailableBranches)
+                {
+                    var name = BranchNames.TryGetValue(branch, out var n) ? n : branch;
+                    <button class="branch-card" @onclick="() => ChooseBranch(branch)">
+                        <div class="branch-icon-wrap">
+                            <i class="fa-solid fa-location-dot"></i>
+                        </div>
+                        <div class="branch-info">
+                            <span class="branch-code">@branch</span>
+                            <span class="branch-name">@name</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right branch-chevron"></i>
+                    </button>
+                }
+            }
+            else
+            {
+                <p class="no-branch">@LangSvc.GetText("SelectBranchNone")</p>
+            }
+        </div>
+    </div>
+</div>

@@ -1,0 +1,376 @@
+@inherits SenangRetails.Shared.Pages.BasePage
+
+@if (movementDetailsModalIsOpen)
+{
+    /* ============================================================
+    VIEW 2: MOVEMENT DETAILS (FULL SCREEN OVERLAY)
+    ============================================================ */
+    <div class="view-body" style="background-color: var(--color-background); height: 100%;">
+        <div class="header">
+            <div class="left-section">
+                <!-- Mobile Menu Button (visible on mobile) -->
+                <button class="mobile-menu-btn" @onclick="ToggleNav">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+                <!-- Back Button -->
+                <div class="back-button" @onclick="CloseMovementDetailsModal">
+                    <i class="bi bi-chevron-left"></i>
+                    <span>Back</span>
+                </div>
+            </div>
+            <div class="header-title">Movement Details</div>
+            <div class="top-right-button">
+                <div @onclick="OpenStockIn" class="top-right-relative">
+                    <button class="stock-action-btn">
+                        <i class="bi bi-plus-lg"></i>
+                        Add
+                    </button>
+                    @if (openStockInIsOpen)
+                    {
+                        <div @onclick="CloseStockIn" @onclick:stopPropagation="true" class="all-modal-backdrop"></div>
+                        <div class="left-order-option-wrapper text-align-left">
+                            <span @onclick='() => NavigateTo("stockin")' @onclick:stopPropagation="true"><i class="bi bi-bag-plus"></i> Stock In</span>
+                            <span @onclick='() => NavigateTo("stockout")' @onclick:stopPropagation="true"><i class="bi bi-calendar-minus"></i> Stock Out</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="full-screen-modal-content">
+            <div class="display-row custom-shadow-sm">
+                <div class="stock-movement-table-row border-bottom">
+                    <span>Product</span>
+                    <span class="text-lg-end">Opening</span>
+                    <span class="text-lg-end">Stock In</span>
+                    <span class="text-lg-end">Stock Out</span>
+                    <span class="text-lg-end">Balance</span>
+                </div>
+                <div class="stock-movement-table-row" style="background: white; border-radius: 0 0 8px 8px; margin-top: 6px;">
+                    <div style="display: flex;">
+                        <img class="table-item-image" src="https://placehold.co/400" alt="Mask" />
+                        <div class="table-card-content-row stock-movement-product-name ">
+                            <span>Mask</span>
+                            <span>5.00</span>
+                        </div>
+                    </div>
+                    <div class="table-card-content-single-row text-lg-end">
+                        <span class="item-name text-lg-end text-lg-end">0</span>
+                    </div>
+                    <div class="table-card-content-single-row text-lg-end">
+                        <span class="item-name text-lg-end text-lg-end " style="color: var(--bs-success);">+7</span>
+                    </div>
+                    <div class="table-card-content-single-row text-lg-end">
+                        <span class="item-name text-lg-end text-lg-end" style="color: var(--bs-danger);">-2</span>
+                    </div>
+                    <div class="table-card-content-row text-lg-end text-lg-end">
+                        <span class="table-item-name text-lg-end">5</span>
+                        <span class="text-lg-end">Unit</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tool-bar" style="padding: 0;">
+                <div class="date-picker">
+                    <div @onclick="OpenMovementDateRange" class="date-range-button">
+                        <span><i class="bi bi-calendar3"></i> This Month</span>
+                        @if (movementDateRangeIsOpen)
+                        {
+                            <div @onclick="CloseMovementDateRange" @onclick:stopPropagation="true" class="all-modal-backdrop-no-color" style="z-index: 2002;"></div>
+                            <div class="right-order-option-wrapper" style="z-index: 2003;">
+                                <span @onclick="CloseMovementDateRange" @onclick:stopPropagation="true">Today</span>
+                                <span>Last 7 Days</span>
+                                <span>This Month</span>
+                                <span>Last Month</span>
+                                <span>3 Months</span>
+                                <span>6 Months</span>
+                                <span>Custom</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="download-wrapper" style="margin-left: auto;">
+                    <div class="filter-button">
+                        <span><i class="bi bi-file-earmark-arrow-down"></i></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stock-movement-table custom-shadow-sm" style="background: white;">
+                <div class="item-stock-movement-table-row border-bottom">
+                    <span>Date</span>
+                    <span class="text-align-right">Quantity</span>
+                    <span class="text-align-right">Cost</span>
+                </div>
+
+                <div class="item-stock-movement-table-row">
+                    <div class="table-card-content-row">
+                        <span style="font-weight: bold;">09/02/26</span>
+                        <span style="color: #888; font-size: 0.85em;">05:03 PM</span>
+                    </div>
+                    <div class="table-card-content-row text-align-right">
+                        <span style="font-weight: bold; color: var(--bs-success);">+7</span>
+                        <span style="color: #888; font-size: 0.85em;">Stock In</span>
+                    </div>
+                    <div class="table-card-content-single-row">
+                        <span class="text-align-right">35.00</span>
+                    </div>
+                </div>
+
+                <div class="item-stock-movement-table-row">
+                    <div class="table-card-content-row">
+                        <span style="font-weight: bold;">10/02/26</span>
+                        <span style="color: #888; font-size: 0.85em;">11:20 AM</span>
+                    </div>
+                    <div class="table-card-content-row text-align-right">
+                        <span style="font-weight: bold; color: var(--bs-danger);">-2</span>
+                        <span style="color: #888; font-size: 0.85em;">Sale</span>
+                    </div>
+                    <div class="table-card-content-single-row">
+                        <span class="text-align-right">10.00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    /* ============================================================
+    VIEW 1: MOVEMENT LIST (DEFAULT)
+    ============================================================ */
+    <div class="view-body">
+        <div class="header">
+            <div class="mobile-menu-btn" @onclick="ToggleNav">
+                <i class="bi bi-list"></i>
+            </div>
+            <div class="header-title">Stock Movement</div>
+            <div class="top-right-button">
+                <div @onclick="OpenStockIn" class="top-right-relative">
+                    <button class="stock-action-btn">
+                        <i class="bi bi-plus-lg"></i>
+                        Add
+                    </button>
+                    @if (openStockInIsOpen)
+                    {
+                        <div @onclick="CloseStockIn" @onclick:stopPropagation="true" class="all-modal-backdrop"></div>
+                        <div class="left-order-option-wrapper text-align-left">
+                            <span @onclick='() => NavigateTo("stockin")' @onclick:stopPropagation="true"><i class="bi bi-bag-plus"></i> Stock In</span>
+                            <span @onclick='() => NavigateTo("stockout")' @onclick:stopPropagation="true"><i class="bi bi-calendar-minus"></i> Stock Out</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="quick-summary-card">
+            <div class="card">
+                <span class="card-title">Total In</span>
+                <span class="card-value">5</span>
+            </div>
+            <div class="card">
+                <span class="card-title">Total Out</span>
+                <span class="card-value">0</span>
+            </div>
+        </div>
+        <div class="tool-bar">
+            <div class="search-bar">
+                <i class="bi bi-search"></i>
+                <input class="search-stock-balance" type="text" placeholder="Search..." />
+            </div>
+            <div @onclick="OpenDateRange" class="date-range-button">
+                <span><i class="bi bi-calendar3"></i> @selectedDateRange</span>
+                @if (dateRangeIsOpen)
+                {
+                    <div @onclick="CloseDateRange" @onclick:stopPropagation="true" class="all-modal-backdrop-no-color"></div>
+                    <div class="dropdown-menu-simple">
+                        <span @onclick='() => SelectDateRange("Today")' @onclick:stopPropagation="true">Today</span>
+                        <span @onclick='() => SelectDateRange("Last 7 Days")' @onclick:stopPropagation="true">Last 7 Days</span>
+                        <span @onclick='() => SelectDateRange("This Month")' @onclick:stopPropagation="true">This Month</span>
+                        <span @onclick='() => SelectDateRange("Last Month")' @onclick:stopPropagation="true">Last Month</span>
+                        <span @onclick='() => SelectDateRange("Custom")' @onclick:stopPropagation="true">Custom</span>
+                    </div>
+                }
+            </div>
+            <div @onclick="OpenFilter" class="filter-button">
+                <span><i class="bi bi-funnel"></i> Filter</span>
+                @if (filterIsOpen)
+                {
+                    <div @onclick="CloseFilter" @onclick:stopPropagation="true" class="all-modal-backdrop-no-color"></div>
+                    <div class="filter-dropdown-simple">
+                        <label @onclick:stopPropagation="true">
+                            <input type="checkbox" @bind="filterShowDisplayOnly" /> Display Only
+                        </label>
+                        <label @onclick:stopPropagation="true">
+                            <input type="checkbox" @bind="filterOnlyMovement" /> Active Movement
+                        </label>
+                    </div>
+                }
+            </div>
+            <div @onclick="OpenOrder" class="order-button">
+                <span><i class="bi bi-sort-down"></i> Sort: @selectedSort</span>
+                @if (orderIsOpen)
+                {
+                    <div @onclick="CloseOrder" @onclick:stopPropagation="true" class="all-modal-backdrop-no-color"></div>
+                    <div class="dropdown-menu-simple">
+                        <span @onclick='() => SelectSort("Default")' @onclick:stopPropagation="true">Default</span>
+                        <span @onclick='() => SelectSort("Name")' @onclick:stopPropagation="true">Name</span>
+                        <span @onclick='() => SelectSort("Low Balance")' @onclick:stopPropagation="true">Low Balance</span>
+                        <span @onclick='() => SelectSort("High Balance")' @onclick:stopPropagation="true">High Balance</span>
+                        <span @onclick='() => SelectSort("Low Cost")' @onclick:stopPropagation="true">Low Cost</span>
+                        <span @onclick='() => SelectSort("High Cost")' @onclick:stopPropagation="true">High Cost</span>
+                    </div>
+                }
+            </div>
+            <div class="order-button">
+                <span><i class="bi bi-file-earmark-arrow-down"></i> Export</span>
+            </div>
+        </div>
+        <div class="category-filter-bar">
+            <button class="category-pill active">
+                All
+            </button>
+            @foreach (var cat in categories)
+            {
+                <button class="category-pill">
+                    @cat
+                </button>
+            }
+        </div>
+        <div class="stock-movement-table custom-shadow-sm">
+            <div class="stock-movement-table-row border-bottom">
+                <span>Product</span>
+                <span class="text-lg-end">Opening</span>
+                <span class="text-lg-end">Stock In</span>
+                <span class="text-lg-end">Stock Out</span>
+                <span class="text-lg-end">Balance</span>
+            </div>
+            <div class="stock-movement-table-row" @onclick="OpenMovementDetailsModal" style="cursor: pointer;">
+                <div style="display: flex;">
+                    <img class="table-item-image" src="https://placehold.co/400" alt="Mask" />
+                    <div class="table-card-content-row stock-movement-product-name">
+                        <span>Mask</span>
+                        <span>5.00</span>
+                    </div>
+                </div>
+                <div class="table-card-content-single-row text-lg-end">
+                    <span class="item-name text-lg-end">0</span>
+                </div>
+                <div class="table-card-content-single-row text-lg-end">
+                    <span class="item-name text-lg-end" style="color: var(--bs-success);">+7</span>
+                </div>
+                <div class="table-card-content-single-row text-lg-end">
+                    <span class="item-name text-lg-end" style="color: var(--bs-danger);">-2</span>
+                </div>
+                <div class="table-card-content-row text-lg-end">
+                    <span class="table-item-name text-lg-end">5</span>
+                    <span class="text-lg-end">Unit</span>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public EventCallback OnToggleNav { get; set; }
+    [Parameter] public EventCallback<string> OnNavSelected { get; set; }
+
+    private bool movementDetailsModalIsOpen = false;
+    private bool movementDateRangeIsOpen = false;
+
+    private bool openStockInIsOpen = false;
+    private bool dateRangeIsOpen = false;
+    private bool filterIsOpen = false;
+    private bool orderIsOpen = false;
+
+    private string selectedSort = "Default";
+    private string selectedDateRange = "This Month";
+    private bool filterShowDisplayOnly = false;
+    private bool filterOnlyMovement = false;
+
+    private List<string> categories = new() { "Section 1", "Section 2" };
+
+    private void ToggleNav()
+    {
+        OnToggleNav.InvokeAsync();
+    }
+
+    private void OpenMovementDetailsModal()
+    {
+        movementDetailsModalIsOpen = true;
+    }
+
+    private void CloseMovementDetailsModal()
+    {
+        movementDetailsModalIsOpen = false;
+    }
+
+    private void OpenMovementDateRange()
+    {
+        movementDateRangeIsOpen = true;
+    }
+
+    private void CloseMovementDateRange()
+    {
+        movementDateRangeIsOpen = false;
+    }
+
+    private void OpenStockIn()
+    {
+        openStockInIsOpen = true;
+    }
+
+    private void CloseStockIn()
+    {
+        openStockInIsOpen = false;
+    }
+
+    private void OpenDateRange()
+    {
+        dateRangeIsOpen = true;
+    }
+
+    private void CloseDateRange()
+    {
+        dateRangeIsOpen = false;
+    }
+
+    private void SelectDateRange(string val)
+    {
+        selectedDateRange = val;
+        dateRangeIsOpen = false;
+    }
+
+    private void OpenFilter()
+    {
+        filterIsOpen = true;
+    }
+
+    private void CloseFilter()
+    {
+        filterIsOpen = false;
+    }
+
+    private void OpenOrder()
+    {
+        orderIsOpen = true;
+    }
+
+    private void CloseOrder()
+    {
+        orderIsOpen = false;
+    }
+
+    private void SelectSort(string val)
+    {
+        selectedSort = val;
+        orderIsOpen = false;
+    }
+
+    private void NavigateTo(string target)
+    {
+        openStockInIsOpen = false;
+        movementDetailsModalIsOpen = false;
+        OnNavSelected.InvokeAsync(target);
+    }
+}

@@ -1,0 +1,274 @@
+@page "/voucher"
+@inject NavigationManager NavManager
+@inject IJSRuntime JS
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L
+@using Beauty_Aesthetics_WebPos.Components.ViewModels
+@using Beauty_Aesthetics_WebPos.Components.Models.Voucher
+
+<main class="voucher-page">
+    <header class="voucher-page-heading">
+        <div class="voucher-heading-copy">
+            <span class="voucher-eyebrow">Sales &amp; loyalty</span>
+            <h1>@L["Vouchers"]</h1>
+            <p>Manage voucher campaigns, availability and redemption activity.</p>
+        </div>
+
+        <button type="button" class="create-voucher-btn" @onclick="NavigateToAddVoucher">
+            <i class="bi bi-plus-lg" aria-hidden="true"></i>
+            <span>@L["CreateVoucher"]</span>
+        </button>
+    </header>
+
+    <section class="voucher-summary" aria-label="Voucher summary">
+        <article class="summary-item summary-total">
+            <span class="summary-icon" aria-hidden="true"><i class="bi bi-ticket-perforated"></i></span>
+            <span class="summary-copy">
+                <span class="summary-label">Campaigns</span>
+                <strong>@VM.Vouchers.Count</strong>
+                <small>Voucher groups</small>
+            </span>
+        </article>
+
+        <article class="summary-item summary-available">
+            <span class="summary-icon" aria-hidden="true"><i class="bi bi-check-circle"></i></span>
+            <span class="summary-copy">
+                <span class="summary-label">@L["AvailableVoucher"]</span>
+                <strong>@VM.Vouchers.Sum(v => v.Available)</strong>
+                <small>Ready to issue</small>
+            </span>
+        </article>
+
+        <article class="summary-item summary-redeemed">
+            <span class="summary-icon" aria-hidden="true"><i class="bi bi-gift"></i></span>
+            <span class="summary-copy">
+                <span class="summary-label">@L["Redeemed"]</span>
+                <strong>@VM.Vouchers.Sum(v => v.Redeemed)</strong>
+                <small>Used by customers</small>
+            </span>
+        </article>
+
+        <article class="summary-item summary-expired">
+            <span class="summary-icon" aria-hidden="true"><i class="bi bi-clock-history"></i></span>
+            <span class="summary-copy">
+                <span class="summary-label">@L["Expired"]</span>
+                <strong>@VM.Vouchers.Sum(v => v.Expired)</strong>
+                <small>No longer active</small>
+            </span>
+        </article>
+    </section>
+
+    <section class="voucher-workspace" aria-label="Voucher campaigns">
+        <div class="voucher-toolbar">
+            <div class="toolbar-search-group">
+                <label class="voucher-search">
+                    <i class="bi bi-search" aria-hidden="true"></i>
+                    <input type="search"
+                           placeholder="Search voucher name..."
+                           aria-label="Search voucher name"
+                           @bind="VM.SearchTerm"
+                           @bind:event="oninput" />
+                </label>
+
+                <span class="result-count" aria-live="polite">
+                    @VM.FilteredCount @(VM.FilteredCount == 1 ? "campaign" : "campaigns")
+                </span>
+            </div>
+
+            <div class="status-tabs" role="group" aria-label="Filter by voucher status">
+                <button type="button"
+                        class="@GetStatusFilterClass("")"
+                        aria-pressed="@string.IsNullOrWhiteSpace(VM.SelectedStatus)"
+                        @onclick="SelectAllStatuses">
+                    @L["AllStatus"]
+                </button>
+                <button type="button"
+                        class="@GetStatusFilterClass("Available")"
+                        aria-pressed="@(VM.SelectedStatus == "Available")"
+                        @onclick="SelectAvailableStatus">
+                    @L["AvailableVoucher"]
+                </button>
+                <button type="button"
+                        class="@GetStatusFilterClass("Sold")"
+                        aria-pressed="@(VM.SelectedStatus == "Sold")"
+                        @onclick="SelectSoldStatus">
+                    @L["Sold"]
+                </button>
+                <button type="button"
+                        class="@GetStatusFilterClass("Redeemed")"
+                        aria-pressed="@(VM.SelectedStatus == "Redeemed")"
+                        @onclick="SelectRedeemedStatus">
+                    @L["Redeemed"]
+                </button>
+                <button type="button"
+                        class="@GetStatusFilterClass("Expired")"
+                        aria-pressed="@(VM.SelectedStatus == "Expired")"
+                        @onclick="SelectExpiredStatus">
+                    @L["Expired"]
+                </button>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(VM.SearchTerm) || !string.IsNullOrWhiteSpace(VM.SelectedStatus))
+            {
+                <button type="button" class="clear-filter-btn" @onclick="VM.ClearFilters">
+                    <i class="bi bi-x-circle" aria-hidden="true"></i>
+                    <span>Clear</span>
+                </button>
+            }
+        </div>
+
+        @if (VM.FilteredCount == 0)
+        {
+            <section class="voucher-empty-state" aria-live="polite">
+                <span class="empty-state-icon" aria-hidden="true"><i class="bi bi-search"></i></span>
+                <h2>No vouchers found</h2>
+                <p>Try another voucher name or clear the current status filter.</p>
+                <button type="button" @onclick="VM.ClearFilters">Clear filters</button>
+            </section>
+        }
+        else
+        {
+            <div class="voucher-table-wrapper">
+                <table class="voucher-table">
+                    <caption class="visually-hidden">Voucher campaigns and current availability</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">@L["VoucherName"]</th>
+                            <th scope="col">Offer</th>
+                            <th scope="col">Valid period</th>
+                            <th scope="col">Availability</th>
+                            <th scope="col">@L["Status"]</th>
+                            <th scope="col" class="actions-header">@L["Actions"]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var voucher in VM.FilteredVouchers())
+                        {
+                            var status = GetVoucherStatus(voucher);
+                            <tr class="row-status-@status.ToLowerInvariant()">
+                                <td>
+                                    <div class="voucher-name-cell">
+                                        <span class="voucher-mark" aria-hidden="true"><i class="bi bi-ticket-perforated"></i></span>
+                                        <span>
+                                            <button type="button"
+                                                    class="voucher-name-link"
+                                                    @onclick="() => NavigateToDetails(voucher.Name)">
+                                                @voucher.Name
+                                            </button>
+                                            <small>@voucher.TotalQuantity total vouchers</small>
+                                        </span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <strong class="voucher-value">MYR @voucher.AmountRange</strong>
+                                    <small class="discount-value">@voucher.DiscountRange% discount</small>
+                                </td>
+                                <td>
+                                    <span class="date-range">@voucher.StartDate.ToString("dd MMM yyyy")</span>
+                                    <span class="date-divider" aria-hidden="true"></span>
+                                    <span class="date-range">@voucher.EndDate.ToString("dd MMM yyyy")</span>
+                                </td>
+                                <td>
+                                    <div class="availability-heading">
+                                        <strong>@voucher.Available</strong>
+                                        <small>of @voucher.TotalQuantity available</small>
+                                    </div>
+                                    <div class="availability-meter"
+                                         role="progressbar"
+                                         aria-label="Voucher availability"
+                                         aria-valuemin="0"
+                                         aria-valuemax="@voucher.TotalQuantity"
+                                         aria-valuenow="@voucher.Available">
+                                        <span style="width: @GetAvailabilityPercentage(voucher)%"></span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="voucher-status status-@status.ToLowerInvariant()">@status</span>
+                                </td>
+                                <td class="actions-cell">
+                                    <button type="button"
+                                            class="icon-action-btn"
+                                            title="@L["ShowDetails"]"
+                                            aria-label="@L["ShowDetails"] for @voucher.Name"
+                                            @onclick="() => NavigateToDetails(voucher.Name)">
+                                        <i class="bi bi-eye" aria-hidden="true"></i>
+                                    </button>
+                                    <button type="button"
+                                            class="icon-action-btn icon-action-btn--danger"
+                                            title="@L["DeleteVoucher"]"
+                                            aria-label="@L["DeleteVoucher"] @voucher.Name"
+                                            @onclick="() => DeleteVoucherAsync(voucher.Name)">
+                                        <i class="bi bi-trash3" aria-hidden="true"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="voucher-mobile-list">
+                @foreach (var voucher in VM.FilteredVouchers())
+                {
+                    var status = GetVoucherStatus(voucher);
+                    <article class="voucher-mobile-row row-status-@status.ToLowerInvariant()">
+                        <div class="mobile-row-top">
+                            <div class="mobile-voucher-title">
+                                <span class="voucher-mark" aria-hidden="true"><i class="bi bi-ticket-perforated"></i></span>
+                                <span>
+                                    <button type="button"
+                                            class="voucher-name-link"
+                                            @onclick="() => NavigateToDetails(voucher.Name)">
+                                        @voucher.Name
+                                    </button>
+                                    <small>@voucher.StartDate.ToString("dd MMM") – @voucher.EndDate.ToString("dd MMM yyyy")</small>
+                                </span>
+                            </div>
+                            <span class="voucher-status status-@status.ToLowerInvariant()">@status</span>
+                        </div>
+
+                        <div class="mobile-offer-row">
+                            <span>
+                                <small>Voucher value</small>
+                                <strong>MYR @voucher.AmountRange</strong>
+                            </span>
+                            <span>
+                                <small>Discount</small>
+                                <strong>@voucher.DiscountRange%</strong>
+                            </span>
+                        </div>
+
+                        <div class="mobile-availability">
+                            <span><strong>@voucher.Available</strong> of @voucher.TotalQuantity available</span>
+                            <div class="availability-meter" aria-hidden="true">
+                                <span style="width: @GetAvailabilityPercentage(voucher)%"></span>
+                            </div>
+                        </div>
+
+                        <div class="voucher-mobile-actions">
+                            <button type="button"
+                                    class="mobile-detail-btn"
+                                    @onclick="() => NavigateToDetails(voucher.Name)">
+                                <i class="bi bi-eye" aria-hidden="true"></i>
+                                <span>@L["ShowDetails"]</span>
+                            </button>
+                            <button type="button"
+                                    class="icon-action-btn icon-action-btn--danger"
+                                    aria-label="@L["DeleteVoucher"] @voucher.Name"
+                                    @onclick="() => DeleteVoucherAsync(voucher.Name)">
+                                <i class="bi bi-trash3" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </article>
+                }
+            </div>
+
+            <footer class="voucher-list-footer">
+                <span>Showing @GetVisibleStart()–@GetVisibleEnd() of @VM.FilteredCount</span>
+                <Pagination CurrentPage="VM.CurrentPage"
+                            ItemsPerPage="VM.PageSize"
+                            TotalItems="VM.FilteredCount"
+                            OnPageChanged="(p) => { VM.GoToPage(p); StateHasChanged(); }" />
+            </footer>
+        }
+    </section>
+</main>

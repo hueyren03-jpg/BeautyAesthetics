@@ -1,0 +1,146 @@
+@page "/companysetting"
+@inherits SenangRetails.Shared.Pages.BasePage
+@using Microsoft.AspNetCore.Components.Forms
+@using SenangRetails.Shared.Services
+@using SenangRetails.Shared.Services.BranchService
+@using SenangRetails.Shared.Services.NotificationService
+@using SenangRetails.Shared.Models
+@inject AppState AppState
+@inject IBranchService BranchService
+@inject Microsoft.JSInterop.IJSRuntime JS
+@inject INotificationService NotificationSvc
+@inject ITaxService TaxService
+
+<div class="section-container">
+    <div class="section-header">
+        <h2>@LangSvc.GetText("CompanySettingsTitle")</h2>
+        <p>@LangSvc.GetText("CompanySettingsDesc")</p>
+    </div>
+
+    <div class="content-section">
+        <!-- Logo Upload -->
+        <div class="form-group">
+            <label class="form-label">@LangSvc.GetText("CompanyLogoLabel")</label>
+            <div class="logo-upload-container">
+                <div class="logo-preview">
+                    @if (!string.IsNullOrEmpty(companyLogo))
+                    {
+                        <img src="@companyLogo" alt="Company Logo" />
+                    }
+                    else
+                    {
+                        <div class="logo-placeholder">
+                            <i class="fa-solid fa-building" style="font-size:40px;color:#ccc;"></i>
+                            <p>@LangSvc.GetText("CompanyNoLogo")</p>
+                        </div>
+                    }
+                </div>
+                <div class="logo-actions">
+                    <InputFile id="logoFileInput" OnChange="OnLogoFileChanged"
+                               accept="image/*" style="display:none" />
+                    <button type="button" class="logo-upload-btn"
+                            @onclick="TriggerLogoUpload">
+                        <i class="bi bi-upload"></i> Upload Logo
+                    </button>
+                    @if (!string.IsNullOrEmpty(companyLogo))
+                    {
+                        <button type="button" class="logo-remove-btn"
+                                @onclick="RemoveLogo">
+                            <i class="bi bi-trash3"></i> Remove
+                        </button>
+                    }
+                    @if (!string.IsNullOrEmpty(logoError))
+                    {
+                        <p class="logo-error">@logoError</p>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Company Info -->
+        <div class="form-row" style="margin: 0; padding: 0;">
+            <div class="form-group">
+                <label class="form-label">@LangSvc.GetText("CompanyBrandName") <span style="color: var(--color-red);">*</span></label>
+                <input type="text" class="form-control" @bind="brandName" placeholder="@LangSvc.GetText("CompanyEnterBrandName")" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">@LangSvc.GetText("CompanyContact")</label>
+                <input type="text" class="form-control" @bind="contact" placeholder="@LangSvc.GetText("CompanyEnterContact")" />
+            </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Outlet Info -->
+        <div class="form-group">
+            <label class="form-label">@LangSvc.GetText("CompanyOutletName") <span style="color: var(--color-red);">*</span></label>
+            <input type="text" class="form-control" @bind="outletName" placeholder="@LangSvc.GetText("CompanyEnterOutletName")" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">@LangSvc.GetText("CompanyAddress1") <span style="color: var(--color-red);">*</span></label>
+            <input type="text" class="form-control" @bind="address1" placeholder="@LangSvc.GetText("CompanyAddress1Placeholder")" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">@LangSvc.GetText("CompanyAddress2")</label>
+            <input type="text" class="form-control" @bind="address2" placeholder="@LangSvc.GetText("CompanyAddress2Placeholder")" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">@LangSvc.GetText("CompanyAddress3")</label>
+            <input type="text" class="form-control" @bind="address3" placeholder="@LangSvc.GetText("CompanyAddress3Placeholder")" />
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Tax Settings -->
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">@LangSvc.GetText("Tax Type")</label>
+                <select class="form-control tax-dropdown" @onchange="OnTaxTypeChanged">
+                    <option value="" selected="@(selectedTaxType == "")">@LangSvc.GetText("Select Tax Type")</option>
+                    <option value="GST" selected="@(selectedTaxType == "GST")">GST</option>
+                    <option value="SST" selected="@(selectedTaxType == "SST")">SST</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">@LangSvc.GetText("Sales Tax Code")</label>
+                <select class="form-control tax-dropdown" @bind="selectedSalesTaxCode" disabled="@(!isSalesTaxCodeEnabled)">
+                    <option value="">@LangSvc.GetText("Select Sales Tax Code")</option>
+                    @if (isLoadingTaxCodes)
+                    {
+                        <option value="" disabled>Loading...</option>
+                    }
+                    else
+                    {
+                        @foreach (var taxCode in salesTaxCodes)
+                        {
+                            <option value="@taxCode.TaxCodeID">
+                                @taxCode.TaxCodeID (@taxCode.TaxDescription) - @((taxCode.TaxRate * 100).ToString("0"))%
+                            </option>
+                        }
+                    }
+                </select>
+                @if (!string.IsNullOrEmpty(taxCodesError))
+                {
+                    <small class="error-text">@taxCodesError</small>
+                }
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(saveMessage))
+        {
+            <div class="save-message @(saveSuccess ? "" : "save-error")">@saveMessage</div>
+        }
+        <div class="confirm-actions">
+            <button class="success-button" @onclick="SaveCompanyInfo" disabled="@isSaving">
+                @(isSaving ? LangSvc.GetText("Saving") : LangSvc.GetText("CompanySaveChanges"))
+            </button>
+        </div>
+    </div>
+</div>

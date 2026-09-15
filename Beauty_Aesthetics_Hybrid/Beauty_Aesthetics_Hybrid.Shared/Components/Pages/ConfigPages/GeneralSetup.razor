@@ -1,0 +1,424 @@
+@page "/GeneralSetup"
+@inject IJSRuntime JSRuntime
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L
+
+<div class="SettingContent">
+    <div>
+        <button class="btn-back" @onclick="Back">@L["Back"]</button>
+    </div>
+    <div class="Card">
+        <div class="CardContent">
+            <div class="SingleInput">
+                <div class="InputButton">
+                    <span>@L["EnableSettingByCounter"]</span>
+                    <label class="switch">
+                        <input type="checkbox">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="Card">
+        <div class="CardHeader">
+            <h4>@L["DefaultBranch"]</h4>
+        </div>
+        <div class="CardContent">
+            <div class="DoubleInput">
+                <div id="BranchInputSelect" class="DoubleInputSelect">
+                    <div class="InputSelect">
+                        <span>@L["Branch"]</span>
+                        <input value="@SelectedBranchName"
+                               type="text"
+                               placeholder="@L["SelectBranch"]"
+                               readonly
+                               @onclick="ToggleBranchDropdown" />
+                    </div>
+
+                    <div class="DropdownIcon">
+                        <i @onclick="ToggleBranchDropdown" class="fa-solid fa-caret-down DropdownIcon"></i>
+                    </div>
+
+                    @if (IsBranchDropdownOpen)
+                    {
+                        <div class="DropdownContainer @(BranchOpenUpwards ? "open-up" : "")">
+                            @foreach (var branch in Branches)
+                            {
+                                <div class="dropdown-item" @onclick="() => SelectBranch(branch)">
+                                    <span>@branch.BranchName</span>
+                                    @if (branch.IsHQ)
+                                    {
+                                        <span class="badge-hq">HQ</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+                <div class="InputTextField">
+                    <span>@L["Group"]</span>
+                    <input type="text" />
+                </div>
+            </div>
+            <div class="DoubleInput">
+                <div class="InputTextField">
+                    <span>@L["Counter"]</span>
+                    <input type="text" />
+                </div>
+                <div class="InputTextField">
+                    <span>@L["BStartHour"]</span>
+                    <input type="text" />
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="Card">
+        <div class="CardHeader">
+            <h4>@L["Interface"]</h4>
+        </div>
+        <div class="CardContent">
+            <div class="DoubleInput">
+                <div class="SelectField">
+                    <span>@L["ApplicationStyle"]</span>
+                    <select class="DropdownSelect">
+                        <option>Default</option>
+                        <option>App</option>
+                    </select>
+                </div>
+                <div class="SelectField">
+                    <span>@L["SystemLanguage"]</span>
+                    <select class="DropdownSelect" value="@selectedCulture" @onchange="OnLanguageChanged">
+                        <option value="en">English</option>
+                        <option value="zh-Hans">中文 (简体)</option>
+                        <option value="ms">Bahasa Melayu</option>
+                    </select>
+                </div>
+            </div>
+            <div class="DoubleInput">
+                <div class="SelectField">
+                    <span>@L["POSSalesInterface"]</span>
+                    <select class="DropdownSelect">
+                        <option>Hotel</option>
+                        <option>Salon</option>
+                        <option>Salon-Non Touch</option>
+                        <option>Loan Agent</option>
+                        <option>Mart</option>
+                        <option>Wellness</option>
+                    </select>
+                </div>
+                <div class="SelectField">
+                    <span>@L["HoldBillInterface"]</span>
+                    <select class="DropdownSelect">
+                        <option>Default</option>
+                        <option>Time Layout</option>
+                        <option>Table Layout</option>
+                        <option>Laundry Layout</option>
+                        <option>Room Scheduler Layout</option>
+                        <option>Staff Scheduler Layout</option>
+                        <option>Staff Status Layout</option>
+                    </select>
+                </div>
+            </div>
+            <div class="DoubleInput">
+                <div class="SelectField">
+                    <span>@L["StaffQueueMethod"]</span>
+                    <select class="DropdownSelect">
+                        <option>Default</option>
+                        <option>By Commission Earned</option>
+                    </select>
+                </div>
+                <div class="SelectField">
+                    <span>@L["PaymentInterface"]</span>
+                    <select class="DropdownSelect">
+                        <option>Default</option>
+                        <option>Simple</option>
+                    </select>
+                </div>
+            </div>
+            <div class="DoubleInput">
+                <div class="SelectField">
+                    <span>@L["TimeAttendanceMethod"]</span>
+                    <select class="DropdownSelect">
+                        <option>Password</option>
+                        <option>Fingerprint</option>
+                        <option>Both</option>
+                    </select>
+                </div>
+                <div id="CashTopUpSelect" class="DoubleInputSelect">
+                    <div class="InputSelect">
+                        <span>@L["CashTopUp"]</span>
+                        <input @bind="SelectedTopUpAmount"
+                               type="text"
+                               placeholder="0.00" />
+                    </div>
+
+                    <div class="DropdownIcon">
+                        <i @onclick="ToggleTopUpDropdown" class="fa-solid fa-caret-down DropdownIcon"></i>
+                    </div>
+
+                    @if (IsTopUpDropdownOpen)
+                    {
+                        <div class="DropdownContainer @(IsTopUpDropdownUpwards ? "open-up" : "")">
+                            @foreach (var amount in TopUpOptions)
+                            {
+                                <div class="dropdown-item" @onclick="() => SelectTopUpItem(amount)">
+                                    @amount
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="Card">
+        <div class="hardware-panel">
+            <div class="CardHeader">
+                <h4>@L["HardwareControl"]</h4>
+            </div>
+
+            <div class="tabs-container">
+                @foreach (var tab in Tabs)
+                {
+                    <button class="tab-button @(ActiveTab == tab ? "active" : "")"
+                            @onclick="() => ActiveTab = tab">
+                        @L[tab.Replace(" ", "")]
+                    </button>
+                }
+            </div>
+
+            <div class="tab-content">
+                @if (ActiveTab == "Printer")
+                {
+                    <div class="SingleInput">
+                        <div class="InputTextField">
+                            <span>@L["PrinterName"]</span>
+                            <input placeholder="Printer's name as appear in window" type="text" />
+                        </div>
+                    </div>
+
+                    <div class="SingleInput">
+                        <div class="InputTextField">
+                            <span>@L["DefaultFormat"]</span>
+                            <input type="text"
+                                   class="InputTextField"/>
+                        </div>
+                    </div>
+                    <div class="SingleInput">
+                        <div class="InputTextField">
+                            <span>@L["ReceiptCopies"]</span>
+                            <input type="number"
+                                   class="InputTextField"/>
+                        </div>
+                    </div>
+
+                    <div class="SingleInput">
+                        <div class="InputButton">
+                            <span>@L["PrintPreview"]</span>
+                            <label class="switch">
+                                <input type="checkbox">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                }
+                else if(ActiveTab == "Barcode"){
+                    <div class="SingleInput">
+                        <div class="SelectField">
+                            <span>@L["ComPort"]</span>
+                            <select class="DropdownSelect">
+                                <option>COM1</option>
+                                <option>COM2</option>
+                                <option>COM3</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="SingleInput">
+                        <div class="InputTextField">
+                            <span>@L["LeftMove"]</span>
+                            <input type="text" />
+                        </div>
+                    </div>
+                    <div class="SingleInput">
+                        <div class="InputTextField">
+                            <span>@L["RightMove"]</span>
+                            <input type="text" />
+                        </div>
+                    </div>
+                }
+                else if(ActiveTab == "Cash Drawer")
+                {
+                    <div class="SingleInput">
+                        <div class="InputTextField">
+                            <span>@L["ESCPOSCode"]</span>
+                            <input placeholder="eg. 27,112,0,100,250" type="text" />
+                        </div>
+                    </div>
+                }
+                else if(ActiveTab == "Card Reader")
+                {
+                    <div id="SingleInputSelect" class="SingleInputSelect">
+                        <div class="InputSelect">
+                            <span>@L["RFIDReader"]</span>
+                            <input @bind="SelectedRFID" type="text" />
+                        </div>
+                        <div class="DropdownIcon">
+                            <i @onclick=ToggleRFID class="fa-solid fa-caret-down DropdownIcon"></i>
+                        </div>
+                        @if (RFIDIsOpen)
+                        {
+                            <div class="DropdownContainer @(RFIDOpenUpwards ? "open-up" : "")">
+                                @foreach (var item in Items)
+                                {
+                                    <div class="dropdown-item" @onclick="() => SelectRFIDItem(item)">
+                                        @item
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                    <div class="SingleInput">
+                        <div class="SelectField">
+                            <span>@L["ICReader"]</span>
+                            <select class="DropdownSelect">
+                                <option value=""></option>
+                                <option>MSR Reader</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="InnerCard">
+                        <div class="InnerCardHeader">
+                            <h5>@L["MSRReadingRange"]</h5>
+                        </div>
+                        <div class="InnerCardContent">
+                            <div class="DoubleInput">
+                                <div class="InputTextField">
+                                    <span>@L["From"]</span>
+                                    <input type="text" />
+                                </div>
+                                <div class="InputTextField">
+                                    <span>@L["To"]</span>
+                                    <input type="text" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+                else if(ActiveTab == "Pole Display")
+                {
+                    <div class="SingleInput">
+                        <div class="SelectField">
+                            <span>@L["SerialPort"]</span>
+                            <select class="DropdownSelect">
+                                <option value=""></option>
+                                <option>COM1</option>
+                                <option>COM2</option>
+                                <option>COM3</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="SingleInput">
+                        <div class="InputTextField">
+                            <span>@L["BaudRate"]</span>
+                            <input class="InputText" type="text"/>
+                        </div>
+                    </div>
+                    <div class="SingleInput">
+                        <div class="InputTextField">
+                            <span>@L["VFDLine1Display"]</span>
+                            <input class="InputText" type="text"/>
+                        </div>
+                    </div>
+                    <div class="SingleInput">
+                        <div class="InputTextField">
+                            <span>@L["VFDLine2Display"]</span>
+                            <input class="InputText" type="text"/>
+                        </div>
+                    </div>
+                }
+                else if (ActiveTab == "Weighing Scale")
+                {
+                    <div class="SingleInput">
+                        <div class="InputTextField">
+                            <span>@L["PortNo"]</span>
+                            <input class="InputText" type="text" />
+                        </div>
+                    </div>
+                }
+                else if (ActiveTab == "Door Access")
+                {
+                    <div class="SingleInput">
+                        <div class="SelectField">
+                            <span>@L["Type"]</span>
+                            <select class="DropdownSelect">
+                                <option value=""></option>
+                                <option>ZKTeco</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="SingleInput">
+                        <div class="InputTextField">
+                            <span>@L["EndPoint"]</span>
+                            <input class="InputText" type="text" />
+                        </div>
+                    </div>
+                    <div class="SingleInput">
+                        <div class="InputTextField">
+                            <span>@L["AccessToken"]</span>
+                            <input class="InputText" type="text" />
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="placeholder-content">
+                        <p>@string.Format(L["SettingsNotImplemented"].Value, L[ActiveTab.Replace(" ", "")].Value)</p>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="Card">
+        <div class="CardContent">
+            <div class="SingleInput">
+                <div class="InputButton">
+                    <span>@L["EnableSecondScreen"]</span>
+                    <label class="switch">
+                        <input type="checkbox">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="Card">
+        <div class="CardContent">
+            <div class="SingleInput">
+                <div class="InputButton">
+                    <span>@L["IdentifyCashier"]</span>
+                    <label class="switch">
+                        <input type="checkbox">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="Card">
+        <div class="CardContent">
+            <div class="SingleInput">
+                <div class="InputButton">
+                    <span>@L["IdentifyBillCreator"]</span>
+                    <label class="switch">
+                        <input type="checkbox">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    
+}

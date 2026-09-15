@@ -1,0 +1,107 @@
+@page "/case-note-template"
+@using Beauty_Aesthetics_WebPos.Components.Layout
+@layout EmptyLayout
+@using Beauty_Aesthetics_WebPos.Components.ViewModels
+<PageTitle>Case Note Templates</PageTitle>
+
+<div class="template-container">
+    <!-- Header -->
+    <header class="template-header">
+        <div class="header-left">
+            <i class="bi bi-file-text header-icon"></i>
+            <h1 class="header-title">Case Note Templates</h1>
+        </div>
+        <div class="header-right">
+            <div class="search-box">
+                <i class="bi bi-search search-icon"></i>
+                <input 
+                    type="text" 
+                    class="search-input" 
+                    placeholder="Search templates..." 
+                    @bind="ViewModel.SearchTerm" 
+                    @bind:event="oninput" />
+            </div>
+            <button class="btn-create" @onclick="ViewModel.CreateNewTemplate">
+                <i class="bi bi-plus-lg"></i>
+                <span>Create New Template</span>
+            </button>
+            <a href="/case-notes" class="btn-close-header">
+                <i class="bi bi-x-lg"></i>
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <h2 class="sidebar-title">Filter by Category</h2>
+            <div class="category-filters">
+                <label class="filter-checkbox">
+                    <input type="checkbox" 
+                           checked="@ViewModel.ShowAllCategories"
+                           @onchange="e => ViewModel.ToggleAllCategories((bool)e.Value!)" />
+                    <span>All</span>
+                </label>
+                @foreach (var category in ViewModel.Categories)
+                {
+                    <label class="filter-checkbox">
+                        <input type="checkbox" 
+                               checked="@ViewModel.SelectedCategories.Contains(category)"
+                               @onchange="e => ViewModel.ToggleCategory(category, (bool)e.Value!)" />
+                        <span>@category</span>
+                    </label>
+                }
+            </div>
+        </aside>
+
+        <!-- Templates List -->
+        <main class="templates-list">
+            @if (ViewModel.FilteredTemplates.Any())
+            {
+                @foreach (var template in ViewModel.FilteredTemplates)
+                {
+                    <div class="template-row @(ViewModel.SelectedTemplate?.Id == template.Id ? "template-row-selected" : "")" 
+                         @onclick="() => ViewModel.SelectTemplate(template)">
+                        <div class="template-info">
+                            <p class="template-title">@template.Name</p>
+                            <p class="template-desc">@template.Description</p>
+                            <span class="template-category">@template.Category</span>
+                        </div>
+                        <div class="template-actions">
+                            <button class="btn-use" 
+                                    @onclick="() => ViewModel.UseTemplate(template)"
+                                    @onclick:stopPropagation="true">
+                                Use Template
+                            </button>
+                            <button class="btn-edit" 
+                                    @onclick="() => ViewModel.EditTemplate(template)"
+                                    @onclick:stopPropagation="true"
+                                    title="Edit Template">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                        </div>
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="empty-state">
+                    <i class="bi bi-inbox empty-icon"></i>
+                    <h3>No templates found</h3>
+                    <p>Try adjusting your search or filter criteria</p>
+                </div>
+            }
+        </main>
+    </div>
+</div>
+
+@code {
+    private CaseNoteTemplateViewModel ViewModel { get; set; } = new();
+
+    protected override void OnInitialized()
+    {
+        ViewModel.PropertyChanged += (sender, args) => StateHasChanged();
+    }
+}
+

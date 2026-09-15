@@ -1,0 +1,2356 @@
+@page "/billing"
+@using Beauty_Aesthetics_WebPos.Components.Layout
+@layout EmptyLayout
+@using Microsoft.AspNetCore.Components
+@using Beauty_Aesthetics_WebPos.Components.ViewModels
+@using System.Linq
+@using System.Text.RegularExpressions
+@inject NavigationManager NavigationManager
+
+<PageTitle>Billing - Beauty Aesthetics</PageTitle>
+
+<div class="billing-page">
+<button class="billing-close-btn" @onclick="CloseBilling" aria-label="Close billing and return to case notes">
+        <i class="bi bi-x-lg"></i>
+    </button>
+    <button type="button"
+            class="billing-patient-drawer-btn"
+            @onclick="TogglePatientDrawer"
+            title="View Patient Information"
+            aria-label="View Patient Information"
+            aria-expanded="@_isPatientDrawerOpen">
+        <i class="bi bi-person-vcard"></i>
+    </button>
+    <div class="main-layout">
+        <!-- Main Content Area -->
+        <main class="content-area">
+            <!-- Patient Info Card - same structure as CaseNotePage -->
+                        @if (_isPatientDrawerOpen)
+            {
+                <button type="button"
+                        class="patient-drawer-backdrop"
+                        @onclick="ClosePatientDrawer"
+                        aria-label="Close Patient Information"></button>
+            }
+
+            <div class="info-card patient-drawer @( _isPatientInfoCollapsed ? "collapsed" : string.Empty ) @(_isPatientDrawerOpen ? "open" : string.Empty)">
+                <div class="info-card-header" @onclick="TogglePatientInfo">
+                    <div class="info-card-title">
+                        <i class="bi bi-person-badge"></i>
+                        <span>Patient Information</span>
+                    </div>
+                    <button class="btn-toggle-info" title="@(_isPatientInfoCollapsed ? "Expand" : "Collapse")">
+                        <i class="bi @(_isPatientInfoCollapsed ? "bi-chevron-down" : "bi-chevron-up")"></i>
+                    </button>
+                    <button type="button"
+                            class="patient-drawer-close"
+                            @onclick="ClosePatientDrawer"
+                            @onclick:stopPropagation="true"
+                            title="Close Patient Information"
+                            aria-label="Close Patient Information">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+                <div class="info-card-content">
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <i class="bi bi-person"></i>
+                            <div class="info-content">
+                                <span class="info-label">Name</span>
+                                <span class="info-value">@PatientName</span>
+                            </div>
+                        </div>
+                        <div class="info-item">
+                            <i class="bi bi-calendar-heart"></i>
+                            <div class="info-content">
+                                <span class="info-label">Birthday</span>
+                                <span class="info-value">@PatientBirthday</span>
+                            </div>
+                        </div>
+                        <div class="info-item">
+                            <i class="bi bi-telephone"></i>
+                            <div class="info-content">
+                                <span class="info-label">Phone</span>
+                                <span class="info-value">@PatientPhone</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Wallet / Points Row inside patient info, collapsible -->
+                    <div class="wallet-strip" style="margin-top: 10px;">
+                        <div class="wallet-card cash-wallet">
+                            <div class="wallet-card-header">
+                                <i class="bi bi-cash-coin"></i>
+                                <span>Cash Wallet</span>
+                            </div>
+                            <div class="wallet-amount">RM @CashWalletAmount.ToString("N2")</div>
+                            <div class="wallet-footer">Available balance</div>
+                        </div>
+
+                        <div class="wallet-card credit-voucher">
+                            <div class="wallet-card-header">
+                                <i class="bi bi-ticket-perforated"></i>
+                                <span>Credit Voucher</span>
+                            </div>
+                            <div class="wallet-amount">RM @CreditVoucherAmount.ToString("N2")</div>
+                            <div class="wallet-footer">@CreditVoucherCount voucher@(CreditVoucherCount == 1 ? "" : "s")</div>
+                        </div>
+
+                        <div class="wallet-card beauti-points">
+                            <div class="wallet-card-header">
+                                <div class="wallet-header-main">
+                                    <i class="bi bi-stars"></i>
+                                    <span>Beauty Points</span>
+                                </div>
+                                <span class="wallet-info-icon" data-tooltip="RM 1.00 = 1 point">
+                                    <i class="bi bi-info-circle"></i>
+                                </span>
+                            </div>
+                            <div class="wallet-amount">@BeautiPoints.ToString("N0") pts</div>
+                            <div class="wallet-footer">≈ RM @BeautiPointsValue.ToString("N2")</div>
+                        </div>
+                        <div class="wallet-card loyalty-points">
+                            <div class="wallet-card-header">
+                                <i class="bi bi-gift"></i>
+                                <span>Loyalty Points</span>
+                            </div>
+                            <div class="wallet-amount">@LoyaltyPoints.ToString("N0") pts</div>
+                            <div class="wallet-footer">Tier: @LoyaltyTier</div>
+                        </div>
+
+                        <div class="wallet-card outstanding-balance">
+                            <div class="wallet-card-header">
+                                <i class="bi bi-currency-exchange"></i>
+                                <span>Outstanding Balance</span>
+                            </div>
+                            <div class="wallet-amount">RM @PreviousOutstandingAmount.ToString("N2")</div>
+                            <div class="wallet-footer">Previous balance owed</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Billing Card -->
+            <div class="billing-card">
+                <!-- Billing Header -->
+                <div class="billing-header">
+                    <div class="billing-header-left">
+                        <div class="billing-title-row">
+                            <i class="bi bi-wallet2"></i>
+                            <h2>Billing</h2>
+                        </div>
+                    </div>
+                    <div class="billing-header-right">
+                        <div class="billing-status @BillingStatusCss">
+                            <span class="status-dot"></span>
+                            <span>@BillingStatusText</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Billing Content -->
+                <div class="billing-content">
+                    <!-- Left: Items -->
+                    <div class="billing-left">
+                        <div class="billing-section">
+                            <div class="section-header">
+                                <h3>Prescription Items</h3>
+                                <div class="header-actions" style="display: flex; gap: 8px;">
+                                    @if (_isDeleteMode)
+                                    {
+                                        <button class="btn-delete-confirm" @onclick="DeleteSelectedItems" disabled="@(!_selectedItemsToDelete.Any())">
+                                            Confirm Delete (@_selectedItemsToDelete.Count)
+                                        </button>
+                                        <button class="btn-delete-cancel" @onclick="ToggleDeleteMode">
+                                            Cancel
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn-delete-mode" @onclick="ToggleDeleteMode" title="Delete Items">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                        <button type="button"
+                                                class="btn-add-prescription"
+                                                @onclick="OpenPrescriptionModal">
+                                            <i class="bi bi-plus-lg"></i>
+                                            <span>Prescription</span>
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                            <div class="table-wrapper">
+                                <table class="billing-table">
+                                    <thead>
+                                        <tr>
+                                            @if (_isDeleteMode)
+                                            {
+                                                <th class="col-checkbox" style="width: 40px;"></th>
+                                            }
+                                            <th>Item</th>
+                                            <th>Qty</th>
+                                            <th>Unit Price</th>
+                                            <th>Discount</th>
+                                            <th>Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var item in PrescriptionItems)
+                                        {
+                                            <tr @onclick="@(() => { if (_isDeleteMode) ToggleItemSelection(item); })"
+                                                class="@(_isDeleteMode ? "row-clickable" : "")">
+                                                @if (_isDeleteMode)
+                                                {
+                                                    <td>
+                                                        <input type="checkbox" 
+                                                               class="delete-checkbox"
+                                                               checked="@_selectedItemsToDelete.Contains(item)" 
+                                                               @onchange="() => ToggleItemSelection(item)"
+                                                               @onclick:stopPropagation="true" />
+                                                    </td>
+                                                }
+                                                <td>
+                                                    <span class="clickable-item-name" @onclick="() => EditPrescriptionItem(item)" style="cursor: pointer;">
+                                                        @item.Name
+                                                    </span>
+                                                </td>
+                                                <td>@item.Quantity</td>
+                                                <td>RM @item.UnitPrice.ToString("N2")</td>
+                                                <td>
+                                                    <button class="btn-discount-cell" @onclick="() => OpenDiscountModal(item)">
+                                                        @if (item.Discount > 0)
+                                                        {
+                                                            <span class="discount-active">-RM @item.Discount.ToString("N2")</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="discount-empty">Add Discount</span>
+                                                        }
+                                                    </button>
+                                                </td>
+                                                <td>RM @item.LineTotal.ToString("N2")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="billing-section">
+                            <div class="section-header">
+                                <h3>Services</h3>
+                                <div class="header-actions" style="display: flex; gap: 8px;">
+                                    @if (_isServiceDeleteMode)
+                                    {
+                                        <button class="btn-delete-confirm" @onclick="DeleteSelectedServiceItems" disabled="@(!_selectedServiceItemsToDelete.Any())">
+                                            Confirm Delete (@_selectedServiceItemsToDelete.Count)
+                                        </button>
+                                        <button class="btn-delete-cancel" @onclick="ToggleServiceDeleteMode">
+                                            Cancel
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn-delete-mode" @onclick="ToggleServiceDeleteMode" title="Delete Items">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                        <button type="button"
+                                                class="btn-add-prescription btn-add-service"
+                                                @onclick="OpenServicePickerModal">
+                                            <i class="bi bi-plus-lg"></i>
+                                            <span>Service</span>
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                            <div class="table-wrapper">
+                                <table class="billing-table">
+                                    <thead>
+                                        <tr>
+                                            @if (_isServiceDeleteMode)
+                                            {
+                                                <th style="width: 40px;"></th>
+                                            }
+                                            <th>Service</th>
+                                            <th>Staff</th>
+                                            <th>Qty</th>
+                                            <th>Unit Price</th>
+                                            <th>Discount</th>
+                                            <th>Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var service in ServiceItems)
+                                        {
+                                            <tr @onclick="@(() => { if (_isServiceDeleteMode) ToggleServiceItemSelection(service); })"
+                                                class="@(_isServiceDeleteMode ? "row-clickable" : "")">
+                                                @if (_isServiceDeleteMode)
+                                                {
+                                                    <td>
+                                                        <input type="checkbox" 
+                                                               class="delete-checkbox"
+                                                               checked="@_selectedServiceItemsToDelete.Contains(service)"
+                                                               @onchange="@(() => ToggleServiceItemSelection(service))"
+                                                               @onclick:stopPropagation="true" />
+                                                    </td>
+                                                }
+                                                <td>@service.Name</td>
+                                                <td>@service.Staff</td>
+                                                <td>@service.Quantity</td>
+                                                <td>RM @service.UnitPrice.ToString("N2")</td>
+                                                <td>
+                                                    <button class="btn-discount-cell" @onclick="() => OpenDiscountModal(service)">
+                                                        @if (service.Discount > 0)
+                                                        {
+                                                            <span class="discount-active">-RM @service.Discount.ToString("N2")</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="discount-empty">Add Discount</span>
+                                                        }
+                                                    </button>
+                                                </td>
+                                                <td>RM @service.LineTotal.ToString("N2")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="billing-section mc-section">
+                            <div class="section-header">
+                                <h3>MC / Medical Certificate</h3>
+                            </div>
+                            <div class="mc-body">
+                                <p class="mc-description">Prepare and share the medical certificate based on the services above.</p>
+                                <div class="mc-actions">
+                                    <button class="btn-mc-action btn-mc-print" type="button">
+                                        <i class="bi bi-printer"></i>
+                                        <span>Print MC</span>
+                                    </button>
+                                    <button class="btn-mc-action btn-mc-email" type="button">
+                                        <i class="bi bi-envelope"></i>
+                                        <span>Email MC</span>
+                                    </button>
+                                    <button class="btn-mc-action btn-mc-whatsapp" type="button">
+                                        <i class="bi bi-whatsapp"></i>
+                                        <span>WhatsApp MC</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Summary / Payment -->
+                    <div class="billing-right">
+                        <div class="billing-section">
+                            <div class="section-header">
+                                <h3>Summary</h3>
+                            </div>
+                            <div class="summary-list">
+                                <div class="summary-row">
+                                    <span>Subtotal</span>
+                                    <span>RM @Subtotal.ToString("N2")</span>
+                                </div>
+                                <div class="summary-row">
+                                    <span>Discounts / Vouchers</span>
+                                    <span>-RM @DiscountTotal.ToString("N2")</span>
+                                </div>
+                                <div class="summary-row">
+                                    <span>Tax</span>
+                                    <span>RM @TaxAmount.ToString("N2")</span>
+                                </div>
+                                <div class="summary-row">
+                                    <span>Bill Discount</span>
+                                    <button class="btn-summary-discount" @onclick="() => OpenDiscountModal(BillDiscountToken)">
+                                        @if (BillDiscount > 0)
+                                        {
+                                            <span class="discount-value discount-active">
+                                                <i class="bi bi-tag-fill"></i> -RM @BillDiscount.ToString("N2")
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="discount-placeholder">
+                                                <i class="bi bi-plus-circle-dotted"></i> Add Discount
+                                            </span>
+                                        }
+                                    </button>
+                                </div>
+                                <div class="summary-divider"></div>
+                                <div class="summary-row total-row">
+                                    <span>Total Payable</span>
+                                    <span>RM @TotalPayable.ToString("N2")</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="billing-section">
+                            <div class="section-header">
+                                <h3>Payment</h3>
+                            </div>
+                            <div class="payment-methods">
+                                <label class="payment-label">Payment Method</label>
+                                <div class="custom-dropdown-wrapper form-dropdown">
+                                    <div class="custom-dropdown-trigger @(_isPaymentMethodDropdownOpen ? "open" : "")" @onclick="TogglePaymentMethodDropdown">
+                                        <span>@GetPaymentMethodLabel(SelectedPaymentMethod)</span>
+                                        <i class="bi bi-chevron-down dropdown-arrow"></i>
+                                    </div>
+                                    @if (_isPaymentMethodDropdownOpen)
+                                    {
+                                        <div class="custom-dropdown-menu">
+                                            <div class="dropdown-item @(SelectedPaymentMethod == "cash" ? "selected" : "")" @onclick="@(() => SelectPaymentMethod("cash"))">Cash</div>
+                                            <div class="dropdown-item @(SelectedPaymentMethod == "debit-card" ? "selected" : "")" @onclick="@(() => SelectPaymentMethod("debit-card"))">Debit Card</div>
+                                            <div class="dropdown-item @(SelectedPaymentMethod == "credit-card" ? "selected" : "")" @onclick="@(() => SelectPaymentMethod("credit-card"))">Credit Card</div>
+                                            <div class="dropdown-item @(SelectedPaymentMethod == "tng" ? "selected" : "")" @onclick="@(() => SelectPaymentMethod("tng"))">Touch 'n Go eWallet</div>
+                                            <div class="dropdown-item @(SelectedPaymentMethod == "grabpay" ? "selected" : "")" @onclick="@(() => SelectPaymentMethod("grabpay"))">GrabPay</div>
+                                            <div class="dropdown-item @(SelectedPaymentMethod == "boost" ? "selected" : "")" @onclick="@(() => SelectPaymentMethod("boost"))">Boost</div>
+                                            <div class="dropdown-item @(SelectedPaymentMethod == "shopeepay" ? "selected" : "")" @onclick="@(() => SelectPaymentMethod("shopeepay"))">ShopeePay</div>
+                                            <div class="dropdown-item @(SelectedPaymentMethod == "bank" ? "selected" : "")" @onclick="@(() => SelectPaymentMethod("bank"))">FPX Bank Transfer</div>
+                                        </div>
+                                    }
+                                </div>
+
+                                <label class="payment-label">Collected By</label>
+                                <div class="custom-dropdown-wrapper form-dropdown">
+                                    <div class="custom-dropdown-trigger @(_isCollectorDropdownOpen ? "open" : "")" @onclick="ToggleCollectorDropdown">
+                                        <span>@SelectedCollector</span>
+                                        <i class="bi bi-chevron-down dropdown-arrow"></i>
+                                    </div>
+                                    @if (_isCollectorDropdownOpen)
+                                    {
+                                        <div class="custom-dropdown-menu">
+                                            @foreach (var staff in CollectorOptions)
+                                            {
+                                                <div class="dropdown-item @(SelectedCollector == staff ? "selected" : "")" @onclick="@(() => SelectCollector(staff))">
+                                                    @staff
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+
+                                <label class="payment-label">Use Wallet / Points</label>
+                                <div class="payment-toggle-row">
+                                    <label class="toggle-option">
+                                        <input type="checkbox" @bind="UseCashWallet" />
+                                        <span>Use Cash Wallet</span>
+                                    </label>
+                                    <label class="toggle-option">
+                                        <input type="checkbox" @bind="UseCreditVoucher" />
+                                        <span>Use Credit Voucher</span>
+                                    </label>
+                                    <label class="toggle-option">
+                                        <input type="checkbox" @bind="UseBeautiPoints" />
+                                        <span>Use Beauty Points</span>
+                                    </label>
+                                    <label class="toggle-option">
+                                        <input type="checkbox" @bind="UseLoyaltyPoints" />
+                                        <span>Use Loyalty Points</span>
+                                    </label>
+                                </div>
+
+                                <div class="payment-multi-row">
+                                    <div class="payment-multi-summary">
+                                        <span class="payment-label">Multi-payment</span>
+                                        <span class="payment-multi-summary-text">
+                                            @if (SelectedPaymentSplits.Any())
+                                            {
+                                                @foreach (var split in SelectedPaymentSplits)
+                                                {
+                                                    <span class="payment-multi-badge">
+                                                        <span>@split.MethodLabel</span>
+                                                        <strong>RM @split.Amount!.Value.ToString("N2")</strong>
+                                                    </span>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <span>No split configured</span>
+                                            }
+                                        </span>
+                                    </div>
+                                    <button type="button" class="btn-multi-payment" @onclick="OpenMultiPaymentModal">
+                                        <i class="bi bi-cash-stack"></i>
+                                        <span>Multi-payment</span>
+                                    </button>
+                                </div>
+
+                                <label class="payment-label">Amount Received</label>
+                                <input class="payment-input"
+                                       type="text"
+                                       inputmode="decimal"
+                                       value="@AmountReceivedText"
+                                       @oninput="HandleAmountInputDebounced" />
+
+                                <div class="amount-summary amount-summary-inline">
+                                    <div class="amount-row">
+                                        <span class="amount-label">Total</span>
+                                        <span class="amount-value">RM @TotalAmount.ToString("N2")</span>
+                                    </div>
+                                    <div class="amount-row">
+                                        <span class="amount-label">Outstanding</span>
+                                        <span class="amount-value outstanding">RM @OutstandingAmount.ToString("N2")</span>
+                                    </div>
+                                </div>
+
+                                <div class="summary-row change-row">
+                                    <span>Change</span>
+                                    <span>RM @ChangeAmount.ToString("N2")</span>
+                                </div>
+                            </div>
+
+                            <div class="payment-actions">
+                                <button class="btn-primary" @onclick="OnConfirmPaymentClicked">Confirm Payment</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+@if (_showPrescriptionModal)
+{
+    <div class="modal-overlay" @onclick="ClosePrescriptionModal">
+        <div class="modal-container billing-prescription-modal" @onclick:stopPropagation="true">
+            <div class="modal-header modal-header-info">
+                <i class="bi bi-capsule"></i>
+                <h3>New Prescription</h3>
+            </div>
+            <div class="modal-body prescription-modal-body">
+                <div class="prescription-layout-grid">
+                    <!-- Left Panel: Search & List -->
+                    <div class="prescription-left-panel">
+                        <!-- Search Bar -->
+                        <div class="service-search-bar">
+                            <i class="bi bi-search"></i>
+                            <input class="service-search-input"
+                                   type="text"
+                                   placeholder="Search by name or code"
+                                   value="@PrescriptionViewModel.SearchTerm"
+                                   @oninput="HandlePrescriptionSearch" />
+                        </div>
+
+                        <!-- Category Filter Dropdown -->
+                        <div class="filter-dropdown-container">
+                            <button class="btn-filter-dropdown" @onclick="ToggleCategoryDropdown">
+                                <span>@(string.IsNullOrEmpty(PrescriptionViewModel.SelectedCategory) ? "All Categories" : PrescriptionViewModel.SelectedCategory)</span>
+                                <i class="bi bi-chevron-down"></i>
+                            </button>
+                            <div class="filter-dropdown-menu @(_showCategoryDropdown ? "show" : "")">
+                                <div class="filter-dropdown-item @(string.IsNullOrEmpty(PrescriptionViewModel.SelectedCategory) ? "active" : "")"
+                                     @onclick="() => SetDrugCategory(string.Empty)">
+                                    All Categories
+                                </div>
+                                @foreach (var cat in PrescriptionViewModel.AvailableCategories)
+                                {
+                                    <div class="filter-dropdown-item @(PrescriptionViewModel.SelectedCategory == cat ? "active" : "")"
+                                         @onclick="() => SetDrugCategory(cat)">
+                                        @cat
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <!-- Drug List -->
+                        <div class="drug-selection-list">
+                            @foreach (var drug in PrescriptionViewModel.FilteredDrugs)
+                            {
+                                <div class="drug-selection-row @(PrescriptionViewModel.SelectedDrugToAdd?.Id == drug.Id ? "selected" : "")"
+                                     @onclick="() => SelectDrug(drug)">
+                                    <div class="drug-icon">
+                                        <i class="bi bi-capsule"></i>
+                                    </div>
+                                    <div class="drug-info">
+                                        <h4>@drug.Name</h4>
+                                        <div class="drug-meta">
+                                            <span>@drug.DrugCode</span>
+                                            <span class="dot">•</span>
+                                            <span>@drug.Category</span>
+                                        </div>
+                                    </div>
+                                    <div class="drug-action">
+                                        @if (PrescriptionViewModel.SelectedDrugToAdd?.Id == drug.Id)
+                                        {
+                                            <i class="bi bi-check-circle-fill text-success"></i>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+
+                    </div>
+
+                    <!-- Right Panel: Form -->
+                    <div class="prescription-right-panel">
+                        @if (PrescriptionViewModel.SelectedDrugToAdd != null)
+                        {
+                            <div class="prescription-form-panel">
+                                <div class="selected-drug-summary">
+                                    <div class="drug-name-row">
+                                        <div class="drug-title-block">
+                                            <div class="label-with-action">
+                                                <span class="field-label">Selected Drug</span>
+                                                <button class="btn-inline-action btn-inline-clear"
+                                                        type="button"
+                                                        title="Clear selected drug"
+                                                        aria-label="Clear selected drug"
+                                                        @onclick="CancelPrescriptionDrugSelection">
+                                                    <i class="bi bi-x-circle"></i>
+                                                    <span>Clear</span>
+                                                </button>
+                                            </div>
+                                            <h4>@PrescriptionViewModel.SelectedDrugToAdd.Name</h4>
+                                            <p>Drug Code: @PrescriptionViewModel.SelectedDrugToAdd.DrugCode</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="prescription-form-grid">
+                                    <div class="form-row">
+                                        <label class="form-label">Dosage</label>
+                                        <input type="number"
+                                               class="form-control"
+                                               step="0.01"
+                                               min="0"
+                                               @bind="PrescriptionViewModel.NewDrugQuantity" />
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-label-row">
+                                            <div class="label-with-action">
+                                                <label class="form-label">Frequency</label>
+                                                <button class="btn-inline-action"
+                                                        type="button"
+                                                        title="@(_manualFrequency ? "Switch to dropdown" : "Switch to manual entry")"
+                                                        @onclick="ToggleManualFrequency">
+                                                    <i class="bi @(_manualFrequency ? "bi-list-check" : "bi-pencil-square")"></i>
+                                                    <span>Edit</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        @if (_manualFrequency)
+                                        {
+                                            <input class="form-control"
+                                                   type="text"
+                                                   @bind="PrescriptionViewModel.NewDrugFrequency"
+                                                   placeholder="Enter frequency" />
+                                        }
+                                        else
+                                        {
+                                            <div class="custom-dropdown-wrapper form-dropdown">
+                                                <div class="custom-dropdown-trigger @(_isFrequencyDropdownOpen ? "open" : "")" @onclick="ToggleFrequencyDropdown">
+                                                    <span>@(string.IsNullOrEmpty(PrescriptionViewModel.NewDrugFrequency) ? "- SELECT FREQUENCY -" : PrescriptionViewModel.NewDrugFrequency)</span>
+                                                    <i class="bi bi-chevron-down dropdown-arrow"></i>
+                                                </div>
+                                                @if (_isFrequencyDropdownOpen)
+                                                {
+                                                    <div class="custom-dropdown-menu">
+                                                        @foreach (var freq in PrescriptionViewModel.FrequencyOptions)
+                                                        {
+                                                            <div class="dropdown-item @(PrescriptionViewModel.NewDrugFrequency == freq ? "selected" : "")" @onclick="@(() => SelectFrequency(freq))">
+                                                                @freq
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-label-row">
+                                            <div class="label-with-action">
+                                                <label class="form-label">Duration</label>
+                                                <button class="btn-inline-action"
+                                                        type="button"
+                                                        title="@(_manualDuration ? "Switch to dropdown" : "Switch to manual entry")"
+                                                        @onclick="ToggleManualDuration">
+                                                    <i class="bi @(_manualDuration ? "bi-list-check" : "bi-pencil-square")"></i>
+                                                    <span>Edit</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        @if (_manualDuration)
+                                        {
+                                            <input class="form-control"
+                                                   type="text"
+                                                   @bind="PrescriptionViewModel.NewDrugDuration"
+                                                   placeholder="Enter duration" />
+                                        }
+                                        else
+                                        {
+                                            <div class="custom-dropdown-wrapper form-dropdown">
+                                                <div class="custom-dropdown-trigger @(_isDurationDropdownOpen ? "open" : "")" @onclick="ToggleDurationDropdown">
+                                                    <span>@(string.IsNullOrEmpty(PrescriptionViewModel.NewDrugDuration) ? "- SELECT -" : PrescriptionViewModel.NewDrugDuration)</span>
+                                                    <i class="bi bi-chevron-down dropdown-arrow"></i>
+                                                </div>
+                                                @if (_isDurationDropdownOpen)
+                                                {
+                                                    <div class="custom-dropdown-menu">
+                                                        @foreach (var duration in PrescriptionViewModel.DurationOptions)
+                                                        {
+                                                            <div class="dropdown-item @(PrescriptionViewModel.NewDrugDuration == duration ? "selected" : "")" @onclick="@(() => SelectDuration(duration))">
+                                                                @duration
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-label-row">
+                                            <div class="label-with-action">
+                                                <label class="form-label">Reason</label>
+                                                <button class="btn-inline-action"
+                                                        type="button"
+                                                        title="@(_manualReason ? "Switch to dropdown" : "Switch to manual entry")"
+                                                        @onclick="ToggleManualReason">
+                                                    <i class="bi @(_manualReason ? "bi-list-check" : "bi-pencil-square")"></i>
+                                                    <span>Edit</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        @if (_manualReason)
+                                        {
+                                            <input class="form-control"
+                                                   type="text"
+                                                   @bind="PrescriptionViewModel.NewDrugReason"
+                                                   placeholder="Enter reason" />
+                                        }
+                                        else
+                                        {
+                                            <div class="custom-dropdown-wrapper form-dropdown">
+                                                <div class="custom-dropdown-trigger @(_isReasonDropdownOpen ? "open" : "")" @onclick="ToggleReasonDropdown">
+                                                    <span>@(string.IsNullOrEmpty(PrescriptionViewModel.NewDrugReason) ? "- SELECT REASON -" : PrescriptionViewModel.NewDrugReason)</span>
+                                                    <i class="bi bi-chevron-down dropdown-arrow"></i>
+                                                </div>
+                                                @if (_isReasonDropdownOpen)
+                                                {
+                                                    <div class="custom-dropdown-menu">
+                                                        @foreach (var reason in PrescriptionViewModel.ReasonOptions)
+                                                        {
+                                                            <div class="dropdown-item @(PrescriptionViewModel.NewDrugReason == reason ? "selected" : "")" @onclick="@(() => SelectReason(reason))">
+                                                                @reason
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                    <div class="form-row">
+                                        <label class="form-label">Notes</label>
+                                        <textarea class="form-control form-textarea"
+                                                  rows="3"
+                                                  @bind="PrescriptionViewModel.NewDrugNotes"
+                                                  placeholder="Add notes"></textarea>
+                                    </div>
+                                </div>
+
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="prescription-placeholder">
+                                <div class="placeholder-content">
+                                    <i class="bi bi-capsule-pill"></i>
+                                    <p>Select a drug from the list to view details</p>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+
+
+                @if (!string.IsNullOrEmpty(_prescriptionStatusMessage))
+                {
+                    <div class="status-message @(_prescriptionStatusIsSuccess ? "status-success" : "status-error")">
+                        <i class="bi @(_prescriptionStatusIsSuccess ? "bi-check-circle-fill" : "bi-exclamation-circle-fill")"></i>
+                        <span>@_prescriptionStatusMessage</span>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" type="button" @onclick="ClosePrescriptionModal">
+                    <i class="bi bi-x-circle"></i>
+                    <span>Cancel</span>
+                </button>
+                <button class="btn-modal-confirm" type="button" @onclick="AddSinglePrescriptionDrug" disabled="@(PrescriptionViewModel.SelectedDrugToAdd == null)">
+                    <i class="bi bi-plus-lg"></i>
+                    <span>Add Prescription</span>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Payment confirmation & post-payment option modals *@
+@if (_showConfirmPaymentModal)
+{
+    <div class="modal-overlay" @onclick="CloseConfirmPaymentModal">
+        <div class="modal-container billing-confirm-modal" @onclick:stopPropagation="true">
+            <div class="modal-header modal-header-info">
+                <i class="bi bi-credit-card"></i>
+                <h3>Confirm Payment</h3>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to proceed with this payment?</p>
+                <div class="payment-summary-box">
+                    <div class="summary-detail-row">
+                        <span class="summary-label">Total Payable:</span>
+                        <strong class="summary-value">RM @TotalPayable.ToString("N2")</strong>
+                    </div>
+                    <div class="summary-detail-row">
+                        <span class="summary-label">Amount Received:</span>
+                        <strong class="summary-value">RM @(AmountReceived?.ToString("N2") ?? "0.00")</strong>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" @onclick="CloseConfirmPaymentModal">
+                    <i class="bi bi-x-circle"></i>
+                    <span>Cancel</span>
+                </button>
+                <button class="btn-modal-confirm" @onclick="ConfirmPaymentAsync">
+                    <i class="bi bi-check-circle-fill"></i>
+                    <span>Confirm</span>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_showPaymentSummaryModal)
+{
+    <div class="modal-overlay">
+        <div class="modal-container billing-confirm-modal" @onclick:stopPropagation="true">
+            <div class="modal-header modal-header-info">
+                <i class="bi bi-check-circle-fill"></i>
+                <h3>Payment Successful</h3>
+            </div>
+            <div class="modal-body">
+                <p>Payment has been completed successfully!</p>
+                
+                <div class="payment-summary-box">
+                    <div class="summary-detail-row">
+                        <span class="summary-label">Total Payable:</span>
+                        <strong class="summary-value">RM @TotalPayable.ToString("N2")</strong>
+                    </div>
+                    <div class="summary-detail-row">
+                        <span class="summary-label">Amount Received:</span>
+                        <strong class="summary-value">RM @(AmountReceived?.ToString("N2") ?? "0.00")</strong>
+                    </div>
+                    @if (ChangeAmount > 0)
+                    {
+                        <div class="summary-detail-row highlight-change">
+                            <span class="summary-label">Change:</span>
+                            <strong class="summary-value change-amount">RM @ChangeAmount.ToString("N2")</strong>
+                        </div>
+                    }
+                </div>
+
+                <div class="receipt-options">
+                    <p class="receipt-options-label">Would you like a receipt?</p>
+                    <div class="receipt-buttons">
+                        <button class="btn-receipt-option" @onclick="PrintReceiptAndClose" disabled="@_isProcessingPayment">
+                            <i class="bi bi-printer"></i>
+                            <span>Print Receipt</span>
+                        </button>
+                        <button class="btn-receipt-option" @onclick="EmailReceiptAndClose" disabled="@_isProcessingPayment">
+                            <i class="bi bi-envelope"></i>
+                            <span>Email Receipt</span>
+                        </button>
+                    </div>
+                </div>
+
+                @if (_isProcessingPayment)
+                {
+                    <div class="modal-processing">
+                        <i class="bi bi-arrow-repeat spinner"></i>
+                        <span>Processing...</span>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-confirm" @onclick="ClosePaymentSummaryModal" disabled="@_isProcessingPayment">
+                    <i class="bi bi-check-circle-fill"></i>
+                    <span>Done (No Receipt)</span>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_showInsufficientAmountModal)
+{
+    <div class="modal-overlay" @onclick="CloseInsufficientAmountModal">
+        <div class="modal-container billing-confirm-modal" @onclick:stopPropagation="true">
+            <div class="modal-header modal-header-warning">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <h3>Insufficient Amount</h3>
+            </div>
+            <div class="modal-body">
+                <p>The amount received is not enough to complete this payment.</p>
+                <div class="amount-comparison">
+                    <div class="amount-row">
+                        <span>Total Payable:</span>
+                        <strong>RM @TotalPayable.ToString("N2")</strong>
+                    </div>
+                    <div class="amount-row">
+                        <span>Amount Received:</span>
+                        <strong>RM @(AmountReceived?.ToString("N2") ?? "0.00")</strong>
+                    </div>
+                    <div class="amount-row shortage">
+                        <span>Shortage:</span>
+                        <strong class="text-danger">RM @((TotalPayable - (AmountReceived ?? 0m)).ToString("N2"))</strong>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-confirm" @onclick="CloseInsufficientAmountModal">
+                    <i class="bi bi-check-circle-fill"></i>
+                    <span>OK</span>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+
+@if (_showMultiPaymentModal)
+{
+    <div class="modal-overlay" @onclick="CloseMultiPaymentModal">
+        <div class="modal-container billing-multi-payment-modal" @onclick:stopPropagation="true">
+            <div class="modal-header modal-header-info">
+                <i class="bi bi-columns-gap"></i>
+                <h3>Multi-payment</h3>
+            </div>
+            <div class="modal-body">
+                <div class="multi-payment-groups">
+                    @foreach (var group in PaymentMethodGroups)
+                    {
+                        <div class="multi-payment-group @(group.IsExpanded ? "expanded" : string.Empty)">
+                            <button type="button"
+                                    class="multi-payment-group-toggle @(group.IsExpanded ? "expanded" : string.Empty)"
+                                    @onclick="() => TogglePaymentGroup(group)">
+                                <div class="group-toggle-left">
+                                    <i class="@group.Icon"></i>
+                                    <div class="group-toggle-text">
+                                        <span class="group-label">@group.Label</span>
+                                        @if (!string.IsNullOrWhiteSpace(group.Description))
+                                        {
+                                            <span class="group-description">@group.Description</span>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="group-toggle-right">
+                                    <span class="group-total">RM @group.GroupTotal.ToString("N2")</span>
+                                    <i class="bi @(group.IsExpanded ? "bi-chevron-up" : "bi-chevron-down")"></i>
+                                </div>
+                            </button>
+
+                            @if (group.IsExpanded)
+                            {
+                                <div class="multi-payment-group-list">
+                                    @foreach (var split in group.Methods)
+                                    {
+                                        <div class="multi-payment-row">
+                                            <span class="multi-payment-method">@split.MethodLabel</span>
+                                            <input class="multi-payment-input"
+                                                   type="text"
+                                                   inputmode="decimal"
+                                                   value="@split.AmountText"
+                                                   @oninput="e => OnSplitAmountInput(split, e)"
+                                                   placeholder="0.00" />
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <div class="multi-payment-balance-panel">
+                    <div class="balance-item">
+                        <span>Total Payable</span>
+                        <strong>RM @TotalPayable.ToString("N2")</strong>
+                    </div>
+                    <div class="balance-item">
+                        <span>Split Total</span>
+                        <strong>RM @MultiPaymentTotal.ToString("N2")</strong>
+                    </div>
+                    <div class="balance-item @(MultiPaymentRemaining < 0 ? "balance-positive" : MultiPaymentRemaining > 0 ? "balance-negative" : string.Empty)">
+                        <span>@(MultiPaymentRemaining > 0 ? "Amount Left" : MultiPaymentRemaining < 0 ? "Overpaid" : "Balanced")</span>
+                        <strong>RM @Math.Abs(MultiPaymentRemaining).ToString("N2")</strong>
+                        <small>
+                            @(MultiPaymentRemaining > 0
+                                ? "Still to collect"
+                                : MultiPaymentRemaining < 0
+                                    ? "Will be returned as change"
+                                    : "Matches total payable")
+                        </small>
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" @onclick="CloseMultiPaymentModal">
+                    <i class="bi bi-x-circle"></i>
+                    <span>Cancel</span>
+                </button>
+                <button class="btn-modal-confirm" @onclick="ConfirmMultiPaymentSelection">
+                    <i class="bi bi-check-circle-fill"></i>
+                    <span>Apply</span>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_showPostPaymentModal)
+{
+    <div class="modal-overlay" @onclick="ClosePostPaymentModal">
+        <div class="modal-container billing-post-modal" @onclick:stopPropagation="true">
+            <div class="modal-header modal-header-info">
+                <i class="bi bi-receipt"></i>
+                <h3>Payment Options</h3>
+            </div>
+            <div class="modal-body">
+                <p>The payment has been recorded. What would you like to do next?</p>
+
+                <div class="post-payment-options">
+                    <button class="btn-modal-secondary" @onclick="PrintInvoiceAsync" disabled="@_isProcessingPayment">
+                        <i class="bi bi-printer"></i>
+                        <span>Print Invoice (PDF)</span>
+                    </button>
+                </div>
+
+                <div class="email-option-group">
+                    <label for="billing-email-input">Send to Email</label>
+                    <input id="billing-email-input" class="email-input" @bind="_postPaymentEmail" placeholder="Enter email address" />
+                    <button class="btn-modal-primary" @onclick="SendInvoiceEmailAsync" disabled="@_isProcessingPayment">
+                        <i class="bi bi-envelope-fill"></i>
+                        <span>Send to Email</span>
+                    </button>
+                </div>
+
+                @if (_isProcessingPayment)
+                {
+                    <div class="modal-processing">
+                        <i class="bi bi-arrow-repeat spinner"></i>
+                        <span>Processing, please wait...</span>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" @onclick="ClosePostPaymentModal" disabled="@_isProcessingPayment">
+                    <i class="bi bi-x-circle"></i>
+                    <span>Cancel</span>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_showDiscountModal)
+{
+    <div class="modal-overlay" @onclick="CloseDiscountModal">
+        <div class="modal-container billing-discount-modal" @onclick:stopPropagation="true">
+            <div class="modal-header modal-header-info">
+                <i class="bi bi-percent"></i>
+                <h3>Apply Discount</h3>
+            </div>
+            <div class="modal-body">
+                <div class="discount-toggle-row">
+                    <button class="discount-type-btn @(!_isPercentageDiscount ? "active" : "")" @onclick="() => SetDiscountType(false)">
+                        RM (Fixed)
+                    </button>
+                    <button class="discount-type-btn @(_isPercentageDiscount ? "active" : "")" @onclick="() => SetDiscountType(true)">
+                        % (Percentage)
+                    </button>
+                </div>
+
+                <div class="discount-input-group">
+                    <label>Discount Amount</label>
+                    <div class="input-with-prefix">
+                        <span class="prefix">@(_isPercentageDiscount ? "%" : "RM")</span>
+                        <input type="text" inputmode="decimal" @bind="_discountValue" @bind:event="oninput" placeholder="0.00" @onkeydown="HandleDiscountEnterKey" />
+                    </div>
+                </div>
+
+                <div class="quick-discount-grid">
+                    @if (_isPercentageDiscount)
+                    {
+                        <button class="btn-quick-discount" @onclick='() => QuickApplyDiscount("5", true)'>5%</button>
+                        <button class="btn-quick-discount" @onclick='() => QuickApplyDiscount("10", true)'>10%</button>
+                        <button class="btn-quick-discount" @onclick='() => QuickApplyDiscount("20", true)'>20%</button>
+                        <button class="btn-quick-discount" @onclick='() => QuickApplyDiscount("50", true)'>50%</button>
+                    }
+                    else
+                    {
+                        <button class="btn-quick-discount" @onclick='() => QuickApplyDiscount("10", false)'>RM 10</button>
+                        <button class="btn-quick-discount" @onclick='() => QuickApplyDiscount("20", false)'>RM 20</button>
+                        <button class="btn-quick-discount" @onclick='() => QuickApplyDiscount("50", false)'>RM 50</button>
+                        <button class="btn-quick-discount" @onclick='() => QuickApplyDiscount("100", false)'>RM 100</button>
+                    }
+                </div>
+
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" @onclick="CloseDiscountModal">
+                    Cancel
+                </button>
+                <button class="btn-modal-confirm" @onclick="ApplyDiscount">
+                    Apply Discount
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_showServicePickerModal)
+{
+    <div class="modal-overlay" @onclick="CloseServicePickerModal">
+        <div class="modal-container billing-service-modal" @onclick:stopPropagation="true">
+            <div class="modal-header modal-header-info">
+                <i class="bi bi-grid"></i>
+                <h3>Select Service</h3>
+            </div>
+            <div class="modal-body">
+                <div class="service-search-bar">
+                    <i class="bi bi-search"></i>
+                    <input type="text" class="service-search-input" placeholder="Search services..." value="@_serviceSearchQuery" @oninput="UpdateServiceSearch" />
+                </div>
+                
+                <div class="service-category-filter">
+                    @foreach (var cat in ServiceCategories)
+                    {
+                        <button class="btn-category-filter @(cat == _selectedServiceCategory ? "active" : "")" 
+                                @onclick="() => SetServiceCategory(cat)">
+                            @cat
+                        </button>
+                    }
+                </div>
+
+                <div class="service-catalog-list">
+                    @foreach (var svc in FilteredServiceCatalog)
+                    {
+                        <div class="service-catalog-row" @onclick="() => AddServiceFromCatalog(svc)">
+                            <div class="service-icon">
+                                <i class="bi bi-stars"></i>
+                            </div>
+                            <div class="service-info">
+                                <h4>@svc.Name</h4>
+                                <div class="service-meta">
+                                    <span>@svc.Category</span>
+                                    <span class="dot">•</span>
+                                    <span>@svc.DurationSpend</span>
+                                </div>
+                            </div>
+                            <div class="service-price">RM @svc.Price.ToString("N2")</div>
+                            <button class="btn-add-service-item">
+                                <i class="bi bi-plus-lg"></i>
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" @onclick="CloseServicePickerModal">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_showDeleteConfirmModal)
+{
+    <div class="modal-overlay" @onclick="CancelDeleteConfirm">
+        <div class="modal-container billing-confirm-modal" @onclick:stopPropagation="true">
+            <div class="modal-header modal-header-danger">
+                <i class="bi bi-exclamation-triangle"></i>
+                <h3>Confirm Deletion</h3>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete the following items?</p>
+                <div class="delete-summary-list" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">
+                    @foreach (var item in _pendingDeleteItems)
+                    {
+                        <div class="delete-summary-item" style="display: flex; justify-content: space-between; padding: 8px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0;">
+                            <span class="item-name" style="font-weight: 600; color: #334155;">@item.Name</span>
+                            <span class="item-qty" style="color: #64748b;">x @item.Quantity</span>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" @onclick="CancelDeleteConfirm">
+                    Cancel
+                </button>
+                <button class="btn-modal-danger" @onclick="ConfirmDeleteItems">
+                    <i class="bi bi-trash"></i>
+                    <span>Delete</span>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<AppErrorPopup Title="Billing request failed"
+               Message="@BillingErrorMessage"
+               OnDismiss="DismissBillingError" />
+
+@code {
+    private string? BillingErrorMessage => new[]
+    {
+        AmountReceivedError,
+        _showPrescriptionValidationError ? "Please fill in prescription frequency, duration, and reason." : null,
+        _multiPaymentError,
+        _postPaymentEmailError,
+        _discountError
+    }.FirstOrDefault(message => !string.IsNullOrWhiteSpace(message));
+
+    private void DismissBillingError()
+    {
+        AmountReceivedError = null;
+        _showPrescriptionValidationError = false;
+        _multiPaymentError = string.Empty;
+        _postPaymentEmailError = string.Empty;
+        _discountError = string.Empty;
+    }
+
+    private string PatientName { get; set; } = "Sample Patient";
+    private string PatientBirthday { get; set; } = "01/01/1990";
+    private string PatientPhone { get; set; } = "+60 12-345 6789";
+
+    private bool _isPatientInfoCollapsed = false;
+    private bool _isPatientDrawerOpen = false;
+
+    private string VisitDate { get; set; } = DateTime.Now.ToString("dd/MM/yyyy");
+    private string DoctorName { get; set; } = "Dr. Example";
+
+    private string BillingStatusText { get; set; } = "Unpaid";
+    private string BillingStatusCss => "status-unpaid";
+
+    // Sample wallet / loyalty data
+    private decimal CashWalletAmount { get; set; } = 250.00m;
+    private decimal CreditVoucherAmount { get; set; } = 150.00m;
+    private int CreditVoucherCount { get; set; } = 2;
+
+    private int BeautiPoints { get; set; } = 1200;
+    private decimal BeautiPointsValue => BeautiPoints * 1.00m; // RM1.00 per point (RM1 = 1 point)
+
+    private int LoyaltyPoints { get; set; } = 500;
+    private string LoyaltyTier { get; set; } = "Standard";
+    private decimal PreviousOutstandingAmount { get; set; } = 888.00m;
+
+    // Sample billing data
+    private List<BillingItem> PrescriptionItems { get; set; } = new()
+    {
+        new BillingItem("Hydrating Glow Serum", 1, 180.00m, 0.00m),
+        new BillingItem("SPF50+ Daily Sunshield", 1, 120.00m, 0.00m),
+        new BillingItem("Post-Laser Recovery Cream", 1, 150.00m, 0.00m)
+    };
+
+    private List<BillingService> ServiceItems { get; set; } = new()
+    {
+        new BillingService("Signature Hydrafacial", "Therapist A", 1, 380.00m, 0.00m),
+        new BillingService("Acne Clarifying Facial", "Therapist B", 1, 260.00m, 0.00m),
+        new BillingService("LED Light Therapy (Add-on)", "Therapist A", 1, 80.00m, 0.00m)
+    };
+
+    // MC / insurance and summary values
+    private decimal McCoverage { get; set; } = 150.00m;   // e.g. MC pays RM150
+    private decimal BillDiscount { get; set; } = 0m;
+    private readonly object BillDiscountToken = new();
+
+    private decimal DiscountTotal =>
+        PrescriptionItems.Sum(i => i.Discount) +
+        ServiceItems.Sum(s => s.Discount) +
+        BillDiscount;
+
+    private decimal Subtotal =>
+        PrescriptionItems.Sum(i => i.LineTotal + i.Discount) +
+        ServiceItems.Sum(s => s.LineTotal + s.Discount);
+
+    private decimal TaxRate { get; set; } = 0.06m; // 6% SST/GST example
+    private decimal TaxAmount => Math.Round((Subtotal - McCoverage - DiscountTotal) * TaxRate, 2);
+
+    private decimal TotalPayable =>
+        Math.Max(0m, Subtotal - McCoverage - DiscountTotal + TaxAmount);
+
+    private decimal TotalAmount => TotalPayable;
+    private decimal OutstandingAmount => Math.Max(0m, TotalPayable - (AmountReceived ?? 0m));
+
+    private string SelectedPaymentMethod { get; set; } = "cash";
+    private string SelectedCollector { get; set; } = string.Empty;
+    private List<string> CollectorOptions { get; set; } = new();
+    private bool UseCashWallet { get; set; }
+    private bool UseCreditVoucher { get; set; }
+    private bool UseBeautiPoints { get; set; }
+    private bool UseLoyaltyPoints { get; set; }
+
+    private string AmountReceivedText { get; set; } = string.Empty;
+    private decimal? AmountReceived { get; set; }
+    private string? AmountReceivedError { get; set; }
+    private CancellationTokenSource? _amountInputCts;
+
+    private decimal ChangeAmount => Math.Max(0m, (AmountReceived ?? 0m) - TotalPayable);
+
+    // Prescription modal state
+    private CaseNotePrescriptionViewModel PrescriptionViewModel { get; set; } = new();
+    private bool _showPrescriptionModal;
+    private bool _showPrescriptionValidationError;
+    private bool _manualFrequency;
+    private bool _manualDuration;
+    private bool _manualReason;
+
+    private string _prescriptionStatusMessage = string.Empty;
+    private bool _prescriptionStatusIsSuccess;
+
+    // Modal & post-payment state
+    private bool _showConfirmPaymentModal;
+    private bool _showPaymentSummaryModal;
+    private bool _showInsufficientAmountModal;
+    private bool _showPostPaymentModal;
+    private bool _isProcessingPayment;
+    private string? _paymentValidationError;
+    private string _postPaymentEmail = string.Empty;
+    private string? _postPaymentEmailError;
+
+    // Multi-payment state
+    private bool _showMultiPaymentModal;
+    private string? _multiPaymentError;
+
+    // Discount Modal state
+    private bool _showDiscountModal;
+    private object? _selectedDiscountItem; // BillingItem or BillingService
+    private string _discountValue = string.Empty;
+    private bool _isPercentageDiscount; // true = %, false = RM
+    private string? _discountError;
+
+    // Service picker modal state
+    private bool _showServicePickerModal;
+
+    private List<PaymentMethodGroup> PaymentMethodGroups { get; } = new()
+    {
+        new PaymentMethodGroup(
+            "cash",
+            "Cash",
+            "bi-cash-coin",
+            "Counter collection",
+            new PaymentSplit("cash", "Cash")
+        ),
+        new PaymentMethodGroup(
+            "ewallet",
+            "E-Wallet",
+            "bi-phone",
+            "Touch 'n Go, GrabPay, Boost, ShopeePay",
+            new PaymentSplit("tng", "Touch 'n Go eWallet"),
+            new PaymentSplit("grabpay", "GrabPay"),
+            new PaymentSplit("boost", "Boost"),
+            new PaymentSplit("shopeepay", "ShopeePay")
+        ),
+        new PaymentMethodGroup(
+            "card",
+            "Card",
+            "bi-credit-card-2-front-fill",
+            "Debit & credit terminals",
+            new PaymentSplit("debit-card", "Debit Card"),
+            new PaymentSplit("credit-card", "Credit Card")
+        ),
+        new PaymentMethodGroup(
+            "bank",
+            "FPX / Bank Transfer",
+            "bi-bank",
+            "Online banking transfer",
+            new PaymentSplit("fpx", "FPX Bank Transfer")
+        )
+    };
+
+    private IEnumerable<PaymentSplit> AllPaymentSplits =>
+        PaymentMethodGroups.SelectMany(g => g.Methods);
+
+    private IEnumerable<PaymentSplit> SelectedPaymentSplits =>
+        AllPaymentSplits
+            .Where(p => p.Amount.HasValue && p.Amount.Value > 0)
+            .ToList();
+
+    private decimal MultiPaymentTotal => SelectedPaymentSplits.Sum(p => p.Amount!.Value);
+    private decimal MultiPaymentRemaining => TotalPayable - MultiPaymentTotal;
+
+
+
+    // Simple service catalog for picker modal
+    private List<ServiceCatalogItem> ServiceCatalog { get; } = new()
+    {
+        new ServiceCatalogItem("Facial Treatment", "SRV-001", "Beauty", "60 mins", 150.00m),
+        new ServiceCatalogItem("Hair Styling", "SRV-002", "Hair Care", "45 mins", 80.00m),
+        new ServiceCatalogItem("Manicure & Pedicure", "SRV-003", "Nail Care", "90 mins", 120.00m),
+        new ServiceCatalogItem("Body Massage", "SRV-004", "Wellness", "120 mins", 200.00m),
+        new ServiceCatalogItem("Skin Rejuvenation", "SRV-005", "Beauty", "75 mins", 180.00m)
+    };
+
+    private string _serviceSearchQuery = string.Empty;
+    private string _selectedServiceCategory = "All";
+
+    private List<string> ServiceCategories => ServiceCatalog
+        .Select(s => s.Category)
+        .Distinct()
+        .OrderBy(c => c)
+        .Prepend("All")
+        .ToList();
+
+    private IEnumerable<ServiceCatalogItem> FilteredServiceCatalog => ServiceCatalog
+        .Where(s => (_selectedServiceCategory == "All" || s.Category == _selectedServiceCategory) &&
+                    (string.IsNullOrWhiteSpace(_serviceSearchQuery) || 
+                     s.Name.Contains(_serviceSearchQuery, StringComparison.OrdinalIgnoreCase) || 
+                     s.Sku.Contains(_serviceSearchQuery, StringComparison.OrdinalIgnoreCase)));
+
+    private void UpdateServiceSearch(ChangeEventArgs e)
+    {
+        _serviceSearchQuery = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private void SetServiceCategory(string category)
+    {
+        _selectedServiceCategory = category;
+    }
+
+    private void OpenServicePickerModal()
+    {
+        _serviceSearchQuery = string.Empty;
+        _selectedServiceCategory = "All";
+        _showServicePickerModal = true;
+    }
+
+    private void CloseServicePickerModal()
+    {
+        _showServicePickerModal = false;
+    }
+
+    private void AddServiceFromCatalog(ServiceCatalogItem svc)
+    {
+        var existing = ServiceItems.FirstOrDefault(s => s.Name.Equals(svc.Name, StringComparison.OrdinalIgnoreCase));
+
+        if (existing != null)
+        {
+            var idx = ServiceItems.IndexOf(existing);
+            ServiceItems[idx] = existing with { Quantity = existing.Quantity + 1 };
+        }
+        else
+        {
+            // Default staff can be set later; for now use doctor as placeholder
+            ServiceItems.Add(new BillingService(svc.Name, DoctorName, 1, svc.Price, 0m));
+        }
+
+        _showServicePickerModal = false;
+    }
+
+    private void OpenPrescriptionModal()
+    {
+        _showPrescriptionModal = true;
+        _prescriptionStatusMessage = string.Empty;
+
+    }
+
+
+
+    private void ResetPrescriptionModal()
+    {
+        _manualFrequency = false;
+        _manualDuration = false;
+        _manualReason = false;
+        _showPrescriptionValidationError = false;
+        _prescriptionStatusMessage = string.Empty;
+        _prescriptionStatusIsSuccess = false;
+        PrescriptionViewModel.SearchTerm = string.Empty;
+        PrescriptionViewModel.SelectedCategory = string.Empty;
+        PrescriptionViewModel.ClearSelection();
+    }
+
+    private bool _showCategoryDropdown = false;
+
+    private void HandlePrescriptionSearch(ChangeEventArgs e)
+    {
+        PrescriptionViewModel.SearchTerm = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private void ToggleCategoryDropdown() => _showCategoryDropdown = !_showCategoryDropdown;
+
+    private void SetDrugCategory(string category)
+    {
+        PrescriptionViewModel.SelectedCategory = category;
+        _showCategoryDropdown = false;
+    }
+
+    private void SelectDrug(CaseNotePrescriptionViewModel.Drug drug)
+    {
+        PrescriptionViewModel.SelectDrugToAdd(drug);
+        _showPrescriptionValidationError = false;
+    }
+
+    private void ToggleManualFrequency() => _manualFrequency = !_manualFrequency;
+    private void ToggleManualDuration() => _manualDuration = !_manualDuration;
+    private void ToggleManualReason() => _manualReason = !_manualReason;
+
+
+    private void CancelPrescriptionDrugSelection()
+    {
+        PrescriptionViewModel.SelectedDrugToAdd = null;
+        _manualFrequency = false;
+        _manualDuration = false;
+        _manualReason = false;
+        _showPrescriptionValidationError = false;
+
+    }
+
+    // Edit/Delete State
+    private bool _isDeleteMode;
+    private HashSet<BillingItem> _selectedItemsToDelete = new();
+    private BillingItem? _editingPrescriptionItem;
+
+    // Service Delete State
+    private bool _isServiceDeleteMode;
+    private HashSet<BillingService> _selectedServiceItemsToDelete = new();
+
+    // Delete Confirmation State
+    private bool _showDeleteConfirmModal;
+    private List<(string Name, int Quantity)> _pendingDeleteItems = new();
+    private bool _pendingDeleteIsService;
+
+    private void ToggleDeleteMode()
+    {
+        _isDeleteMode = !_isDeleteMode;
+        _selectedItemsToDelete.Clear();
+    }
+
+    private void ToggleItemSelection(BillingItem item)
+    {
+        if (_selectedItemsToDelete.Contains(item))
+        {
+            _selectedItemsToDelete.Remove(item);
+        }
+        else
+        {
+            _selectedItemsToDelete.Add(item);
+        }
+    }
+
+    private void DeleteSelectedItems()
+    {
+        _pendingDeleteItems = _selectedItemsToDelete.Select(i => (i.Name, i.Quantity)).ToList();
+        _pendingDeleteIsService = false;
+        _showDeleteConfirmModal = true;
+    }
+
+    private void ConfirmDeleteItems()
+    {
+        if (_pendingDeleteIsService)
+        {
+            foreach (var item in _selectedServiceItemsToDelete)
+            {
+                ServiceItems.Remove(item);
+            }
+            ToggleServiceDeleteMode();
+        }
+        else
+        {
+            foreach (var item in _selectedItemsToDelete)
+            {
+                PrescriptionItems.Remove(item);
+            }
+            ToggleDeleteMode();
+        }
+        
+        _showDeleteConfirmModal = false;
+        StateHasChanged();
+    }
+
+    private void CancelDeleteConfirm()
+    {
+        _showDeleteConfirmModal = false;
+    }
+
+    private void ToggleServiceDeleteMode()
+    {
+        _isServiceDeleteMode = !_isServiceDeleteMode;
+        _selectedServiceItemsToDelete.Clear();
+    }
+
+    private void ToggleServiceItemSelection(BillingService item)
+    {
+        if (_selectedServiceItemsToDelete.Contains(item))
+        {
+            _selectedServiceItemsToDelete.Remove(item);
+        }
+        else
+        {
+            _selectedServiceItemsToDelete.Add(item);
+        }
+    }
+
+    private void DeleteSelectedServiceItems()
+    {
+        _pendingDeleteItems = _selectedServiceItemsToDelete.Select(i => (i.Name, i.Quantity)).ToList();
+        _pendingDeleteIsService = true;
+        _showDeleteConfirmModal = true;
+    }
+
+    private void EditPrescriptionItem(BillingItem item)
+    {
+        if (_isDeleteMode) return; // Disable edit in delete mode
+
+        _editingPrescriptionItem = item;
+        
+        // Find the drug in the shared list to select it
+        var drug = PrescriptionViewModel.Drugs.FirstOrDefault(d => d.Name == item.Name);
+        if (drug != null)
+        {
+            PrescriptionViewModel.SelectedDrugToAdd = drug;
+        }
+
+        // Pre-fill form
+        PrescriptionViewModel.NewDrugQuantity = item.Quantity;
+        PrescriptionViewModel.NewDrugFrequency = item.Frequency ?? string.Empty;
+        PrescriptionViewModel.NewDrugDuration = item.Duration ?? string.Empty;
+        PrescriptionViewModel.NewDrugReason = item.Reason ?? string.Empty;
+        PrescriptionViewModel.NewDrugNotes = item.Notes ?? string.Empty;
+
+        // Show modal
+        _showPrescriptionModal = true;
+    }
+
+    private void AddSinglePrescriptionDrug()
+    {
+        // 1. Validate
+        if (string.IsNullOrWhiteSpace(PrescriptionViewModel.NewDrugFrequency) ||
+            string.IsNullOrWhiteSpace(PrescriptionViewModel.NewDrugDuration) ||
+            string.IsNullOrWhiteSpace(PrescriptionViewModel.NewDrugReason))
+        {
+            _showPrescriptionValidationError = true;
+            return;
+        }
+
+        // 2. Add or Update
+        var drug = PrescriptionViewModel.SelectedDrugToAdd;
+        if (drug != null)
+        {
+             var newItem = new BillingItem(
+                 drug.Name,
+                 (int)PrescriptionViewModel.NewDrugQuantity,
+                 0m, // Price not available in Drug model, defaulting to 0
+                 0m, // No discount initially
+                 PrescriptionViewModel.NewDrugFrequency,
+                 PrescriptionViewModel.NewDrugDuration,
+                 PrescriptionViewModel.NewDrugReason,
+                 PrescriptionViewModel.NewDrugNotes
+             );
+
+             if (_editingPrescriptionItem != null)
+             {
+                 // Update existing item
+                 var index = PrescriptionItems.IndexOf(_editingPrescriptionItem);
+                 if (index != -1)
+                 {
+                     PrescriptionItems[index] = newItem;
+                 }
+             }
+             else
+             {
+                 // Add new item
+                 PrescriptionItems.Add(newItem);
+             }
+             
+             StateHasChanged();
+        }
+
+        // 3. Close Modal & Reset
+        ClosePrescriptionModal();
+    }
+
+    private void ClosePrescriptionModal()
+    {
+        _showPrescriptionModal = false;
+        PrescriptionViewModel.SelectedDrugToAdd = null;
+        _showPrescriptionValidationError = false;
+        _editingPrescriptionItem = null; // Reset editing state
+        ResetPrescriptionModal();
+    }
+
+    private void HandleAddPrescriptionDrug()
+    {
+        if (PrescriptionViewModel.SelectedDrugToAdd == null ||
+            string.IsNullOrWhiteSpace(PrescriptionViewModel.NewDrugFrequency) ||
+            string.IsNullOrWhiteSpace(PrescriptionViewModel.NewDrugDuration) ||
+            string.IsNullOrWhiteSpace(PrescriptionViewModel.NewDrugReason))
+        {
+            _showPrescriptionValidationError = true;
+            return;
+        }
+
+        _showPrescriptionValidationError = false;
+        PrescriptionViewModel.AddSelectedDrug();
+        StateHasChanged();
+    }
+
+    private void RemoveModalDrug(CaseNotePrescriptionViewModel.SelectedDrug drug)
+    {
+        PrescriptionViewModel.RemoveSelectedDrug(drug);
+    }
+
+    private void AppendPrescriptionToBilling(CaseNotePrescriptionViewModel.Prescription prescription)
+    {
+        foreach (var drug in prescription.Drugs)
+        {
+            var qty = (int)Math.Max(1, Math.Round(drug.Quantity));
+            var existing = PrescriptionItems.FirstOrDefault(i => i.Name.Equals(drug.Drug.Name, StringComparison.OrdinalIgnoreCase));
+
+            if (existing != null)
+            {
+                var index = PrescriptionItems.IndexOf(existing);
+                PrescriptionItems[index] = existing with { Quantity = existing.Quantity + qty };
+            }
+            else
+            {
+                PrescriptionItems.Add(new BillingItem(drug.Drug.Name, qty, 0m, 0m));
+            }
+        }
+    }
+
+    private void SubmitPrescriptionToState(string prescriptionNumber)
+    {
+        var saved = PrescriptionViewModel.Prescriptions.LastOrDefault(p => p.PrescriptionNumber == prescriptionNumber);
+        if (saved != null)
+        {
+            AppendPrescriptionToBilling(saved);
+        }
+    }
+
+    private async Task SubmitPrescriptionFromModal()
+    {
+        if (!PrescriptionViewModel.SelectedDrugs.Any())
+        {
+            _prescriptionStatusMessage = "Add at least one drug before saving.";
+            _prescriptionStatusIsSuccess = false;
+            return;
+        }
+
+        var prescriptionNumber = PrescriptionViewModel.SubmitPrescription();
+
+        if (prescriptionNumber.StartsWith("Error", StringComparison.OrdinalIgnoreCase))
+        {
+            _prescriptionStatusMessage = prescriptionNumber;
+            _prescriptionStatusIsSuccess = false;
+            return;
+        }
+
+        SubmitPrescriptionToState(prescriptionNumber);
+        _prescriptionStatusMessage = $"Prescription {prescriptionNumber} saved.";
+        _prescriptionStatusIsSuccess = true;
+
+        await Task.Delay(500);
+        ClosePrescriptionModal();
+        StateHasChanged();
+    }
+
+    private void CloseBilling()
+    {
+        NavigationManager.NavigateTo("/case-notes");
+    }
+
+    protected override void OnInitialized()
+    {
+        // Pre-fill available collectors with doctor and sample receptionists
+        CollectorOptions = new List<string>
+        {
+            DoctorName,
+            "Receptionist A",
+            "Receptionist B"
+        };
+
+        SelectedCollector = DoctorName;
+    }
+
+    private void TogglePatientInfo()
+    {
+        if (_isPatientDrawerOpen)
+        {
+            return;
+        }
+
+        _isPatientInfoCollapsed = !_isPatientInfoCollapsed;
+    }
+
+    private void TogglePatientDrawer()
+    {
+        _isPatientDrawerOpen = !_isPatientDrawerOpen;
+        _isPatientInfoCollapsed = false;
+    }
+
+    private void ClosePatientDrawer()
+    {
+        _isPatientDrawerOpen = false;
+    }
+
+    private void OpenMultiPaymentModal()
+    {
+        _multiPaymentError = null;
+        foreach (var group in PaymentMethodGroups)
+        {
+            group.IsExpanded = false;
+        }
+        _showMultiPaymentModal = true;
+    }
+
+    private void CloseMultiPaymentModal()
+    {
+        _showMultiPaymentModal = false;
+        _multiPaymentError = null;
+    }
+
+    private async Task OnSplitAmountInput(PaymentSplit split, ChangeEventArgs args)
+    {
+        var text = args.Value?.ToString() ?? string.Empty;
+        split.AmountText = text;
+        split.Amount = null;
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        var trimmed = text.Trim();
+        var pattern = @"^[0-9]+(\.[0-9]{0,2})?$";
+        if (!Regex.IsMatch(trimmed, pattern))
+        {
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (decimal.TryParse(trimmed, out var parsed))
+        {
+            split.Amount = parsed;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void TogglePaymentGroup(PaymentMethodGroup group)
+    {
+        var index = PaymentMethodGroups.FindIndex(g => g.Key == group.Key);
+        if (index < 0)
+        {
+            group.IsExpanded = !group.IsExpanded;
+            return;
+        }
+
+        var newState = !PaymentMethodGroups[index].IsExpanded;
+        var rowStart = (index / 2) * 2;
+        var rowEnd = Math.Min(rowStart + 1, PaymentMethodGroups.Count - 1);
+
+        for (var i = rowStart; i <= rowEnd; i++)
+        {
+            PaymentMethodGroups[i].IsExpanded = newState;
+        }
+    }
+
+    private async Task ConfirmMultiPaymentSelection()
+    {
+        _multiPaymentError = null;
+
+        if (!SelectedPaymentSplits.Any())
+        {
+            _multiPaymentError = "Enter at least one payment amount before applying.";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        var total = MultiPaymentTotal;
+
+        AmountReceived = total;
+        AmountReceivedText = total.ToString("0.##");
+        AmountReceivedError = null;
+
+        _showMultiPaymentModal = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleAmountInputDebounced(ChangeEventArgs args)
+    {
+        // Cancel any pending debounce operation
+        _amountInputCts?.Cancel();
+        _amountInputCts?.Dispose();
+
+        var cts = new CancellationTokenSource();
+        _amountInputCts = cts;
+        var token = cts.Token;
+        var currentText = args.Value?.ToString() ?? string.Empty;
+
+        try
+        {
+            // Simple debounce to avoid excessive parsing while typing
+            await Task.Delay(300, token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        // Empty input: clear amount & error
+        if (string.IsNullOrWhiteSpace(currentText))
+        {
+            AmountReceivedText = string.Empty;
+            AmountReceived = null;
+            AmountReceivedError = null;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        // Validate numeric with up to 2 decimal places
+        var pattern = @"^[0-9]+(\.[0-9]{0,2})?$";
+        if (!Regex.IsMatch(currentText.Trim(), pattern))
+        {
+            AmountReceivedText = currentText;
+            AmountReceived = null;
+            AmountReceivedError = "请输入有效金额（只允许数字和最多两位小数）";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (!decimal.TryParse(currentText, out var parsed))
+        {
+            AmountReceivedText = currentText;
+            AmountReceived = null;
+            AmountReceivedError = "金额格式不正确，请重试";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        AmountReceivedText = currentText;
+        AmountReceived = parsed;
+        AmountReceivedError = null;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnConfirmPaymentClicked()
+    {
+        _paymentValidationError = null;
+
+        if (AmountReceived is null || AmountReceived < TotalPayable)
+        {
+            _showInsufficientAmountModal = true;
+            return;
+        }
+
+        _showConfirmPaymentModal = true;
+    }
+
+    private void CloseInsufficientAmountModal()
+    {
+        _showInsufficientAmountModal = false;
+    }
+
+    private void CloseConfirmPaymentModal()
+    {
+        _showConfirmPaymentModal = false;
+        _paymentValidationError = null;
+    }
+
+    private async Task ConfirmPaymentAsync()
+    {
+        if (AmountReceived is null || AmountReceived < TotalPayable)
+        {
+            return;
+        }
+
+        _isProcessingPayment = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            // Simulate payment processing
+            await Task.Delay(800);
+
+            // Mark as paid
+            BillingStatusText = "Paid";
+
+            // Close confirm modal and show summary
+            _showConfirmPaymentModal = false;
+            _showPaymentSummaryModal = true;
+        }
+        finally
+        {
+            _isProcessingPayment = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void ClosePaymentSummaryModal()
+    {
+        if (_isProcessingPayment)
+        {
+            return;
+        }
+        _showPaymentSummaryModal = false;
+    }
+
+    private async Task PrintReceiptAndClose()
+    {
+        await ProcessReceiptAction("print");
+    }
+
+    private async Task EmailReceiptAndClose()
+    {
+        await ProcessReceiptAction("email");
+    }
+
+    private async Task ProcessReceiptAction(string action)
+    {
+        _isProcessingPayment = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            // Simulate receipt processing
+            await Task.Delay(600);
+            // Here you would call your actual print/email service
+        }
+        finally
+        {
+            _isProcessingPayment = false;
+            _showPaymentSummaryModal = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void ClosePostPaymentModal()
+    {
+        if (_isProcessingPayment)
+        {
+            return;
+        }
+
+        _showPostPaymentModal = false;
+        _postPaymentEmailError = null;
+    }
+
+    private async Task PrintInvoiceAsync()
+    {
+        await RunPostPaymentActionAsync("print");
+    }
+
+    private async Task SendInvoiceEmailAsync()
+    {
+        _postPaymentEmailError = null;
+
+        if (string.IsNullOrWhiteSpace(_postPaymentEmail))
+        {
+            _postPaymentEmailError = "Please enter an email address.";
+            return;
+        }
+
+        if (!IsValidEmail(_postPaymentEmail))
+        {
+            _postPaymentEmailError = "Please enter a valid email address.";
+            return;
+        }
+
+        await RunPostPaymentActionAsync("email");
+    }
+
+    private async Task RunPostPaymentActionAsync(string action)
+    {
+        if (_isProcessingPayment)
+        {
+            return;
+        }
+
+        _isProcessingPayment = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            // Simulate backend processing - replace with real API call later
+            await Task.Delay(1200);
+        }
+        finally
+        {
+            _isProcessingPayment = false;
+            _showPostPaymentModal = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private static bool IsValidEmail(string email)
+    {
+        // Simple email format check suitable for UI validation
+        var pattern = @"^[^@\s]+@[^@\s]+\.[^@\s]+$";
+        return Regex.IsMatch(email, pattern, RegexOptions.IgnoreCase);
+    }
+
+    private void OpenDiscountModal(object item)
+    {
+        _selectedDiscountItem = item;
+        _discountValue = string.Empty;
+        _isPercentageDiscount = false; // Default to Fixed Amount
+        _showDiscountModal = true;
+        _discountError = null;
+    }
+
+    private void CloseDiscountModal()
+    {
+        _showDiscountModal = false;
+        _selectedDiscountItem = null;
+    }
+
+    // Custom Dropdown Logic
+    private bool _isPaymentMethodDropdownOpen = false;
+    private bool _isCollectorDropdownOpen = false;
+    private bool _isFrequencyDropdownOpen = false;
+    private bool _isDurationDropdownOpen = false;
+    private bool _isReasonDropdownOpen = false;
+
+    private void TogglePaymentMethodDropdown()
+    {
+        _isPaymentMethodDropdownOpen = !_isPaymentMethodDropdownOpen;
+        StateHasChanged();
+    }
+
+    private void SelectPaymentMethod(string method)
+    {
+        SelectedPaymentMethod = method;
+        _isPaymentMethodDropdownOpen = false;
+        StateHasChanged();
+    }
+
+    private string GetPaymentMethodLabel(string method)
+    {
+        return method switch
+        {
+            "cash" => "Cash",
+            "debit-card" => "Debit Card",
+            "credit-card" => "Credit Card",
+            "tng" => "Touch 'n Go eWallet",
+            "grabpay" => "GrabPay",
+            "boost" => "Boost",
+            "shopeepay" => "ShopeePay",
+            "bank" => "FPX Bank Transfer",
+            _ => method
+        };
+    }
+
+    private void ToggleCollectorDropdown()
+    {
+        _isCollectorDropdownOpen = !_isCollectorDropdownOpen;
+        StateHasChanged();
+    }
+
+    private void SelectCollector(string collector)
+    {
+        SelectedCollector = collector;
+        _isCollectorDropdownOpen = false;
+        StateHasChanged();
+    }
+
+    private void ToggleFrequencyDropdown()
+    {
+        _isFrequencyDropdownOpen = !_isFrequencyDropdownOpen;
+        StateHasChanged();
+    }
+
+    private void SelectFrequency(string frequency)
+    {
+        PrescriptionViewModel.NewDrugFrequency = frequency;
+        _isFrequencyDropdownOpen = false;
+        StateHasChanged();
+    }
+
+    private void ToggleDurationDropdown()
+    {
+        _isDurationDropdownOpen = !_isDurationDropdownOpen;
+        StateHasChanged();
+    }
+
+    private void SelectDuration(string duration)
+    {
+        PrescriptionViewModel.NewDrugDuration = duration;
+        _isDurationDropdownOpen = false;
+        StateHasChanged();
+    }
+
+    private void ToggleReasonDropdown()
+    {
+        _isReasonDropdownOpen = !_isReasonDropdownOpen;
+        StateHasChanged();
+    }
+
+    private void SelectReason(string reason)
+    {
+        PrescriptionViewModel.NewDrugReason = reason;
+        _isReasonDropdownOpen = false;
+        StateHasChanged();
+    }
+
+    private void SetDiscountType(bool isPercentage)
+    {
+        _isPercentageDiscount = isPercentage;
+        _discountError = null;
+    }
+
+    private void QuickApplyDiscount(string value, bool isPercentage)
+    {
+        _discountValue = value;
+        _isPercentageDiscount = isPercentage;
+        _discountError = null;
+    }
+
+    private void HandleDiscountEnterKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            ApplyDiscount();
+        }
+    }
+
+    private void ApplyDiscount()
+    {
+        if (_selectedDiscountItem == null) return;
+        _discountError = null;
+
+        if (decimal.TryParse(_discountValue, out var val))
+        {
+            if (_selectedDiscountItem is BillingItem pItem)
+            {
+                var gross = pItem.UnitPrice * pItem.Quantity;
+                var newDiscount = val;
+                
+                if (_isPercentageDiscount)
+                {
+                    newDiscount = gross * (val / 100m);
+                }
+
+                if (newDiscount > gross)
+                {
+                    _discountError = $"Discount cannot exceed item total (RM {gross:N2})";
+                    return;
+                }
+
+                // Update list
+                var idx = PrescriptionItems.IndexOf(pItem);
+                if (idx >= 0)
+                {
+                    PrescriptionItems[idx] = pItem with { Discount = newDiscount };
+                }
+            }
+            else if (_selectedDiscountItem is BillingService sItem)
+            {
+                var gross = sItem.UnitPrice * sItem.Quantity;
+                var newDiscount = val;
+
+                if (_isPercentageDiscount)
+                {
+                    newDiscount = gross * (val / 100m);
+                }
+
+                if (newDiscount > gross)
+                {
+                    _discountError = $"Discount cannot exceed service total (RM {gross:N2})";
+                    return;
+                }
+
+                var idx = ServiceItems.IndexOf(sItem);
+                if (idx >= 0)
+                {
+                    ServiceItems[idx] = sItem with { Discount = newDiscount };
+                }
+            }
+            else if (_selectedDiscountItem == BillDiscountToken)
+            {
+                // Calculate gross based on Subtotal (items + services) - existing item discounts
+                // Effectively we are discounting the "Subtotal after item discounts"
+                // OR we can discount the raw Subtotal. 
+                // Let's discount the (Subtotal - ItemDiscounts) to avoid double dipping logic, 
+                // but usually "Bill Discount" is on the running total.
+                
+                var runningTotal = PrescriptionItems.Sum(i => i.LineTotal) + ServiceItems.Sum(s => s.LineTotal);
+                // Note: LineTotal already subtracts Item Discount. 
+                // So runningTotal is (Gross - ItemDiscounts).
+                
+                var newDiscount = val;
+
+                if (_isPercentageDiscount)
+                {
+                    newDiscount = runningTotal * (val / 100m);
+                }
+
+                if (newDiscount > runningTotal)
+                {
+                    _discountError = $"Discount cannot exceed current total (RM {runningTotal:N2})";
+                    return;
+                }
+
+                BillDiscount = newDiscount;
+            }
+        }
+
+        CloseDiscountModal();
+    }
+
+    private sealed class PaymentMethodGroup
+    {
+        public PaymentMethodGroup(string key, string label, string icon, string? description, params PaymentSplit[] methods)
+        {
+            Key = key;
+            Label = label;
+            Icon = icon;
+            Description = description;
+            Methods = methods.ToList();
+        }
+
+        public string Key { get; }
+        public string Label { get; }
+        public string Icon { get; }
+        public string? Description { get; }
+        public List<PaymentSplit> Methods { get; }
+        public bool IsExpanded { get; set; }
+
+        public decimal GroupTotal => Methods
+            .Where(p => p.Amount.HasValue && p.Amount.Value > 0)
+            .Sum(p => p.Amount!.Value);
+    }
+
+    private sealed class PaymentSplit
+    {
+        public PaymentSplit(string methodKey, string methodLabel)
+        {
+            MethodKey = methodKey;
+            MethodLabel = methodLabel;
+        }
+
+        public string MethodKey { get; }
+        public string MethodLabel { get; }
+        public string AmountText { get; set; } = string.Empty;
+        public decimal? Amount { get; set; }
+    }
+
+    private record BillingItem(string Name, int Quantity, decimal UnitPrice, decimal Discount, 
+        string? Frequency = null, string? Duration = null, string? Reason = null, string? Notes = null)
+    {
+        public decimal LineTotal => Math.Max(0m, UnitPrice * Quantity - Discount);
+    }
+
+    private record BillingService(string Name, string Staff, int Quantity, decimal UnitPrice, decimal Discount)
+    {
+        public decimal LineTotal => Math.Max(0m, UnitPrice * Quantity - Discount);
+    }
+
+    private record ServiceCatalogItem(string Name, string Sku, string Category, string DurationSpend, decimal Price);
+}
+

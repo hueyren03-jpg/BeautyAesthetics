@@ -1,0 +1,305 @@
+@namespace SenangRetails.Shared.Pages
+@inherits SenangRetails.Shared.Pages.BasePage
+@using BlazorBootstrap
+@using SenangRetails.Shared.Services
+@using System.Net.Http.Json
+@using System.Text
+
+<div class="transaction-report-container">
+    <div class="transaction-report-list-container">
+        <!-- Date Filter Section -->
+        <div class="report-date-filter">
+            <div class="date-filter-controls">
+                <!-- Quick Date Range Buttons -->
+                <div class="quick-date-buttons">
+                    <button class="quick-date-btn @(selectedDateRange == "Today" ? "active" : "")" @onclick='() => SetDateRange("Today")'>
+                        @LangSvc.GetText("Today")
+                    </button>
+                    <button class="quick-date-btn @(selectedDateRange == "Week" ? "active" : "")" @onclick='() => SetDateRange("Week")'>
+                        @LangSvc.GetText("This Week")
+                    </button>
+                    <button class="quick-date-btn @(selectedDateRange == "Month" ? "active" : "")" @onclick='() => SetDateRange("Month")'>
+                        @LangSvc.GetText("This Month")
+                    </button>
+                    <button class="quick-date-btn @(selectedDateRange == "Year" ? "active" : "")" @onclick='() => SetDateRange("Year")'>
+                        @LangSvc.GetText("This Year")
+                    </button>
+                </div>
+
+                <!-- Date Pickers with Labels and Refresh Button -->
+                <div class="date-picker-group">
+                    <div class="date-picker-item">
+                        <label class="date-picker-label">@LangSvc.GetText("Start Date")</label>
+                        <MobileDatePicker @bind-Value="startDate"
+                                          DateFormat="dd/MM/yyyy"
+                                          Placeholder="Select Date" />
+                    </div>
+                    <div class="date-picker-item">
+                        <label class="date-picker-label">@LangSvc.GetText("End Date")</label>
+                        <MobileDatePicker @bind-Value="endDate"
+                                          DateFormat="dd/MM/yyyy"
+                                          Placeholder="Select Date" />
+                    </div>
+                    <button class="refresh-btn" @onclick="RefreshData" title="Refresh">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+
+                <!-- Export Dropdown Button -->
+                <div class="export-dropdown">
+                    <button class="export-btn" @onclick="ToggleExportDropdown" @onclick:preventDefault="true">
+                        <i class="bi bi-download"></i>
+                        <span class="action-btn-text">@LangSvc.GetText("Export")</span>
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+                    @if (showExportDropdown)
+                    {
+                        <div class="export-dropdown-menu">
+                            <button class="export-dropdown-item" @onclick="ExportToCSV">
+                                <i class="bi bi-file-spreadsheet"></i>
+                                @LangSvc.GetText("Export CSV")
+                            </button>
+                            <button class="export-dropdown-item" @onclick="ExportToPDF">
+                                <i class="bi bi-file-pdf"></i>
+                                @LangSvc.GetText("Export PDF")
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- KPI Summary Cards -->
+        <div class="kpi-cards">
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-cash-stack"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">RM @totalSales.ToString("N2")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("ReportTotalSales")</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-people"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">@totalCustomers.ToString("N0")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("Total Customers")</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-receipt"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">@totalOrders.ToString("N0")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("Total Orders")</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Transaction Table with Filter Inputs -->
+        <div class="transaction-table-wrapper">
+            <div class="transaction-table">
+                <div class="transaction-table-header">
+                    <div class="transaction-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Invoice No")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder=""
+                               @bind-value="invoiceFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="transaction-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Date")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder=""
+                               @bind-value="dateFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="transaction-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("ReportMember")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder=""
+                               @bind-value="memberFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="transaction-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Total Before Tax")</span>
+                        <input type="text"
+                               class="filter-input numeric-filter"
+                               placeholder=""
+                               @bind-value="beforeTaxFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="transaction-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("ReportTax")</span>
+                        <input type="text"
+                               class="filter-input numeric-filter"
+                               placeholder=""
+                               @bind-value="taxFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="transaction-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("ReportRounding")</span>
+                        <input type="text"
+                               class="filter-input numeric-filter"
+                               placeholder="Filter..."
+                               @bind-value="roundingFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="transaction-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Total After Tax")</span>
+                        <input type="text"
+                               class="filter-input numeric-filter"
+                               placeholder="Filter..."
+                               @bind-value="afterTaxFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="transaction-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("E-Invoice Type")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder="Filter..."
+                               @bind-value="einvoiceTypeFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="transaction-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("E-Invoice Status")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder="Filter..."
+                               @bind-value="einvoiceStatusFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                </div>
+                <div class="filter-badge-container">
+                    @if (HasActiveFilters())
+                    {
+                        <button class="clear-filters-btn" @onclick="ClearFilters">
+                            <i class="bi bi-x-circle"></i> Clear All Filters
+                        </button>
+                    }
+                </div>
+                <div class="transaction-table-body">
+                    @if (isLoading)
+                    {
+                        <div class="text-center py-5">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Medium" />
+                            <p>Loading data...</p>
+                        </div>
+                    }
+                    else if (!string.IsNullOrEmpty(exportMessage))
+                    {
+                        <div class="alert alert-@alertType">@exportMessage</div>
+                    }
+                    else if (filteredTransactions.Any())
+                    {
+                        @foreach (var transaction in filteredTransactions)
+                        {
+                            <div class="transaction-table-row">
+                                <div class="transaction-table-cell" data-label="@LangSvc.GetText("Invoice No")">
+                                    <div class="transaction-primary">@transaction.DisplayCode</div>
+                                </div>
+                                <div class="transaction-table-cell" data-label="@LangSvc.GetText("Date")">
+                                    <div class="transaction-primary">@transaction.FinancialDate.ToString("dd/MM/yyyy")</div>
+                                </div>
+                                <div class="transaction-table-cell" data-label="@LangSvc.GetText("ReportMember")">
+                                    <div class="transaction-member-info">
+                                        <div class="transaction-primary">@(string.IsNullOrEmpty(transaction.AccountName) ? "Cash Customer" : transaction.AccountName)</div>
+                                        @if (!string.IsNullOrEmpty(transaction.Phone))
+                                        {
+                                            <div class="transaction-secondary">@transaction.Phone</div>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="transaction-table-cell amount-cell" data-label="@LangSvc.GetText("Total Before Tax")">
+                                    <div class="transaction-primary">@transaction.TotalBeforeTax.ToString("N2")</div>
+                                </div>
+                                <div class="transaction-table-cell amount-cell" data-label="@LangSvc.GetText("ReportTax")">
+                                    <div class="transaction-primary">@transaction.TaxAmount.ToString("N2")</div>
+                                </div>
+                                <div class="transaction-table-cell amount-cell" data-label="@LangSvc.GetText("ReportRounding")">
+                                    <div class="transaction-primary">@transaction.RoundingAmount.ToString("N2")</div>
+                                </div>
+                                <div class="transaction-table-cell amount-cell" data-label="@LangSvc.GetText("Total After Tax")">
+                                    <div class="transaction-primary">@transaction.TotalAfterTax.ToString("N2")</div>
+                                </div>
+                                <div class="transaction-table-cell" data-label="@LangSvc.GetText("E-Invoice Type")">
+                                    <div class="transaction-primary">@GetEInvoiceTypeText(transaction.eInvoiceTypeID)</div>
+                                </div>
+                                <div class="transaction-table-cell" data-label="@LangSvc.GetText("E-Invoice Status")">
+                                    <div class="transaction-primary">@(string.IsNullOrEmpty(transaction.eInvoiceStatus) ? "No Status" : transaction.eInvoiceStatus)</div>
+                                </div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="text-center py-3 text-muted">No data available</div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+    @if (showAlertDialogModal)
+    {
+        <div class="modal-overlay" @onclick="CloseAlertDialog">
+            <div class="modal-content" @onclick:stopPropagation="true">
+                <div class="appointment-modal-header">
+                    <div class="appt-title">@alertDialogTitle</div>
+                </div>
+                <div class="modal-body">
+                    <p>@alertDialogMessage</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="appt-btn-primary" style="flex: 1;" @onclick="CloseAlertDialog">
+                        OK
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>

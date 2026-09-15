@@ -1,0 +1,1398 @@
+@using SenangRetails.Shared.Models.DTOs
+@using SenangRetails.Shared.Services.ThemeService
+@inject IThemeService ThemeSvc
+@inject IJSRuntime JS
+
+<div class="cts-wrapper">
+    <!-- HEADER BAR -->
+    <div class="cts-header-bar">
+        <div class="cts-title-group">
+            <i class="fa-solid fa-palette cts-header-icon"></i>
+            <div>
+                <h3 class="cts-title">Color Customization & Theme</h3>
+                <p class="cts-subtitle">Personalize your brand colors, button hover states, accents, and component highlights across the entire app.</p>
+            </div>
+        </div>
+        <div class="cts-header-actions">
+            <button class="cts-btn-secondary" @onclick="ResetToDefault" disabled="@isSaving">
+                <i class="fa-solid fa-rotate-left"></i> Reset to Default
+            </button>
+            <button class="cts-btn-primary" @onclick="SaveCurrentTheme" disabled="@isSaving">
+                @if (isSaving)
+                {
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    <span>Saving...</span>
+                }
+                else
+                {
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    <span>Apply & Save Theme</span>
+                }
+            </button>
+        </div>
+    </div>
+
+    <!-- PRESET THEMES PALETTE -->
+    <div class="cts-card">
+        <div class="cts-card-title">
+            <i class="fa-solid fa-swatchbook"></i>
+            <span>Preset Color Palettes</span>
+        </div>
+        <p class="cts-card-desc">Select any preset theme below to instantly test and apply across the system.</p>
+
+        <div class="cts-presets-grid">
+            @foreach (var preset in presetThemes)
+            {
+                bool isSelected = currentTheme.PresetName == preset.PresetName && currentTheme.PrimaryColor.Equals(preset.PrimaryColor, StringComparison.OrdinalIgnoreCase);
+                <div class="cts-preset-card @(isSelected ? "selected" : "")" @onclick="() => SelectPreset(preset)">
+                    <div class="cts-preset-top-row">
+                        <span class="cts-preset-rank">@preset.Rank</span>
+                        <span class="cts-preset-name">@preset.PresetName</span>
+                        @if (isSelected)
+                        {
+                            <span class="cts-active-tag">Active</span>
+                        }
+                    </div>
+
+                    <div class="cts-preset-swatches">
+                        <div class="cts-swatch-item">
+                            <div class="cts-swatch main" style="background-color: @preset.PrimaryColor;" title="Main: @preset.PrimaryColor"></div>
+                            <span class="cts-swatch-label">Main</span>
+                        </div>
+                        <div class="cts-swatch-item">
+                            <div class="cts-swatch hover" style="background-color: @preset.HoverColor;" title="Hover: @preset.HoverColor"></div>
+                            <span class="cts-swatch-label">Hover</span>
+                        </div>
+                        <div class="cts-swatch-item">
+                            <div class="cts-swatch accent" style="background-color: @preset.AccentColor;" title="Accent: @preset.AccentColor"></div>
+                            <span class="cts-swatch-label">Accent</span>
+                        </div>
+                        <div class="cts-swatch-item">
+                            <div class="cts-swatch text" style="background-color: @preset.TextColor; border: 1px solid #CBD5E1;" title="Text: @preset.TextColor"></div>
+                            <span class="cts-swatch-label">Text</span>
+                        </div>
+                    </div>
+
+                    <div class="cts-preset-character">
+                        <i class="fa-solid fa-sparkles"></i>
+                        <span>@preset.Character</span>
+                    </div>
+
+                    @if (isSelected)
+                    {
+                        <div class="cts-preset-badge">
+                            <i class="fa-solid fa-check"></i>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- MY SAVED CUSTOM PALETTES SECTION -->
+    <div class="cts-card">
+        <div class="cts-card-title">
+            <i class="fa-solid fa-bookmark"></i>
+            <span>My Saved Custom Colors</span>
+            @if (savedThemes.Count > 0)
+            {
+                <span class="cts-count-badge">@savedThemes.Count saved</span>
+            }
+        </div>
+        <p class="cts-card-desc">Your personal custom-created color schemes. Click on any saved palette to apply it, or remove old ones.</p>
+
+        @if (savedThemes.Count > 0)
+        {
+            <div class="cts-presets-grid">
+                @foreach (var saved in savedThemes)
+                {
+                    bool isSelected = currentTheme.PresetName == saved.PresetName && currentTheme.PrimaryColor.Equals(saved.PrimaryColor, StringComparison.OrdinalIgnoreCase);
+                    <div class="cts-preset-card saved-card @(isSelected ? "selected" : "")" @onclick="() => SelectPreset(saved)">
+                        <div class="cts-preset-top-row">
+                            <span class="cts-preset-rank"><i class="fa-solid fa-palette" style="color: @saved.PrimaryColor;"></i></span>
+                            <span class="cts-preset-name">@saved.PresetName</span>
+                            @if (isSelected)
+                            {
+                                <span class="cts-active-tag">Active</span>
+                            }
+                            <button class="cts-btn-delete-saved" title="Delete Saved Palette" @onclick:stopPropagation="true" @onclick="() => DeleteCustomPalette(saved)">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+
+                        <div class="cts-preset-swatches">
+                            <div class="cts-swatch-item">
+                                <div class="cts-swatch main" style="background-color: @saved.PrimaryColor;" title="Main: @saved.PrimaryColor"></div>
+                                <span class="cts-swatch-label">Main</span>
+                            </div>
+                            <div class="cts-swatch-item">
+                                <div class="cts-swatch hover" style="background-color: @saved.HoverColor;" title="Hover: @saved.HoverColor"></div>
+                                <span class="cts-swatch-label">Hover</span>
+                            </div>
+                            <div class="cts-swatch-item">
+                                <div class="cts-swatch accent" style="background-color: @saved.AccentColor;" title="Accent: @saved.AccentColor"></div>
+                                <span class="cts-swatch-label">Accent</span>
+                            </div>
+                            <div class="cts-swatch-item">
+                                <div class="cts-swatch text" style="background-color: @saved.TextColor; border: 1px solid #CBD5E1;" title="Text: @saved.TextColor"></div>
+                                <span class="cts-swatch-label">Text</span>
+                            </div>
+                        </div>
+
+                        <div class="cts-preset-character">
+                            <i class="fa-solid fa-circle-check" style="color: @saved.PrimaryColor;"></i>
+                            <span>@(string.IsNullOrEmpty(saved.Character) ? "Saved Custom Palette" : saved.Character)</span>
+                        </div>
+
+                        @if (isSelected)
+                        {
+                            <div class="cts-preset-badge">
+                                <i class="fa-solid fa-check"></i>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="cts-empty-saved-box">
+                <div class="cts-empty-icon-wrap">
+                    <i class="fa-solid fa-swatchbook"></i>
+                </div>
+                <div class="cts-empty-text-wrap">
+                    <div class="cts-empty-title">No Saved Custom Colors Yet</div>
+                    <div class="cts-empty-desc">Pick your custom color below and click <strong>"Save to My Palettes"</strong> to keep your favorite brand schemes here!</div>
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- CUSTOM BRAND COLOR PICKER -->
+    <div class="cts-card">
+        <div class="cts-card-title">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            <span>Create & Save Custom Brand Color</span>
+        </div>
+        <p class="cts-card-desc">Pick your company's primary brand color. Give it a name and save it to your personal color library.</p>
+
+        <div class="cts-picker-row">
+            <div class="cts-color-input-wrapper">
+                <input type="color" class="cts-color-picker" value="@currentTheme.PrimaryColor" @onchange="OnPrimaryColorPickerChanged" />
+                <span class="cts-color-preview-circle" style="background-color: @currentTheme.PrimaryColor;"></span>
+            </div>
+            <div class="cts-hex-input-group">
+                <label>Primary Hex Code</label>
+                <input type="text" class="cts-input text-mono text-bold" value="@currentTheme.PrimaryColor" @onchange="OnPrimaryHexInputChanged" placeholder="#F2600C" maxlength="7" />
+            </div>
+            <div class="cts-hex-input-group" style="flex: 1; min-width: 180px;">
+                <label>Palette Name (Optional)</label>
+                <input type="text" class="cts-input" @bind="customPaletteName" placeholder="e.g. My Brand Teal, Summer Rose" />
+            </div>
+            <button class="cts-btn-save-palette" @onclick="SaveCustomPalette">
+                <i class="fa-solid fa-bookmark"></i> Save to My Palettes
+            </button>
+            <button class="cts-btn-secondary" @onclick="RecomputeFromPrimary">
+                <i class="fa-solid fa-arrows-rotate"></i> Auto-Generate Shades
+            </button>
+        </div>
+    </div>
+
+    <!-- ADVANCED FINE-TUNING SECTION -->
+    <div class="cts-card">
+        <div class="cts-card-header-toggle" @onclick="() => showAdvanced = !showAdvanced">
+            <div class="cts-card-title" style="margin: 0;">
+                <i class="fa-solid fa-sliders"></i>
+                <span>Advanced Color Fine-Tuning</span>
+            </div>
+            <div class="cts-toggle-link">
+                <span>@(showAdvanced ? "Hide Fine-Tuning" : "Show Fine-Tuning")</span>
+                <i class="fa-solid fa-chevron-@(showAdvanced ? "up" : "down")"></i>
+            </div>
+        </div>
+
+        @if (showAdvanced)
+        {
+            <div class="cts-advanced-body">
+                <p class="cts-card-desc" style="margin-top: 0.75rem;">Fine-tune specific elements to match your exact brand guidelines.</p>
+
+                <div class="cts-advanced-grid">
+                    <!-- Main Button Color -->
+                    <div class="cts-advanced-item">
+                        <label>Main / Primary Button</label>
+                        <div class="cts-advanced-picker">
+                            <input type="color" class="cts-color-picker" @bind="currentTheme.PrimaryColor" @bind:after="OnAdvancedColorChanged" />
+                            <input type="text" class="cts-input text-mono" @bind="currentTheme.PrimaryColor" @bind:after="OnAdvancedColorChanged" />
+                        </div>
+                        <span class="cts-hint">Brand color used on primary action buttons</span>
+                    </div>
+
+                    <!-- Hover Color -->
+                    <div class="cts-advanced-item">
+                        <label>Button Hover State</label>
+                        <div class="cts-advanced-picker">
+                            <input type="color" class="cts-color-picker" @bind="currentTheme.HoverColor" @bind:after="OnAdvancedColorChanged" />
+                            <input type="text" class="cts-input text-mono" @bind="currentTheme.HoverColor" @bind:after="OnAdvancedColorChanged" />
+                        </div>
+                        <span class="cts-hint">Slightly darker shade applied when mouse hovers over buttons</span>
+                    </div>
+
+                    <!-- Accent Color -->
+                    <div class="cts-advanced-item">
+                        <label>Accent Color</label>
+                        <div class="cts-advanced-picker">
+                            <input type="color" class="cts-color-picker" @bind="currentTheme.AccentColor" @bind:after="OnAdvancedColorChanged" />
+                            <input type="text" class="cts-input text-mono" @bind="currentTheme.AccentColor" @bind:after="OnAdvancedColorChanged" />
+                        </div>
+                        <span class="cts-hint">Used for secondary highlights, special badges, and accents</span>
+                    </div>
+
+                    <!-- Text Color -->
+                    <div class="cts-advanced-item">
+                        <label>Primary Text Color</label>
+                        <div class="cts-advanced-picker">
+                            <input type="color" class="cts-color-picker" @bind="currentTheme.TextColor" @bind:after="OnAdvancedColorChanged" />
+                            <input type="text" class="cts-input text-mono" @bind="currentTheme.TextColor" @bind:after="OnAdvancedColorChanged" />
+                        </div>
+                        <span class="cts-hint">Dark typography color for readability</span>
+                    </div>
+
+                    <!-- Active Pressed Color -->
+                    <div class="cts-advanced-item">
+                        <label>Button Active / Pressed</label>
+                        <div class="cts-advanced-picker">
+                            <input type="color" class="cts-color-picker" @bind="currentTheme.ActiveColor" @bind:after="OnAdvancedColorChanged" />
+                            <input type="text" class="cts-input text-mono" @bind="currentTheme.ActiveColor" @bind:after="OnAdvancedColorChanged" />
+                        </div>
+                        <span class="cts-hint">Deeper tone for active button clicks & pressed tabs</span>
+                    </div>
+
+                    <!-- Surface / Background Color -->
+                    <div class="cts-advanced-item">
+                        <label>Page & Surface Tint</label>
+                        <div class="cts-advanced-picker">
+                            <input type="color" class="cts-color-picker" @bind="currentTheme.SurfaceColor" @bind:after="OnAdvancedColorChanged" />
+                            <input type="text" class="cts-input text-mono" @bind="currentTheme.SurfaceColor" @bind:after="OnAdvancedColorChanged" />
+                        </div>
+                        <span class="cts-hint">Ultra-soft background tint for cards, list hovers, and pills</span>
+                    </div>
+
+                    <!-- Badge / Pill Color -->
+                    <div class="cts-advanced-item">
+                        <label>Badge & Tag Background</label>
+                        <div class="cts-advanced-picker">
+                            <input type="color" class="cts-color-picker" @bind="currentTheme.BadgeColor" @bind:after="OnAdvancedColorChanged" />
+                            <input type="text" class="cts-input text-mono" @bind="currentTheme.BadgeColor" @bind:after="OnAdvancedColorChanged" />
+                        </div>
+                        <span class="cts-hint">Soft highlight for discount tags and numpads</span>
+                    </div>
+
+                    <!-- Border Outline Color -->
+                    <div class="cts-advanced-item">
+                        <label>Border & Outline</label>
+                        <div class="cts-advanced-picker">
+                            <input type="color" class="cts-color-picker" @bind="currentTheme.BorderColor" @bind:after="OnAdvancedColorChanged" />
+                            <input type="text" class="cts-input text-mono" @bind="currentTheme.BorderColor" @bind:after="OnAdvancedColorChanged" />
+                        </div>
+                        <span class="cts-hint">Border line for focused inputs and active cards</span>
+                    </div>
+
+                    <!-- Text on Primary -->
+                    <div class="cts-advanced-item">
+                        <label>Text on Primary Buttons</label>
+                        <div class="cts-advanced-picker">
+                            <select class="cts-input text-bold" @bind="currentTheme.TextOnPrimary" @bind:after="OnAdvancedColorChanged">
+                                <option value="#FFFFFF">Pure White (#FFFFFF)</option>
+                                <option value="#1E293B">Dark Slate (#1E293B)</option>
+                            </select>
+                        </div>
+                        <span class="cts-hint">High-contrast text for primary buttons</span>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- INTERACTIVE LIVE PREVIEW CARD -->
+    <div class="cts-card">
+        <div class="cts-card-title">
+            <i class="fa-solid fa-eye"></i>
+            <span>Interactive Live UI Preview</span>
+        </div>
+        <p class="cts-card-desc">Test your hover effects and see how your colors look in real-time.</p>
+
+        <div class="cts-preview-box" style="background-color: #FAFAFA; border: 1.5px solid @currentTheme.BorderColor;">
+            <!-- Row 1: Interactive Hover Button Test -->
+            <div class="cts-preview-section">
+                <span class="cts-preview-label">🎯 Interactive Button (Hover / Click to Test)</span>
+                <div class="cts-preview-row">
+                    <button class="cts-preview-btn-interactive"
+                            style="--btn-bg: @currentTheme.PrimaryColor; --btn-hover: @currentTheme.HoverColor; --btn-active: @currentTheme.ActiveColor; --btn-text: @currentTheme.TextOnPrimary;">
+                        <i class="fa-solid fa-hand-pointer"></i>
+                        <span>Hover Me to Test Hover State!</span>
+                    </button>
+
+                    <div class="cts-preview-state-pills">
+                        <div class="cts-state-pill normal" style="background-color: @currentTheme.PrimaryColor; color: @currentTheme.TextOnPrimary;">
+                            <span>Normal: @currentTheme.PrimaryColor</span>
+                        </div>
+                        <div class="cts-state-pill hover" style="background-color: @currentTheme.HoverColor; color: @currentTheme.TextOnPrimary;">
+                            <span>Hover: @currentTheme.HoverColor</span>
+                        </div>
+                        <div class="cts-state-pill active" style="background-color: @currentTheme.ActiveColor; color: @currentTheme.TextOnPrimary;">
+                            <span>Active: @currentTheme.ActiveColor</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 2: Interactive Card Hover Test -->
+            <div class="cts-preview-section">
+                <span class="cts-preview-label">📦 Interactive Card / List Item (Hover to Test Soft Tint)</span>
+                <div class="cts-preview-row">
+                    <div class="cts-preview-card-interactive"
+                         style="--card-hover-bg: @currentTheme.SurfaceColor; --card-border: @currentTheme.BorderColor;">
+                        <div class="cts-card-inner">
+                            <i class="fa-solid fa-sparkles" style="color: @currentTheme.PrimaryColor; font-size: 1.25rem;"></i>
+                            <div>
+                                <div style="font-weight: 700; color: @currentTheme.TextColor;">Signature Spa Treatment</div>
+                                <div style="font-size: 0.78rem; color: #64748B;">Move mouse over this card to see the @currentTheme.SurfaceColor hover tint</div>
+                            </div>
+                        </div>
+                        <span style="font-weight: 800; color: @currentTheme.PrimaryColor; font-size: 1rem;">RM 128.00</span>
+                    </div>
+
+                    <span class="cts-preview-accent-badge" style="background-color: @currentTheme.AccentColor; color: white;">
+                        <i class="fa-solid fa-star"></i> Accent: @currentTheme.AccentColor
+                    </span>
+                </div>
+            </div>
+
+            <!-- Row 3: Tabs & Badges -->
+            <div class="cts-preview-section">
+                <span class="cts-preview-label">🏷️ Tabs, Badges & Highlights</span>
+                <div class="cts-preview-row">
+                    <div class="cts-preview-tab selected" style="background-color: @currentTheme.PrimaryColor; color: @currentTheme.TextOnPrimary;">
+                        <i class="fa-solid fa-store"></i> In Store (Active)
+                    </div>
+                    <div class="cts-preview-tab-interactive" style="--tab-hover-bg: @currentTheme.SurfaceColor; --tab-hover-border: @currentTheme.PrimaryColor; color: @currentTheme.TextColor; border: 1px solid @currentTheme.BorderColor; background: white;">
+                        <i class="fa-solid fa-truck"></i> Delivery (Hover Me)
+                    </div>
+                    <div class="cts-preview-badge" style="background-color: @currentTheme.BadgeColor; color: @currentTheme.PrimaryColor; border: 1px solid @currentTheme.BorderColor;">
+                        <i class="fa-solid fa-tag"></i> 15% OFF Promo
+                    </div>
+                    <div class="cts-preview-price" style="color: @currentTheme.TextColor;">
+                        Total: <span style="color: @currentTheme.PrimaryColor; font-weight: 800;">RM 188.00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- POPUP MODAL NOTIFICATION -->
+    @if (showPopupModal)
+    {
+        <div class="cts-popup-overlay" @onclick="ClosePopup">
+            <div class="cts-popup-card" @onclick:stopPropagation="true">
+                <div class="cts-popup-icon-wrap @(isSuccess ? "success" : "error")">
+                    <i class="fa-solid @(isSuccess ? "fa-circle-check" : "fa-triangle-exclamation")"></i>
+                </div>
+                <h4 class="cts-popup-title">@(isSuccess ? "Success" : "Notice")</h4>
+                <p class="cts-popup-message">@popupMessage</p>
+                <div class="cts-popup-actions">
+                    <button class="cts-btn-primary cts-popup-ok-btn" @onclick="ClosePopup">
+                        <span>OK</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .cts-wrapper {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        padding: 0 clamp(16px, 4vw, 34px) 3rem clamp(16px, 4vw, 34px);
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .cts-header-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 1rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid #E2E8F0;
+    }
+
+    .cts-title-group {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .cts-header-icon {
+        font-size: 1.75rem;
+        color: var(--primary, #F2600C);
+    }
+
+    .cts-title {
+        margin: 0;
+        font-size: 1.35rem;
+        font-weight: 800;
+        color: #0F172A;
+    }
+
+    .cts-subtitle {
+        margin: 0.2rem 0 0 0;
+        font-size: 0.85rem;
+        color: #64748B;
+    }
+
+    .cts-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .cts-count-badge {
+        font-size: 0.75rem;
+        font-weight: 700;
+        background: #EFF6FF;
+        color: #2563EB;
+        padding: 3px 10px;
+        border-radius: 12px;
+        border: 1px solid #BFDBFE;
+    }
+
+    .cts-btn-primary {
+        background: var(--primary, #F2600C);
+        color: white;
+        border: none;
+        padding: 0.65rem 1.25rem;
+        border-radius: 10px;
+        font-weight: 700;
+        font-size: 0.9rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+    .cts-btn-primary:hover:not(:disabled) {
+        background: var(--primary-dark, #EA580C);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    .cts-btn-primary:active:not(:disabled) {
+        background: var(--primary-darker, #C2410C);
+        transform: translateY(0);
+    }
+
+    .cts-btn-secondary {
+        background: #FFFFFF;
+        color: #334155;
+        border: 1px solid #CBD5E1;
+        padding: 0.65rem 1.25rem;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .cts-btn-secondary:hover:not(:disabled) {
+        background: #F8FAFC;
+        border-color: #94A3B8;
+    }
+
+    .cts-btn-save-palette {
+        background: var(--primary, #F2600C);
+        color: white;
+        border: none;
+        padding: 0.65rem 1.25rem;
+        border-radius: 10px;
+        font-weight: 700;
+        font-size: 0.9rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.18s ease;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+    .cts-btn-save-palette:hover {
+        background: var(--primary-dark, #EA580C);
+        transform: translateY(-1px);
+    }
+
+    .cts-btn-delete-saved {
+        background: none;
+        border: none;
+        color: #94A3B8;
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 6px;
+        transition: all 0.15s ease;
+        font-size: 0.85rem;
+    }
+    .cts-btn-delete-saved:hover {
+        color: #DC2626;
+        background: #FEE2E2;
+    }
+
+    .cts-empty-saved-box {
+        display: flex;
+        align-items: center;
+        gap: 1.25rem;
+        padding: 1.5rem;
+        background: #F8FAFC;
+        border: 1.5px dashed #CBD5E1;
+        border-radius: 12px;
+    }
+    .cts-empty-icon-wrap {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: #E2E8F0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.3rem;
+        color: #64748B;
+        flex-shrink: 0;
+    }
+    .cts-empty-title {
+        font-weight: 700;
+        color: #1E293B;
+        font-size: 0.95rem;
+    }
+    .cts-empty-desc {
+        font-size: 0.85rem;
+        color: #64748B;
+        margin-top: 2px;
+    }
+
+    /* CARD STRUCTURE */
+    .cts-card {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 16px;
+        padding: 1.5rem;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.03);
+    }
+
+    .cts-card-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #0F172A;
+        margin-bottom: 0.25rem;
+    }
+    .cts-card-title i { color: var(--primary, #F2600C); }
+
+    .cts-card-desc {
+        font-size: 0.85rem;
+        color: #64748B;
+        margin: 0 0 1.25rem 0;
+    }
+
+    /* PRESETS GRID */
+    .cts-presets-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+        gap: 1rem;
+    }
+
+    .cts-preset-card {
+        position: relative;
+        background: #F8FAFC;
+        border: 2px solid #E2E8F0;
+        border-radius: 14px;
+        padding: 1.1rem;
+        cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+    }
+    .cts-preset-card:hover {
+        border-color: #94A3B8;
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0,0,0,0.06);
+    }
+    .cts-preset-card.selected {
+        border-color: var(--primary, #F2600C);
+        background: #FFF;
+        box-shadow: 0 0 0 3px rgba(242, 96, 12, 0.18);
+    }
+    .cts-preset-card.saved-card {
+        border-color: #CBD5E1;
+        background: #FAFAFA;
+    }
+    .cts-preset-card.saved-card.selected {
+        border-color: var(--primary, #F2600C);
+        background: #FFF;
+    }
+
+    .cts-preset-top-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .cts-preset-rank {
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: #0F172A;
+    }
+
+    .cts-preset-name {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #0F172A;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .cts-active-tag {
+        font-size: 0.72rem;
+        font-weight: 700;
+        background: #ECFDF5;
+        color: #059669;
+        padding: 2px 8px;
+        border-radius: 6px;
+        border: 1px solid #A7F3D0;
+    }
+
+    .cts-preset-swatches {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+
+    .cts-swatch-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .cts-swatch {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.12);
+        transition: transform 0.15s ease;
+    }
+    .cts-swatch.main { width: 36px; height: 36px; }
+    .cts-preset-card:hover .cts-swatch {
+        transform: scale(1.05);
+    }
+
+    .cts-swatch-label {
+        font-size: 0.68rem;
+        color: #64748B;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .cts-preset-character {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.78rem;
+        color: #475569;
+        font-style: italic;
+        background: #F1F5F9;
+        padding: 6px 10px;
+        border-radius: 8px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .cts-preset-character i {
+        color: var(--primary, #F2600C);
+        font-size: 0.75rem;
+    }
+
+    .cts-preset-badge {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: var(--primary, #F2600C);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+    }
+
+    /* COLOR PICKER ROW */
+    .cts-picker-row {
+        display: flex;
+        align-items: flex-end;
+        gap: 1.25rem;
+        flex-wrap: wrap;
+    }
+
+    .cts-color-input-wrapper {
+        position: relative;
+        width: 52px;
+        height: 52px;
+        border-radius: 14px;
+        overflow: hidden;
+        border: 2px solid #CBD5E1;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+
+    .cts-color-picker {
+        position: absolute;
+        top: -10px;
+        left: -10px;
+        width: 80px;
+        height: 80px;
+        border: none;
+        cursor: pointer;
+        opacity: 0;
+    }
+
+    .cts-color-preview-circle {
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
+
+    .cts-hex-input-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .cts-hex-input-group label {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #475569;
+        text-transform: uppercase;
+    }
+
+    .cts-input {
+        padding: 0.6rem 0.9rem;
+        border: 1.5px solid #CBD5E1;
+        border-radius: 10px;
+        font-size: 0.9rem;
+        outline: none;
+        transition: border-color 0.15s;
+    }
+    .cts-input:focus {
+        border-color: var(--primary, #F2600C);
+    }
+    .text-mono { font-family: monospace; }
+    .text-bold { font-weight: 700; }
+
+    /* ADVANCED SECTION */
+    .cts-card-header-toggle {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .cts-toggle-link {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: var(--primary, #F2600C);
+    }
+
+    .cts-advanced-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 1.25rem;
+        margin-top: 1rem;
+    }
+
+    .cts-advanced-item {
+        background: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+    .cts-advanced-item label {
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: #1E293B;
+    }
+
+    .cts-advanced-picker {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .cts-advanced-picker .cts-color-picker {
+        position: static;
+        width: 38px;
+        height: 38px;
+        padding: 0;
+        border: 1px solid #CBD5E1;
+        border-radius: 8px;
+        cursor: pointer;
+        opacity: 1;
+    }
+
+    .cts-advanced-picker .cts-input {
+        flex: 1;
+    }
+
+    .cts-hint {
+        font-size: 0.72rem;
+        color: #64748B;
+    }
+
+    /* PREVIEW BOX */
+    .cts-preview-box {
+        border-radius: 16px;
+        padding: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .cts-preview-section {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .cts-preview-label {
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: #334155;
+    }
+
+    .cts-preview-row {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    /* INTERACTIVE BUTTON HOVER TEST */
+    .cts-preview-btn-interactive {
+        background-color: var(--btn-bg, #F2600C) !important;
+        color: var(--btn-text, #FFFFFF) !important;
+        border: 1px solid var(--btn-bg, #F2600C);
+        padding: 0.75rem 1.4rem;
+        border-radius: 10px;
+        font-weight: 700;
+        font-size: 0.9rem;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    .cts-preview-btn-interactive:hover {
+        background-color: var(--btn-hover, #EA580C) !important;
+        border-color: var(--btn-hover, #EA580C) !important;
+        transform: translateY(-2px);
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+    }
+    .cts-preview-btn-interactive:active {
+        background-color: var(--btn-active, #C2410C) !important;
+        border-color: var(--btn-active, #C2410C) !important;
+        transform: translateY(0);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    }
+
+    .cts-preview-state-pills {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .cts-state-pill {
+        padding: 0.45rem 0.9rem;
+        border-radius: 8px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+    }
+
+    /* INTERACTIVE CARD HOVER TEST */
+    .cts-preview-card-interactive {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 0.85rem 1.25rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1.5rem;
+        transition: all 0.2s ease;
+        cursor: pointer;
+        width: 100%;
+        max-width: 480px;
+    }
+    .cts-preview-card-interactive:hover {
+        background-color: var(--card-hover-bg, #FFF7ED) !important;
+        border-color: var(--card-border, #FED7AA) !important;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+    }
+
+    .cts-card-inner {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .cts-preview-accent-badge {
+        padding: 0.5rem 1rem;
+        border-radius: 10px;
+        font-weight: 700;
+        font-size: 0.82rem;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .cts-preview-tab {
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 0.85rem;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .cts-preview-tab-interactive {
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 0.85rem;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        transition: all 0.18s ease;
+    }
+    .cts-preview-tab-interactive:hover {
+        background-color: var(--tab-hover-bg, #FFF7ED) !important;
+        border-color: var(--tab-hover-border, #F2600C) !important;
+    }
+
+    .cts-preview-badge {
+        padding: 0.4rem 0.85rem;
+        border-radius: 20px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    /* POPUP MODAL STYLES */
+    .cts-popup-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(15, 23, 42, 0.45);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        padding: 16px;
+        animation: fadeIn 0.2s ease-out;
+    }
+
+    .cts-popup-card {
+        background: #FFFFFF;
+        border-radius: 20px;
+        padding: 2.25rem;
+        max-width: 440px;
+        width: 100%;
+        box-shadow: 0 20px 45px rgba(0, 0, 0, 0.2);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 1.1rem;
+        animation: popupScale 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .cts-popup-icon-wrap {
+        width: 72px;
+        height: 72px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2.5rem;
+    }
+    .cts-popup-icon-wrap.success {
+        background: #ECFDF5;
+        color: #10B981;
+        box-shadow: 0 0 0 8px #F0FDF4;
+    }
+    .cts-popup-icon-wrap.error {
+        background: #FEF2F2;
+        color: #EF4444;
+        box-shadow: 0 0 0 8px #FFF1F2;
+    }
+
+    .cts-popup-title {
+        margin: 0;
+        font-size: 1.35rem;
+        font-weight: 800;
+        color: #0F172A;
+    }
+
+    .cts-popup-message {
+        margin: 0;
+        font-size: 0.95rem;
+        color: #475569;
+        line-height: 1.5;
+    }
+
+    .cts-popup-actions {
+        margin-top: 0.5rem;
+        width: 100%;
+        display: flex;
+        justify-content: center;
+    }
+
+    .cts-popup-ok-btn {
+        min-width: 140px;
+        justify-content: center;
+        padding: 0.75rem 2rem;
+        font-size: 0.95rem;
+        border-radius: 10px;
+    }
+
+    @@keyframes popupScale {
+        from {
+            opacity: 0;
+            transform: scale(0.85);
+        }
+        to {
+            opacity: 1;
+            transform: scale(1);
+        }
+    }
+
+    @@keyframes fadeIn {
+        from { opacity: 0; transform: translateY(-4px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* RESPONSIVE MOBILE STYLES */
+    @@media (max-width: 768px) {
+        .cts-wrapper {
+            padding: 0 0.5rem 3rem 0.5rem;
+            gap: 1rem;
+        }
+
+        .cts-header-bar {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 12px;
+        }
+
+        .cts-header-actions {
+            flex-direction: column;
+            width: 100%;
+            gap: 8px;
+        }
+
+        .cts-btn-primary,
+        .cts-btn-secondary {
+            width: 100%;
+            height: 46px;
+            justify-content: center;
+        }
+
+        .cts-presets-grid {
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .cts-preset-card {
+            padding: 0.85rem;
+            gap: 0.6rem;
+        }
+
+        .cts-swatch {
+            width: 28px;
+            height: 28px;
+        }
+
+        .cts-picker-row {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 10px;
+        }
+
+        .cts-advanced-grid {
+            grid-template-columns: 1fr;
+            gap: 10px;
+        }
+
+        .cts-preview-row {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .cts-preview-card-interactive {
+            max-width: 100%;
+        }
+
+        .cts-popup-card {
+            width: 95vw;
+            max-width: 95vw;
+            padding: 1.5rem 1rem;
+        }
+    }
+
+    @@media (max-width: 480px) {
+        .cts-presets-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+@code {
+    private List<CustomThemeModel> presetThemes = new();
+    private List<CustomThemeModel> savedThemes = new();
+    private CustomThemeModel currentTheme = new();
+    private string customPaletteName = "";
+    private bool showAdvanced = false;
+    private bool isSaving = false;
+    private bool showPopupModal = false;
+    private string popupMessage = "";
+    private bool isSuccess = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        presetThemes = ThemeSvc.GetPresetThemes();
+        savedThemes = await ThemeSvc.GetSavedCustomThemesAsync();
+        currentTheme = await ThemeSvc.GetCurrentThemeAsync();
+    }
+
+    private void ShowPopup(string message, bool success = true)
+    {
+        popupMessage = message;
+        isSuccess = success;
+        showPopupModal = true;
+        StateHasChanged();
+    }
+
+    private void ClosePopup()
+    {
+        showPopupModal = false;
+        StateHasChanged();
+    }
+
+    private async Task SelectPreset(CustomThemeModel preset)
+    {
+        currentTheme = new CustomThemeModel
+        {
+            Rank = preset.Rank,
+            PresetName = preset.PresetName,
+            PrimaryColor = preset.PrimaryColor,
+            HoverColor = preset.HoverColor,
+            ActiveColor = preset.ActiveColor,
+            AccentColor = preset.AccentColor,
+            TextColor = preset.TextColor,
+            SurfaceColor = preset.SurfaceColor,
+            BadgeColor = preset.BadgeColor,
+            BorderColor = preset.BorderColor,
+            TextOnPrimary = preset.TextOnPrimary,
+            Character = preset.Character
+        };
+
+        await ThemeSvc.ApplyThemeAsync(currentTheme);
+        StateHasChanged();
+    }
+
+    private async Task OnPrimaryColorPickerChanged(ChangeEventArgs e)
+    {
+        var hex = e.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(hex))
+        {
+            var name = string.IsNullOrWhiteSpace(customPaletteName) ? "Custom Palette" : customPaletteName;
+            currentTheme = CustomThemeModel.CreateFromPrimary(hex, name);
+            await ThemeSvc.ApplyThemeAsync(currentTheme);
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnPrimaryHexInputChanged(ChangeEventArgs e)
+    {
+        var hex = e.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(hex) && (hex.Length == 6 || hex.Length == 7))
+        {
+            var name = string.IsNullOrWhiteSpace(customPaletteName) ? "Custom Palette" : customPaletteName;
+            currentTheme = CustomThemeModel.CreateFromPrimary(hex, name);
+            await ThemeSvc.ApplyThemeAsync(currentTheme);
+            StateHasChanged();
+        }
+    }
+
+    private async Task RecomputeFromPrimary()
+    {
+        var name = string.IsNullOrWhiteSpace(customPaletteName) ? (string.IsNullOrWhiteSpace(currentTheme.PresetName) ? "Custom Palette" : currentTheme.PresetName) : customPaletteName;
+        currentTheme = CustomThemeModel.CreateFromPrimary(currentTheme.PrimaryColor, name);
+        await ThemeSvc.ApplyThemeAsync(currentTheme);
+        StateHasChanged();
+    }
+
+    private async Task OnAdvancedColorChanged()
+    {
+        if (string.IsNullOrWhiteSpace(currentTheme.PresetName) || currentTheme.PresetName == "Default")
+        {
+            currentTheme.PresetName = "Custom Palette";
+        }
+        await ThemeSvc.ApplyThemeAsync(currentTheme);
+        StateHasChanged();
+    }
+
+    private async Task SaveCustomPalette()
+    {
+        isSaving = true;
+        try
+        {
+            var name = string.IsNullOrWhiteSpace(customPaletteName) 
+                ? (string.IsNullOrWhiteSpace(currentTheme.PresetName) || currentTheme.PresetName == "Custom" ? $"Palette ({currentTheme.PrimaryColor})" : currentTheme.PresetName)
+                : customPaletteName;
+
+            var toSave = new CustomThemeModel
+            {
+                Rank = "🎨",
+                PresetName = name,
+                PrimaryColor = currentTheme.PrimaryColor,
+                HoverColor = currentTheme.HoverColor,
+                ActiveColor = currentTheme.ActiveColor,
+                AccentColor = currentTheme.AccentColor,
+                TextColor = currentTheme.TextColor,
+                SurfaceColor = currentTheme.SurfaceColor,
+                BadgeColor = currentTheme.BadgeColor,
+                BorderColor = currentTheme.BorderColor,
+                TextOnPrimary = currentTheme.TextOnPrimary,
+                Character = "Saved Custom Color"
+            };
+
+            var success = await ThemeSvc.AddSavedCustomThemeAsync(toSave);
+            if (success)
+            {
+                savedThemes = await ThemeSvc.GetSavedCustomThemesAsync();
+                currentTheme.PresetName = name;
+                await ThemeSvc.SaveThemeAsync(currentTheme);
+                customPaletteName = "";
+                ShowPopup($"Palette \"{name}\" has been saved to your custom colors library!", true);
+            }
+            else
+            {
+                ShowPopup("Failed to save palette to storage.", false);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowPopup($"Error: {ex.Message}", false);
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteCustomPalette(CustomThemeModel theme)
+    {
+        try
+        {
+            await ThemeSvc.DeleteSavedCustomThemeAsync(theme.PresetName);
+            savedThemes = await ThemeSvc.GetSavedCustomThemesAsync();
+            ShowPopup($"Palette \"{theme.PresetName}\" was removed from your saved colors.", true);
+        }
+        catch (Exception ex)
+        {
+            ShowPopup($"Error deleting palette: {ex.Message}", false);
+        }
+        StateHasChanged();
+    }
+
+    private async Task SaveCurrentTheme()
+    {
+        isSaving = true;
+        try
+        {
+            var success = await ThemeSvc.SaveThemeAsync(currentTheme);
+            if (success)
+            {
+                ShowPopup($"Theme \"{currentTheme.PresetName}\" has been applied and saved successfully!", true);
+            }
+            else
+            {
+                ShowPopup("Failed to save theme settings.", false);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowPopup($"Error: {ex.Message}", false);
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ResetToDefault()
+    {
+        isSaving = true;
+        try
+        {
+            await ThemeSvc.ResetToDefaultAsync();
+            currentTheme = await ThemeSvc.GetCurrentThemeAsync();
+            ShowPopup("Theme has been reset to Vibrant Orange (Default).", true);
+        }
+        catch (Exception ex)
+        {
+            ShowPopup($"Error resetting theme: {ex.Message}", false);
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+}

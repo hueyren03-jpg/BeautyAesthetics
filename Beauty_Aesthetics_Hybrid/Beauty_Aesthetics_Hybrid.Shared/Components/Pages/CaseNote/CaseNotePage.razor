@@ -1,0 +1,1415 @@
+
+@page "/case-notes"
+@using Beauty_Aesthetics_WebPos.Components.Layout
+@layout EmptyLayout
+@using Beauty_Aesthetics_WebPos.Components.ViewModels
+@using Microsoft.JSInterop
+@using Microsoft.AspNetCore.Components
+
+@inject IJSRuntime JS
+@inject NavigationManager NavigationManager
+@inject CaseNotePageViewModel ViewModel
+@implements IAsyncDisposable
+
+<PageTitle>Case Notes - Beauty Aesthetics</PageTitle>
+
+<div class="case-notes-page">
+    <!-- Mobile Top Header (only visible in portrait mode) -->
+    <header class="mobile-header">
+        <button class="btn-back-arrow" @onclick="NavigateToAppointments" title="Back to Appointments" aria-label="Back to Appointments">
+            <i class="bi bi-arrow-left"></i>
+        </button>
+        <div class="header-title">
+            <h2>Case Notes</h2>
+        </div>
+        <div class="mobile-header-actions">
+            <button type="button"
+                    class="btn-patient-drawer"
+                    @onclick="TogglePatientDrawer"
+                    title="View Patient Information"
+                    aria-label="View Patient Information"
+                    aria-expanded="@_isPatientDrawerOpen">
+                <i class="bi bi-person-vcard"></i>
+            </button>
+            <button class="btn-history" @onclick="NavigateToHistory" title="View Case History" aria-label="View Case History">
+                <i class="bi bi-clock-history"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="main-layout">
+        <!-- Sidebar - Case History -->
+        <aside class="sidebar @(_isSidebarCollapsed ? "collapsed" : "")">
+            <div class="sidebar-header">
+                <button class="btn-back-arrow" @onclick="NavigateToAppointments" title="Back to Appointments" aria-label="Back to Appointments">
+                    <i class="bi bi-arrow-left"></i>
+                </button>
+                <div class="sidebar-title">
+                    <i class="bi bi-clock-history"></i>
+                    <h2>Case Note History</h2>
+                </div>
+                <button class="btn-toggle-sidebar" @onclick="ToggleSidebar" title="@(_isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar")">
+                    <i class="bi @(_isSidebarCollapsed ? "bi-chevron-right" : "bi-chevron-left")"></i>
+                </button>
+            </div>
+            
+            <!-- Search and Filter Section -->
+            <div class="search-filter-section">
+                <!-- Search Box -->
+                <div class="search-box">
+                    <i class="bi bi-search"></i>
+                    <input type="text" 
+                           class="search-input" 
+                           @bind="ViewModel.SearchQuery" 
+                           @bind:event="oninput"
+                           placeholder="Search by patient, content, or date..." />
+                    @if (!string.IsNullOrWhiteSpace(ViewModel.SearchQuery))
+                    {
+                        <button class="search-clear-btn" @onclick="@(() => ViewModel.SearchQuery = string.Empty)" title="Clear search">
+                            <i class="bi bi-x-circle-fill"></i>
+                        </button>
+                    }
+                </div>
+                
+                <!-- Date Filter Dropdown -->
+                <div class="date-filter-wrapper">
+                    <div class="date-filter @(_isDateFilterOpen ? "open" : "")" @onclick="ToggleDateFilter">
+                        <i class="bi bi-calendar-range"></i>
+                        <span class="date-filter-label">@GetDateFilterLabel()</span>
+                        <i class="bi bi-chevron-down filter-arrow"></i>
+                    </div>
+                    
+                    @if (_isDateFilterOpen)
+                    {
+                        <div class="date-filter-dropdown" @onclick:stopPropagation="true">
+                            <div class="filter-option @(ViewModel.DateFilter == "all" ? "selected" : "")" 
+                                 @onclick="@(() => SelectDateFilter("all"))">
+                                <i class="bi bi-calendar-week"></i>
+                                <span>All Dates</span>
+                                @if (ViewModel.DateFilter == "all")
+                                {
+                                    <i class="bi bi-check-circle-fill check-icon"></i>
+                                }
+                            </div>
+                            <div class="filter-option @(ViewModel.DateFilter == "today" ? "selected" : "")" 
+                                 @onclick="@(() => SelectDateFilter("today"))">
+                                <i class="bi bi-calendar-day"></i>
+                                <span>Today</span>
+                                @if (ViewModel.DateFilter == "today")
+                                {
+                                    <i class="bi bi-check-circle-fill check-icon"></i>
+                                }
+                            </div>
+                            <div class="filter-option @(ViewModel.DateFilter == "yesterday" ? "selected" : "")" 
+                                 @onclick="@(() => SelectDateFilter("yesterday"))">
+                                <i class="bi bi-calendar-minus"></i>
+                                <span>Yesterday</span>
+                                @if (ViewModel.DateFilter == "yesterday")
+                                {
+                                    <i class="bi bi-check-circle-fill check-icon"></i>
+                                }
+                            </div>
+                            <div class="filter-divider"></div>
+                            <div class="filter-option @(ViewModel.DateFilter == "last7days" ? "selected" : "")" 
+                                 @onclick="@(() => SelectDateFilter("last7days"))">
+                                <i class="bi bi-calendar-range"></i>
+                                <span>Last 7 Days</span>
+                                @if (ViewModel.DateFilter == "last7days")
+                                {
+                                    <i class="bi bi-check-circle-fill check-icon"></i>
+                                }
+                            </div>
+                            <div class="filter-option @(ViewModel.DateFilter == "last30days" ? "selected" : "")" 
+                                 @onclick="@(() => SelectDateFilter("last30days"))">
+                                <i class="bi bi-calendar-range"></i>
+                                <span>Last 30 Days</span>
+                                @if (ViewModel.DateFilter == "last30days")
+                                {
+                                    <i class="bi bi-check-circle-fill check-icon"></i>
+                                }
+                            </div>
+                            <div class="filter-divider"></div>
+                            <div class="filter-option @(ViewModel.DateFilter == "thisMonth" ? "selected" : "")" 
+                                 @onclick="@(() => SelectDateFilter("thisMonth"))">
+                                <i class="bi bi-calendar-month"></i>
+                                <span>This Month</span>
+                                @if (ViewModel.DateFilter == "thisMonth")
+                                {
+                                    <i class="bi bi-check-circle-fill check-icon"></i>
+                                }
+                            </div>
+                            <div class="filter-option @(ViewModel.DateFilter == "lastMonth" ? "selected" : "")" 
+                                 @onclick="@(() => SelectDateFilter("lastMonth"))">
+                                <i class="bi bi-calendar-month"></i>
+                                <span>Last Month</span>
+                                @if (ViewModel.DateFilter == "lastMonth")
+                                {
+                                    <i class="bi bi-check-circle-fill check-icon"></i>
+                                }
+                            </div>
+                            <div class="filter-divider"></div>
+                            <div class="filter-option custom-option @(ViewModel.DateFilter == "custom" ? "selected" : "")" 
+                                 @onclick="@(() => SelectDateFilter("custom"))">
+                                <i class="bi bi-calendar2-range"></i>
+                                <span>Custom Range</span>
+                                @if (ViewModel.DateFilter == "custom")
+                                {
+                                    <i class="bi bi-check-circle-fill check-icon"></i>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+                
+                <!-- Custom Date Range -->
+                @if (ViewModel.IsCustomDateRange)
+                {
+                    <div class="custom-date-range">
+                        <div class="date-input-group">
+                            <label>From:</label>
+                            <input type="date" 
+                                   class="date-input" 
+                                   @bind="ViewModel.CustomStartDate" />
+                        </div>
+                        <div class="date-input-group">
+                            <label>To:</label>
+                            <input type="date" 
+                                   class="date-input" 
+                                   @bind="ViewModel.CustomEndDate" />
+                        </div>
+                    </div>
+                }
+                
+                <!-- Clear Filters Button -->
+                @if (!string.IsNullOrWhiteSpace(ViewModel.SearchQuery) || ViewModel.DateFilter != "all")
+                {
+                    <button class="btn-clear-filters" @onclick="@(() => ViewModel.ClearFilters())" title="Clear all filters">
+                        <i class="bi bi-x-circle"></i>
+                        <span>Clear Filters</span>
+                    </button>
+                }
+            </div>
+            
+            <div class="sidebar-content">
+                @if (ViewModel.FilteredCaseHistory.Any())
+                {
+                    @foreach (var note in ViewModel.FilteredCaseHistory)
+                    {
+                        <div class="history-card @(_currentlyViewingNoteId == note.Id ? "active" : "") @(note.IsPinned ? "pinned" : "")" 
+                             @onclick="() => ViewNote(note)">
+                            <div class="history-card-header">
+                                <span class="history-date">
+                                    <i class="bi bi-calendar3"></i>
+                                    @note.Date.ToString("MMM dd, yyyy")
+                                </span>
+                                <div class="history-card-actions">
+                                    <button class="btn-pin @(note.IsPinned ? "pinned" : "")" 
+                                            @onclick="() => TogglePin(note.Id)" 
+                                            @onclick:stopPropagation="true" 
+                                            title="@(note.IsPinned ? "Unpin" : "Pin to top")">
+                                        <i class="bi @(note.IsPinned ? "bi-pin-fill" : "bi-pin")"></i>
+                                    </button>
+                                    <button class="btn-delete" @onclick="() => DeleteNote(note.Id)" 
+                                            @onclick:stopPropagation="true" title="Delete">
+                                        <i class="bi bi-trash3"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            @if (!string.IsNullOrEmpty(note.ImageUrl))
+                            {
+                                <div class="history-image-preview">
+                                    <img src="@note.ImageUrl" alt="Note preview" />
+                                </div>
+                            }
+
+                            <p class="history-preview">@note.Preview</p>
+                            <span class="history-patient">@note.PatientName</span>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="empty-state">
+                        @if (!string.IsNullOrWhiteSpace(ViewModel.SearchQuery) || ViewModel.DateFilter != "all")
+                        {
+                            <i class="bi bi-search"></i>
+                            <p>No case notes match your filters</p>
+                            <button class="btn-reset-filters" @onclick="@(() => ViewModel.ClearFilters())">
+                                <i class="bi bi-arrow-counterclockwise"></i>
+                                <span>Reset Filters</span>
+                            </button>
+                        }
+                        else
+                        {
+                            <i class="bi bi-inbox"></i>
+                            <p>No case notes yet</p>
+                        }
+                    </div>
+                }
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="content-area">
+            <!-- Patient Info Card - Collapsible -->
+            @if (ViewModel.SelectedPatient != null)
+            {
+                @if (_isPatientDrawerOpen)
+                {
+                    <button type="button"
+                            class="patient-drawer-backdrop"
+                            @onclick="ClosePatientDrawer"
+                            aria-label="Close Patient Information"></button>
+                }
+
+                <div class="info-card patient-drawer @(_isPatientInfoCollapsed ? "collapsed" : "") @(_isPatientDrawerOpen ? "open" : "")">
+                    <div class="info-card-header" @onclick="TogglePatientInfo">
+                        <div class="info-card-title">
+                            <i class="bi bi-person-badge"></i>
+                            <span>Patient Information</span>
+                        </div>
+                        <button class="btn-toggle-info" title="@(_isPatientInfoCollapsed ? "Expand" : "Collapse")">
+                            <i class="bi @(_isPatientInfoCollapsed ? "bi-chevron-down" : "bi-chevron-up")"></i>
+                        </button>
+                        <button type="button"
+                                class="patient-drawer-close"
+                                @onclick="ClosePatientDrawer"
+                                @onclick:stopPropagation="true"
+                                title="Close Patient Information"
+                                aria-label="Close Patient Information">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                    <div class="info-card-content">
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <i class="bi bi-person"></i>
+                                <div class="info-content">
+                                    <span class="info-label">Name</span>
+                                    <span class="info-value">@ViewModel.SelectedPatient.Name</span>
+                                </div>
+                            </div>
+                            <div class="info-item">
+                                <i class="bi bi-calendar-heart"></i>
+                                <div class="info-content">
+                                    <span class="info-label">Birthday</span>
+                                    <span class="info-value">@ViewModel.SelectedPatient.Birthday.ToString("dd/MM/yyyy")</span>
+                                </div>
+                            </div>
+                            <div class="info-item">
+                                <i class="bi bi-telephone"></i>
+                                <div class="info-content">
+                                    <span class="info-label">Phone</span>
+                                    <span class="info-value">@ViewModel.SelectedPatient.Phone</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <!-- Editor Card -->
+            <div class="editor-card">
+                <!-- Tab Navigation Row -->
+                <div class="tab-navigation-row">
+                    <div class="tab-group">
+                        <button class="tab-btn @(ViewModel.ActiveTab == "case-notes" ? "active" : "")"
+                                @onclick='() => OnTabChange("case-notes")'>
+                            <i class="bi bi-journal-text"></i>
+                            <span>Case Notes</span>
+                        </button>
+                        <button class="tab-btn"
+                                @onclick='() => NavigateToFollowUp()'>
+                            <i class="bi bi-calendar-check"></i>
+                            <span>Follow Up</span>
+                        </button>
+                        <button class="tab-btn @(ViewModel.ActiveTab == "documents" ? "active" : "")"
+                                @onclick='() => NavigateToDocuments()'>
+                            <i class="bi bi-files"></i>
+                            <span>Documents</span>
+                        </button>
+                        <button class="tab-btn"
+                                @onclick='() => NavigateToBilling()'>
+                            <i class="bi bi-wallet2"></i>
+                            <span>Billing</span>
+                        </button>
+                    </div>
+
+                </div>
+
+                <!-- Quick Modules (Only visible for Case Notes tab) -->
+                @if (ViewModel.ActiveTab == "case-notes")
+                {
+                    <div class="quick-modules">
+                    <button class="quick-module" @onclick='() => NavigateToLink("/annotate-image")'>
+                        <i class="bi bi-image"></i>
+                        <span>Image</span>
+                    </button>
+                    <button class="quick-module" @onclick='() => NavigateToLink("/case-note-template")'>
+                        <i class="bi bi-file-text"></i>
+                        <span>Templates</span>
+                    </button>
+                    <button class="quick-module" @onclick='() => NavigateToLink("/case-note-prescription")'>
+                        <i class="bi bi-capsule"></i>
+                        <span>Prescription</span>
+                    </button>
+                
+                        <button class="quick-module" @onclick='() => NavigateToLink("/case-note-medical-certification")'>
+                            <i class="bi bi-file-medical"></i>
+                            <span>Medical Cert</span>
+                        </button>
+                    </div>
+                }
+
+                @if (ViewModel.ActiveTab == "case-notes")
+                {
+                    <div class="editor-container" @key="@("editor-" + _editorKey)">
+                    @if (_showEmojiPicker)
+                    {
+                        <div class="emoji-picker-overlay" @onclick="CloseEmojiPicker">
+                            <div class="emoji-picker" @onclick:stopPropagation="true">
+                                <div class="emoji-picker-header">
+                                    <div class="emoji-picker-title">
+                                        <i class="bi bi-emoji-smile"></i>
+                                        <span>Choose an Emoji</span>
+                                    </div>
+                                    <button class="btn-close-emoji" @onclick="ToggleEmojiPicker" title="Close">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </div>
+                                <div class="emoji-picker-search">
+                                    <i class="bi bi-search"></i>
+                                    <input type="text" 
+                                           placeholder="Search emojis (smile, heart, hand, star, etc.)..." 
+                                           @bind="_emojiSearchQuery" 
+                                           @bind:event="oninput"
+                                           class="emoji-search-input"
+                                           autofocus />
+                                </div>
+                                <div class="emoji-picker-body">
+                                    @{
+                                        var filteredEmojis = GetFilteredEmojis();
+                                        if (filteredEmojis.Any())
+                                        {
+                                            foreach (var emoji in filteredEmojis)
+                                            {
+                                                <button class="emoji-item" @onclick="() => InsertEmoji(emoji)" title="@emoji">
+                                                    @emoji
+                                                </button>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <div class="emoji-picker-empty">
+                                                <i class="bi bi-emoji-frown"></i>
+                                                <p>No emojis found. Try: smile, heart, hand, star, fire, weather</p>
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                        <div id="editor" class="quill-editor"></div>
+                    </div>
+                }
+                else
+                {
+                    <!-- Placeholder for other tabs -->
+                    <div class="editor-container" style="padding: 40px; text-align: center; color: #94a3b8;">
+                        <i class="bi bi-info-circle" style="font-size: 48px; margin-bottom: 16px;"></i>
+                        <h3 style="margin: 0 0 8px 0; color: #64748b;">@GetTabTitle()</h3>
+                        <p style="margin: 0;">Content for this tab is coming soon.</p>
+                    </div>
+                }
+
+                @if (ViewModel.ActiveTab == "case-notes")
+                {
+                    <div class="editor-footer">
+                    @if (!string.IsNullOrEmpty(_statusMessage))
+                    {
+                        <div class="status-badge @(_isSuccess ? "success" : "error")">
+                            <i class="bi @(_isSuccess ? "bi-check-circle-fill" : "bi-exclamation-triangle-fill")"></i>
+                            <span>@_statusMessage</span>
+                        </div>
+                    }
+                        @if (_currentlyViewingNoteId.HasValue)
+                        {
+                            <button class="btn-new-note" @onclick="CreateNewNote" disabled="@(_isSaving || !_isEditorReady)" title="Start a new note">
+                                <i class="bi bi-file-earmark-plus"></i>
+                                <span>New Note</span>
+                            </button>
+                        }
+                        <button class="btn-save" @onclick="SaveNote" disabled="@(_isSaving || !_isEditorReady)">
+                            @if (_isSaving)
+                            {
+                                <span class="spinner"></span>
+                                <span>Saving...</span>
+                            }
+                            else if (!_isEditorReady)
+                            {
+                                <span class="spinner"></span>
+                                <span>Loading...</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-save"></i>
+                                <span>@(_currentlyViewingNoteId.HasValue ? "Update Note" : "Save Note")</span>
+                            }
+                        </button>
+                    </div>
+                }
+            </div>
+        </main>
+    </div>
+</div>
+
+<!-- Saving Indicator Modal -->
+@if (_showSavingOverlay)
+{
+    <div class="modal-overlay saving-overlay">
+        <div class="saving-modal" @onclick:stopPropagation="true">
+            <div class="saving-spinner"></div>
+            <div class="saving-text">
+                <h3>Saving Note...</h3>
+                <p>Please wait while we securely save your case note.</p>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Delete Confirmation Modal -->
+@if (_showDeleteModal)
+{
+    <div class="modal-overlay" @onclick="CancelDelete">
+        <div class="modal-container" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <h3>Delete Case Note</h3>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete this case note?</p>
+                <p class="modal-warning">This action cannot be undone. All content and images will be permanently removed.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" @onclick="CancelDelete">
+                    <i class="bi bi-x-circle"></i>
+                    <span>Cancel</span>
+                </button>
+                <button class="btn-modal-delete" @onclick="ConfirmDelete">
+                    <i class="bi bi-trash3-fill"></i>
+                    <span>Delete Note</span>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Unsaved Changes Warning Modal -->
+@if (_showUnsavedChangesModal)
+{
+    <div class="modal-overlay" @onclick:stopPropagation="true">
+        <div class="modal-container unsaved-changes-modal" @onclick:stopPropagation="true">
+            <div class="modal-header modal-header-warning">
+                <i class="bi bi-exclamation-circle-fill"></i>
+                <h3>Unsaved Changes</h3>
+            </div>
+            <div class="modal-body">
+                <p>You have unsaved changes in your case note.</p>
+                <p class="modal-warning">If you leave now, your changes will be lost.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-discard" @onclick="DiscardChanges">
+                    <i class="bi bi-x-circle"></i>
+                    <span>Discard Changes</span>
+                </button>
+                <button class="btn-modal-continue" @onclick="ContinueEditing">
+                    <i class="bi bi-pencil-square"></i>
+                    <span>Continue Editing</span>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- New Note Confirmation Modal -->
+@if (_showNewNoteConfirmModal)
+{
+    <div class="modal-overlay" @onclick="CancelNewNote">
+        <div class="modal-container new-note-confirm-modal" @onclick:stopPropagation="true">
+            <div class="modal-header modal-header-info">
+                <i class="bi bi-file-earmark-plus-fill"></i>
+                <h3>Start New Note</h3>
+            </div>
+            <div class="modal-body">
+                <p>You have @(_hasUnsavedChanges ? "unsaved changes" : "content") in the current note.</p>
+                <p class="modal-warning">Starting a new note will clear the current content. This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" @onclick="CancelNewNote">
+                    <i class="bi bi-x-circle"></i>
+                    <span>Cancel</span>
+                </button>
+                <button class="btn-modal-confirm" @onclick="ConfirmNewNote">
+                    <i class="bi bi-check-circle-fill"></i>
+                    <span>Start New Note</span>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    // ===== VIEW MODELS & STATE =====
+    // Injected via DI
+    private DotNetObjectReference<CaseNotePage>? _dotNetRef;
+    private IJSObjectReference? _moduleRef;
+    
+    // ===== UI STATE =====
+    private bool _showEmojiPicker = false;
+    private bool _isSidebarCollapsed = false;
+    private bool _isPatientInfoCollapsed = false;
+    private bool _isPatientDrawerOpen = false;
+    private string _emojiSearchQuery = "";
+    private bool _showDeleteModal = false;
+    private int? _noteToDelete = null;
+    private bool _showUnsavedChangesModal = false;
+    private bool _showNewNoteConfirmModal = false;
+    private bool _showSavingOverlay = false;
+    private string? _pendingTabNavigation = null;
+    private string? _pendingLinkNavigation = null;
+    private CaseNotePageViewModel.CaseNote? _pendingNoteNavigation = null;
+    private bool _hasUnsavedChanges = false;
+    private string _lastSavedContent = "";
+    private bool _isDateFilterOpen = false;
+    
+    // ===== EDITOR STATE =====
+    private bool _isEditorReady = false;
+    private bool _isSaving = false;
+    private int? _currentlyViewingNoteId
+    {
+        get => ViewModel.CurrentlyViewingNoteId;
+        set => ViewModel.CurrentlyViewingNoteId = value;
+    }
+    private List<string> _emojiList = new();
+    private bool _isInitializing = false;
+    private bool _hasRendered = false;
+    private string _previousTab = "case-notes";
+    private int _editorKey = 0;
+    
+    // ===== STATUS & FEEDBACK =====
+    private string _statusMessage = "";
+    private bool _isSuccess = false;
+    private CancellationTokenSource? _hideMessageCts;
+
+    protected override void OnInitialized()
+    {
+        Console.WriteLine("[BLAZOR] OnInitialized called");
+        
+        // Set default active tab to case-notes
+        ViewModel.SelectTab("case-notes");
+        
+        // Reset editor state on initialization (handles navigation back to page)
+        _isEditorReady = false;
+        _isInitializing = false;
+        _editorKey++; // Increment key to force fresh render
+    }
+    
+    protected override void OnParametersSet()
+    {
+        Console.WriteLine("[BLAZOR] OnParametersSet called");
+        base.OnParametersSet();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Apply portrait mode class on first render (CSS orientation queries don't work in MAUI WebView)
+        if (firstRender)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("applyPortraitMode");
+            }
+            catch { /* ignore if JS not ready */ }
+        }
+
+        // Only initialize if we're on the case-notes tab and editor isn't ready
+        if (ViewModel.ActiveTab == "case-notes" && !_isEditorReady && !_isInitializing)
+        {
+            _isInitializing = true;
+            Console.WriteLine($"[BLAZOR] Attempting to initialize editor (EditorKey: {_editorKey})");
+            
+            try
+            {
+                // Create DotNet reference if not exists
+                if (_dotNetRef == null)
+                {
+                    _dotNetRef = DotNetObjectReference.Create(this);
+                    Console.WriteLine("[BLAZOR] Created DotNetObjectReference");
+                }
+                
+                // Delay to ensure DOM is fully ready after Blazor render
+                await Task.Delay(100);
+                
+                // Always try to initialize - let JavaScript handle checking if it exists
+                Console.WriteLine("[BLAZOR] Calling initializeQuillEditor...");
+                var success = await JS.InvokeAsync<bool>("initializeQuillEditor");
+                
+                if (success)
+                {
+                    Console.WriteLine("[BLAZOR] ✓ Quill editor initialized successfully");
+                    
+                    // Get emoji list if not loaded
+                    if (!_emojiList.Any())
+                    {
+                        _emojiList = await JS.InvokeAsync<List<string>>("getEmojiList");
+                        Console.WriteLine($"[BLAZOR] ✓ Loaded {_emojiList.Count} emojis");
+                    }
+
+                    // Setup event listeners
+                    await SetupEventListeners();
+
+                    _isEditorReady = true;
+                    _hasRendered = true;
+                    Console.WriteLine("[BLAZOR] ✓ Editor is ready!");
+                    
+                    // Load pre-selected note if any (e.g. navigated from Case History page)
+                    if (ViewModel.CurrentlyViewingNoteId.HasValue)
+                    {
+                        var note = ViewModel.CaseHistory.FirstOrDefault(n => n.Id == ViewModel.CurrentlyViewingNoteId.Value);
+                        if (note != null)
+                        {
+                            await JS.InvokeVoidAsync("setEditorContent", note.Content);
+                            _lastSavedContent = note.Content;
+                            _hasUnsavedChanges = false;
+                            Console.WriteLine($"[BLAZOR] Loaded pre-selected note ID: {note.Id}");
+                        }
+                    }
+                    
+                    // Check for pending annotation image from AnnotateImage page
+                    await CheckForPendingAnnotationImage();
+                    
+                    StateHasChanged();
+                }
+                else
+                {
+                    Console.WriteLine("[BLAZOR] ✗ Failed to initialize editor - returned false");
+                    _statusMessage = "Failed to initialize editor. Please refresh the page.";
+                    _isSuccess = false;
+                    StateHasChanged();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[BLAZOR] ✗ Error initializing editor: {ex.Message}");
+                Console.WriteLine($"[BLAZOR] Stack trace: {ex.StackTrace}");
+                _statusMessage = "Failed to initialize editor. Please refresh the page.";
+                _isSuccess = false;
+                StateHasChanged();
+            }
+            finally
+            {
+                _isInitializing = false;
+            }
+        }
+    }
+
+    private async Task SetupEventListeners()
+    {
+        try
+        {
+            // Create a module to avoid eval
+            _moduleRef = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Beauty_Aesthetics_Hybrid.Shared/js/case-notes-interop.js");
+            await _moduleRef.InvokeVoidAsync("setupEventListeners", _dotNetRef);
+            Console.WriteLine("[BLAZOR] Event listeners setup via module");
+        }
+        catch
+        {
+            // Fallback if module import fails - use simpler approach
+            await JS.InvokeVoidAsync("setupCaseNotePageListeners", _dotNetRef);
+            Console.WriteLine("[BLAZOR] Event listeners setup via fallback");
+        }
+    }
+
+    private async Task CheckForPendingAnnotationImage()
+    {
+        if (!_isEditorReady) return;
+        
+        try
+        {
+            Console.WriteLine("[BLAZOR] Checking for pending annotation image...");
+            var pendingImage = await JS.InvokeAsync<string>("localStorage.getItem", "pendingAnnotationImage");
+            
+            if (!string.IsNullOrEmpty(pendingImage))
+            {
+                Console.WriteLine($"[BLAZOR] Found pending image, size: {pendingImage.Length} characters");
+                
+                // Insert image into editor
+                var insertSuccess = await JS.InvokeAsync<bool>("insertImageFromBase64", pendingImage);
+                
+                if (insertSuccess)
+                {
+                    // Clear from localStorage
+                    await JS.InvokeVoidAsync("localStorage.removeItem", "pendingAnnotationImage");
+                    
+                    _statusMessage = "Annotated image inserted successfully!";
+                    _isSuccess = true;
+                    Console.WriteLine("[BLAZOR] ✓ Annotated image inserted successfully");
+                    
+                    // Auto-hide success message after 3 seconds
+                    _hideMessageCts?.Cancel();
+                    _hideMessageCts?.Dispose();
+                    _hideMessageCts = new CancellationTokenSource();
+                    
+                    try
+                    {
+                        await Task.Delay(3000, _hideMessageCts.Token);
+                        _statusMessage = "";
+                        StateHasChanged();
+                    }
+                    catch (TaskCanceledException) { }
+                }
+                else
+                {
+                    Console.WriteLine("[BLAZOR] ✗ Failed to insert image into editor");
+                    _statusMessage = "Failed to insert image. Please try again.";
+                    _isSuccess = false;
+                }
+            }
+            else
+            {
+                Console.WriteLine("[BLAZOR] No pending annotation image found");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[BLAZOR] ✗ Error checking for pending image: {ex.Message}");
+            Console.Error.WriteLine($"[ERROR] Pending image check failed: {ex.GetType().Name} - {ex.Message}");
+        }
+    }
+
+    [JSInvokable]
+    public void ToggleEmojiPickerFromJS()
+    {
+        _showEmojiPicker = !_showEmojiPicker;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void CloseEmojiPickerFromJS()
+    {
+        if (_showEmojiPicker)
+        {
+            CloseEmojiPicker();
+        }
+    }
+
+    [JSInvokable]
+    public async Task TriggerSave()
+    {
+        await SaveNote();
+    }
+
+    [JSInvokable]
+    public async Task OnEditorContentChanged()
+    {
+        if (!_isEditorReady) return;
+        
+        try
+        {
+            var currentContent = await JS.InvokeAsync<string>("getEditorContent");
+            
+            // Check if content has changed from last saved state
+            if (currentContent != _lastSavedContent)
+            {
+                _hasUnsavedChanges = true;
+            }
+            else
+            {
+                _hasUnsavedChanges = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[BLAZOR] Error checking content changes: {ex.Message}");
+        }
+    }
+
+    private List<string> GetFilteredEmojis()
+    {
+        if (string.IsNullOrWhiteSpace(_emojiSearchQuery))
+        {
+            return _emojiList;
+        }
+        
+        // Filter emojis based on common categories and search patterns
+        var query = _emojiSearchQuery.ToLower().Trim();
+        
+        // Simple category-based filtering
+        var categoryMap = new Dictionary<string, List<string>>
+        {
+            { "smile", new List<string> { "😀", "😃", "😄", "😁", "😊", "🙂", "😇" } },
+            { "happy", new List<string> { "😀", "😃", "😄", "😁", "😊", "😍", "🥰", "😘" } },
+            { "love", new List<string> { "😍", "🥰", "😘", "❤️", "💕", "💖", "💗", "💓", "💞" } },
+            { "heart", new List<string> { "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "💔" } },
+            { "sad", new List<string> { "😢", "😭", "😔", "😞", "😟", "🥺" } },
+            { "hand", new List<string> { "👍", "👎", "👌", "✌️", "🤞", "🤝", "👏", "🙌", "🙏" } },
+            { "fire", new List<string> { "🔥" } },
+            { "star", new List<string> { "⭐", "🌟", "✨" } },
+            { "weather", new List<string> { "☀️", "🌤️", "⛅", "🌥️", "☁️", "🌧️", "⛈️", "❄️" } }
+        };
+
+        foreach (var category in categoryMap)
+        {
+            if (query.Contains(category.Key))
+            {
+                return category.Value.Intersect(_emojiList).ToList();
+            }
+        }
+        
+        return _emojiList;
+    }
+
+    private void CloseEmojiPicker()
+    {
+        _showEmojiPicker = false;
+        _emojiSearchQuery = "";
+        StateHasChanged();
+    }
+
+    private string GetTabTitle()
+    {
+        return ViewModel.ActiveTab switch
+        {
+            "follow-up" => "Follow Up",
+            "documents" => "Documents",
+            _ => "Content"
+        };
+    }
+
+    private async Task CreateNewNote()
+    {
+        if (!_isEditorReady) return;
+        
+        // Check if there are unsaved changes or content
+        var hasContent = await JS.InvokeAsync<bool>("checkEditorHasContent");
+        if (hasContent || _hasUnsavedChanges)
+        {
+            // Show custom confirmation modal
+            _showNewNoteConfirmModal = true;
+            StateHasChanged();
+            return;
+        }
+        
+        // No content or changes, proceed directly
+        await ClearEditor();
+        _currentlyViewingNoteId = null;
+        StateHasChanged();
+    }
+    
+    private void CancelNewNote()
+    {
+        _showNewNoteConfirmModal = false;
+        StateHasChanged();
+    }
+    
+    private async Task ConfirmNewNote()
+    {
+        _showNewNoteConfirmModal = false;
+        _hasUnsavedChanges = false;
+        _lastSavedContent = "";
+        
+        await ClearEditor();
+        _currentlyViewingNoteId = null;
+        StateHasChanged();
+    }
+
+    private void ToggleEmojiPicker()
+    {
+        _showEmojiPicker = !_showEmojiPicker;
+    }
+
+    private async Task InsertEmoji(string emoji)
+    {
+        if (!_isEditorReady) return;
+        try
+        {
+            await JS.InvokeVoidAsync("insertEmoji", emoji);
+            _showEmojiPicker = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error inserting emoji: {ex.Message}");
+        }
+    }
+
+    private async Task SaveNote()
+    {
+        if (!_isEditorReady || ViewModel.SelectedPatient == null)
+        {
+            _statusMessage = ViewModel.SelectedPatient == null ? "Please select a patient" : "Editor not ready";
+            _isSuccess = false;
+            StateHasChanged();
+            return;
+        }
+
+        _isSaving = true;
+        _showSavingOverlay = true;
+        _statusMessage = "";
+        
+        // Immediate UI feedback - don't wait for StateHasChanged
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            // Get content asynchronously
+            var content = await JS.InvokeAsync<string>("getEditorContent");
+            
+            // Validate content early
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                _statusMessage = "Please write some notes";
+                _isSuccess = false;
+                _isSaving = false;
+                _showSavingOverlay = false;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            // Process save operation in background without blocking UI
+            var isUpdate = _currentlyViewingNoteId.HasValue;
+            var noteId = _currentlyViewingNoteId;
+            
+            // Offload heavy processing to Task.Run to avoid blocking UI thread
+            await Task.Run(() =>
+            {
+                if (isUpdate && noteId.HasValue)
+                {
+                    ViewModel.UpdateNote(noteId.Value, content);
+                }
+                else
+                {
+                    ViewModel.SaveNote(content);
+                }
+            });
+            
+            // Update UI state after save completes
+            _hasUnsavedChanges = false;
+            _lastSavedContent = content;
+            _currentlyViewingNoteId = null;
+            _isSuccess = true;
+            _statusMessage = isUpdate ? "Note updated successfully!" : "Note saved successfully!";
+            
+            // Clear editor for new notes (non-blocking)
+            if (!isUpdate)
+            {
+                _ = JS.InvokeVoidAsync("clearEditor");
+            }
+
+            // Auto-hide message after delay
+            _hideMessageCts?.Cancel();
+            _hideMessageCts?.Dispose();
+            _hideMessageCts = new CancellationTokenSource();
+            
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(3000, _hideMessageCts.Token);
+                    _statusMessage = "";
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (TaskCanceledException) { }
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[BLAZOR] Error saving note: {ex.Message}");
+            _statusMessage = "Error saving note. Please try again.";
+            _isSuccess = false;
+        }
+        finally
+        {
+            _isSaving = false;
+            _showSavingOverlay = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task ViewNote(CaseNotePageViewModel.CaseNote note)
+    {
+        if (!_isEditorReady) return;
+        
+        // Check for unsaved changes before loading a different note
+        if (_hasUnsavedChanges && note.Id != _currentlyViewingNoteId)
+        {
+            _pendingNoteNavigation = note;
+            _showUnsavedChangesModal = true;
+            StateHasChanged();
+            return;
+        }
+        
+        try
+        {
+            await JS.InvokeVoidAsync("setEditorContent", note.Content);
+            _currentlyViewingNoteId = note.Id;
+            _lastSavedContent = note.Content;
+            _hasUnsavedChanges = false;
+            
+            _statusMessage = $"Loaded: {note.Date.ToString("MMM dd, yyyy")}";
+            _isSuccess = true;
+            
+            _hideMessageCts?.Cancel();
+            _hideMessageCts?.Dispose();
+            _hideMessageCts = new CancellationTokenSource();
+            
+            try
+            {
+                await Task.Delay(2000, _hideMessageCts.Token);
+                _statusMessage = "";
+                StateHasChanged();
+            }
+            catch (TaskCanceledException) { }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading note: {ex.Message}");
+        }
+    }
+
+    private async Task ClearEditor()
+    {
+        if (!_isEditorReady) return;
+        try
+        {
+            await JS.InvokeVoidAsync("clearEditor");
+            _currentlyViewingNoteId = null;
+            _statusMessage = "Editor cleared";
+            _isSuccess = true;
+            
+            _hideMessageCts?.Cancel();
+            _hideMessageCts?.Dispose();
+            _hideMessageCts = new CancellationTokenSource();
+            try
+            {
+                await Task.Delay(1500, _hideMessageCts.Token);
+                _statusMessage = "";
+                StateHasChanged();
+            }
+            catch (TaskCanceledException) { }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error clearing: {ex.Message}");
+        }
+    }
+
+    private void DeleteNote(int noteId)
+    {
+        _noteToDelete = noteId;
+        _showDeleteModal = true;
+        StateHasChanged();
+    }
+
+    private void CancelDelete()
+    {
+        _showDeleteModal = false;
+        _noteToDelete = null;
+        StateHasChanged();
+    }
+
+    private async Task ConfirmDelete()
+    {
+        // Close modal immediately
+        _showDeleteModal = false;
+        var noteId = _noteToDelete;
+        _noteToDelete = null;
+        StateHasChanged();
+        
+        if (noteId.HasValue)
+        {
+            ViewModel.DeleteNote(noteId.Value);
+            
+            if (_currentlyViewingNoteId == noteId.Value)
+            {
+                await ClearEditor();
+            }
+            
+            _statusMessage = "Note deleted successfully";
+            _isSuccess = true;
+            StateHasChanged();
+            
+            // Auto-hide success message after delay (in background)
+            _hideMessageCts?.Cancel();
+            _hideMessageCts?.Dispose();
+            _hideMessageCts = new CancellationTokenSource();
+            
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(3000, _hideMessageCts.Token);
+                    _statusMessage = "";
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (TaskCanceledException) { }
+            });
+        }
+    }
+
+    private void ToggleSidebar()
+    {
+        _isSidebarCollapsed = !_isSidebarCollapsed;
+        StateHasChanged();
+    }
+
+    private void TogglePatientInfo()
+    {
+        if (_isPatientDrawerOpen)
+        {
+            return;
+        }
+
+        _isPatientInfoCollapsed = !_isPatientInfoCollapsed;
+        StateHasChanged();
+    }
+
+    private void TogglePatientDrawer()
+    {
+        _isPatientDrawerOpen = !_isPatientDrawerOpen;
+        _isPatientInfoCollapsed = false;
+    }
+
+    private void ClosePatientDrawer()
+    {
+        _isPatientDrawerOpen = false;
+    }
+
+    private void ToggleDateFilter()
+    {
+        _isDateFilterOpen = !_isDateFilterOpen;
+        StateHasChanged();
+    }
+
+    private void SelectDateFilter(string filter)
+    {
+        ViewModel.DateFilter = filter;
+        _isDateFilterOpen = false;
+        StateHasChanged();
+    }
+
+    private string GetDateFilterLabel()
+    {
+        return ViewModel.DateFilter switch
+        {
+            "all" => "All Dates",
+            "today" => "Today",
+            "yesterday" => "Yesterday",
+            "last7days" => "Last 7 Days",
+            "last30days" => "Last 30 Days",
+            "thisMonth" => "This Month",
+            "lastMonth" => "Last Month",
+            "custom" => "Custom Range",
+            _ => "All Dates"
+        };
+    }
+
+    private async Task OnTabChange(string newTab)
+    {
+        var oldTab = ViewModel.ActiveTab;
+        
+        // Check for unsaved changes when leaving case-notes tab
+        if (oldTab == "case-notes" && newTab != "case-notes" && _hasUnsavedChanges)
+        {
+            _pendingTabNavigation = newTab;
+            _showUnsavedChangesModal = true;
+            StateHasChanged();
+            return;
+        }
+        
+        // Proceed with tab change
+        ViewModel.SelectTab(newTab);
+        
+        // If switching away from case-notes, mark editor as not ready
+        if (oldTab == "case-notes" && newTab != "case-notes")
+        {
+            Console.WriteLine("[BLAZOR] Switching away from case-notes tab");
+            _isEditorReady = false;
+            _hasUnsavedChanges = false;
+            _lastSavedContent = "";
+        }
+        
+        // If switching back to case-notes, reset and increment key to force re-render
+        if (oldTab != "case-notes" && newTab == "case-notes")
+        {
+            Console.WriteLine("[BLAZOR] Switching back to case-notes tab - resetting editor");
+            _isEditorReady = false;
+            _isInitializing = false;
+            _editorKey++; // Force new DOM element
+        }
+        
+        StateHasChanged();
+        await Task.CompletedTask; // Ensure async signature is valid
+    }
+    
+    private void NavigateToLink(string url)
+    {
+        // Check for unsaved changes before navigating away
+        if (_hasUnsavedChanges)
+        {
+            _pendingLinkNavigation = url;
+            _showUnsavedChangesModal = true;
+            StateHasChanged();
+            return;
+        }
+        
+        // Navigate directly if no unsaved changes
+        NavigationManager.NavigateTo(url);
+    }
+    
+    private void NavigateToDocuments()
+    {
+        // Check for unsaved changes before navigating away
+        if (_hasUnsavedChanges && ViewModel.ActiveTab == "case-notes")
+        {
+            _pendingLinkNavigation = "/documents";
+            _showUnsavedChangesModal = true;
+            StateHasChanged();
+            return;
+        }
+        
+        // Navigate directly if no unsaved changes
+        NavigationManager.NavigateTo("/documents");
+    }
+    
+    private void NavigateToFollowUp()
+    {
+        // Check for unsaved changes before navigating away
+        if (_hasUnsavedChanges && ViewModel.ActiveTab == "case-notes")
+        {
+            _pendingLinkNavigation = "/follow-up";
+            _showUnsavedChangesModal = true;
+            StateHasChanged();
+            return;
+        }
+        
+        // Navigate directly if no unsaved changes
+        NavigationManager.NavigateTo("/follow-up");
+    }
+    
+    private void NavigateToBilling()
+    {
+        // Check for unsaved changes before navigating away
+        if (_hasUnsavedChanges && ViewModel.ActiveTab == "case-notes")
+        {
+            _pendingLinkNavigation = "/billing";
+            _showUnsavedChangesModal = true;
+            StateHasChanged();
+            return;
+        }
+        
+        // Navigate directly if no unsaved changes
+        NavigationManager.NavigateTo("/billing");
+    }
+
+    private void NavigateToAppointments()
+    {
+        // Check for unsaved changes before navigating away
+        if (_hasUnsavedChanges && ViewModel.ActiveTab == "case-notes")
+        {
+            _pendingLinkNavigation = "/appointments";
+            _showUnsavedChangesModal = true;
+            StateHasChanged();
+            return;
+        }
+
+        NavigationManager.NavigateTo("/appointments");
+    }
+    
+    private void NavigateToHistory()
+    {
+        NavigateToLink("/case-history");
+    }
+    
+    private void ContinueEditing()
+    {
+        _showUnsavedChangesModal = false;
+        _pendingTabNavigation = null;
+        _pendingLinkNavigation = null;
+        _pendingNoteNavigation = null;
+        StateHasChanged();
+    }
+    
+    private async Task DiscardChanges()
+    {
+        _showUnsavedChangesModal = false;
+        _hasUnsavedChanges = false;
+        _lastSavedContent = "";
+        
+        // Handle tab navigation
+        if (_pendingTabNavigation != null)
+        {
+            var targetTab = _pendingTabNavigation;
+            _pendingTabNavigation = null;
+            await OnTabChange(targetTab);
+        }
+        // Handle link navigation
+        else if (_pendingLinkNavigation != null)
+        {
+            var targetUrl = _pendingLinkNavigation;
+            _pendingLinkNavigation = null;
+            NavigationManager.NavigateTo(targetUrl);
+        }
+        // Handle note navigation
+        else if (_pendingNoteNavigation != null)
+        {
+            var targetNote = _pendingNoteNavigation;
+            _pendingNoteNavigation = null;
+            await ViewNote(targetNote);
+        }
+    }
+
+    private void TogglePin(int noteId)
+    {
+        ViewModel.TogglePin(noteId);
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _hideMessageCts?.Cancel();
+        _hideMessageCts?.Dispose();
+        
+        try
+        {
+            // Clean up event listeners
+            if (_moduleRef != null)
+            {
+                await _moduleRef.InvokeVoidAsync("removeEventListeners");
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("removeCaseNotePageListeners");
+            }
+            
+            await JS.InvokeVoidAsync("removeEditorEventListeners");
+            await JS.InvokeVoidAsync("disposeQuillEditor");
+        }
+        catch { /* Ignore errors during disposal */ }
+        
+        _dotNetRef?.Dispose();
+        
+        try
+        {
+            if (_moduleRef != null)
+            {
+                await _moduleRef.DisposeAsync();
+            }
+        }
+        catch { /* Ignore errors during disposal - circuit may be disconnected */ }
+    }
+}
+

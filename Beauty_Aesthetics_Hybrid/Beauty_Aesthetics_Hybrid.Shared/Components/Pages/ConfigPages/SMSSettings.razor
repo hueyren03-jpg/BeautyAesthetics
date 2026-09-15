@@ -1,0 +1,539 @@
+@page "/SmsSettings"
+@inject IJSRuntime JSRuntime
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L
+
+<div class="SettingContent">
+    <div>
+        <button class="btn-back" @onclick="Back">@L["Back"]</button>
+    </div>
+    <div class="Card">
+        <div class="CardHeader">
+            <span>@L["MessagingAccount"]</span>
+        </div>
+        <div class="CardContent">
+            <div class="SingleInput">
+                <div class="InputTextField">
+                    <span>@L["Provider"]</span>
+                    <input type="text" />
+                </div>
+            </div>
+            <div class="SingleInput">
+                <div class="InputTextField">
+                    <span>@L["URL"]</span>
+                    <input type="text" />
+                </div>
+            </div>
+            <div class="SingleInput">
+                <div class="InputTextField">
+                    <span>@L["Username"]</span>
+                    <input type="text" />
+                </div>
+            </div>
+            <div class="SingleInput">
+                <div class="InputTextField">
+                    <span>@L["Password"]</span>
+                    <input type="password" />
+                </div>
+            </div>
+            <div class="SingleInput">
+                <div class="InputTextField">
+                    <span>@L["Sender"]</span>
+                    <input type="text" value="smtp.gmail.com" />
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="Card">
+        <div class="CardHeader">
+            <span>@L["DefaultMessagingMethod"]</span>
+        </div>
+        <div class="CardContent">
+            <div class="SingleInput">
+                <div class="SelectField">
+                    <span>@L["ApplicationStyle"]</span>
+                    <select class="DropdownSelect">
+                        <option value="Default">@L["Default"]</option>
+                        <option value="App">@L["App"]</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="Card">
+        <div class="hardware-panel">
+            <div class="CardHeader">
+                <span>@L["HardwareControl"]</span>
+            </div>
+
+            <div class="tabs-container">
+                @foreach (var tab in Tabs)
+                {
+                    <button class="tab-button @(ActiveTab == tab ? "active" : "")"
+                            @onclick="() => ActiveTab = tab">
+                        @L[tab.Replace(" ", "")]
+                    </button>
+                }
+            </div>
+
+            <div class="tab-content">
+                @if (ActiveTab == "SMS Content")
+                {
+                    <div class="FormContainer">
+                        <div class="SingleInput">
+                            <div class="TextAreaWrapper">
+                                <span>@L["OnPackagePurchase"]</span>
+                                <div class="TextAreaInputWrapper">
+                                    <textarea class="DropdownTextField"></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="SingleInput">
+                            <div class="TextAreaWrapper">
+                                <span>@L["OnPackageRedemption"]</span>
+                                <div class="TextAreaInputWrapper">
+                                    <textarea class="DropdownTextField"></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="SingleInput">
+                            <div class="TextAreaWrapper">
+                                <span>@L["OnPackageExtension"]</span>
+                                <div class="TextAreaInputWrapper">
+                                    <textarea class="DropdownTextField"></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="SingleInput">
+                            <div class="TextAreaWrapper">
+                                <span>@L["OnCreditTopUp"]</span>
+                                <div class="TextAreaInputWrapper">
+                                    <textarea class="DropdownTextField"></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="SingleInput">
+                            <div class="TextAreaWrapper">
+                                <span>@L["OnCreditRedemption"]</span>
+                                <div class="TextAreaInputWrapper">
+                                    <textarea class="DropdownTextField"></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="SingleInput">
+                            <div class="TextAreaWrapper">
+                                <span>@L["OnPointRedemption"]</span>
+                                <div class="TextAreaInputWrapper">
+                                    <textarea class="DropdownTextField"></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="SingleInput">
+                            <div class="TextAreaWrapper">
+                                <span>@L["OnTimeRedemption"]</span>
+                                <div class="TextAreaInputWrapper">
+                                    <textarea class="DropdownTextField"></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="SingleInput">
+                            <div class="TextAreaWrapper">
+                                <span>@L["OnRequestOTP"]</span>
+                                <div class="TextAreaInputWrapper">
+                                    <textarea class="DropdownTextField"></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="SingleInput">
+                            <div class="TextAreaWrapper">
+                                <span>@L["OnPasswordReSend"]</span>
+                                <div class="TextAreaInputWrapper">
+                                    <textarea class="DropdownTextField"></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="SingleInput">
+                            <div class="TextAreaWrapper">
+                                <span>@L["OnItemReadyForCollection"]</span>
+                                <div class="TextAreaInputWrapper">
+                                    <textarea class="DropdownTextField"></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+                else if (ActiveTab == "Whatsapp Template")
+                {
+                    <span>@L["OnPackageRedemption"]</span>
+                    <div class="DoubleInput">
+                        <div id="PackageRedemptionSelect" class="SingleInputSelect">
+                            <div class="InputSelect">
+                                <input @bind="PackageRedemptionSelected" type="text" />
+                            </div>
+                            <div class="DropdownIcon">
+                                <i @onclick="TogglePackageRedemption" class="fa-solid fa-caret-down DropdownIcon"></i>
+                            </div>
+                            @if (packageRedemptionOpen)
+                            {
+                                <div class="DropdownContainer">
+                                    <div class="DropdownSelectTable">
+                                        <div class="dropdownTableRow">
+                                            <div class="column1"><span>@L["Name"]</span></div>
+                                            <div class="column2"><span>@L["Category"]</span></div>
+                                            <div class="column3"><span>@L["Status"]</span></div>
+                                            <div class="column4"><span>@L["Content"]</span></div>
+                                        </div>
+                                        @foreach (var item in PackageRedemptionOptions)
+                                        {
+                                            <div @onclick="() => SelectPackageRedemption(item)" class="dropdownTableRow">
+                                                <div class="column1"><span>@item.name</span></div>
+                                                <div class="column2"><span>@item.category</span></div>
+                                                <div class="column3"><span>@item.status</span></div>
+                                                <div class="column4"><span>@item.content</span></div>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                        <div class="TextAreaWrapper">
+                            <div class="TextAreaInputWrapper">
+                                <textarea class="DropdownTextField"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <span>@L["OnPackageExtension"]</span>
+                    <div class="DoubleInput">
+                        <div id="PackageExtensionSelect" class="SingleInputSelect">
+                            <div class="InputSelect">
+                                <input @bind="PackageExtensionSelected" type="text" />
+                            </div>
+                            <div class="DropdownIcon">
+                                <i @onclick="TogglePackageExtension" class="fa-solid fa-caret-down DropdownIcon"></i>
+                            </div>
+                            @if (packageExtensionOpen)
+                            {
+                                <div class="DropdownContainer">
+                                    <div class="DropdownSelectTable">
+                                        <div class="dropdownTableRow">
+                                            <div class="column1"><span>@L["Name"]</span></div>
+                                            <div class="column2"><span>@L["Category"]</span></div>
+                                            <div class="column3"><span>@L["Status"]</span></div>
+                                            <div class="column4"><span>@L["Content"]</span></div>
+                                        </div>
+                                        @foreach (var item in PackageExtensionOptions)
+                                        {
+                                            <div @onclick="() => SelectPackageExtension(item)" class="dropdownTableRow">
+                                                <div class="column1"><span>@item.name</span></div>
+                                                <div class="column2"><span>@item.category</span></div>
+                                                <div class="column3"><span>@item.status</span></div>
+                                                <div class="column4"><span>@item.content</span></div>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                        <div class="TextAreaWrapper">
+                            <div class="TextAreaInputWrapper">
+                                <textarea class="DropdownTextField"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <span>@L["OnCreditTopUp"]</span>
+                    <div class="DoubleInput">
+                        <div id="CreditTopUpSelect" class="SingleInputSelect">
+                            <div class="InputSelect">
+                                <input @bind="CreditTopUpSelected" type="text" />
+                            </div>
+                            <div class="DropdownIcon">
+                                <i @onclick="ToggleCreditTopUp" class="fa-solid fa-caret-down DropdownIcon"></i>
+                            </div>
+                            @if (creditTopUpOpen)
+                            {
+                                <div class="DropdownContainer">
+                                    <div class="DropdownSelectTable">
+                                        <div class="dropdownTableRow">
+                                            <div class="column1"><span>@L["Name"]</span></div>
+                                            <div class="column2"><span>@L["Category"]</span></div>
+                                            <div class="column3"><span>@L["Status"]</span></div>
+                                            <div class="column4"><span>@L["Content"]</span></div>
+                                        </div>
+                                        @foreach (var item in CreditTopUpOptions)
+                                        {
+                                            <div @onclick="() => SelectCreditTopUp(item)" class="dropdownTableRow">
+                                                <div class="column1"><span>@item.name</span></div>
+                                                <div class="column2"><span>@item.category</span></div>
+                                                <div class="column3"><span>@item.status</span></div>
+                                                <div class="column4"><span>@item.content</span></div>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                        <div class="TextAreaWrapper">
+                            <div class="TextAreaInputWrapper">
+                                <textarea class="DropdownTextField"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <span>@L["OnCreditRedemption"]</span>
+                    <div class="DoubleInput">
+                        <div id="CreditRedemptionSelect" class="SingleInputSelect">
+                            <div class="InputSelect">
+                                <input @bind="CreditRedemptionSelected" type="text" />
+                            </div>
+                            <div class="DropdownIcon">
+                                <i @onclick="ToggleCreditRedemption" class="fa-solid fa-caret-down DropdownIcon"></i>
+                            </div>
+                            @if (creditRedemptionOpen)
+                            {
+                                <div class="DropdownContainer">
+                                    <div class="DropdownSelectTable">
+                                        <div class="dropdownTableRow">
+                                            <div class="column1"><span>@L["Name"]</span></div>
+                                            <div class="column2"><span>@L["Category"]</span></div>
+                                            <div class="column3"><span>@L["Status"]</span></div>
+                                            <div class="column4"><span>@L["Content"]</span></div>
+                                        </div>
+                                        @foreach (var item in CreditRedemptionOptions)
+                                        {
+                                            <div @onclick="() => SelectCreditRedemption(item)" class="dropdownTableRow">
+                                                <div class="column1"><span>@item.name</span></div>
+                                                <div class="column2"><span>@item.category</span></div>
+                                                <div class="column3"><span>@item.status</span></div>
+                                                <div class="column4"><span>@item.content</span></div>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                        <div class="TextAreaWrapper">
+                            <div class="TextAreaInputWrapper">
+                                <textarea class="DropdownTextField"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <span>@L["OnPointRedemption"]</span>
+                    <div class="DoubleInput">
+                        <div id="PointRedemptionSelect" class="SingleInputSelect">
+                            <div class="InputSelect">
+                                <input @bind="PointRedemptionSelected" type="text" />
+                            </div>
+                            <div class="DropdownIcon">
+                                <i @onclick="TogglePointRedemption" class="fa-solid fa-caret-down DropdownIcon"></i>
+                            </div>
+                            @if (pointRedemptionOpen)
+                            {
+                                <div class="DropdownContainer">
+                                    <div class="DropdownSelectTable">
+                                        <div class="dropdownTableRow">
+                                            <div class="column1"><span>@L["Name"]</span></div>
+                                            <div class="column2"><span>@L["Category"]</span></div>
+                                            <div class="column3"><span>@L["Status"]</span></div>
+                                            <div class="column4"><span>@L["Content"]</span></div>
+                                        </div>
+                                        @foreach (var item in PointRedemptionOptions)
+                                        {
+                                            <div @onclick="() => SelectPointRedemption(item)" class="dropdownTableRow">
+                                                <div class="column1"><span>@item.name</span></div>
+                                                <div class="column2"><span>@item.category</span></div>
+                                                <div class="column3"><span>@item.status</span></div>
+                                                <div class="column4"><span>@item.content</span></div>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                        <div class="TextAreaWrapper">
+                            <div class="TextAreaInputWrapper">
+                                <textarea class="DropdownTextField"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <span>@L["OnTimeRedemption"]</span>
+                    <div class="DoubleInput">
+                        <div id="TimeRedemptionSelect" class="SingleInputSelect">
+                            <div class="InputSelect">
+                                <input @bind="TimeRedemptionSelected" type="text" />
+                            </div>
+                            <div class="DropdownIcon">
+                                <i @onclick="ToggleTimeRedemption" class="fa-solid fa-caret-down DropdownIcon"></i>
+                            </div>
+                            @if (timeRedemptionOpen)
+                            {
+                                <div class="DropdownContainer">
+                                    <div class="DropdownSelectTable">
+                                        <div class="dropdownTableRow">
+                                            <div class="column1"><span>@L["Name"]</span></div>
+                                            <div class="column2"><span>@L["Category"]</span></div>
+                                            <div class="column3"><span>@L["Status"]</span></div>
+                                            <div class="column4"><span>@L["Content"]</span></div>
+                                        </div>
+                                        @foreach (var item in TimeRedemptionOptions)
+                                        {
+                                            <div @onclick="() => SelectTimeRedemption(item)" class="dropdownTableRow">
+                                                <div class="column1"><span>@item.name</span></div>
+                                                <div class="column2"><span>@item.category</span></div>
+                                                <div class="column3"><span>@item.status</span></div>
+                                                <div class="column4"><span>@item.content</span></div>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                        <div class="TextAreaWrapper">
+                            <div class="TextAreaInputWrapper">
+                                <textarea class="DropdownTextField"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <span>@L["OnRequestOTP"]</span>
+                    <div class="DoubleInput">
+                        <div id="RequestOtpSelect" class="SingleInputSelect">
+                            <div class="InputSelect">
+                                <input @bind="RequestOtpSelected" type="text" />
+                            </div>
+                            <div class="DropdownIcon">
+                                <i @onclick="ToggleRequestOtp" class="fa-solid fa-caret-down DropdownIcon"></i>
+                            </div>
+                            @if (requestOtpOpen)
+                            {
+                                <div class="DropdownContainer">
+                                    <div class="DropdownSelectTable">
+                                        <div class="dropdownTableRow">
+                                            <div class="column1"><span>@L["Name"]</span></div>
+                                            <div class="column2"><span>@L["Category"]</span></div>
+                                            <div class="column3"><span>@L["Status"]</span></div>
+                                            <div class="column4"><span>@L["Content"]</span></div>
+                                        </div>
+                                        @foreach (var item in RequestOtpOptions)
+                                        {
+                                            <div @onclick="() => SelectRequestOtp(item)" class="dropdownTableRow">
+                                                <div class="column1"><span>@item.name</span></div>
+                                                <div class="column2"><span>@item.category</span></div>
+                                                <div class="column3"><span>@item.status</span></div>
+                                                <div class="column4"><span>@item.content</span></div>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                        <div class="TextAreaWrapper">
+                            <div class="TextAreaInputWrapper">
+                                <textarea class="DropdownTextField"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <span>@L["OnPasswordReSend"]</span>
+                    <div class="DoubleInput">
+                        <div id="PasswordResendSelect" class="SingleInputSelect">
+                            <div class="InputSelect">
+                                <input @bind="PasswordResendSelected" type="text" />
+                            </div>
+                            <div class="DropdownIcon">
+                                <i @onclick="TogglePasswordResend" class="fa-solid fa-caret-down DropdownIcon"></i>
+                            </div>
+                            @if (passwordResendOpen)
+                            {
+                                <div class="DropdownContainer">
+                                    <div class="DropdownSelectTable">
+                                        <div class="dropdownTableRow">
+                                            <div class="column1"><span>@L["Name"]</span></div>
+                                            <div class="column2"><span>@L["Category"]</span></div>
+                                            <div class="column3"><span>@L["Status"]</span></div>
+                                            <div class="column4"><span>@L["Content"]</span></div>
+                                        </div>
+                                        @foreach (var item in PasswordResendOptions)
+                                        {
+                                            <div @onclick="() => SelectPasswordResend(item)" class="dropdownTableRow">
+                                                <div class="column1"><span>@item.name</span></div>
+                                                <div class="column2"><span>@item.category</span></div>
+                                                <div class="column3"><span>@item.status</span></div>
+                                                <div class="column4"><span>@item.content</span></div>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                        <div class="TextAreaWrapper">
+                            <div class="TextAreaInputWrapper">
+                                <textarea class="DropdownTextField"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <span>@L["OnItemReadyForCollection"]</span>
+                    <div class="DoubleInput">
+                        <div id="ItemReadySelect" class="SingleInputSelect">
+                            <div class="InputSelect">
+                                <input @bind="ItemReadySelected" type="text" />
+                            </div>
+                            <div class="DropdownIcon">
+                                <i @onclick="ToggleItemReady" class="fa-solid fa-caret-down DropdownIcon"></i>
+                            </div>
+                            @if (itemReadyOpen)
+                            {
+                                <div class="DropdownContainer">
+                                    <div class="DropdownSelectTable">
+                                        <div class="dropdownTableRow">
+                                            <div class="column1"><span>@L["Name"]</span></div>
+                                            <div class="column2"><span>@L["Category"]</span></div>
+                                            <div class="column3"><span>@L["Status"]</span></div>
+                                            <div class="column4"><span>@L["Content"]</span></div>
+                                        </div>
+                                        @foreach (var item in ItemReadyOptions)
+                                        {
+                                            <div @onclick="() => SelectItemReady(item)" class="dropdownTableRow">
+                                                <div class="column1"><span>@item.name</span></div>
+                                                <div class="column2"><span>@item.category</span></div>
+                                                <div class="column3"><span>@item.status</span></div>
+                                                <div class="column4"><span>@item.content</span></div>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                        <div class="TextAreaWrapper">
+                            <div class="TextAreaInputWrapper">
+                                <textarea class="DropdownTextField"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="placeholder-content">
+                        <p>@string.Format(L["SettingsNotImplemented"], L[ActiveTab.Replace(" ", "")])</p>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    
+}

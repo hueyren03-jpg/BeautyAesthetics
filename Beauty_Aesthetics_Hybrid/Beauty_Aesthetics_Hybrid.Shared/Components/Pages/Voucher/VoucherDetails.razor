@@ -1,0 +1,230 @@
+@page "/voucherdetails/{VoucherName}"
+@inject NavigationManager Nav
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L
+@using Beauty_Aesthetics_WebPos.Components.ViewModels
+@using Beauty_Aesthetics_WebPos.Components.Models.Voucher
+
+<div class="details-page">
+
+    <!-- HEADER -->
+    <div class="header-bar">
+        <div class="header-left">
+            <div class="header-title-area">
+                <h2>@VM.CurrentVoucher?.Name</h2>
+                <span class="voucher-date">
+                    (@VM.CurrentVoucher?.StartDate.ToString("dd/MM/yyyy") -
+                    @VM.CurrentVoucher?.EndDate.ToString("dd/MM/yyyy"))
+                </span>
+            </div>
+        </div>
+        <a class="page-close-button"
+           href="/voucher"
+           target="_self"
+           data-enhance-nav="false"
+           title="Close"
+           aria-label="Close voucher details">
+            <span aria-hidden="true">&#215;</span>
+        </a>
+    </div>
+
+
+    <!-- STAT CARDS -->
+    <div class="stats-row">
+        <div class="stat-card total">
+            <i class="bi bi-box-seam"></i>
+            <div class="stat-text">
+                <div class="label">@L["TotalQuantity"]</div>
+                <div class="value">@VM.CurrentVoucher?.TotalQuantity</div>
+            </div>
+        </div>
+
+        <div class="stat-card available">
+            <i class="bi bi-check-circle"></i>
+            <div class="stat-text">
+                <div class="label">@L["AvailableVoucher"]</div>
+                <div class="value">@VM.CurrentVoucher?.Available</div>
+            </div>
+        </div>
+
+        <div class="stat-card sold">
+            <i class="bi bi-cart"></i>
+            <div class="stat-text">
+                <div class="label">@L["Sold"]</div>
+                <div class="value">@VM.CurrentVoucher?.Sold</div>
+            </div>
+        </div>
+
+        <div class="stat-card redeemed">
+            <i class="bi bi-gift"></i>
+            <div class="stat-text">
+                <div class="label">@L["Redeemed"]</div>
+                <div class="value">@VM.CurrentVoucher?.Redeemed</div>
+            </div>
+        </div>
+
+        <div class="stat-card expired">
+            <i class="bi bi-x-circle"></i>
+            <div class="stat-text">
+                <div class="label">@L["Expired"]</div>
+                <div class="value">@VM.CurrentVoucher?.Expired</div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- SEARCH + FILTER -->
+    <div class="voucher-header">
+        <!-- Search -->
+        <div class="search-box">
+            <img src="images/search_icon.png" />
+            <input type="text" placeholder="@L["SearchPlaceholder"]" @bind="VM.SearchTerm" @bind:event="oninput" />
+        </div>
+
+        <!-- Status Filter -->
+        <select @bind="VM.SelectedStatus">
+            <option value="">@L["AllStatus"]</option>
+            <option value="Available">@L["AvailableVoucher"]</option>
+            <option value="Sold">@L["Sold"]</option>
+            <option value="Redeemed">@L["Redeemed"]</option>
+            <option value="Expired">@L["Expired"]</option>
+        </select>
+    </div>
+
+
+    <!-- TABLE -->
+    <table class="details-table">
+        <thead>
+            <tr>
+                <th>@L["VoucherCode"]</th>
+                <th>@L["Status"]</th>
+                <th>@L["ExpiryDate"]</th>
+                <th>@L["ExpiryDays"]</th>
+                <th>@L["VoucherDiscount"]</th>
+                <th>@L["VoucherAmount"]</th>
+                <th>@L["Actions"]</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            @foreach (var item in VM.FilteredItems())
+            {
+                <tr>
+                    <td>@item.Code</td>
+
+                    <td>
+                        <span class="badge @item.Status.ToLower()">
+                            @(item.Status == "Available" ? L["AvailableVoucher"] : item.Status == "Sold" ? L["Sold"] : item.Status == "Redeemed" ? L["Redeemed"] : item.Status == "Expired" ? L["Expired"] : item.Status)
+                        </span>
+                    </td>
+
+                    <td>@item.ExpiryDate.ToString("dd/MM/yyyy")</td>
+                    <td>@VM.CurrentVoucher?.ExpiryDays</td>
+                    <td>@item.Discount</td>
+                    <td>MYR @item.Amount.ToString("N2")</td>
+
+                    <td>
+                        <button class="edit-btn" @onclick="() => EditVoucher(item.Code, VM.CurrentVoucher?.Name ?? string.Empty)">
+                            <img src="images/edit_icon.png" />
+                        </button>
+
+                        <button class="delete-btn" @onclick="() => ShowDeleteModal(item.Code)">
+                            <img src="images/remove_icon.png" />
+                        </button>
+
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <!-- MOBILE LIST (visible on mobile only) -->
+    <div class="mobile-details-list">
+        @foreach (var item in VM.FilteredItems())
+        {
+            <div class="mobile-detail-card">
+                <div class="card-header">
+                    <span class="voucher-code">@item.Code</span>
+                    <span class="badge @item.Status.ToLower()">
+                        @(item.Status == "Available" ? L["AvailableVoucher"] : item.Status == "Sold" ? L["Sold"] : item.Status == "Redeemed" ? L["Redeemed"] : item.Status == "Expired" ? L["Expired"] : item.Status)
+                    </span>
+                </div>
+                
+                <div class="card-body">
+                    <div class="info-block">
+                        <span class="info-label">@L["VoucherDiscount"]</span>
+                        <span class="info-value">@item.Discount</span>
+                    </div>
+                    <div class="info-block">
+                        <span class="info-label">@L["VoucherAmount"]</span>
+                        <span class="info-value">MYR @item.Amount.ToString("N2")</span>
+                    </div>
+                    <div class="info-block">
+                        <span class="info-label">@L["ExpiryDate"]</span>
+                        <span class="info-value">@item.ExpiryDate.ToString("dd/MM/yyyy")</span>
+                    </div>
+                    <div class="info-block">
+                        <span class="info-label">@L["ExpiryDays"]</span>
+                        <span class="info-value">@VM.CurrentVoucher?.ExpiryDays</span>
+                    </div>
+                </div>
+
+                <div class="card-actions">
+                    <button class="edit-btn" @onclick="() => EditVoucher(item.Code, VM.CurrentVoucher?.Name ?? string.Empty)">
+                        <img src="images/edit_icon.png" alt="@L["Edit"]" />
+                        <span>@L["Edit"]</span>
+                    </button>
+
+                    <button class="delete-btn" @onclick="() => ShowDeleteModal(item.Code)">
+                        <img src="images/remove_icon.png" alt="@L["Delete"]" />
+                        <span>@L["Delete"]</span>
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (showDeleteModal)
+    {
+        <div class="modal-overlay" @onclick="CancelDelete">
+            <div class="modal-container" @onclick:stopPropagation="true">
+                <div class="modal-header">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <h3>@L["DeleteVoucher"]</h3>
+                </div>
+
+                <div class="modal-body">
+                    <p>@L["DeleteVoucherConfirm"]</p>
+                    <p class="modal-warning">@L["ActionCannotBeUndone"]</p>
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn-modal-cancel" @onclick="CancelDelete">
+                        <i class="bi bi-x-circle"></i>
+                        <span>@L["Cancel"]</span>
+                    </button>
+
+                    <button class="btn-modal-delete" @onclick="ConfirmDelete">
+                        <i class="bi bi-trash3-fill"></i>
+                        <span>@L["DeleteVoucher"]</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- PAGINATION -->
+    <div class="pagination">
+        <button @onclick="VM.PrevPage" disabled="@(VM.CurrentPage <= 1)" aria-label="Previous page"><i class="bi bi-chevron-left"></i></button>
+
+        @for (int i = 1; i <= VM.TotalPages; i++)
+        {
+            <button class="@(i == VM.CurrentPage ? "active-page" : "")"
+                    @onclick="@(() => VM.GoToPage(i))">
+                @i
+            </button>
+        }
+
+        <button @onclick="VM.NextPage" disabled="@(VM.CurrentPage >= VM.TotalPages)" aria-label="Next page"><i class="bi bi-chevron-right"></i></button>
+    </div>
+
+</div>

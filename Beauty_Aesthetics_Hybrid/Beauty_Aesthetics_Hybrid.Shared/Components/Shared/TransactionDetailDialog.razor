@@ -1,0 +1,96 @@
+@using Beauty_Aesthetics_WebPos.Components.Models
+
+<div class="transaction-dialog-backdrop" @onclick="OnClose"></div>
+<section class="transaction-dialog transaction-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="transaction-detail-title">
+    <header class="transaction-dialog-header">
+        <h3 id="transaction-detail-title"><i class="bi bi-file-earmark-text"></i> Transaction Details</h3>
+        <button type="button" title="Close" aria-label="Close transaction details" @onclick="OnClose"><i class="bi bi-x-lg"></i></button>
+    </header>
+    <div class="transaction-dialog-content">
+        <section class="detail-section">
+            <h4><i class="bi bi-clipboard-data"></i> Transaction Information</h4>
+            <div class="detail-grid">
+                <DetailItem Label="Invoice" Value="@Display(Transaction.InvoiceNumber)" />
+                <DetailItem Label="Date" Value="@Transaction.Date.ToString("dd MMMM yyyy")" />
+                <DetailItem Label="Time" Value="@Transaction.Date.ToString("hh:mm tt")" />
+                <div class="detail-item"><span class="detail-label">Status</span><span class="status-badge @StatusClass(Transaction.Status)">@Display(Transaction.Status)</span></div>
+            </div>
+        </section>
+
+        <section class="detail-section">
+            <h4><i class="bi bi-person"></i> Customer Information</h4>
+            <div class="detail-grid">
+                <DetailItem Label="Customer Name" Value="@Display(Transaction.CustomerName)" />
+                <DetailItem Label="Contact" Value="@Display(Transaction.CustomerContact)" />
+                <DetailItem Label="Email" Value="@Display(Transaction.CustomerEmail)" />
+                <DetailItem Label="Outlet / Branch" Value="@Display(Transaction.Branch)" />
+            </div>
+        </section>
+
+        <section class="detail-section">
+            <h4><i class="bi bi-bag"></i> Items / Services</h4>
+            <div class="items-list">
+                @if (Transaction.Items.Any())
+                {
+                    @foreach (var item in Transaction.Items)
+                    {
+                        <div class="item-row">
+                            <div><div class="item-name">@Display(item.Name)</div><div class="item-details">@item.Quantity x MYR @item.UnitPrice.ToString("N2")</div></div>
+                            <div class="item-price">MYR @item.TotalPrice.ToString("N2")</div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="empty-items">No item details returned.</div>
+                }
+            </div>
+        </section>
+
+        <section class="detail-section">
+            <h4><i class="bi bi-credit-card"></i> Payment Details</h4>
+            @if (Transaction.Payments.Any())
+            {
+                <div class="payment-breakdown">
+                    @foreach (var payment in Transaction.Payments)
+                    {
+                        <div class="payment-breakdown-row">
+                            <span><i class="bi bi-wallet2"></i> @Display(payment.PaymentMethod)</span>
+                            <strong>MYR @payment.Amount.ToString("N2")</strong>
+                        </div>
+                    }
+                </div>
+            }
+            <div class="detail-grid">
+                <DetailItem Label="Payment Method(s)" Value="@Display(Transaction.PaymentMethod)" />
+                <DetailItem Label="Transaction Type" Value="@Display(Transaction.Type)" />
+                <DetailItem Label="Reference Number" Value="@Display(Transaction.ReferenceNumber)" />
+            </div>
+            <div class="total-section">
+                <div class="total-row"><span>Subtotal</span><span>MYR @Transaction.Subtotal.ToString("N2")</span></div>
+                <div class="total-row"><span>Tax</span><span>MYR @Transaction.Tax.ToString("N2")</span></div>
+                <div class="total-row"><span>Discount</span><span class="discount-value">- MYR @Transaction.Discount.ToString("N2")</span></div>
+                <div class="total-row final"><span>Total Amount</span><span>MYR @Transaction.Amount.ToString("N2")</span></div>
+            </div>
+        </section>
+
+        @if (!string.IsNullOrWhiteSpace(Transaction.Notes))
+        {
+            <section class="detail-section"><h4><i class="bi bi-journal-text"></i> Notes</h4><div class="notes-box">@Transaction.Notes</div></section>
+        }
+
+        <footer class="dialog-actions">
+            <button type="button" class="secondary-button" @onclick="OnClose">Close</button>
+            <button type="button" class="primary-button" @onclick="OnPrint"><i class="bi bi-printer"></i> Print Receipt</button>
+        </footer>
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Transaction Transaction { get; set; } = default!;
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnPrint { get; set; }
+
+    private static string Display(string? value) => string.IsNullOrWhiteSpace(value) ? "-" : value;
+    private static string StatusClass(string? status) => $"status-{(status ?? "unknown").ToLowerInvariant().Replace(" ", "-")}";
+}

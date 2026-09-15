@@ -1,0 +1,354 @@
+@inject IJSRuntime JSRuntime
+
+<div class="multi-table-filter">
+    <button class="multi-table-filter__trigger" @onclick="ToggleFilterPopup" title="Filter">
+        <i class="bi bi-funnel"></i>
+        <span>Filter</span>
+        @if (ActiveFilters.Any())
+        {
+            <span class="multi-table-filter__badge">@ActiveFilters.Count</span>
+        }
+    </button>
+
+    @if (ActiveFilters.Any())
+    {
+        <div class="multi-table-filter__chips" aria-label="Active filters">
+            @foreach (var filter in ActiveFilters)
+            {
+                <button type="button" class="multi-table-filter__chip" @onclick="() => RemoveAndApplyFilter(filter)">
+                    <span>@GetColumnLabel(filter.Column): @GetFilterDisplayValue(filter)</span>
+                    <i class="bi bi-x"></i>
+                </button>
+            }
+            <button type="button" class="multi-table-filter__clear-link" @onclick="ClearAllFilters">Clear all</button>
+        </div>
+    }
+    @if (ShowFilterPopup)
+    {
+        <div class="multi-table-filter__overlay" @onclick="CloseFilterPopup">
+            <div class="multi-table-filter__popup" @onclick:stopPropagation="true">
+                <div class="multi-table-filter__header">
+                    <h3><i class="bi bi-funnel-fill"></i> @(string.IsNullOrWhiteSpace(ModuleName) ? "Filters" : $"{ModuleName} Filters")</h3>
+                    <button class="multi-table-filter__close" @onclick="CloseFilterPopup">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+
+                <div class="multi-table-filter__body">
+                    <!-- Active Filters Display -->
+                    @if (ActiveFilters.Any())
+                    {
+                        <div class="multi-table-filter__active-section">
+                            <h4>Active Filters</h4>
+                            <div class="multi-table-filter__active-list">
+                                @foreach (var filter in ActiveFilters)
+                                {
+                                    <div class="multi-table-filter__active-item">
+                                        <span class="multi-table-filter__active-column">@GetColumnLabel(filter.Column)</span>
+                                        <span class="multi-table-filter__active-operator">@((filter.StartDate.HasValue || filter.EndDate.HasValue) ? "between" : "contains")</span>
+                                        <span class="multi-table-filter__active-value">
+                                            @((filter.StartDate.HasValue || filter.EndDate.HasValue)
+                                                                            ? $"{(filter.StartDate.HasValue ? filter.StartDate.Value.ToString("dd/MM/yyyy") : "...")} - {(filter.EndDate.HasValue ? filter.EndDate.Value.ToString("dd/MM/yyyy") : "...")}"
+                                                                            : filter.Value)
+                            </span>
+                            <button class="multi-table-filter__remove" @onclick="() => RemoveFilter(filter)" title="Remove filter">
+                                <i class="bi bi-x"></i>
+                            </button>
+                        </div>
+                                                }
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Add New Filter Section -->
+                    <div class="multi-table-filter__add-section">
+                        <h4>Add New Filter</h4>
+
+                        <div class="multi-table-filter__form">
+                            <div class="multi-table-filter__form-row">
+                                <div class="multi-table-filter__form-group">
+                                    <label>Column</label>
+                                    <select @bind="NewFilterColumn" class="multi-table-filter__select">
+                                        <option value="">Select Column</option>
+                                        @foreach (var column in AvailableColumns.Where(c => !ActiveFilters.Any(f => f.Column == c.Value)))
+                                        {
+                                            <option value="@column.Value">@column.Label</option>
+                                        }
+                                    </select>
+                                </div>
+
+                                @if (IsSelectedColumnDate)
+                                {
+                                    <div class="multi-table-filter__form-group">
+                                        <label>Start Date</label>
+                                        <input type="date" @bind="NewFilterStartDate" class="multi-table-filter__input multi-table-filter__date-input" />
+                                    </div>
+                                    <div class="multi-table-filter__form-group">
+                                        <label>End Date</label>
+                                        <input type="date" @bind="NewFilterEndDate" class="multi-table-filter__input multi-table-filter__date-input" />
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="multi-table-filter__form-group multi-table-filter__form-group--full">
+                                        <label>Value</label>
+                                        <div class="multi-table-filter__value-wrapper">
+                                            @if (IsBundleBooleanColumn)
+                                            {
+                                                <select class="multi-table-filter__input"
+                                                        @bind="NewFilterValue">
+                                                    <option value="">Select value</option>
+                                                    <option value="True">Package</option>
+                                                    <option value="False">Not Package</option>
+                                                </select>
+                                            }
+                                            else
+                                            {
+                                                <input type="text"
+                                                       value="@NewFilterValue"
+                                                       @oninput="OnValueInput"
+                                                       class="multi-table-filter__input"
+                                                       placeholder="Enter filter value..." />
+
+                                                @if (ShowValueSuggestions)
+                                                {
+                                                    <ul class="multi-table-filter__suggestions">
+                                                        @foreach (var suggestion in ValueSuggestions)
+                                                        {
+                                                            <li class="multi-table-filter__suggestion-item"
+                                                                @onclick="() => SelectSuggestion(suggestion)">
+                                                                @suggestion
+                                                            </li>
+                                                        }
+                                                    </ul>
+                                                }
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="multi-table-filter__form-actions">
+                                <button class="multi-table-filter__btn multi-table-filter__btn--add"
+                                        @onclick="AddFilter"
+                                        disabled="@(!CanAddFilter())">
+                                    <i class="bi bi-plus-circle"></i>
+                                    Add Filter
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="multi-table-filter__footer">
+                    <button class="multi-table-filter__btn multi-table-filter__btn--clear"
+                            @onclick="ClearAllFilters"
+                            disabled="@(!ActiveFilters.Any())">
+                        <i class="bi bi-x-circle"></i>
+                        Clear All
+                    </button>
+                    <button class="multi-table-filter__btn multi-table-filter__btn--apply"
+                            @onclick="ApplyFilters">
+                        <i class="bi bi-check-circle"></i>
+                        Show @ResultCount results
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public List<FilterColumn> AvailableColumns { get; set; } = new();
+    [Parameter] public EventCallback<List<FilterData>> OnFiltersApplied { get; set; }
+    [Parameter] public EventCallback OnFiltersCleared { get; set; }
+    [Parameter] public Func<string, string, IEnumerable<string>>? GetSuggestions { get; set; }
+    [Parameter] public string ModuleName { get; set; } = string.Empty;
+    [Parameter] public int ResultCount { get; set; }
+
+    private bool ShowFilterPopup { get; set; } = false;
+    private List<FilterData> ActiveFilters { get; set; } = new();
+
+    // New filter form properties
+    private string NewFilterColumn { get; set; } = string.Empty;
+    private string NewFilterOperator { get; set; } = "contains";
+    private string NewFilterValue { get; set; } = string.Empty;
+    private DateTime? NewFilterStartDate { get; set; }
+    private DateTime? NewFilterEndDate { get; set; }
+    private bool IsSelectedColumnDate => AvailableColumns.FirstOrDefault(c => c.Value == NewFilterColumn)?.IsDate == true;
+    private List<string> ValueSuggestions { get; set; } = new();
+    private bool ShowValueSuggestions => ValueSuggestions.Any() && !IsSelectedColumnDate && !IsBundleBooleanColumn;
+    private bool IsBundleBooleanColumn => NewFilterColumn == "IsBundle";
+
+    private void ToggleFilterPopup()
+    {
+        ShowFilterPopup = !ShowFilterPopup;
+    }
+
+    private void CloseFilterPopup()
+    {
+        ShowFilterPopup = false;
+        ResetNewFilterForm();
+    }
+
+    private void ResetNewFilterForm()
+    {
+        NewFilterColumn = string.Empty;
+        NewFilterOperator = "contains";
+        NewFilterValue = string.Empty;
+        NewFilterStartDate = null;
+        NewFilterEndDate = null;
+        ValueSuggestions.Clear();
+    }
+
+    private bool CanAddFilter()
+    {
+        if (string.IsNullOrWhiteSpace(NewFilterColumn))
+            return false;
+
+        if (IsSelectedColumnDate)
+            return NewFilterStartDate.HasValue || NewFilterEndDate.HasValue;
+
+        return !string.IsNullOrWhiteSpace(NewFilterValue);
+    }
+
+    private void OnValueInput(ChangeEventArgs e)
+    {
+        NewFilterValue = e.Value?.ToString() ?? string.Empty;
+        UpdateSuggestions();
+    }
+
+    private void UpdateSuggestions()
+    {
+        ValueSuggestions.Clear();
+
+        if (GetSuggestions == null || string.IsNullOrWhiteSpace(NewFilterColumn) || string.IsNullOrWhiteSpace(NewFilterValue))
+        {
+            return;
+        }
+
+        try
+        {
+            var results = GetSuggestions(NewFilterColumn, NewFilterValue) ?? Enumerable.Empty<string>();
+            ValueSuggestions = results
+                .Where(v => !string.IsNullOrWhiteSpace(v))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(10)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error getting filter suggestions: {ex.Message}");
+            ValueSuggestions.Clear();
+        }
+    }
+
+    private void SelectSuggestion(string suggestion)
+    {
+        NewFilterValue = suggestion;
+        ValueSuggestions.Clear();
+    }
+
+    private void AddFilter()
+    {
+        if (!CanAddFilter())
+        {
+            Console.WriteLine("Cannot add filter - validation failed");
+            return;
+        }
+
+        var op = IsSelectedColumnDate ? "between" : NewFilterOperator;
+
+        var filter = new FilterData
+        {
+            Column = NewFilterColumn,
+            Operator = op,
+            Value = NewFilterValue,
+            StartDate = NewFilterStartDate,
+            EndDate = NewFilterEndDate
+        };
+
+        Console.WriteLine($"Adding filter: {filter.Column} {filter.Operator} {filter.Value}");
+        ActiveFilters.Add(filter);
+        Console.WriteLine($"Total filters now: {ActiveFilters.Count}");
+        ResetNewFilterForm();
+        StateHasChanged();
+    }
+
+    private void RemoveFilter(FilterData filter)
+    {
+        ActiveFilters.Remove(filter);
+        StateHasChanged();
+    }
+
+    private async Task ClearAllFilters()
+    {
+        ActiveFilters.Clear();
+        await OnFiltersCleared.InvokeAsync();
+        StateHasChanged();
+    }
+
+    private async Task ApplyFilters()
+    {
+        Console.WriteLine($"ApplyFilters called with {ActiveFilters.Count} filters");
+        foreach (var filter in ActiveFilters)
+        {
+            Console.WriteLine($"Filter: {filter.Column} {filter.Operator} {filter.Value}");
+        }
+        await OnFiltersApplied.InvokeAsync(ActiveFilters);
+        CloseFilterPopup();
+    }
+
+
+    private string GetFilterDisplayValue(FilterData filter)
+    {
+        if (filter.StartDate.HasValue || filter.EndDate.HasValue)
+        {
+            return $"{(filter.StartDate?.ToString("dd/MM/yyyy") ?? "...")} - {(filter.EndDate?.ToString("dd/MM/yyyy") ?? "...")}";
+        }
+
+        return filter.Value;
+    }
+
+    private async Task RemoveAndApplyFilter(FilterData filter)
+    {
+        ActiveFilters.Remove(filter);
+        await OnFiltersApplied.InvokeAsync(ActiveFilters.ToList());
+    }
+    private string GetColumnLabel(string columnValue)
+    {
+        return AvailableColumns.FirstOrDefault(c => c.Value == columnValue)?.Label ?? columnValue;
+    }
+
+    public class FilterColumn
+    {
+        public string Value { get; set; } = string.Empty;
+        public string Label { get; set; } = string.Empty;
+        public bool IsDate { get; set; } = false;
+        public bool IsNumeric { get; set; } = false;
+        public string ControlType { get; set; } = "Text";
+        public string? Placeholder { get; set; }
+        public bool IsAdvanced { get; set; }
+        public bool IsQuick { get; set; }
+        public List<FilterOption> Options { get; set; } = new();
+    }
+
+    public class FilterOption
+    {
+        public string Value { get; set; } = string.Empty;
+        public string Label { get; set; } = string.Empty;
+        public int Count { get; set; }
+    }
+
+    public class FilterData
+    {
+        public string Column { get; set; } = string.Empty;
+        public string Operator { get; set; } = "contains";
+        public string Value { get; set; } = string.Empty;
+        public DateTime? StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+        public decimal? MinValue { get; set; }
+        public decimal? MaxValue { get; set; }
+        public List<string> Values { get; set; } = new();
+    }
+}

@@ -1,0 +1,71 @@
+@if (IsVisible)
+{
+    <div class="app-error-backdrop" @onclick="DismissAsync">
+        <section class="app-error-popup"
+                 role="alertdialog"
+                 aria-modal="true"
+                 aria-labelledby="app-error-title"
+                 @onclick:stopPropagation="true">
+            <button type="button" class="app-error-close" title="Close" aria-label="Close error message" @onclick="DismissAsync">
+                <i class="bi bi-x-lg"></i>
+            </button>
+
+            <div class="app-error-icon" aria-hidden="true">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+            </div>
+
+            <div class="app-error-copy">
+                <h3 id="app-error-title">@Title</h3>
+                @if (!string.IsNullOrWhiteSpace(Message))
+                {
+                    <p>@Message</p>
+                }
+                @if (VisibleMessages.Count > 0)
+                {
+                    <ul>
+                        @foreach (var message in VisibleMessages)
+                        {
+                            <li>@message</li>
+                        }
+                    </ul>
+                }
+            </div>
+
+            <button type="button" class="app-error-confirm" @onclick="DismissAsync">OK</button>
+        </section>
+    </div>
+}
+
+@code {
+    [Parameter] public string Title { get; set; } = "Unable to complete the request";
+    [Parameter] public string? Message { get; set; }
+    [Parameter] public IEnumerable<string>? Messages { get; set; }
+    [Parameter] public EventCallback OnDismiss { get; set; }
+
+    private bool dismissed;
+    private string messageSignature = string.Empty;
+
+    private IReadOnlyList<string> VisibleMessages => Messages?
+        .Where(message => !string.IsNullOrWhiteSpace(message))
+        .Distinct(StringComparer.Ordinal)
+        .ToList() ?? [];
+
+    private bool IsVisible => !dismissed &&
+        (!string.IsNullOrWhiteSpace(Message) || VisibleMessages.Count > 0);
+
+    protected override void OnParametersSet()
+    {
+        var nextSignature = $"{Message}|{string.Join("|", VisibleMessages)}";
+        if (!string.Equals(messageSignature, nextSignature, StringComparison.Ordinal))
+        {
+            messageSignature = nextSignature;
+            dismissed = false;
+        }
+    }
+
+    private async Task DismissAsync()
+    {
+        dismissed = true;
+        await OnDismiss.InvokeAsync();
+    }
+}

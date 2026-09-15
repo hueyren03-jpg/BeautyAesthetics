@@ -1,0 +1,1948 @@
+@page "/orders"
+@inherits SenangRetails.Shared.Pages.BasePage
+@using System.Collections.Generic
+@using System.Linq
+@using System.Collections.ObjectModel
+@using SenangRetails.Shared.Services
+@using Microsoft.JSInterop
+@using EBI.DM
+@using EBI.UC
+@using EBI.Enum
+@using SenangRetails.Shared.Components.Sync
+@inject IJSRuntime JS
+@inject AppState AppState
+@inject NavigationManager Nav
+
+<PageTitle>@LangSvc.GetText("Orders")</PageTitle>
+
+<div class="app-container">
+    <div class="main-content-area">
+        <!-- Left side: Main content -->
+        <div class="left-content">
+            <div class="top-bar">
+                <div class="top-bar-left">
+                    <button class="back-btn" title="Back" @onclick="GoBack">
+                        <i class="bi bi-chevron-left"></i>
+                        <span class="back-btn-back-text">Back</span>
+                    </button>
+                    <div class="page-title">
+                        Billing & Checkout
+                    </div>
+                    <div class="sync-slot">
+                        <OfflineSyncBadge />
+                    </div>
+                    <div class="orders-btn-secondary pending-btn" title="Pending Orders" @onclick="() => showOrdersModal = true">
+                        <i class="bi bi-clock-history pending-icon"></i>
+                        <span class="text-label">Pending</span>
+                        <span class="badge-order">@heldOrders.Count</span>
+                    </div>
+                    <div class="mode-toggle" @onclick="() => SetSalesMode(!isSalesMode)">
+                        <div class="toggle-pill @(isSalesMode ? "sales" : "redemption")">
+                            <div class="toggle-circle"></div>
+                            <span class="toggle-label">@(isSalesMode ? "S" : "R")</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="top-bar-center" style="position: relative;">
+                    <button class="orders-btn-secondary more-actions-btn" title="More Actions" @onclick="ToggleMoreActions">
+                        <i class="fa-solid fa-ellipsis-vertical"></i>
+                        <span>More Actions</span>
+                        <i class="fa-solid fa-chevron-down" style="font-size: 0.75rem; margin-left: 0.25rem;"></i>
+                    </button>
+
+                    @if (showMoreActionsMenu)
+                    {
+                        <div class="more-actions-backdrop" @onclick="() => showMoreActionsMenu = false"></div>
+                        <div class="more-actions-dropdown">
+                            <button class="more-action-item" @onclick="TriggerScanBarcode">
+                                <i class="bi bi-qr-code-scan" style="color: var(--primary); font-size: 1.1rem;"></i>
+                                <span>Scan Barcode</span>
+                            </button>
+                            <button class="more-action-item" @onclick="TriggerCashDrawer">
+                                <i class="fa-solid fa-cash-register" style="color: #16A34A; font-size: 1.05rem;"></i>
+                                <span>Cash In / Cash Out</span>
+                            </button>
+                        </div>
+                    }
+                </div>
+
+                <div class="top-bar-right">
+                    <button class="orders-btn-primary customer-btn" title="Select Customer" @onclick="OpenSelectCustomerModal">
+                        <i class="bi bi-person"></i>
+                        <span class="customer-btn-text">Customer</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Customer card -->
+            @if (AppState.SelectedCustomer != null)
+            {
+                <div class="customer-card">
+                    <div class="customer-card-header">
+                        <div class="name">@AppState.SelectedCustomer.AccountName</div>
+                        @if (AppState.SelectedCustomer.BirthdayMonth > 0 &&
+                            AppState.SelectedCustomer.BirthdayMonth == DateTime.Today.Month)
+                        {
+                            <img src="_content/SenangRetails.Shared/images/birthday-cake.svg"
+                                 class="birthday-icon"
+                                 alt="Birthday Month"
+                                 title="Birthday Month!" />
+                        }
+                    </div>
+                    <div class="customer-card-info">
+                        <div class="customer-card-header">
+                            <div class="phone">@PhoneFormatter.Format(AppState.SelectedCustomer.Phone)</div>
+                            <img src="_content/SenangRetails.Shared/images/whatsapp-icon.svg"
+                                 class="customer-card-icon"
+                                 alt="Whatsapp Icon"
+                                 title="Whatsapp"
+                                 @onclick="OpenWhatsApp" />
+                            <img src="_content/SenangRetails.Shared/images/email-icon.svg"
+                                 class="customer-card-icon"
+                                 alt="Email Icon"
+                                 title="Email"
+                                 @onclick="OpenEmailClient" />
+                            <img src="_content/SenangRetails.Shared/images/edit-icon.svg"
+                                 class="customer-card-icon"
+                                 alt="Edit Icon"
+                                 title="Edit Customer Profile"
+                                 @onclick="OpenProfileEditModal" />
+                            @* <img src="_content/SenangRetails.Shared/images/star-icon.svg"
+                                 class="customer-card-icon"
+                                 alt="Star Icon"
+                                 title="Review"/> *@ 
+                            <button class="stats-toggle-btn" @onclick="() => statsExpanded = !statsExpanded">
+                                <i class="bi @(statsExpanded ? "bi-chevron-up" : "bi-chevron-down")"></i>
+                            </button>
+                        </div>
+                        <div class="customer-card-stats @(statsExpanded ? "stats-expanded" : "")">
+                            <button class="customer-stats-btn" @onclick="OpenOutstandingPaymentCalculator">
+                                <i class="bi bi-currency-dollar"></i>
+                                <span>
+                                    @(otherBalanceSummary?.Outstanding.ToString("F2") ?? "0.00")
+                                    <span class="customer-stats-btn-text">Outstanding</span>
+                                </span>
+                            </button>
+                            <button class="customer-stats-btn" @onclick="OpenPackageModal">
+                                <i class="bi bi-wallet"></i>
+                                <span>
+                                    @(customerPackages.Sum(x => x.NetBalanceAfterUtilised).ToString("N0"))
+                                    <span class="customer-stats-btn-text">Packages</span>
+                                </span>
+                            </button>
+                            <button class="customer-stats-btn" @onclick="@(() => OpenBalanceModal(false))">
+                                <i class="bi bi-star"></i>
+                                @if (selectedCreditsToRedeem.Any())
+                                {
+                                    <span style="display: inline-flex; align-items: center; gap: 4px;">
+                                        @if (selectedCreditsToRedeem.Count == 1)
+                                        {
+                                            @($"{selectedCreditsToRedeem.First().MemberTypeID}: {selectedCreditsToRedeem.First().NetBalanceAfterUtilised.ToString("F2")}")
+                                        }
+                                        else
+                                        {
+                                            @($"Multi: {selectedCreditsToRedeem.Sum(x => x.NetBalanceAfterUtilised).ToString("F2")}")
+                                        }
+                                        <span style="font-weight: bold; font-size: 16px; margin-left: 4px; color: var(--color-red);" 
+                                              @onclick="ClearCreditSelection" @onclick:stopPropagation>
+                                            &times;
+                                        </span>
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span>
+                                        @(balanceSummary?.CreditBalance.ToString("F2") ?? "0.00")
+                                        <span class="customer-stats-btn-text">Credits</span>
+                                    </span>
+                                }
+                            </button>
+                            <button class="customer-stats-btn">
+                                <i class="bi bi-gift"></i>
+                                <span>
+                                    @(balanceSummary?.PointBalance.ToString("N0") ?? "0")
+                                    <span class="customer-stats-btn-text">Points</span>
+                                </span>
+                            </button>
+                            @* <button class="customer-stats-btn">
+                                <i class="bi bi-pencil"></i>
+                            </button> *@
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <div class="menu-panel">
+                <div class="inventory-type-bar">
+                    <button class="type-tab @(selectedInventoryType == "All" ? "active" : "")"
+                            @onclick='() => SelectInventoryType("All")'>
+                        All
+                    </button>
+                    <button class="type-tab @(selectedInventoryType == "Product" ? "active" : "")"
+                            @onclick='() => SelectInventoryType("Product")'>
+                        @LangSvc.GetText("MenuProduct")
+                    </button>
+                    <button class="type-tab @(selectedInventoryType == "Service" ? "active" : "")"
+                            @onclick='() => SelectInventoryType("Service")'>
+                        @LangSvc.GetText("MenuService")
+                    </button>
+                    <button class="type-tab @(selectedInventoryType == "Package" ? "active" : "")"
+                            @onclick='() => SelectInventoryType("Package")'>
+                        @LangSvc.GetText("MenuPackage")
+                    </button>
+                    <button class="type-tab @(selectedInventoryType == "TopUp" ? "active" : "")"
+                            @onclick='() => SelectInventoryType("TopUp")'>
+                        Top Up
+                    </button>
+                </div>
+                <div class="category-bar" id="category-bar">
+                    <button class="tab @(string.IsNullOrEmpty(selectedCategory) ? "active" : "")"
+                            id="cat-tab-All"
+                            @onclick='() => SelectCategory("")'>
+                        All
+                    </button>
+                    @foreach (var cat in categories)
+                    {
+                        <button class="tab @(selectedCategory == cat ? "active" : "") @(!HasResultsForCategory(cat) ? "tab-no-results" : "")"
+                                id="cat-tab-@cat.Replace(" ", "-")"
+                                @onclick="() => SelectCategory(cat)"
+                                disabled="@(!HasResultsForCategory(cat))">
+                            @cat
+                        </button>
+                    }
+                </div>
+                <div class="retail-search-container">
+                    <div class="inline-barcode-bar">
+                        <i class="bi bi-qr-code-scan barcode-icon"></i>
+                        <input type="text"
+                               class="search-input barcode-search-input"
+                               placeholder="Scan Barcode (Enter)..."
+                               @bind="inlineBarcode"
+                               @bind:event="oninput"
+                               @onkeydown="HandleInlineBarcodeKeyDown" />
+                        @if (!string.IsNullOrEmpty(inlineBarcode))
+                        {
+                            <button type="button" class="search-clear barcode-enter-btn" @onclick="SubmitInlineBarcode" title="Submit Barcode">
+                                <i class="bi bi-arrow-return-left"></i>
+                            </button>
+                        }
+                    </div>
+                    <div class="item-search-bar">
+                        <i class="bi bi-search search-icon"></i>
+                        <input type="text"
+                               class="search-input"
+                               placeholder="Search Item..."
+                               @bind="itemSearchTerm"
+                               @bind:event="oninput" />
+                        @if (!string.IsNullOrEmpty(itemSearchTerm))
+                        {
+                            <button class="search-clear" @onclick="() => itemSearchTerm = string.Empty">
+                                <i class="bi bi-x"></i>
+                            </button>
+                        }
+                    </div>
+                </div>
+                <div class="all-items-area">
+                    @if (isLoadingItems)
+                    {
+                        <div style="text-align: center; padding: 50px;">
+                            <div class="spinner"></div> <p>Loading Menu...</p>
+                        </div>
+                    }
+                    else
+                    {
+                        var flatItems = GetVisibleCategories()
+                            .Where(cat => groupedItems.ContainsKey(cat))
+                            .SelectMany(cat => groupedItems[cat].Where(i =>
+                                (selectedInventoryType == "All" || GetItemTypeName(i.InventoryTypeID) == selectedInventoryType) &&
+                                (string.IsNullOrWhiteSpace(itemSearchTerm) || (i.AccountName ?? "").Contains(itemSearchTerm, StringComparison.OrdinalIgnoreCase))
+                            )).ToList();
+
+                        @if (IsSearching && !flatItems.Any())
+                        {
+                            <div class="search-empty-state">
+                                <i class="bi bi-search" style="font-size:2.5rem; color:var(--border);"></i>
+                                <div>No items found for "<strong>@itemSearchTerm</strong>"</div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="grid-area">
+                                @foreach (var item in flatItems)
+                                {
+                                    <div class="service-card" @onclick="() => AddToOrder(item)">
+                                        <div class="service-details">
+                                            <div class="service-name">@item.AccountName</div>
+                                            <div class="service-item-group-name">
+                                                @if (!string.IsNullOrEmpty(item.ItemGroupName))
+                                                {
+                                                    <span>@item.ItemGroupName</span>
+                                                }
+                                                @* @if (!string.IsNullOrEmpty(item.UnitOfMeasureID))
+                                                {
+                                                    <span> · @item.UnitOfMeasureID</span>
+                                                } *@
+                                            </div>
+                                            <div class="service-price">
+                                                @if (!string.IsNullOrEmpty(item.MasterAccountID) && productPriceGroupOverrides.TryGetValue(item.MasterAccountID.Trim(), out var pgPrice) && pgPrice != item.SalesPrice)
+                                                {
+                                                    <span style="color: #16A34A; font-weight: 800;">RM @pgPrice.ToString("N2")</span>
+                                                    <span style="font-size: 0.72rem; color: #94A3B8; text-decoration: line-through; margin-left: 4px;">RM @item.SalesPrice.ToString("N2")</span>
+                                                }
+                                                else
+                                                {
+                                                    <span>RM @item.SalesPrice.ToString("N2")</span>
+                                                }
+                                            </div>
+                                        </div>
+                                        <div class="photo-placeholder">
+                                            @if (!string.IsNullOrEmpty(item.ImagePath))
+                                            {
+                                                <img src="@item.ImagePath" alt="@item.AccountName" />
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-image"></i>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Right side: Summary panel -->
+        <aside class="summary-panel">
+            <div class="summary-title-row">
+                <span class="summary-title-text">
+                    <i class="bi bi-cart3"></i>
+                    Cart
+                </span>
+                <button class="delete-btn"
+                        style="gap: 8px;"
+                        @onclick="RequestDeleteOrder">
+                    <i class="bi bi-trash"></i> Delete Order
+                </button>
+            </div>
+
+            <div class="summary-row-list">
+                @foreach (var item in currentOrder?.lstDocumentLine.Where(x => x.SaveAction != EntityState.Deleted) ?? new List<DocumentLineTableDM>())
+                {
+                    <div class="summary-row" @onclick="() => OpenEditOrderItemModal(item, isNew: false)" style="cursor: pointer;">
+                        <div class="summary-item-body">
+                            <div class="summary-row-bottom">
+                                <div class="summary-name">@item.Description</div>
+                            </div>
+                            <div class="summary-row-bottom">
+                                <div class="summary-item-type">@(GetItemTypeName((int)item.InventoryTypeID))</div>
+                            </div>
+                            <div class="summary-staff-row">
+                                @if (item.lstSalesCommissionByDocumentLine != null && item.lstSalesCommissionByDocumentLine.Any())
+                                {
+                                    @foreach (var comm in item.lstSalesCommissionByDocumentLine)
+                                    {
+                                        <span class="summary-staff">
+                                            Staff: @comm.EmployeeCode
+                                        </span>
+                                    }
+                                }
+                            </div>
+                            @if (!string.IsNullOrEmpty(item.TaxCodeID) || item.TaxAmount > 0)
+                            {
+                                <div class="summary-discount-line" style="color: var(--text-primary)">
+                                    @if (!string.IsNullOrEmpty(item.TaxCodeID))
+                                    {
+                                        <span style="flex: 1;">@item.TaxCodeID</span>
+                                    }
+                                    <div class="summary-row-right">
+                                        @if (item.TaxAmount > 0)
+                                        {
+                                            <span>RM @item.TaxAmount.ToString("F2")</span>
+                                        }
+                                        <div class="summary-price-spacer"></div>
+                                    </div>
+
+                                </div>
+                            }
+                            @if (item.Discount > 0)
+                            {
+                                <div class="summary-discount-line" style="color: #777; margin-bottom: 2px;">
+                                    <span style="flex: 1;">Original Price</span>
+                                    <div class="summary-row-right">
+                                        <span style="text-decoration: line-through;">RM @((item.UnitPrice * item.Quantity).ToString("F2"))</span>
+                                        <div class="summary-price-spacer"></div>
+                                    </div>
+                                </div>
+                                <div class="summary-discount-line" style="color: #16A34A; font-weight: 600;">
+                                    <span style="flex: 1;"><i class="fa-solid fa-tag"></i> @(!string.IsNullOrEmpty(item.Memo) ? item.Memo : "Discount") &nbsp;</span>
+                                    <div class="summary-row-right">
+                                        <span>- RM @item.Discount.ToString("F2")</span>
+                                        <div class="summary-price-spacer"></div>
+                                    </div>
+                                </div>
+                            }
+
+                            @if (!string.IsNullOrEmpty(item.RefCompanyName) || !string.IsNullOrEmpty(item.Memo))
+                            {
+                                <div class="summary-row-bottom">
+                                    <span class="summary-item-type">Remarks: @(!string.IsNullOrEmpty(item.RefCompanyName) ? item.RefCompanyName : item.Memo)</span>
+                                </div>
+                            }
+                            <div class="summary-bottom-row" @onclick:stopPropagation>
+                                <div class="summary-bottom-left">
+                                    <div class="summary-qty-controls">
+                                        <button class="qty-btn minus" @onclick="() => ChangeQuantity(item, -1)">
+                                            <i class="fa fa-minus" aria-hidden="true"></i>
+                                        </button>
+                                        <span class="qty-display">@item.Quantity.ToString("G29")</span>
+                                        <button class="qty-btn plus" @onclick="() => ChangeQuantity(item, +1)">
+                                            <i class="fa fa-plus" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="summary-bottom-right">
+                                    <span class="summary-price">RM @Math.Max(0, item.UnitPrice * item.Quantity - item.Discount).ToString("F2")</span>
+                                    <button class="delete-btn delete-item-btn" @onclick="() => RequestRemoveItem(item)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                                
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="summary-footer">
+                <button class="payment-btn"
+                        disabled="@(currentOrder == null || !currentOrder.lstDocumentLine.Any(x => x.SaveAction != EntityState.Deleted))"
+                        @onclick="ProceedToPayment">
+                    <span style="flex: 1;">Proceed to Payment</span>
+                    <i class="bi bi-chevron-right" style="text-align: right;"></i>
+                </button>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Add New Member Modal -->
+    @if (showAddMemberModal)
+    {
+        <div class="modal-overlay" @onclick="CloseAddMemberModal">
+            <div class="modal-content" @onclick:stopPropagation style="height: 650px;">
+                <div class="modal-header" style="margin-bottom: 14px;">
+                    <div class="page-title">
+                        @LangSvc.GetText("OrdersAddMemberTitle")
+                    </div>
+                    <button class="back-btn" title="Settings" @onclick="OpenFormSettings">
+                        <i class="bi bi-gear"></i>
+                        Setting
+                    </button>
+                </div>
+                <div class="modal-body" style="overflow-y: auto;">
+                    @if (formSettings.ShowName)
+                    {
+                        <div class="form-group">
+                            <label>@LangSvc.GetText("OrdersNameLabel")<span style="color: var(--color-red);"> *</span></label>
+                            <input type="text" class="search-input" @bind="newName" placeholder="Full name" />
+                        </div>
+                    }
+                    @if (formSettings.ShowMobile)
+                    {
+                        <div class="form-group">
+                            <label>@LangSvc.GetText("OrdersMobileLabel")<span style="color: var(--color-red);"> *</span></label>
+                            <input type="text" readonly class="search-input" value="@PhoneFormatter.Format(newPhone)" placeholder="Phone Number" @onclick="OpenNewPhoneNumpad" style="cursor: pointer;" />
+                        </div>
+                    }
+                    @if (formSettings.ShowBirthday)
+                    {
+                        <div class="form-group">
+                            <label>@LangSvc.GetText("OrdersBirthdayLabel")</label>
+                            <MobileDatePicker @bind-Value="newBirthday"
+                                              DateFormat="dd/MM/yyyy"
+                                              Placeholder="Select Date" />
+                        </div>
+                    }
+                    @if (formSettings.ShowGender)
+                    {
+                        <div class="form-group">
+                            <label>@LangSvc.GetText("OrdersGenderLabel")</label>
+                            <div style="display:flex; gap:32px;">
+                                <label style="display:flex; align-items:center; gap:7px; cursor:pointer;">
+                                    <input type="checkbox"
+                                           checked="@(newGender == "Male")"
+                                           @onchange="@((e) => HandleGenderChange("Male", e.Value))" />
+                                    <span style="font-size: 16px;">@LangSvc.GetText("OrdersGenderMale")</span>
+                                </label>
+                                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                                    <input type="checkbox"
+                                           checked="@(newGender == "Female")"
+                                           @onchange="@((e) => HandleGenderChange("Female", e.Value))" />
+                                    <span style="font-size: 16px;">@LangSvc.GetText("OrdersGenderFemale")</span>
+                                </label>
+                            </div>
+                        </div>
+                    }
+                    @if (formSettings.ShowEmail)
+                    {
+                        <div class="form-group">
+                            <label>@LangSvc.GetText("OrdersEmailLabel")</label>
+                            <input type="email" @bind="newEmail" placeholder="example@email.com" class="search-input" />
+                        </div>
+                    }
+                    @if (formSettings.ShowIC)
+                    {
+                        <div class="form-group">
+                            <label>@LangSvc.GetText("OrdersICLabel")</label>
+                            <input type="text" @bind="newIC" placeholder="......xxxxxx" class="search-input" />
+                        </div>
+                    }
+                    @if (formSettings.ShowEthnic)
+                    {
+                        <div class="form-group">
+                            <label>@LangSvc.GetText("OrdersEthnicityLabel")</label>
+                            <input type="text" @bind="newEthnic" placeholder="e.g. Malay, Chinese, Indian..." class="search-input" />
+                        </div>
+                    }
+                    @if (formSettings.ShowMarital)
+                    {
+                        <div class="form-group">
+                            <label>@LangSvc.GetText("OrdersMaritalLabel")</label>
+                            <select @bind="newMarital">
+                                <option value="">@LangSvc.GetText("OrdersMaritalSelect")</option>
+                                <option value="Single">@LangSvc.GetText("OrdersMaritalSingle")</option>
+                                <option value="Married">@LangSvc.GetText("OrdersMaritalMarried")</option>
+                                <option value="Divorced">@LangSvc.GetText("OrdersMaritalDivorced")</option>
+                                <option value="Widowed">@LangSvc.GetText("OrdersMaritalWidowed")</option>
+                            </select>
+                        </div>
+                    }
+                    @if (formSettings.ShowSource)
+                    {
+                        <div class="form-group">
+                            <label>@LangSvc.GetText("OrdersSourceLabel")</label>
+                            <input type="text" @bind="newSource" placeholder="Walk-in / Instagram / Referral..." class="search-input" />
+                        </div>
+                    }
+                    @if (formSettings.ShowTier)
+                    {
+                        <div class="form-group">
+                            <label>@LangSvc.GetText("MemberTier")</label>
+                            <select @bind="newTier">
+                                <option value="">@LangSvc.GetText("MemberNoneValue")</option>
+                                @foreach (var type in AllMembershipTypes)
+                                {
+                                    <option value="@type.MemberTypeName">@type.MemberTypeName</option>
+                                }
+                            </select>
+                        </div>
+                    }
+
+                </div>
+                <div class="modal-footer">
+                    <button class="orders-btn-secondary" style="flex: 1;" @onclick="CloseAddMemberModal">@LangSvc.GetText("OrdersCancel")</button>
+                    <button class="orders-btn-primary" style="flex: 1;" @onclick="SaveNewMember">@LangSvc.GetText("OrdersSaveMember")</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Form Settings Modal -->
+    @if (showFormSettingsModal)
+    {
+        <div class="modal-overlay" @onclick="CloseFormSettingsModal">
+            <div class="modal-content" @onclick:stopPropagation style="height: 726px; width: 500px">
+                <div class="modal-header">
+                    <div class="page-title">@LangSvc.GetText("OrdersFormSettings")</div>
+                </div>
+                <div class="modal-body form-settings-modal-body">
+                    <div class="checkbox-list">
+                        <label class="disabled-checkbox"><input type="checkbox" checked disabled /> @LangSvc.GetText("OrdersFormMobileRequired")</label>
+                        <label class="disabled-checkbox"><input type="checkbox" checked disabled /> @LangSvc.GetText("OrdersFormNameRequired")</label>
+                        <label><input type="checkbox" @bind="tempSettings.ShowBirthday" /> @LangSvc.GetText("OrdersBirthdayLabel")</label>
+                        <label><input type="checkbox" @bind="tempSettings.ShowGender" /> @LangSvc.GetText("OrdersGenderLabel")</label>
+                        <label><input type="checkbox" @bind="tempSettings.ShowEmail" /> @LangSvc.GetText("OrdersEmailLabel")</label>
+                        <label><input type="checkbox" @bind="tempSettings.ShowIC" /> @LangSvc.GetText("OrdersICLabel")</label>
+                        <label><input type="checkbox" @bind="tempSettings.ShowEthnic" /> @LangSvc.GetText("OrdersFormEthnic")</label>
+                        <label><input type="checkbox" @bind="tempSettings.ShowMarital" /> @LangSvc.GetText("OrdersMaritalLabel")</label>
+                        <label><input type="checkbox" @bind="tempSettings.ShowSource" /> @LangSvc.GetText("OrdersSourceLabel")</label>
+                        <label><input type="checkbox" @bind="tempSettings.ShowTier" /> @LangSvc.GetText("OrdersTierLabel")</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="orders-btn-secondary" style="flex:1;" @onclick="CloseFormSettingsModal">Cancel</button>
+                    <button class="orders-btn-primary" style="flex:1;" @onclick="SaveFormSettings">@LangSvc.GetText("OrdersFormDone")</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (showOrdersModal)
+    {
+        <div class="modal-overlay" @onclick="() => showOrdersModal = false">
+            <div class="modal-content" @onclick:stopPropagation style="height: 700px;">
+                <div class="modal-header">
+                    <div class="page-title">Hold Bill (@heldOrders.Count)</div>
+                    <button class="back-btn" @onclick="() => { showOrdersModal = false; OpenAddMemberModal(); }">
+                        <i class="bi bi-plus-lg"></i> New
+                    </button>
+                </div>
+
+                <div class="orders-list">
+                    @foreach (var order in heldOrders)
+                    {
+                        bool isCurrentlyOpen = order.objDoc_CashSales?.DocumentID == currentOrder?.objDoc_CashSales?.DocumentID;
+
+                        <div class="order-item @(isCurrentlyOpen ? "selected" : "")"
+                             @onclick="() => ResumeOrder(order)">
+                            <div class="order-avatar">
+                                <i class="bi bi-person"></i>
+                            </div>
+                            <div class="order-info">
+                                <div class="order-name">
+                                    @(string.IsNullOrEmpty(order.objDoc_CashSales?.AccountName) ? "Cash Customer" : order.objDoc_CashSales.AccountName)
+                                </div>
+                                <div class="order-time">@order.objDoc_CashSales?.FinancialDate.ToString("hh:mm tt")</div>
+                                <div class="order-date">@order.objDoc_CashSales?.FinancialDate.ToString("dd/MM/yyyy")</div>
+                            </div>
+                            <div class="order-amount">RM @(order.objDoc_CashSales?.TotalAfterTax.ToString("N2") ?? "0.00")</div>
+                            <button class="delete-btn" @onclick:stopPropagation
+                                    @onclick="() => ConfirmDeleteHeldBill(order)">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    }
+                </div>
+
+                <div class="modal-footer">
+                    <button class="orders-btn-secondary" style="flex:1;" @onclick="() => showOrdersModal = false">Cancel</button>
+                    <button class="orders-btn-primary" style="flex:1;" @onclick="() => showOrdersModal = false">Done</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (showDeleteConfirmModal && orderToDelete != null)
+    {
+        <div class="modal-overlay" @onclick="CancelDeleteHeldBill">
+            <div class="modal-content" @onclick:stopPropagation>
+                <h4 style="margin: 0 0 1rem 0;">Delete Hold Bill?</h4>
+                <p style="color: var(--text-primary); margin-bottom: 2rem; font-size: 20px;">
+                    <strong>@(string.IsNullOrEmpty(orderToDelete.objDoc_CashSales?.AccountName) ? "Cash Customer" : orderToDelete.objDoc_CashSales.AccountName)</strong>
+                    — RM @(orderToDelete.objDoc_CashSales?.TotalAfterTax.ToString("N2") ?? "0.00") <br />
+                    This action cannot be undone.
+                </p>
+
+                <div class="modal-footer">
+                    <button class="orders-btn-secondary" style="flex: 1;" @onclick="CancelDeleteHeldBill">
+                        Cancel
+                    </button>
+                    <button class="orders-btn-primary" style="flex: 1;" @onclick="ExecuteDeleteHeldBill">
+                        Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (showBalanceModal && AppState.SelectedCustomer != null)
+    {
+        <div class="modal-overlay" @onclick="() => showBalanceModal = false">
+            <div class="modal-content package-detail-modal" @onclick:stopPropagation>
+                <div class="modal-header">
+                    <div class="page-title">Redeem Credit</div>
+                </div>
+
+                <div class="modal-body package-modal-body">
+                    @if (isLoadingPackages)
+                    {
+                        <div class="package-loading">
+                            <div class="spinner"></div>
+                            <p>Fetching Balances...</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="package-grid-container">
+                            <div class="table-scroll-wrapper" style="max-height:260px;">
+                                <table class="package-table">
+                                    <thead>
+                                        <tr>
+                                            <th class="col-id">Mem Credit</th>
+                                            <th>Purchase Date</th>
+                                            <th>Doc No</th>
+                                            <th>Member Type</th>
+                                            <th>Purchase Via Item</th>
+                                            <th>Expiry Date</th>
+                                            <th>Qty Purchased</th>
+                                            <th>Balance</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @if (customerCreditDetails != null)
+                                        {
+                                            @foreach (var credit in customerCreditDetails)
+                                            {
+                                                <tr @onclick="() => FetchCreditHistory(credit.ARAPOutstandingID)"
+                                                    class="package-row @(selectedCreditArapID == credit.ARAPOutstandingID ? "selected-row" : "")">
+                                                    <td data-label="Mem Credit" class="col-id">@credit.ARAPOutstandingID</td>
+                                                    <td data-label="Purchase Date">@credit.FinancialDate.ToString("dd/MM/yyyy")</td>
+                                                    <td data-label="Doc No">@credit.DisplayCode</td>
+                                                    <td data-label="Member Type">@credit.MemberTypeID</td>
+                                                    <td data-label="Purchase Via Item">@credit.ItemDescription</td>
+                                                    <td data-label="Expiry Date">@credit.DueDate.ToString("dd/MM/yyyy")</td>
+                                                    <td data-label="Qty Purchased">@credit.TotalAmount.ToString("N2")</td>
+                                                    <td data-label="Balance">
+                                                        @credit.NetBalanceAfterUtilised.ToString("N2")
+                                                    </td>
+                                                </tr>
+                                            }
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+
+                        </div>
+
+                        <div class="redemption-history-section" style="margin-top: 1rem;">
+                            <div class="modal-header">
+                                <div class="page-title">Redemption History</div>
+                            </div>
+                            <div class="package-grid-container" style="margin-top: 1rem;">
+                                <div class="table-scroll-wrapper" style="max-height:260px;">
+                                    <table class="package-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Mem Credit</th>
+                                                <th>Redeem Date</th>
+                                                <th>Doc No</th>
+                                                <th>Redeem Amt</th>
+                                                <th>Branch ID</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @if (isLoadingCreditHistory)
+                                            {
+                                                <tr><td colspan="5" class="text-center">Loading credit redemption history...</td></tr>
+                                            }
+                                            else if (creditRedemptionHistory.Any())
+                                            {
+                                                @foreach (var h in creditRedemptionHistory)
+                                                {
+                                                    <tr>
+                                                        <td data-label="Mem Credit">@h.SourceARAPOutstandingID</td>
+                                                        <td data-label="Redeem Date">@h.FinancialDate.ToString("dd/MM/yyyy")</td>
+                                                        <td data-label="Doc No">@h.DisplayCode</td>
+                                                        <td data-label="Redeem Amt" class="text-center">@Math.Abs(h.TotalAmount).ToString()</td>
+                                                        <td data-label="Branch ID">@h.BranchID</td>
+                                                    </tr>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <tr class="empty-row"><td colspan="5">No history found</td></tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="orders-btn-secondary" style="flex: 1;"
+                            @onclick="() => showBalanceModal = false">
+                        Close
+                    </button>
+                    <button class="orders-btn-primary" style="flex: 1;"
+                            disabled="@(stagedCreditToRedeem == null)"
+                            @onclick="ProceedToEditCreditRedemption">
+                        Apply
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (showMultiCreditModal && AppState.SelectedCustomer != null)
+    {
+        <div class="modal-overlay" @onclick="CloseMultiCreditModal">
+            <div class="modal-content package-detail-modal" @onclick:stopPropagation>
+                <div class="modal-header">
+                    <div class="page-title">Offset Multiple Credit Accounts</div>
+                </div>
+
+                <div class="modal-body package-modal-body">
+                    @if (isLoadingPackages)
+                    {
+                        <div class="package-loading">
+                            <div class="spinner"></div>
+                            <p>Fetching Balances...</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="package-grid-container">
+                            <div class="table-scroll-wrapper" style="max-height:500px;">
+                                <table class="package-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 50px; text-align: center;">Select</th>
+                                            <th class="col-id">Mem Credit</th>
+                                            <th>Purchase Date</th>
+                                            <th>Doc No</th>
+                                            <th>Member Type</th>
+                                            <th>Purchase Via Item</th>
+                                            <th>Expiry Date</th>
+                                            <th>Qty Purchased</th>
+                                            <th>Balance</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @if (customerCreditDetails != null)
+                                        {
+                                            @foreach (var credit in customerCreditDetails)
+                                            {
+                                                <tr @onclick="() => ToggleCreditSelection(credit, !credit.IsSelected)"
+                                                    class="package-row @(credit.IsSelected ? "selected-row" : "")" style="cursor: pointer;">
+                                                    <td style="text-align: center;" @onclick:stopPropagation>
+                                                        <input type="checkbox" checked="@credit.IsSelected" 
+                                                               @onchange="@((ChangeEventArgs e) => ToggleCreditSelection(credit, (bool)(e.Value ?? false)))" />
+                                                    </td>
+                                                    <td class="col-id">@credit.ARAPOutstandingID</td>
+                                                    <td>@credit.FinancialDate.ToString("dd/MM/yyyy")</td>
+                                                    <td>@credit.DisplayCode</td>
+                                                    <td>@credit.MemberTypeID</td>
+                                                    <td>@credit.ItemDescription</td>
+                                                    <td>@credit.DueDate.ToString("dd/MM/yyyy")</td>
+                                                    <td>@credit.TotalAmount.ToString("N2")</td>
+                                                    <td>
+                                                        @credit.NetBalanceAfterUtilised.ToString("N2")
+                                                    </td>
+                                                </tr>
+                                            }
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="orders-btn-secondary" style="flex: 1;"
+                            @onclick="CloseMultiCreditModal">
+                        Cancel
+                    </button>
+                    <button class="orders-btn-primary" style="flex: 1;"
+                            disabled="@(!selectedCreditsToRedeem.Any())"
+                            @onclick="ApplyMultiCreditSelection">
+                        Apply Offset
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (showVoucherModal && AppState.SelectedCustomer != null)
+    {
+        <div class="modal-overlay" @onclick="() => showVoucherModal = false">
+            <div class="modal-content package-detail-modal" @onclick:stopPropagation>
+                <div class="modal-header">
+                    <div class="page-title">Redeem Package</div>
+                </div>
+
+                <div class="modal-body package-modal-body">
+                    @if (isLoadingPackages)
+                    {
+                        <div class="package-loading">
+                            <div class="spinner"></div>
+                            <p>Fetching Balances...</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="package-grid-container">
+                            <div class="table-scroll-wrapper" style="max-height:260px;">
+                                <table class="package-table">
+                                    <thead>
+                                        <tr>
+                                            <th class="col-id">Package</th>
+                                            <th>Package Name</th>
+                                            <th>Package Item</th>
+                                            <th>Purchase Date</th>
+                                            <th>Expiry Date</th>
+                                            <th>Unit Value</th>
+                                            <th>Qty Purchased</th>
+                                            <th>Balance</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var pkg in customerPackages)
+                                        {
+                                            <tr @onclick="() => SelectPackageForRedemption(pkg)"
+                                                class="package-row @(selectedPackageAutoID == pkg.AutoID ? "selected-row" : "")">
+                                                <td data-label="Package" class="col-id">@pkg.AutoID</td>
+                                                <td data-label="Package Name">@pkg.PackageName</td>
+                                                <td data-label="Package Item">@pkg.Description</td>
+                                                <td data-label="Purchase Date">@pkg.FinancialDate.ToString("dd/MM/yyyy")</td>
+                                                <td data-label="Expiry Date">@pkg.ExpiryDate.ToString("dd/MM/yyyy")</td>
+                                                <td data-label="Unit Value">@pkg.UnitPrice.ToString("N2")</td>
+                                                <td data-label="Qty Purchased">@pkg.QuantityPurchased.ToString("N0")</td>
+                                                <td data-label="Balance">@pkg.NetBalanceAfterUtilised.ToString("N0")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="package-grid-footer">
+                                <div class="footer-left-space">
+                                    <span class="footer-label">Total Package: @customerPackages.Count</span>
+                                </div>
+                                <div class="footer-right-align">
+                                    <span class="footer-label">Total Balance: @customerPackages.Sum(x => x.NetBalanceAfterUtilised).ToString("N0")</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="redemption-history-section" style="margin-top: 28px;">
+                            <div class="modal-header">
+                                <div class="page-title">Redemption History</div>
+                            </div>
+                            <div class="package-grid-container" style="margin-top: 19px;">
+                                <div class="table-scroll-wrapper" style="max-height:260px;">
+                                    <table class="package-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Package</th>
+                                                <th>Doc No</th>
+                                                <th>Redeem Date</th>
+                                                <th>Qty Redeemed</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @if (isLoadingHistory)
+                                            {
+                                                <tr><td colspan="5" class="text-center">Loading history...</td></tr>
+                                            }
+                                            else if (redemptionHistory.Any())
+                                            {
+                                                @foreach (var history in redemptionHistory)
+                                                {
+                                                    <tr>
+                                                        <td data-label="Package">@history.SourceDocumentLineID</td>
+                                                        <td data-label="Doc No">@history.DocumentID</td>
+                                                        <td data-label="Redeem Date">@history.FinancialDate.ToString("dd/MM/yyyy")</td>
+                                                        <td data-label="Qty Redeemed">@Math.Abs(history.QuantityRedeemed).ToString("N0")</td>
+                                                    </tr>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <tr class="empty-row"><td colspan="5">No history found</td></tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                            </div>
+                        </div>
+                    }
+
+                </div>
+                <div class="modal-footer">
+                    <button class="orders-btn-secondary" style="flex: 1;"
+                            @onclick="() => showVoucherModal = false">
+                        Close
+                    </button>
+                    <button class="orders-btn-primary" style="flex: 1;"
+                            disabled="@(selectedPackageToRedeem == null || isRedeemingPackage)"
+                            @onclick="ProceedToEditPackageRedemption">
+                        @if (isRedeemingPackage)
+                        {
+                            <span>Loading...</span>
+                        }
+                        else
+                        {
+                            <span>Next</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (showEditOrderItemModal && selectedOrderItem != null)
+    {
+        <div class="modal-overlay" @onclick="CloseEditOrderItemModal">
+            <div class="modal-content order-item-edit-modal" @onclick:stopPropagation>
+                <div class="modal-header">
+                    <div class="page-title">@selectedOrderItem.Description</div>
+                </div>
+                <div class="order-item-edit-modal-body">
+                    <div class="order-item-edit-modal-body-part">
+                        <!-- Treatment Section -->
+                        <div class="treatment-section">
+                            <!-- Price Row -->
+                            <div class="edit-row"
+                                 @onclick='() => OpenNumpadForField("Price", selectedOrderItem.UnitPrice.ToString("F2"))'>
+                                <span class="row-label">@LangSvc.GetText("OrdersPrice")</span>
+                                <span class="row-value">RM @selectedOrderItem.UnitPrice.ToString("F2")</span>
+                            </div>
+
+                            <!-- Quantity Row -->
+                            <div class="edit-row"
+                                 @onclick='() => OpenNumpadForField("Quantity", selectedOrderItem.Quantity.ToString())'>
+                                <span class="row-label">@LangSvc.GetText("OrdersQuantity")</span>
+                                <span class="row-value">@selectedOrderItem.Quantity</span>
+                            </div>
+
+                            <!-- Discount Row -->
+                            @if (isSalesMode)
+                            {
+                                <div class="edit-row discount-row">
+                                    <span class="row-label">@LangSvc.GetText("OrdersDiscount")</span>
+                                    <div class="discount-fields">
+                                        <div class="discount-percent"
+                                             @onclick='() => OpenNumpadForField("DiscountPercent", editDiscountPercent)'>
+                                            <span>@editDiscountPercent %</span>
+                                        </div>
+                                        <div class="discount-amount"
+                                             @onclick='() => OpenNumpadForField("DiscountAmount", editDiscountAmount)'>
+                                            <span>RM @editDiscountAmount</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+
+                            <!-- Total Row -->
+                            <div class="edit-row total-row">
+                                <span class="row-label">@LangSvc.GetText("OrdersTotal")</span>
+                                <span class="row-value">RM @CalculateItemTotal().ToString("F2")</span>
+                            </div>
+                        </div>
+                        <!-- Remarks Section -->
+                        <div class="treatment-section">
+                            <span class="row-label" style="margin-bottom: 14px;">
+                                @LangSvc.GetText("OrdersRemarks")
+                            </span>
+                            <textarea @bind="editRemarks" placeholder="@LangSvc.GetText("OrdersRemarksPlaceholder")" rows="3"></textarea>
+                        </div>
+                    </div>
+                    <div class="order-item-edit-modal-body-part">
+                        <div class="treatment-section">
+                            <div class="edit-row total-row">
+                                <span class="row-label">Staff Commission</span>
+                            </div>
+                            <div class="staff-rows-scroll-area">
+                                @for (int i = 0; i < commissionRows.Count; i++)
+                                {
+                                    var row = commissionRows[i];
+                                    int displayIndex = i + 1;
+                                    <div class="edit-row total-row">
+                                        <span class="row-label">Staff @displayIndex:</span>
+                                        <button type="button" class="staff-select-btn" @onclick="() => OpenStaffModal(row)">
+                                            @if (string.IsNullOrEmpty(row.StaffId))
+                                            {
+                                                <span>Select Staff...</span>
+                                            }
+                                            else
+                                            {
+                                                var name = staffList.FirstOrDefault(s => s.MasterAccountID == row.StaffId)?.AccountName ?? row.StaffName;
+                                                <span>@name</span>
+                                            }
+                                        </button>
+
+                                        <div class="staff-commission-amount" @onclick="() => OpenNumpadForCommission(row)">
+                                            <span>@row.Amount.ToString("F2")</span>
+                                        </div>
+                                        <select @bind="row.CommissionType" class="commission-type-select">
+                                            <option value="%">%</option>
+                                            <option value="MYR">MYR</option>
+                                        </select>
+                                        <button type="button" class="remove-staff-btn" @onclick="() => RemoveCommissionRow(row)">&times;</button>
+                                    </div>
+                                }
+                            </div>
+
+                            <button class="orders-btn-tertiary" style="margin-top: 14px;" @onclick="AddCommissionRow">
+                                <i class="bi bi-plus-lg"></i>
+                                Add Staff
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="orders-btn-secondary" style="flex: 1;" @onclick="CloseEditOrderItemModal">@LangSvc.GetText("OrdersCancel")</button>
+                    <button class="orders-btn-primary" style="flex: 1;" @onclick="SaveOrderItemChanges">
+                        @if (isAddingNewItem)
+                        {
+                            @LangSvc.GetText("AddToCart")
+                        }
+                        else
+                        {
+                            @LangSvc.GetText("OrdersSave")
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (showNumpadModal)
+    {
+        <div class="modal-overlay" style="z-index: 3000;" @onclick="CloseNumpadModal">
+            <div class="modal-content keypad-modal" style="max-width: 350px;" @onclick:stopPropagation>
+                <div class="modal-header">
+                    <h3>Edit @GetFriendlyFieldName(currentEditField)</h3>
+                    <button class="close-btn" @onclick="CloseNumpadModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="keypad-display">
+                        <div class="keypad-display-wrapper">
+                            @if (currentEditField == "Price" || currentEditField == "DiscountAmount" || currentEditField == "Discount Amount" || currentEditField == "PaymentAmount" || currentEditField == "OutstandingPayment")
+                            {
+                                <span class="keypad-display-sign prefix">RM</span>
+                            }
+                            <span class="keypad-display-value">@currentEditValue</span>
+                            @if (currentEditField == "DiscountPercent")
+                            {
+                                <span class="keypad-display-sign suffix">%</span>
+                            }
+                        </div>
+                    </div>
+                    @if (currentEditField == "Quantity" && (decimal.Parse(currentEditValue) <= 0))
+                    {
+                        <div style="color: var(--color-red); text-align: center; font-size: 14px; font-weight: bold; margin-top: -10px; margin-bottom: 10px;">
+                            Min Value: 0.01
+                        </div>
+                    }
+                    <div class="keypad-grid">
+                        <button class="keypad-btn" @onclick='() => HandleNumpadEdit("1")'>1</button>
+                        <button class="keypad-btn" @onclick='() => HandleNumpadEdit("2")'>2</button>
+                        <button class="keypad-btn" @onclick='() => HandleNumpadEdit("3")'>3</button>
+                        <button class="keypad-btn" @onclick='() => HandleNumpadEdit("4")'>4</button>
+                        <button class="keypad-btn" @onclick='() => HandleNumpadEdit("5")'>5</button>
+                        <button class="keypad-btn" @onclick='() => HandleNumpadEdit("6")'>6</button>
+                        <button class="keypad-btn" @onclick='() => HandleNumpadEdit("7")'>7</button>
+                        <button class="keypad-btn" @onclick='() => HandleNumpadEdit("8")'>8</button>
+                        <button class="keypad-btn" @onclick='() => HandleNumpadEdit("9")'>9</button>
+                        <button class="keypad-btn" @onclick='() => HandleNumpadEdit(".")'>.</button>
+                        <button class="keypad-btn" @onclick='() => HandleNumpadEdit("0")'>0</button>
+                        <button class="keypad-btn" @onclick='() => HandleNumpadEdit("⌫")'>⌫</button>
+                    </div>
+                    <div style="margin-top: 1rem; display: flex; gap: 10px; padding: 1rem;">
+                        <button class="orders-btn-secondary" style="flex: 1;" @onclick='() => currentEditValue = "0"'>@LangSvc.GetText("OrdersClear")</button>
+                        <button class="orders-btn-primary" style="flex: 1;" @onclick="SaveNumpadValue">
+                            @(currentEditField == "OutstandingPayment" ? "Next" : LangSvc.GetText("OrdersSave"))
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    <!-- Mobile sticky cart strip -->
+    @* <div class="cart-strip-mobile">
+        <div class="cart-meta">
+            <span class="cart-count">
+                @(currentOrder?.lstDocumentLine.Where(x => x.SaveAction != EntityState.Deleted).Sum(i => i.Quantity) ?? 0) items in cart
+            </span>
+            <span class="cart-total">
+                RM @((currentOrder?.objDoc_CashSales?.TotalAfterTax ?? 0m).ToString("F2"))
+            </span>
+        </div>
+        <button class="orders-btn-primary view-cart-btn"
+                disabled="@(currentOrder == null || !currentOrder.lstDocumentLine.Any(x => x.SaveAction != EntityState.Deleted))"
+                @onclick="OpenMobileCart">
+            <i class="bi bi-cart3"></i>
+            View Cart
+        </button>
+    </div> *@
+
+    <!-- Mobile floating cart button -->
+    <button class="cart-fab"
+            disabled="@(currentOrder == null || !currentOrder.lstDocumentLine.Any(x => x.SaveAction != EntityState.Deleted))"
+            @onclick="OpenMobileCart">
+        <i class="bi bi-cart3"></i>
+        @if ((currentOrder?.lstDocumentLine.Where(x => x.SaveAction != EntityState.Deleted).Sum(i => i.Quantity) ?? 0) > 0)
+        {
+            <span class="cart-fab-badge">
+                @(currentOrder?.lstDocumentLine.Where(x => x.SaveAction != EntityState.Deleted).Sum(i => i.Quantity) ?? 0)
+            </span>
+        }
+    </button>
+
+    <!-- Mobile Cart Bottom Sheet -->
+    @if (showMobileCart)
+    {
+        <div class="mobile-cart-overlay" @onclick="CloseMobileCart">
+            <div class="mobile-cart-sheet" @onclick:stopPropagation>
+                <div class="summary-title-row">
+                    <button class="back-btn" title="Back" @onclick="CloseMobileCart">
+                        <i class="bi bi-chevron-left"></i>
+                        <span class="back-btn-back-text">Back</span>
+                    </button>
+                    <span class="page-title mobile-cart-title">
+                        Cart
+                    </span>
+                    <button class="delete-btn mobile-cart-delete-btn" style="gap: 8px;"
+                            @onclick="RequestDeleteOrder">
+                        <i class="bi bi-trash"></i>
+                        <span class="delete-order-text">Delete Order</span>
+                    </button>
+                </div>
+                <div class="summary-row-list">
+                    @foreach (var item in currentOrder?.lstDocumentLine.Where(x => x.SaveAction != EntityState.Deleted) ?? new List<DocumentLineTableDM>())
+                    {
+                        <div class="summary-row" @onclick="() => OpenEditOrderItemModal(item, fromMobileCart: true, isNew: false)"
+                             style="cursor: pointer;">
+                            <div class="summary-item-body">
+                                <div class="summary-row-bottom">
+                                    <div class="summary-name">@item.Description</div>
+                                </div>
+                                <div class="summary-row-bottom">
+                                    <div class="summary-item-type">@(GetItemTypeName((int)item.InventoryTypeID))</div>
+                                </div>
+                                <div class="summary-staff-row">
+                                    @if (item.lstSalesCommissionByDocumentLine != null && item.lstSalesCommissionByDocumentLine.Any())
+                                    {
+                                        @foreach (var comm in item.lstSalesCommissionByDocumentLine)
+                                        {
+                                            <span class="summary-staff">
+                                                Staff: @comm.EmployeeCode
+                                            </span>
+                                        }
+                                    }
+                                </div>
+                                @if (!string.IsNullOrEmpty(item.TaxCodeID) || item.TaxAmount > 0)
+                                {
+                                    <div class="summary-discount-line" style="color: var(--text-primary)">
+                                        @if (!string.IsNullOrEmpty(item.TaxCodeID))
+                                        {
+                                            <span style="flex: 1;">@item.TaxCodeID</span>
+                                        }
+                                        <div class="summary-row-right">
+                                            @if (item.TaxAmount > 0)
+                                            {
+                                                <span>RM @item.TaxAmount.ToString("F2")</span>
+                                            }
+                                            <div class="summary-price-spacer"></div>
+                                        </div>
+
+                                    </div>
+                                }
+                                @if (item.Discount > 0)
+                                {
+                                    <div class="summary-discount-line">
+                                        <span style="flex: 1;">Discount &nbsp;</span>
+                                        <div class="summary-row-right">
+                                            <span>- RM @item.Discount.ToString("F2")</span>
+                                            <div class="summary-price-spacer"></div>
+                                        </div>
+                                    </div>
+                                }
+                                @if (!string.IsNullOrEmpty(item.RefCompanyName) || !string.IsNullOrEmpty(item.Memo))
+                                {
+                                    <div class="summary-row-bottom">
+                                        <span class="summary-item-type">Remarks: @(!string.IsNullOrEmpty(item.RefCompanyName) ? item.RefCompanyName : item.Memo)</span>
+                                    </div>
+                                }
+                                <div class="summary-bottom-row" @onclick:stopPropagation>
+                                    <div class="summary-bottom-left">
+                                        <div class="summary-qty-controls">
+                                            <button class="qty-btn minus" @onclick="() => ChangeQuantity(item, -1)">
+                                                <i class="fa fa-minus" aria-hidden="true"></i>
+                                            </button>
+                                            <span class="qty-display">@item.Quantity.ToString("G29")</span>
+                                            <button class="qty-btn plus" @onclick="() => ChangeQuantity(item, +1)">
+                                                <i class="fa fa-plus" aria-hidden="true"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="summary-bottom-right">
+                                        <span class="summary-price">RM @Math.Max(0, item.UnitPrice * item.Quantity - item.Discount).ToString("F2")</span>
+                                        <button class="delete-btn delete-item-btn" @onclick="() => RequestRemoveItem(item)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div class="summary-footer">
+                    <button class="payment-btn"
+                            disabled="@(currentOrder == null || !currentOrder.lstDocumentLine.Any(x => x.SaveAction != EntityState.Deleted))"
+                            @onclick="() => { CloseMobileCart(); ProceedToPayment(); }">
+                        <span style="flex: 1;">Proceed to Payment</span>
+                        <i class="bi bi-chevron-right" style="text-align: right;"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Mode Switch Confirmation Modal -->
+    @if (showModeSwitchConfirm)
+    {
+        <div class="modal-overlay">
+            <div class="modal-content" style="background: white; border-radius: 16px; padding: 1.5rem; max-width: 440px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+                <div style="font-size: 2.2rem; color: var(--primary); margin-bottom: 0.5rem;">
+                    <i class="fa-solid fa-right-left"></i>
+                </div>
+                <h3 style="margin: 0 0 0.5rem 0; font-size: 1.25rem; font-weight: 700; color: #1E293B;">Switch to @(pendingModeTarget ? "Sales" : "Redemption") Mode?</h3>
+                <p style="color: #64748B; margin-bottom: 1.5rem; font-size: 0.95rem; line-height: 1.5;">
+                    @if (currentOrder != null && currentOrder.lstDocumentLine.Any())
+                    {
+                        <span>Switching to <strong>@(pendingModeTarget ? "Sales" : "Redemption")</strong> mode will <strong>clear your current cart items</strong>. Do you want to proceed?</span>
+                    }
+                    else
+                    {
+                        <span>Are you sure you want to switch to <strong>@(pendingModeTarget ? "Sales" : "Redemption")</strong> mode?</span>
+                    }
+                </p>
+                <div style="display: flex; gap: 0.75rem;">
+                    <button class="orders-btn-secondary" style="flex: 1; padding: 0.65rem 1rem; border-radius: 10px; border: 1px solid #CBD5E1; font-weight: 600; cursor: pointer; font-size: 0.9rem;"
+                            @onclick="() => showModeSwitchConfirm = false">
+                        Cancel
+                    </button>
+                    <button class="orders-btn-primary" style="flex: 1; padding: 0.65rem 1rem; border-radius: 10px; background: var(--primary); color: white; border: none; font-weight: 600; cursor: pointer; font-size: 0.9rem;"
+                            @onclick="ConfirmModeSwitch">
+                        Confirm Switch
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Cash Drawer Management Modal -->
+    @if (showCashDrawerModal)
+    {
+        <div class="modal-overlay" @onclick="CloseCashDrawerModal">
+            <div class="modal-content" style="background: #FFFFFF; border-radius: 16px; width: 100%; max-width: 480px; box-shadow: 0 20px 40px rgba(0,0,0,0.15); border: 1px solid #CBD5E1; overflow: hidden; padding: 0;" @onclick:stopPropagation>
+                
+                <!-- Header -->
+                <div style="padding: 1.25rem; border-bottom: 1px solid #E2E8F0; display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #1E293B;">Cash Drawer Management</h3>
+                    <button type="button" style="background: none; border: none; color: #64748B; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;" @onclick="CloseCashDrawerModal">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+
+                <!-- Body / Form -->
+                <div style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem;">
+                    
+                    <!-- Drawer Balance Summary Card -->
+                    @if (cashDrawerSummary != null)
+                    {
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px; padding: 0.85rem 1rem;">
+                            <div>
+                                <div style="font-size: 0.75rem; color: #64748B; font-weight: 700; text-transform: uppercase;">Drawer Balance</div>
+                                <div style="font-size: 1.3rem; font-weight: 800; color: var(--primary);">RM @cashDrawerSummary.CurrentDrawerBalance.ToString("N2")</div>
+                            </div>
+                            <div style="text-align: right; font-size: 0.8rem; color: #475569;">
+                                <div>In: <strong style="color: #16A34A;">+RM @cashDrawerSummary.TotalCashInToday.ToString("N2")</strong></div>
+                                <div>Out: <strong style="color: #DC2626;">-RM @cashDrawerSummary.TotalCashOutToday.ToString("N2")</strong></div>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- 3-Pill Toggle: Cash In / Cash Out / Drawer History -->
+                    <div style="display: flex; background: #F1F5F9; border-radius: 10px; padding: 3px;">
+                        <button type="button" style="flex: 1; padding: 0.5rem; border: none; border-radius: 8px; font-size: 0.88rem; font-weight: 700; cursor: pointer; transition: all 0.15s; background: @(cashDrawerTab == "Cash In" ? "white" : "transparent"); color: @(cashDrawerTab == "Cash In" ? "var(--primary)" : "#64748B"); box-shadow: @(cashDrawerTab == "Cash In" ? "0 1px 3px rgba(0,0,0,0.1)" : "none");"
+                                @onclick='() => SelectCashDrawerTab("Cash In")'>
+                            Cash In
+                        </button>
+                        <button type="button" style="flex: 1; padding: 0.5rem; border: none; border-radius: 8px; font-size: 0.88rem; font-weight: 700; cursor: pointer; transition: all 0.15s; background: @(cashDrawerTab == "Cash Out" ? "white" : "transparent"); color: @(cashDrawerTab == "Cash Out" ? "var(--primary)" : "#64748B"); box-shadow: @(cashDrawerTab == "Cash Out" ? "0 1px 3px rgba(0,0,0,0.1)" : "none");"
+                                @onclick='() => SelectCashDrawerTab("Cash Out")'>
+                            Cash Out
+                        </button>
+                        <button type="button" style="flex: 1; padding: 0.5rem; border: none; border-radius: 8px; font-size: 0.88rem; font-weight: 700; cursor: pointer; transition: all 0.15s; background: @(cashDrawerTab == "Logs" ? "white" : "transparent"); color: @(cashDrawerTab == "Logs" ? "var(--primary)" : "#64748B"); box-shadow: @(cashDrawerTab == "Logs" ? "0 1px 3px rgba(0,0,0,0.1)" : "none");"
+                                @onclick='() => SelectCashDrawerTab("Logs")'>
+                            Drawer History
+                        </button>
+                    </div>
+
+                    @if (cashDrawerTab == "Cash In" || cashDrawerTab == "Cash Out")
+                    {
+                        <!-- Date & Time Row -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                            <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                                <label style="font-size: 0.88rem; font-weight: 600; color: #475569;">Date</label>
+                                <input type="date" class="orders-input"
+                                       style="width: 100%; height: 44px; padding: 0 12px; background: white; border: 1px solid #CBD5E1; border-radius: 10px; font-size: 0.9rem; outline: none; box-sizing: border-box;"
+                                       @bind="cashDrawerDate" />
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                                <label style="font-size: 0.88rem; font-weight: 600; color: #475569;">Time</label>
+                                <input type="time" class="orders-input"
+                                       style="width: 100%; height: 44px; padding: 0 12px; background: white; border: 1px solid #CBD5E1; border-radius: 10px; font-size: 0.9rem; outline: none; box-sizing: border-box;"
+                                       value="@cashDrawerTimeString" @onchange="@((ChangeEventArgs e) => cashDrawerTimeString = e.Value?.ToString() ?? "")" />
+                            </div>
+                        </div>
+
+                        <!-- Performed By, Branch, Counter Row -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem;">
+                            <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                                <label style="font-size: 0.82rem; font-weight: 600; color: #475569;">Performed By</label>
+                                <input type="text" class="orders-input" placeholder="Staff Name"
+                                       style="width: 100%; height: 42px; padding: 0 10px; background: white; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.88rem; outline: none; box-sizing: border-box;"
+                                       @bind="cashDrawerPerformedBy" />
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                                <label style="font-size: 0.82rem; font-weight: 600; color: #475569;">Branch</label>
+                                <input type="text" class="orders-input" placeholder="Branch"
+                                       style="width: 100%; height: 42px; padding: 0 10px; background: white; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.88rem; outline: none; box-sizing: border-box;"
+                                       @bind="cashDrawerBranch" />
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                                <label style="font-size: 0.82rem; font-weight: 600; color: #475569;">Counter</label>
+                                <input type="text" class="orders-input" placeholder="Counter 1"
+                                       style="width: 100%; height: 42px; padding: 0 10px; background: white; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.88rem; outline: none; box-sizing: border-box;"
+                                       @bind="cashDrawerCounter" />
+                            </div>
+                        </div>
+
+                        <!-- Amount Field -->
+                        <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                            <label style="font-size: 0.88rem; font-weight: 600; color: #475569;">Amount</label>
+                            <div style="position: relative;">
+                                <span style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #94A3B8; font-weight: 600; font-size: 1rem;">RM</span>
+                                <input type="number" step="0.01" min="0" required class="orders-input"
+                                       style="width: 100%; height: 46px; padding-left: 42px; padding-right: 14px; background: white; border: 1px solid #CBD5E1; border-radius: 10px; font-size: 1.1rem; font-weight: 700; outline: none; box-sizing: border-box;"
+                                       placeholder="0.00" @bind="cashDrawerAmount" />
+                            </div>
+                        </div>
+
+                        <!-- Reason / Category Select -->
+                        <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                            <label style="font-size: 0.88rem; font-weight: 600; color: #475569;">Reason/Category</label>
+                            <select class="orders-input"
+                                    style="width: 100%; height: 46px; padding-left: 14px; padding-right: 14px; background: white; border: 1px solid #CBD5E1; border-radius: 10px; font-size: 0.92rem; outline: none; box-sizing: border-box;"
+                                    @bind="cashDrawerReason">
+                                @if (cashDrawerTab == "Cash In")
+                                {
+                                    <option value="Opening Balance">Opening Balance</option>
+                                    <option value="Petty Cash">Petty Cash</option>
+                                    <option value="Fuel">Fuel</option>
+                                    <option value="Supplies">Supplies</option>
+                                    <option value="Miscellaneous">Miscellaneous</option>
+                                }
+                                else
+                                {
+                                    <option value="Opening Balance">Opening Balance</option>
+                                    <option value="Petty Cash">Petty Cash</option>
+                                    <option value="Fuel">Fuel</option>
+                                    <option value="Supplies">Supplies</option>
+                                    <option value="Miscellaneous">Miscellaneous</option>
+                                }
+                            </select>
+                        </div>
+
+                        <!-- Notes Textarea -->
+                        <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                            <label style="font-size: 0.88rem; font-weight: 600; color: #475569;">Notes</label>
+                            <textarea class="orders-input"
+                                      style="width: 100%; min-height: 80px; padding: 12px; background: white; border: 1px solid #CBD5E1; border-radius: 10px; font-size: 0.9rem; outline: none; box-sizing: border-box;"
+                                      placeholder="Enter transaction details..." @bind="cashDrawerNotes"></textarea>
+                        </div>
+
+                        <!-- Footer Buttons -->
+                        <div style="display: flex; gap: 0.85rem; margin-top: 0.5rem;">
+                            <button type="button" style="flex: 1; height: 46px; background: white; border: 1px solid #CBD5E1; color: #475569; border-radius: 10px; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: background 0.15s;"
+                                    @onclick="CloseCashDrawerModal">
+                                Cancel
+                            </button>
+                            <button type="button" style="flex: 1; height: 46px; background: var(--primary); color: white; border: none; border-radius: 10px; font-size: 0.95rem; font-weight: 700; cursor: pointer; transition: background 0.15s;"
+                                    @onclick="SaveCashDrawerEntry" disabled="@isSavingCashDrawer">
+                                @if (isSavingCashDrawer)
+                                {
+                                    <span>Processing...</span>
+                                }
+                                else
+                                {
+                                    <span>Confirm</span>
+                                }
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                        <!-- Drawer History Logs -->
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <h4 style="margin: 0; font-size: 0.95rem; font-weight: 700; color: #1E293B;">Drawer Transaction History</h4>
+                            
+                            <div style="max-height: 280px; overflow-y: auto; border: 1px solid #E2E8F0; border-radius: 10px;">
+                                @if (!cashDrawerLogs.Any())
+                                {
+                                    <div style="text-align: center; color: #94A3B8; padding: 2.5rem; font-size: 0.9rem;">
+                                        No drawer transactions logged today.
+                                    </div>
+                                }
+                                else
+                                {
+                                    <table style="width: 100%; border-collapse: collapse; font-size: 0.84rem; text-align: left;">
+                                        <thead>
+                                            <tr style="background: #F8FAFC; border-bottom: 1px solid #E2E8F0; color: #64748B; font-weight: 700;">
+                                                <th style="padding: 0.6rem 0.65rem;">Date & Time</th>
+                                                <th style="padding: 0.6rem 0.65rem;">Type</th>
+                                                <th style="padding: 0.6rem 0.65rem;">Reason & Notes</th>
+                                                <th style="padding: 0.6rem 0.65rem;">User / Counter</th>
+                                                <th style="padding: 0.6rem 0.65rem; text-align: right;">Amount</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var log in cashDrawerLogs)
+                                            {
+                                                <tr style="border-bottom: 1px solid #F1F5F9;">
+                                                    <td style="padding: 0.6rem 0.65rem; color: #64748B; font-size: 0.8rem; white-space: nowrap;">
+                                                        @log.Timestamp.ToString("dd/MM/yyyy")<br />
+                                                        <span style="font-size: 0.76rem; color: #94A3B8;">@log.Timestamp.ToString("hh:mm tt")</span>
+                                                    </td>
+                                                    <td style="padding: 0.6rem 0.65rem;">
+                                                        <span style="font-weight: 700; font-size: 0.75rem; padding: 0.2rem 0.45rem; border-radius: 6px; background: @(log.Type == "Cash In" ? "#DCFCE7" : "#FEE2E2"); color: @(log.Type == "Cash In" ? "#16A34A" : "#DC2626");">
+                                                            @log.Type
+                                                        </span>
+                                                    </td>
+                                                    <td style="padding: 0.6rem 0.65rem;">
+                                                        <strong style="color: #334155;">@log.Reason</strong>
+                                                        @if (!string.IsNullOrEmpty(log.Notes))
+                                                        {
+                                                            <div style="font-size: 0.78rem; color: #64748B; margin-top: 2px;">@log.Notes</div>
+                                                        }
+                                                    </td>
+                                                    <td style="padding: 0.6rem 0.65rem; font-size: 0.8rem; color: #475569;">
+                                                        <div><strong style="color: #1E293B;">@log.PerformedBy</strong></div>
+                                                        <div style="font-size: 0.75rem; color: #64748B;">@log.Branch (@log.Counter)</div>
+                                                    </td>
+                                                    <td style="padding: 0.6rem 0.65rem; text-align: right; font-weight: 700; color: @(log.Type == "Cash In" ? "#16A34A" : "#DC2626"); white-space: nowrap;">
+                                                        @(log.Type == "Cash In" ? "+" : "-")RM @log.Amount.ToString("N2")
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                }
+                            </div>
+
+                            <div style="display: flex; justify-content: flex-end; margin-top: 0.5rem;">
+                                <button type="button" style="height: 40px; padding: 0 1.25rem; background: white; border: 1px solid #CBD5E1; color: #475569; border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer;"
+                                        @onclick="CloseCashDrawerModal">
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    }
+
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Select Customer Modal -->
+    @if (showSelectCustomerModal)
+    {
+        <div class="modal-overlay" @onclick="() => showSelectCustomerModal = false">
+            <div class="modal-content" @onclick:stopPropagation="true" style="height: 650px;">
+                <div class="modal-header">
+                    <div class="page-title">
+                        Select Customer
+                    </div>
+                    <button class="back-btn add-cust-btn" title="Add Customer" @onclick="OpenAddMemberModal">
+                        <i class="bi bi-person-plus"></i>
+                    </button>
+                </div>
+                <div class="search-bar">
+                    <i class="bi bi-search search-icon"></i>
+                    <input type="text"
+                           class="search-input"
+                           placeholder="Search Customer..."
+                           @bind="CustomerSearchTerm"
+                           @bind:event="oninput" />
+                    @if (!string.IsNullOrEmpty(CustomerSearchTerm))
+                    {
+                        <button class="search-clear" @onclick="() => CustomerSearchTerm = string.Empty">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    }
+                </div>
+                <div class="customer-list">
+                    @foreach (var customer in _customerList)
+                    {
+                        bool isStaged = stagedCustomer?.MasterAccountID == customer.MasterAccountID;
+                        <div class="customer-list-item @(isStaged ? "selected" : "")"
+                             @onclick="() => stagedCustomer = customer">
+                            <div class="customer-item-main">
+                                <div class="customer-info-wrap">
+                                    <div class="customer-list-item-name">@customer.AccountName</div>
+                                    <div class="customer-list-item-phone">@PhoneFormatter.Format(customer.Phone)</div>
+                                </div>
+                                @if (isStaged)
+                                {
+                                    <i class="bi bi-check2 selected-check-icon"></i>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="orders-btn-secondary" style="flex: 1;"
+                            @onclick="() => showSelectCustomerModal = false">
+                        Cancel
+                    </button>
+                    <button class="orders-btn-primary" style="flex: 1;"
+                            disabled="@(stagedCustomer == null)"
+                            @onclick="ConfirmCustomerSelection">
+                        Select
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    }
+
+    @if (showGenericConfirm)
+    {
+        <div class="modal-overlay" style="z-index: 3000;">
+            <div class="modal-content" style="max-width: 450px;">
+                <h4 style="margin: 0 0 1rem 0; font-weight: 700;">@confirmTitle</h4>
+                <p style="color: var(--text-primary); margin-bottom: 2rem; font-size: 18px; line-height: 1.4;">
+                    @confirmMessage
+                </p>
+                <div style="display: flex; gap: 1rem;">
+                    <button class="orders-btn-secondary" style="flex: 1;"
+                            @onclick="() => showGenericConfirm = false">
+                        Cancel
+                    </button>
+                    <button class="orders-btn-primary" style="flex: 1;"
+                            @onclick="async () => { showGenericConfirm = false; if (onConfirmAction != null) await onConfirmAction(); }">
+                        Confirm
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (showProfileEditModal && AppState.SelectedCustomer != null)
+    {
+        <div class="modal-overlay" @onclick="() => showProfileEditModal = false">
+            <div class="modal-content order-profile-edit-modal" @onclick:stopPropagation>
+                <div class="modal-header">
+                    <div class="page-title">Edit Customer Profile</div>
+                </div>
+
+                <!-- Avatar -->
+                <div class="edit-avatar-placeholder">
+                    <div class="edit-avatar">
+                        <i class="bi bi-person"></i>
+                    </div>
+                    <div class="edit-name">@AppState.SelectedCustomer.AccountName</div>
+                </div>
+
+                <!-- Tabs -->
+                <div class="profile-edit-tabs">
+                    <button class="profile-edit-tab @(activeProfileTab == "Info" ? "active" : "")"
+                            @onclick='() => activeProfileTab = "Info"'>
+                        Info
+                    </button>
+                    <button class="profile-edit-tab @(activeProfileTab == "Details" ? "active" : "")"
+                            @onclick='() => activeProfileTab = "Details"'>
+                        Details
+                    </button>
+                    <button class="profile-edit-tab @(activeProfileTab == "Address" ? "active" : "")"
+                            @onclick='() => activeProfileTab = "Address"'>
+                        Address
+                    </button>
+                </div>
+
+                <!-- Tab Content -->
+                <div class="profile-edit-body">
+                    @if (isLoadingProfile)
+                    {
+                        <div style="display:flex; flex-direction:column; align-items:center;
+                            justify-content:center; height:100%; gap:1rem; padding: 3rem 0;">
+                            <div class="spinner"></div>
+                            <span style="color:var(--text-tertiary); font-size:0.9rem;">
+                                Loading customer details...
+                            </span>
+                        </div>
+                    }
+                    else if (activeProfileTab == "Info")
+                    {
+                        <div class="profile-edit-grid">
+                            <div class="form-group">
+                                <label>Name <span style="color:var(--color-red);">*</span></label>
+                                <input type="text" class="search-input" @bind="editName" placeholder="Full name" />
+                            </div>
+                            <div class="form-group">
+                                <label>Contact <span style="color:var(--color-red);">*</span></label>
+                                <input type="text" readonly class="search-input" value="@PhoneFormatter.Format(editPhone)" placeholder="Phone Number" @onclick="OpenEditPhoneNumpad" style="cursor: pointer;" />
+                            </div>
+                            <div class="form-group">
+                                <label>IC / Passport</label>
+                                <input type="text" class="search-input" @bind="editIC" placeholder="......xxxxxx" />
+                            </div>
+                            <div class="form-group">
+                                <label>Birthday</label>
+                                <MobileDatePicker @bind-Value="editBirthday"
+                                                  DateFormat="dd/MM/yyyy"
+                                                  Placeholder="Select Date" />
+                            </div>
+                            <div class="form-group">
+                                <label>Ethnicity</label>
+                                <input type="text" class="search-input" @bind="editEthnic" placeholder="e.g. Chinese, Malay, Indian..." />
+                            </div>
+                            <div class="form-group">
+                                <label>Source</label>
+                                <input type="text" class="search-input" @bind="editSource" placeholder="Walk-in / Instagram / Referral..." />
+                            </div>
+                            <div class="form-group">
+                                <label>Email</label>
+                                <input type="email" class="search-input" @bind="editEmail" placeholder="example@email.com" />
+                            </div>
+                            <div class="form-group">
+                                <label>Marital Status</label>
+                                <select class="search-input" @bind="editMarital">
+                                    <option value="">Select status</option>
+                                    <option value="Single">Single</option>
+                                    <option value="Married">Married</option>
+                                    <option value="Divorced">Divorced</option>
+                                    <option value="Widowed">Widowed</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <label>Gender</label>
+                                <div style="display:flex; gap:32px; margin-top:4px;">
+                                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:400;">
+                                        <input type="radio" name="editGenderOrders" value="Male"
+                                               checked="@(editGender == "Male")"
+                                               @onchange='() => editGender = "Male"' />
+                                        Male
+                                    </label>
+                                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:400;">
+                                        <input type="radio" name="editGenderOrders" value="Female"
+                                               checked="@(editGender == "Female")"
+                                               @onchange='() => editGender = "Female"' />
+                                        Female
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else if (activeProfileTab == "Details")
+                    {
+                        <div class="profile-edit-grid">
+                            <div class="form-group">
+                                <label>Member Tier</label>
+                                <select class="search-input" @bind="editMemberTier">
+                                    <option value="">None</option>
+                                    @foreach (var type in AllMembershipTypes)
+                                    {
+                                        <option value="@type.MemberTypeName">@type.MemberTypeName</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Remarks</label>
+                                <input type="text" class="search-input" @bind="editProfileRemarks" placeholder="Empty" />
+                            </div>
+                        </div>
+                    }
+                    else if (activeProfileTab == "Address")
+                    {
+                        <div class="profile-edit-grid">
+                            <div class="form-group">
+                                <label>Address Line 1</label>
+                                <input type="text" class="search-input" @bind="editAddress1" placeholder="Address Line 1" />
+                            </div>
+                            <div class="form-group">
+                                <label>Address Line 2</label>
+                                <input type="text" class="search-input" @bind="editAddress2" placeholder="Address Line 2" />
+                            </div>
+                            <div class="form-group">
+                                <label>Postal Code</label>
+                                <input type="text" class="search-input" @bind="editZipCode" placeholder="Postal Code" maxlength="10" />
+                            </div>
+                            <div class="form-group">
+                                <label>City</label>
+                                <input type="text" class="search-input" @bind="editCity" placeholder="City" />
+                            </div>
+                            <div class="form-group">
+                                <label>State</label>
+                                <select class="search-input" @bind="editCountryState">
+                                    <option value="">Select State</option>
+                                    <option value="Johor">Johor</option>
+                                    <option value="Kedah">Kedah</option>
+                                    <option value="Kelantan">Kelantan</option>
+                                    <option value="Melaka">Melaka</option>
+                                    <option value="Negeri Sembilan">Negeri Sembilan</option>
+                                    <option value="Pahang">Pahang</option>
+                                    <option value="Pulau Pinang">Pulau Pinang</option>
+                                    <option value="Perak">Perak</option>
+                                    <option value="Perlis">Perlis</option>
+                                    <option value="Selangor">Selangor</option>
+                                    <option value="Terengganu">Terengganu</option>
+                                    <option value="Sabah">Sabah</option>
+                                    <option value="Sarawak">Sarawak</option>
+                                    <option value="Wilayah Persekutuan Kuala Lumpur">WP Kuala Lumpur</option>
+                                    <option value="Wilayah Persekutuan Labuan">WP Labuan</option>
+                                    <option value="Wilayah Persekutuan Putrajaya">WP Putrajaya</option>
+                                    <option value="Not Applicable">Not Applicable</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Country</label>
+                                <input type="text" class="search-input" @bind="editCountry" placeholder="Country" />
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div class="modal-footer">
+                    <button class="orders-btn-secondary" style="flex:1;"
+                            @onclick="() => showProfileEditModal = false">
+                        Cancel
+                    </button>
+                    <button class="orders-btn-primary" style="flex:1;"
+                            disabled="@(string.IsNullOrWhiteSpace(editName) || string.IsNullOrWhiteSpace(editPhone) || isSavingProfile)"
+                            @onclick="SaveProfileChanges">
+                        @if (isSavingProfile)
+                        {
+                            <span>Saving...</span>
+                        }
+                        else
+                        {
+
+                            <span>Save Changes</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (showAlertDialogModal)
+    {
+        <div class="modal-overlay" @onclick="() => showAlertDialogModal = false">
+            <div class="modal-content" @onclick:stopPropagation style="max-width: 400px; height: auto;">
+                <h4 style="margin: 0 0 1rem 0;">@alertDialogTitle</h4>
+                <p style="color: var(--text-primary); margin-bottom: 2rem; font-size: 18px; line-height: 1.5;">
+                    @((MarkupString)alertDialogMessage)
+                </p>
+
+                <div class="modal-footer">
+                    <button class="orders-btn-primary" style="flex: 1;" @onclick="() => showAlertDialogModal = false">
+                        OK
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (showSelectStaffModal)
+    {
+        <div class="modal-overlay staff-modal-overlay" @onclick="() => showSelectStaffModal = false">
+            <div class="modal-content" @onclick:stopPropagation="true" style="height: 650px;">
+                <div class="modal-header">
+                    <div class="appt-title">
+                        Select Staff
+                    </div>
+                </div>
+                <div class="search-bar">
+                    <i class="bi bi-search search-icon"></i>
+                    <input type="text"
+                           class="search-input"
+                           placeholder="Search Staff..."
+                           @bind="StaffSearchTerm"
+                           @bind:event="oninput" />
+                    @if (!string.IsNullOrEmpty(StaffSearchTerm))
+                    {
+                        <button class="search-clear" @onclick="() => StaffSearchTerm = string.Empty">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    }
+                </div>
+                <div class="staff-list">
+                    @foreach (var staff in filteredStaffList)
+                    {
+                        bool isStaged = stagedStaff?.MasterAccountID == staff.MasterAccountID;
+                        <div class="staff-list-item @(isStaged ? "selected" : "")"
+                             @onclick="() => stagedStaff = staff">
+                            <div class="staff-list-item-name">@staff.AccountName</div>
+                            <i class="bi bi-check2 selected-check-icon" style="visibility: @(isStaged ? "visible" : "hidden")"></i>
+                        </div>
+
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="appt-btn-secondary" style="flex: 1;"
+                            @onclick="() => showSelectStaffModal = false">
+                        Cancel
+                    </button>
+                    <button class="appt-btn-primary" style="flex: 1;"
+                            disabled="@(stagedStaff == null)"
+                            @onclick="ConfirmStaffSelection">
+                        Select
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- BARCODE SCAN POPUP -->
+    @if (isBarcodePopupOpen)
+    {
+        <div class="modal-overlay" style="z-index: 2000;" @onclick="CloseBarcodePopup">
+            <div class="modal-content" style="max-width: 350px; padding: 1.5rem;" @onclick:stopPropagation>
+                <div class="modal-header" style="background: none; border: none; padding: 0 0 1rem 0;">
+                    <div class="appt-title">
+                        Scan Barcode
+                    </div>
+                    <button class="close-btn" @onclick="CloseBarcodePopup">&times;</button>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 1.5rem; text-align: center;">
+                    @if (isScanning)
+                    {
+                        <div class="barcode-container" style="max-height: 300px; width: 100%; max-width: 100%; overflow: hidden; border-radius: 8px;">
+                            <BarcodeReader ScanResult="OnBarcodeScan"
+                                           Close="CancelScanning"
+                                           ScanBtnTitle="Scan"
+                                           ResetBtnTitle="Reset"
+                                           CloseBtnTitle="Close"
+                                           SelectDeviceBtnTitle="Select Camera" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="scan-btn-placeholder" @onclick="StartScanning" style="border: 2px dashed #ccc; padding: 2rem; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5rem;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="8" y1="7" x2="8" y2="17"></line><line x1="12" y1="7" x2="12" y2="17"></line><line x1="16" y1="7" x2="16" y2="17"></line></svg>
+                            <div style="color: #888; font-weight: 600;">Tap to Scan</div>
+                        </div>
+                    }
+
+                    <div style="position: relative; display: flex; align-items: center; justify-content: center;">
+                        <span style="background: #fff; padding: 0 10px; color: #888; z-index: 1;">OR</span>
+                        <div style="position: absolute; height: 1px; background: #eee; width: 100%; top: 50%;"></div>
+                    </div>
+
+                    <div class="form-group" style="text-align: left;">
+                        <label style="font-weight: 600; color: #555; font-size: 0.85rem; margin-bottom: 0.4rem; display: block;">Type Barcode Manually</label>
+                        <input type="text" class="form-control" @bind="_barcode" placeholder="Enter barcode" style="width: 100%; border: 1px solid #ccc; border-radius: 6px; padding: 0.5rem;" @onkeydown="HandleBarcodeKeyDown" />
+                    </div>
+
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button class="orders-btn-secondary" style="flex: 1;" @onclick="CloseBarcodePopup">Cancel</button>
+                        <button class="orders-btn-primary" style="flex: 1;" @onclick="SubmitBarcode">Add to Cart</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    
+    <PhoneNumpad IsOpen="isNumpadOpen" InitialValue="@numpadInitialValue" OnSave="OnNumpadSaved" OnClose="() => isNumpadOpen = false" />
+</div>

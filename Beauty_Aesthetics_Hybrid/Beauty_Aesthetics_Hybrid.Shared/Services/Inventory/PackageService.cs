@@ -1,0 +1,342 @@
+using System.Net;
+using Beauty_Aesthetics_WebPos.APIClient;
+using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
+using Beauty_Aesthetics_WebPos.Components.ViewModels;
+using Beauty_Aesthetics_WebPos.Models.DTOs;
+using EBI.DM;
+using EBI.Enum;
+
+namespace Beauty_Aesthetics_WebPos.Components.Services.Inventory;
+
+public sealed class PackageService : IPackageService
+{
+    private const int ServiceInventoryTypeId = 3;
+    private const int PackageInventoryTypeId = 5;
+    private const string PackageInventoryTypeName = "Package";
+    private static readonly DateTime InventoryAvailableFrom = new(2000, 1, 1);
+    private static readonly DateTime InventoryAvailableTo = new(2049, 12, 31);
+
+    private readonly ServiceInventoryAC serviceInventoryAC;
+
+    public PackageService(ServiceInventoryAC serviceInventoryAC)
+    {
+        this.serviceInventoryAC = serviceInventoryAC;
+    }
+
+    public async Task<ApiCallResult<IReadOnlyList<InventoryPackageSummary>>> LoadPackagesAsync(
+        IReadOnlyCollection<ServiceViewModel.ServiceItem> services,
+        string branchId = "hq",
+        CancellationToken cancellationToken = default)
+    {
+        var result = await serviceInventoryAC.LoadProxyAsync(null, cancellationToken);
+
+        if (!result.Success || result.Value is null)
+        {
+            return ApiCallResult<IReadOnlyList<InventoryPackageSummary>>.Failure(
+                result.StatusCode,
+                result.ErrorMessage ?? "Unable to load package records.");
+        }
+
+        var packageHeaders = result.Value
+            .Where(record => record.InventoryTypeID == PackageInventoryTypeId)
+            .ToList();
+
+        var serviceById = services
+            .Where(service => !string.IsNullOrWhiteSpace(service.MasterAccountId))
+            .GroupBy(service => service.MasterAccountId!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
+        var summaries = new List<InventoryPackageSummary>(packageHeaders.Count);
+        foreach (var header in packageHeaders)
+        {
+            var fullRecord = !string.IsNullOrWhiteSpace(header.MasterAccountID)
+                ? await serviceInventoryAC.LoadFullAsync(header.MasterAccountID, cancellationToken)
+                : null;
+
+            var package = fullRecord?.Success == true
+                ? fullRecord.Value?.ObjInventory
+                : null;
+            var packageLines = package?.PackageLines
+                ?? fullRecord?.Value?.PackageLines
+                ?? [];
+            var serviceIds = packageLines
+                .Where(line => !string.IsNullOrWhiteSpace(line.InventoryId))
+                .Select(line => line.InventoryId!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var totalDuration = serviceIds.Sum(id =>
+                serviceById.TryGetValue(id, out var service)
+                    ? ParseDuration(service.DurationSpend)
+                    : 0);
+
+            summaries.Add(new InventoryPackageSummary(
+                package?.MasterAccountId ?? header.MasterAccountID ?? string.Empty,
+                FirstNonEmpty(package?.AccountName, package?.SalesDescription, header.AccountName, header.SalesDescription)
+                    ?? string.Empty,
+                FirstNonEmpty(
+                    package?.DisplayCode,
+                    package?.VendorItemCode,
+                    header.DisplayCode,
+                    header.VendorItemCode,
+                    package?.MasterAccountId,
+                    header.MasterAccountID) ?? string.Empty,
+                packageLines.Count,
+                totalDuration,
+                package?.SalesPrice ?? header.SalesPrice,
+                serviceIds,
+                FirstNonEmpty(package?.AccountStatus, header.AccountStatus, "Active") ?? "Active",
+                package?.BranchId ?? header.BranchID ?? string.Empty,
+                FirstNonEmpty(header.InventoryTypeName, PackageInventoryTypeName) ?? PackageInventoryTypeName,
+                package?.SalesDescription ?? header.SalesDescription ?? string.Empty,
+                header.AvailableDateFrom,
+                header.AvailableDateTo,
+                header.AvailableTimeFrom,
+                header.AvailableTimeTo,
+                header.eInvoiceClassificationCode ?? string.Empty,
+                header.ImagePath ?? string.Empty,
+                header.ImageFileName ?? string.Empty));
+        }
+
+        return ApiCallResult<IReadOnlyList<InventoryPackageSummary>>.Ok(
+            result.StatusCode,
+            summaries.OrderBy(package => package.Name).ToList());
+    }
+
+    public async Task<ApiCallResult<bool>> CreatePackageAsync(
+        InventoryPackageEdit package,
+        string branchId = "hq",
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedBranchId = NormalizeBranchId(branchId);
+        var record = CreatePackageRecord(package, normalizedBranchId);
+        var request = CreatePackageRequest(record, normalizedBranchId, package.Price);
+        var result = await serviceInventoryAC.CreateFullAsync(request, cancellationToken);
+
+        return ToSaveResult(result, "Unable to create package.");
+    }
+
+    public async Task<ApiCallResult<bool>> UpdatePackageAsync(
+        InventoryPackageEdit package,
+        string branchId = "hq",
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(package.MasterAccountId))
+        {
+            return ApiCallResult<bool>.Failure(
+                HttpStatusCode.BadRequest,
+                "The selected package has no record ID.");
+        }
+
+        var loadResult = await serviceInventoryAC.LoadFullAsync(package.MasterAccountId, cancellationToken);
+        if (!loadResult.Success || loadResult.Value is null)
+        {
+            return ApiCallResult<bool>.Failure(
+                loadResult.StatusCode,
+                loadResult.ErrorMessage ?? "Unable to load the package before updating it.");
+        }
+
+        var normalizedBranchId = NormalizeBranchId(branchId);
+        var loadedPackage = loadResult.Value.ObjInventory;
+        var loadedLines = loadedPackage?.PackageLines
+            ?? loadResult.Value.PackageLines
+            ?? [];
+
+        var record = CreatePackageRecord(package, normalizedBranchId);
+        record.MasterAccountID = package.MasterAccountId;
+        record.AccountStatus = string.IsNullOrWhiteSpace(loadedPackage?.AccountStatus)
+            ? "Active"
+            : loadedPackage.AccountStatus;
+        record.BranchID = FirstNonEmpty(loadedPackage?.BranchId, normalizedBranchId);
+        record.lstPackage.Clear();
+
+        foreach (var loadedLine in loadedLines)
+        {
+            record.lstPackage.Add(ToPackageLine(loadedLine));
+        }
+
+        ApplyPackageValues(record, package, normalizedBranchId, isUpdate: true);
+
+        var request = CreatePackageRequest(record, normalizedBranchId, package.Price);
+
+        var result = await serviceInventoryAC.UpdateFullAsync(request, cancellationToken);
+        return ToSaveResult(result, "Unable to update package.");
+    }
+
+    public Task<ApiCallResult<bool>> DeletePackageAsync(
+        string masterAccountId,
+        CancellationToken cancellationToken = default)
+    {
+        return serviceInventoryAC.DeleteFullAsync(masterAccountId, cancellationToken);
+    }
+
+    private static InventoryDM CreatePackageRecord(
+        InventoryPackageEdit package,
+        string branchId)
+    {
+        var record = new InventoryDM
+        {
+            AccountTypeID = 4,
+            AccountStatus = "Active",
+            IsSold = true,
+            IsPurchased = false,
+            CreatedDateTime = DateTime.Now,
+            AvailableDateFrom = InventoryAvailableFrom,
+            AvailableDateTo = InventoryAvailableTo,
+            AvailableTimeFrom = TimeSpan.Zero,
+            AvailableTimeTo = new TimeSpan(23, 59, 59),
+            QuantityFactor = 1,
+            UnitOfMeasureID = "UNIT",
+            ValidityDays = 8888,
+            MemberCreditSettlementRatio = 1,
+            KitchenCopies = 1,
+            UOMBase = 1,
+            ReportingUOMBase = 1,
+            DefaultDosage = 1,
+            eInvoiceClassificationCode = "022"
+        };
+
+        ApplyPackageValues(record, package, branchId, isUpdate: false);
+        return record;
+    }
+
+    private static void ApplyPackageValues(
+        InventoryDM record,
+        InventoryPackageEdit package,
+        string branchId,
+        bool isUpdate)
+    {
+        record.InventoryTypeID = PackageInventoryTypeId;
+        record.InventoryTypeName = PackageInventoryTypeName;
+        record.AccountName = package.Name.Trim();
+        record.SalesDescription = package.Name.Trim();
+        record.DisplayCode = package.Sku.Trim();
+        record.SalesPrice = Math.Max(0, package.Price);
+        record.BranchID = branchId;
+        record.HasPackage = package.Services.Count > 0;
+        record.AccountStatus = string.IsNullOrWhiteSpace(record.AccountStatus) ? "Active" : record.AccountStatus;
+        record.IsSold = true;
+        record.SaveAction = isUpdate ? EntityState.Changed : EntityState.Added;
+        record.IsDirty = true;
+
+        var existingLines = record.lstPackage?.ToList() ?? new List<Inventory_PackageItemDM>();
+        var selectedIds = package.Services
+            .Where(service => !string.IsNullOrWhiteSpace(service.MasterAccountId))
+            .Select(service => service.MasterAccountId!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        record.lstPackage ??= new System.Collections.ObjectModel.ObservableCollection<Inventory_PackageItemDM>();
+        record.lstPackage.Clear();
+
+        foreach (var service in package.Services.Where(service =>
+                     !string.IsNullOrWhiteSpace(service.MasterAccountId)))
+        {
+            var existing = existingLines.FirstOrDefault(line =>
+                string.Equals(line.InventoryID, service.MasterAccountId, StringComparison.OrdinalIgnoreCase));
+
+            var line = existing ?? new Inventory_PackageItemDM();
+            line.InventoryID = service.MasterAccountId;
+            line.Description = service.ServiceName;
+            line.Quantity = 1;
+            line.UnitPrice = service.Price;
+            line.TotalPrice = service.Price;
+            line.UnitActualValue = service.Price;
+            line.TotalActualValue = service.Price;
+            line.InventoryTypeID = ServiceInventoryTypeId;
+            line.IsDeferred = false;
+            line.IsVoided = false;
+            line.IsConfirmed = true;
+            line.PackageQuantityTypeID = 0;
+            line.SaveAction = existing is null ? EntityState.Added : EntityState.Changed;
+            line.IsDirty = true;
+            record.lstPackage.Add(line);
+        }
+
+        foreach (var removedLine in existingLines.Where(line =>
+                     !string.IsNullOrWhiteSpace(line.InventoryID) &&
+                     !selectedIds.Contains(line.InventoryID)))
+        {
+            removedLine.SaveAction = EntityState.Deleted;
+            removedLine.IsDirty = true;
+            record.lstPackage.Add(removedLine);
+        }
+    }
+
+    private static Inventory_PackageItemDM ToPackageLine(InventoryPackageLineDTO source)
+    {
+        return new Inventory_PackageItemDM
+        {
+            AutoID = source.AutoId.ValueKind is System.Text.Json.JsonValueKind.Null
+                or System.Text.Json.JsonValueKind.Undefined
+                ? null
+                : source.AutoId.ToString(),
+            PackageID = source.PackageId,
+            InventoryID = source.InventoryId,
+            Description = source.Description,
+            Quantity = source.Quantity,
+            UnitPrice = source.UnitPrice,
+            TotalPrice = source.TotalPrice,
+            UnitActualValue = source.UnitActualValue,
+            TotalActualValue = source.TotalActualValue,
+            InventoryTypeID = source.InventoryTypeId,
+            IsDeferred = source.IsDeferred,
+            IsVoided = source.IsVoided,
+            IsConfirmed = source.IsConfirmed,
+            PackageQuantityTypeID = source.PackageQuantityTypeId,
+            SaveAction = (EntityState)(-1),
+            IsDirty = false
+        };
+    }
+
+    private static InventoryPackageRequestDTO CreatePackageRequest(
+        InventoryDM record,
+        string branchId,
+        decimal price)
+    {
+        return new InventoryPackageRequestDTO
+        {
+            ObjInventory = record,
+            Branches =
+            [
+                new InventoryBranchDTO
+                {
+                    MasterAccountId = record.MasterAccountID,
+                    BranchId = branchId,
+                    BranchPrice = price,
+                    IsEnabled = true,
+                    SaveAction = "Added",
+                    IsDirty = true
+                }
+            ]
+        };
+    }
+
+    private static string NormalizeBranchId(string branchId)
+    {
+        return string.IsNullOrWhiteSpace(branchId)
+            ? "HQ"
+            : branchId.Trim().ToUpperInvariant();
+    }
+
+    private static int ParseDuration(string duration)
+    {
+        var firstPart = duration.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        return int.TryParse(firstPart, out var minutes) ? Math.Max(0, minutes) : 0;
+    }
+
+    private static ApiCallResult<bool> ToSaveResult(
+        ApiCallResult<InventorySaveResultDTO> result,
+        string fallbackMessage)
+    {
+        return result.Success
+            ? ApiCallResult<bool>.Ok(result.StatusCode, true)
+            : ApiCallResult<bool>.Failure(result.StatusCode, result.ErrorMessage ?? fallbackMessage);
+    }
+
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+    }
+}
+
+

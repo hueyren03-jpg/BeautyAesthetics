@@ -1,0 +1,192 @@
+@using SenangRetails.Shared.Services.Sync
+@inject IOrderSyncService OrderSyncSvc
+@implements IDisposable
+
+@if (pendingCount > 0)
+{
+    <div class="orders-btn-secondary sync-order-btn @(OrderSyncSvc.IsSyncing ? "syncing" : "")" 
+         title="@(OrderSyncSvc.IsSyncing ? "Syncing offline orders..." : $"{pendingCount} offline order(s) waiting to sync. Click to sync now.")" 
+         @onclick="TriggerSync">
+        @if (OrderSyncSvc.IsSyncing)
+        {
+            <i class="fa-solid fa-arrows-rotate fa-spin sync-icon"></i>
+            <span class="text-label sync-text">Syncing...</span>
+        }
+        else
+        {
+            <i class="fa-solid fa-cloud-arrow-up sync-icon"></i>
+            <span class="text-label sync-text">Sync</span>
+            <span class="badge-order sync-badge-count">@pendingCount</span>
+        }
+    </div>
+}
+
+<style>
+    .sync-order-btn {
+        padding: 0.25rem 0.65rem;
+        background: #FFF7ED;
+        border: 1px solid #F97316;
+        color: #C2410C;
+        border-radius: var(--border-radius, 8px);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.18s ease;
+        user-select: none;
+        white-space: nowrap;
+        height: 38px;
+        box-sizing: border-box;
+        margin: 0;
+    }
+
+    .sync-order-btn:hover {
+        background: #FFEDD5;
+        border-color: #EA580C;
+        color: #9A3412;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 6px rgba(234, 88, 12, 0.15);
+    }
+
+    .sync-order-btn:active {
+        transform: translateY(0);
+    }
+
+    .sync-order-btn.syncing {
+        background: #EFF6FF;
+        border-color: #3B82F6;
+        color: #1D4ED8;
+        cursor: default;
+    }
+
+    .sync-order-btn .sync-icon {
+        font-size: 0.85rem;
+        flex-shrink: 0;
+    }
+
+    .sync-order-btn .sync-text {
+        font-size: 0.8125rem;
+        font-weight: 600;
+        line-height: 1;
+    }
+
+    .sync-order-btn .sync-badge-count {
+        background: #EA580C;
+        color: white;
+        font-size: 0.72rem;
+        font-weight: 700;
+        border-radius: 50%;
+        min-width: 1.35rem;
+        height: 1.35rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 4px;
+        line-height: 1;
+    }
+
+    .sync-order-btn.syncing .sync-badge-count {
+        background: #2563EB;
+    }
+
+    /* Mobile responsiveness */
+    @@media (max-width: 1024px) {
+        .sync-order-btn {
+            height: 34px;
+            padding: 0.2rem 0.55rem;
+            gap: 5px;
+        }
+    }
+
+    @@media (max-width: 768px) {
+        .sync-order-btn {
+            height: 32px;
+            padding: 0.2rem 0.45rem;
+            gap: 4px;
+            font-size: 0.75rem;
+        }
+
+        .sync-order-btn .sync-icon {
+            font-size: 0.75rem;
+        }
+
+        .sync-order-btn .sync-text {
+            font-size: 0.72rem;
+        }
+
+        .sync-order-btn .sync-badge-count {
+            min-width: 1.15rem;
+            height: 1.15rem;
+            font-size: 0.65rem;
+            padding: 0 2px;
+        }
+    }
+
+    @@media (max-width: 480px) {
+        .sync-order-btn {
+            height: 28px;
+            padding: 0.15rem 0.35rem;
+            gap: 3px;
+        }
+
+        .sync-order-btn .sync-icon {
+            font-size: 0.7rem;
+        }
+
+        .sync-order-btn .sync-badge-count {
+            min-width: 1rem;
+            height: 1rem;
+            font-size: 0.6rem;
+        }
+    }
+</style>
+
+@code {
+    private int pendingCount = 0;
+    private System.Threading.Timer? _refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        OrderSyncSvc.OnSyncStatusChanged += HandleSyncStatusChanged;
+        await RefreshCount();
+
+        // Check pending count every 15 seconds
+        _refreshTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await RefreshCount();
+            });
+        }, null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
+    }
+
+    private async Task RefreshCount()
+    {
+        pendingCount = await OrderSyncSvc.GetPendingCountAsync();
+        StateHasChanged();
+    }
+
+    private void HandleSyncStatusChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await RefreshCount();
+        });
+    }
+
+    private async Task TriggerSync()
+    {
+        if (OrderSyncSvc.IsSyncing) return;
+        await OrderSyncSvc.SyncPendingOrdersAsync();
+        await RefreshCount();
+    }
+
+    public void Dispose()
+    {
+        OrderSyncSvc.OnSyncStatusChanged -= HandleSyncStatusChanged;
+        _refreshTimer?.Dispose();
+    }
+}

@@ -1,0 +1,304 @@
+@namespace SenangRetails.Shared.Pages
+@inherits SenangRetails.Shared.Pages.BasePage
+@using Microsoft.AspNetCore.Components
+@using BlazorBootstrap
+
+<div class="tax-summary-container">
+    <div class="tax-summary-list-container">
+        <!-- Date Filter Section -->
+        <div class="report-date-filter">
+            <div class="date-filter-controls">
+                <!-- Quick Date Range Buttons -->
+                <div class="quick-date-buttons">
+                    <button class="quick-date-btn @(selectedDateRange == "Today" ? "active" : "")" @onclick='() => SetDateRange("Today")'>
+                        @LangSvc.GetText("Today")
+                    </button>
+                    <button class="quick-date-btn @(selectedDateRange == "Week" ? "active" : "")" @onclick='() => SetDateRange("Week")'>
+                        @LangSvc.GetText("This Week")
+                    </button>
+                    <button class="quick-date-btn @(selectedDateRange == "Month" ? "active" : "")" @onclick='() => SetDateRange("Month")'>
+                        @LangSvc.GetText("This Month")
+                    </button>
+                    <button class="quick-date-btn @(selectedDateRange == "Year" ? "active" : "")" @onclick='() => SetDateRange("Year")'>
+                        @LangSvc.GetText("This Year")
+                    </button>
+                </div>
+
+                <!-- Date Pickers with Labels and Refresh Button -->
+                <div class="date-picker-group">
+                    <div class="date-picker-item">
+                        <label class="date-picker-label">@LangSvc.GetText("Start Date")</label>
+                        <MobileDatePicker @bind-Value="startDate"
+                                          DateFormat="dd/MM/yyyy"
+                                          Placeholder="Select Date" />
+                    </div>
+                    <div class="date-picker-item">
+                        <label class="date-picker-label">@LangSvc.GetText("End Date")</label>
+                        <MobileDatePicker @bind-Value="endDate"
+                                          DateFormat="dd/MM/yyyy"
+                                          Placeholder="Select Date" />
+                    </div>
+                    <button class="refresh-btn" @onclick="RefreshData" title="Refresh">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+
+                <!-- Export Dropdown Button -->
+                <div class="export-dropdown">
+                    <button class="export-btn" @onclick="ToggleExportDropdown" @onclick:preventDefault="true">
+                        <i class="bi bi-download"></i>
+                        <span class="action-btn-text">@LangSvc.GetText("Export")</span>
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+                    @if (showExportDropdown)
+                    {
+                        <div class="export-dropdown-menu">
+                            <button class="export-dropdown-item" @onclick="ExportToCSV">
+                                <i class="bi bi-file-spreadsheet"></i>
+                                @LangSvc.GetText("Export CSV")
+                            </button>
+                            <button class="export-dropdown-item" @onclick="ExportToPDF">
+                                <i class="bi bi-file-pdf"></i>
+                                @LangSvc.GetText("Export PDF")
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- KPI Summary Cards -->
+        <div class="kpi-cards">
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-receipt"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">RM @totalBeforeTax.ToString("N2")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("Total Before Tax")</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-calculator"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">RM @taxAmount.ToString("N2")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("Tax Amount")</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-graph-up"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">RM @totalAfterTax.ToString("N2")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("Total After Tax")</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-arrow-repeat"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">RM @roundingAmount.ToString("N2")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("Rounding Amount")</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tax Summary Table with Filter Inputs -->
+        <div class="tax-summary-table-wrapper">
+            <div class="tax-summary-table">
+                <div class="tax-summary-table-header">
+                    <div class="tax-summary-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Date")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder="Filter..."
+                               @bind-value="dateFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="tax-summary-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Tax Type ID")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder="Filter..."
+                               @bind-value="taxTypeFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="tax-summary-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Tax Category")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder="Filter..."
+                               @bind-value="taxCategoryFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="tax-summary-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Tax Code ID")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder="Filter..."
+                               @bind-value="taxCodeFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="tax-summary-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Tax Percentage")</span>
+                        <input type="text"
+                               class="filter-input numeric-filter"
+                               placeholder="Filter..."
+                               @bind-value="percentageFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="tax-summary-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Total Before Tax")</span>
+                        <input type="text"
+                               class="filter-input numeric-filter"
+                               placeholder="Filter..."
+                               @bind-value="beforeTaxFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="tax-summary-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Tax Amount")</span>
+                        <input type="text"
+                               class="filter-input numeric-filter"
+                               placeholder="Filter..."
+                               @bind-value="taxAmountFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="tax-summary-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Total After Tax")</span>
+                        <input type="text"
+                               class="filter-input numeric-filter"
+                               placeholder="Filter..."
+                               @bind-value="afterTaxFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                </div>
+                <div class="filter-badge-container">
+                    @if (HasActiveFilters())
+                    {
+                        <button class="clear-filters-btn" @onclick="ClearFilters">
+                            <i class="bi bi-x-circle"></i> Clear All Filters
+                        </button>
+                    }
+                </div>
+                <div class="tax-summary-table-body">
+                    @if (isLoading)
+                    {
+                        <div class="text-center py-5">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Medium" />
+                            <p>Loading data...</p>
+                        </div>
+                    }
+                    else if (!string.IsNullOrEmpty(exportMessage))
+                    {
+                        <div class="alert alert-@alertType">@exportMessage</div>
+                    }
+                    else if (filteredData.Any())
+                    {
+                        @foreach (var item in filteredData)
+                        {
+                            <div class="tax-summary-table-row">
+                                <div class="tax-summary-table-cell" data-label="@LangSvc.GetText("Date")">
+                                    @item.TransDate.ToString("dd/MM/yyyy")
+                                </div>
+                                <div class="tax-summary-table-cell" data-label="@LangSvc.GetText("Tax Type ID")">
+                                    @item.GSTTypeID
+                                </div>
+                                <div class="tax-summary-table-cell" data-label="@LangSvc.GetText("Tax Category")">
+                                    @item.TaxCategory
+                                </div>
+                                <div class="tax-summary-table-cell" data-label="@LangSvc.GetText("Tax Code ID")">
+                                    @item.TaxCodeID
+                                </div>
+                                <div class="tax-summary-table-cell" data-label="@LangSvc.GetText("Tax Percentage")">
+                                    @((item.TaxPercentage * 100).ToString("0.##"))%
+                                </div>
+                                <div class="tax-summary-table-cell" data-label="@LangSvc.GetText("Total Before Tax")">
+                                    @item.TotalBeforeGST.ToString("N2")
+                                </div>
+                                <div class="tax-summary-table-cell" data-label="@LangSvc.GetText("Tax Amount")">
+                                    @item.TaxAmount.ToString("N2")
+                                </div>
+                                <div class="tax-summary-table-cell" data-label="@LangSvc.GetText("Total After Tax")">
+                                    @((item.TotalBeforeGST + item.TaxAmount).ToString("N2"))
+                                </div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="text-center py-3 text-muted">No data available</div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+    @if (showAlertDialogModal)
+    {
+        <div class="modal-overlay" @onclick="CloseAlertDialog">
+            <div class="modal-content" @onclick:stopPropagation="true">
+                <div class="appointment-modal-header">
+                    <div class="appt-title">@alertDialogTitle</div>
+                </div>
+                <div class="modal-body">
+                    <p>@alertDialogMessage</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="appt-btn-primary" style="flex: 1;" @onclick="CloseAlertDialog">
+                        OK
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>

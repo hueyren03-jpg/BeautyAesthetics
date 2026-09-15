@@ -1,0 +1,277 @@
+@inject IJSRuntime JSRuntime
+
+<div class="advanced-filter @(Applied.Any() ? "advanced-filter--applied" : string.Empty)">
+    <div class="advanced-filter__topline">
+        @if (Applied.Any())
+        {
+            <button type="button" class="advanced-filter__clear advanced-filter__clear--fixed" @onclick="Clear">Clear all</button>
+        }
+        <button type="button" class="advanced-filter__trigger @(Applied.Any() ? "active" : "")" @onclick="Open">
+            <span class="advanced-filter__trigger-icon"><i class="bi bi-sliders"></i></span><span>Filters</span>
+            @if (Applied.Count > 0) { <span class="advanced-filter__badge">@Applied.Count</span> }
+        </button>
+    </div>
+
+    @if (Applied.Any())
+    {
+        <div class="advanced-filter__active">
+            @foreach (var filter in Applied)
+            {
+                <button type="button" class="advanced-filter__chip" title="@FullDisplay(filter)" @onclick="() => Remove(filter)">
+                    <strong>@LabelFor(filter.Column):</strong>
+                    <span>@Display(filter)</span>
+                    <i class="bi bi-x"></i>
+                </button>
+            }
+        </div>
+    }
+
+    @if (Visible)
+    {
+        <div class="advanced-filter__overlay" @onclick="Close">
+            <aside class="advanced-filter__panel" @onclick:stopPropagation="true">
+                <header class="advanced-filter__header">
+                    <div class="advanced-filter__title">
+                        <span class="advanced-filter__title-icon"><i class="bi bi-funnel"></i></span>
+                        <div><small>@ContextLabel.ToUpperInvariant()</small><h2>@ModuleName Filters</h2><p>Refine the records shown below</p></div>
+                    </div>
+                    <button type="button" @onclick="Close" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+                </header>
+                <div class="advanced-filter__body">
+                    @{
+                        var activeColumns = Columns.Where(c => IsPrimary(c) || MoreOpen).ToList();
+                        var leftCols = activeColumns.Where((_, idx) => idx % 2 == 0).ToList();
+                        var rightCols = activeColumns.Where((_, idx) => idx % 2 == 1).ToList();
+                    }
+                    <div class="advanced-filter__grid">
+                        <div class="advanced-filter__column">
+                            @foreach (var column in leftCols)
+                            {
+                                @RenderField(column)
+                            }
+                        </div>
+                        <div class="advanced-filter__column">
+                            @foreach (var column in rightCols)
+                            {
+                                @RenderField(column)
+                            }
+                        </div>
+                    </div>
+
+                    @if (Columns.Any(c => !IsPrimary(c)))
+                    {
+                        <button type="button" class="advanced-filter__more" @onclick="() => MoreOpen = !MoreOpen">
+                            <span>@(MoreOpen ? "Fewer filters" : $"More filters ({Columns.Count(c => !IsPrimary(c))})")</span>
+                            <i class="bi @(MoreOpen ? "bi-chevron-up" : "bi-chevron-down")"></i>
+                        </button>
+                    }
+                </div>
+                <footer class="advanced-filter__footer">
+                    <button type="button" class="advanced-filter__reset" @onclick="Reset"><i class="bi bi-arrow-counterclockwise"></i><span>Reset</span></button>
+                    <button type="button" class="advanced-filter__apply" @onclick="() => Apply()"><span>Show @ResultCount results</span><i class="bi bi-arrow-right"></i></button>
+                </footer>
+            </aside>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public List<MultiTableFilter.FilterColumn> Columns { get; set; } = new();
+    [Parameter] public EventCallback<List<MultiTableFilter.FilterData>> OnApply { get; set; }
+    [Parameter] public EventCallback OnClear { get; set; }
+    [Parameter] public string ModuleName { get; set; } = "Inventory";
+    [Parameter] public string ContextLabel { get; set; } = "Inventory";
+    [Parameter] public int ResultCount { get; set; }
+
+    private RenderFragment RenderField(MultiTableFilter.FilterColumn column) => __builder =>
+    {
+        var draft = GetDraft(column.Value);
+        <section class="advanced-filter__field">
+            <label>@column.Label</label>
+            @if (column.ControlType == "DateRange")
+            {
+                <div class="advanced-filter__range"><input type="date" @bind="draft.Start" @bind:after="PreviewNow" /><span>to</span><input type="date" @bind="draft.End" @bind:after="PreviewNow" /></div>
+            }
+            else if (column.ControlType == "NumberRange")
+            {
+                <div class="advanced-filter__range"><input type="number" step="0.01" placeholder="Minimum" @bind="draft.Min" @bind:after="PreviewDebounced" /><span>to</span><input type="number" step="0.01" placeholder="Maximum" @bind="draft.Max" @bind:after="PreviewDebounced" /></div>
+            }
+            else if (column.ControlType is "MultiSelect" or "Chips")
+            {
+                <details class="advanced-filter__select">
+                    <summary>
+                        <span>@SelectionSummary(column, draft)</span>
+                        <i class="bi bi-chevron-down"></i>
+                    </summary>
+                    <div class="advanced-filter__select-menu">
+                        <div class="advanced-filter__option-search">
+                            <i class="bi bi-search"></i>
+                            <input type="text" placeholder="Search @column.Label.ToLowerInvariant()" autocomplete="off" @bind="draft.OptionSearch" @bind:event="oninput" />
+                            @if (!string.IsNullOrWhiteSpace(draft.OptionSearch))
+                            {
+                                <button type="button" aria-label="Clear option search" @onclick="() => draft.OptionSearch = string.Empty"><i class="bi bi-x"></i></button>
+                            }
+                        </div>
+                        @if (FilteredOptions(column, draft).Any())
+                        {
+                            @foreach (var option in FilteredOptions(column, draft))
+                            {
+                                <label>
+                                    <input type="checkbox" checked="@draft.Values.Contains(option.Value)" @onchange="async () => await Toggle(draft, option.Value)" />
+                                    <span>@option.Label</span>
+                                    @if (option.Count > 0) { <small>@option.Count</small> }
+                                </label>
+                            }
+                        }
+                        else
+                        {
+                            <div class="advanced-filter__empty"><i class="bi bi-search"></i><span>No matching options</span></div>
+                        }
+                    </div>
+                </details>
+                @if (draft.Values.Count > 0)
+                {
+                    <div class="advanced-filter__selected">
+                        @foreach (var value in draft.Values)
+                        {
+                            <button type="button" @onclick="async () => await Toggle(draft, value)">@value <i class="bi bi-x"></i></button>
+                        }
+                    </div>
+                }
+            }
+            else if (column.ControlType == "Typeahead")
+            {
+                <div class="advanced-filter__search">
+                    <i class="bi bi-search"></i>
+                    <input type="text" list="@SuggestionId(column)" autocomplete="off" placeholder="@(column.Placeholder ?? $"Search {column.Label.ToLowerInvariant()}")" @bind="draft.Text" @bind:event="oninput" @bind:after="PreviewDebounced" />
+                    <datalist id="@SuggestionId(column)">
+                        @foreach (var option in column.Options.Take(30))
+                        {
+                            <option value="@option.Value">@option.Label</option>
+                        }
+                    </datalist>
+                </div>
+            }
+            else if (column.ControlType == "LongText")
+            {
+                <textarea placeholder="Search remarks or notes" @bind="draft.Text" @bind:event="oninput" @bind:after="PreviewDebounced"></textarea>
+            }
+            else
+            {
+                <div class="advanced-filter__search"><i class="bi bi-search"></i><input type="text" placeholder="@(column.Placeholder ?? $"Search {column.Label.ToLowerInvariant()}")" @bind="draft.Text" @bind:event="oninput" @bind:after="PreviewDebounced" /></div>
+            }
+        </section>
+    };
+
+    private bool Visible;
+    private bool MoreOpen;
+    private List<MultiTableFilter.FilterData> Applied { get; set; } = new();
+    private Dictionary<string, Draft> Drafts { get; set; } = new();
+
+    private Draft GetDraft(string key) => Drafts.TryGetValue(key, out var value) ? value : Drafts[key] = new();
+    private void Open() { HydrateDrafts(); MoreOpen = Applied.Any(filter => Columns.FirstOrDefault(column => column.Value == filter.Column) is { } column && !IsPrimary(column)); Visible = true; }
+    private void Close() => Visible = false;
+    private async Task Toggle(Draft draft, string value) { if (!draft.Values.Add(value)) draft.Values.Remove(value); await PreviewNow(); }
+    private bool IsPrimary(MultiTableFilter.FilterColumn column)
+    {
+        var firstSearch = Columns.FirstOrDefault(c => c.ControlType is "Typeahead" or "Text");
+        return ReferenceEquals(column, firstSearch) || column.IsQuick;
+    }
+    private static IEnumerable<MultiTableFilter.FilterOption> FilteredOptions(MultiTableFilter.FilterColumn column, Draft draft)
+    {
+        if (string.IsNullOrWhiteSpace(draft.OptionSearch))
+            return column.Options;
+
+        var search = draft.OptionSearch.Trim();
+        return column.Options.Where(option =>
+            option.Label.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+            option.Value.Contains(search, StringComparison.OrdinalIgnoreCase));
+    }
+    private static string SelectionSummary(MultiTableFilter.FilterColumn column, Draft draft) =>
+        draft.Values.Count switch
+        {
+            0 => $"Select {column.Label}",
+            1 => draft.Values.First(),
+            _ => $"{draft.Values.Count} selected"
+        };
+
+    private void HydrateDrafts()
+    {
+        Drafts = Columns
+            .Where(c => !string.IsNullOrWhiteSpace(c.Value))
+            .DistinctBy(c => c.Value, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(c => c.Value, _ => new Draft(), StringComparer.OrdinalIgnoreCase);
+        foreach (var filter in Applied)
+        {
+            var d = GetDraft(filter.Column);
+            d.Text = filter.Value; d.Start = filter.StartDate; d.End = filter.EndDate;
+            d.Min = filter.MinValue; d.Max = filter.MaxValue;
+            d.Values = filter.Values.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private List<MultiTableFilter.FilterData> Build() => Columns.Select(column =>
+    {
+        var d = GetDraft(column.Value);
+        return new MultiTableFilter.FilterData { Column = column.Value, Value = d.Text.Trim(), StartDate = d.Start, EndDate = d.End, MinValue = d.Min, MaxValue = d.Max, Values = d.Values.ToList() };
+    }).Where(f => !string.IsNullOrWhiteSpace(f.Value) || f.StartDate.HasValue || f.EndDate.HasValue || f.MinValue.HasValue || f.MaxValue.HasValue || f.Values.Count > 0).ToList();
+
+    private CancellationTokenSource? PreviewDebounce;
+
+    private async Task PreviewNow()
+    {
+        PreviewDebounce?.Cancel();
+        Applied = Build();
+        await OnApply.InvokeAsync(Applied.ToList());
+    }
+
+    private async Task PreviewDebounced()
+    {
+        PreviewDebounce?.Cancel();
+        var debounce = PreviewDebounce = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(300, debounce.Token);
+            if (!debounce.IsCancellationRequested)
+            {
+                Applied = Build();
+                await OnApply.InvokeAsync(Applied.ToList());
+            }
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+    private async Task Apply(bool close = true) { Applied = Build(); await OnApply.InvokeAsync(Applied.ToList()); if (close) Close(); }
+    private async Task Remove(MultiTableFilter.FilterData filter) { Applied.Remove(filter); HydrateDrafts(); await OnApply.InvokeAsync(Applied.ToList()); }
+    private async Task Clear() { Applied.Clear(); Drafts.Clear(); await OnClear.InvokeAsync(); }
+    private async Task Reset() { Drafts = Columns.Where(c => !string.IsNullOrWhiteSpace(c.Value)).DistinctBy(c => c.Value, StringComparer.OrdinalIgnoreCase).ToDictionary(c => c.Value, _ => new Draft(), StringComparer.OrdinalIgnoreCase); await PreviewNow(); }
+    private string LabelFor(string key) => Columns.FirstOrDefault(c => c.Value == key)?.Label ?? key;
+    private string SuggestionId(MultiTableFilter.FilterColumn column) => $"filter-{new string(ModuleName.Where(char.IsLetterOrDigit).ToArray())}-{column.Value}";
+    private static string Display(MultiTableFilter.FilterData f) =>
+        f.Values.Count > 0 ? CompactValues(f.Values) :
+        f.StartDate.HasValue || f.EndDate.HasValue ? $"{f.StartDate?.ToString("dd/MM/yyyy") ?? "..."} - {f.EndDate?.ToString("dd/MM/yyyy") ?? "..."}" :
+        f.MinValue.HasValue || f.MaxValue.HasValue ? $"{f.MinValue?.ToString("N2") ?? "0"} - {f.MaxValue?.ToString("N2") ?? "Any"}" : f.Value;
+
+    private static string CompactValues(IReadOnlyList<string> values) => values.Count switch
+    {
+        0 => string.Empty,
+        1 => values[0],
+        2 => string.Join(", ", values),
+        _ => $"{values[0]}, {values[1]} +{values.Count - 2}"
+    };
+
+    private static string FullDisplay(MultiTableFilter.FilterData f) =>
+        f.Values.Count > 0 ? string.Join(", ", f.Values) : Display(f);
+
+    private sealed class Draft
+    {
+        public string Text { get; set; } = string.Empty;
+        public DateTime? Start { get; set; }
+        public DateTime? End { get; set; }
+        public decimal? Min { get; set; }
+        public decimal? Max { get; set; }
+        public HashSet<string> Values { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public string OptionSearch { get; set; } = string.Empty;
+    }
+}

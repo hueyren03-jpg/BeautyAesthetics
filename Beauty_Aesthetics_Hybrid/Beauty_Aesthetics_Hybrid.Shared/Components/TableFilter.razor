@@ -1,0 +1,182 @@
+@using Microsoft.AspNetCore.Components.Web
+
+<div class="table-filter">
+    <div class="table-filter__wrapper">
+        <div class="table-filter__dropdown">
+            <div class="table-filter__dropdown-icon">
+                <i class="bi bi-funnel"></i>
+            </div>
+            <select class="table-filter__select" value="@SelectedColumn" @onchange="OnColumnChanged">
+                <option value="">Select Column to Filter</option>
+                @foreach (var column in AvailableColumns)
+                {
+                    <option value="@column.Value">@column.Label</option>
+                }
+            </select>
+            <div class="table-filter__dropdown-arrow">
+                <i class="bi bi-chevron-down"></i>
+            </div>
+        </div>
+
+        @if (IsDateColumn)
+        {
+            <div class="table-filter__date-range">
+                <div class="table-filter__date-group">
+                    <div class="table-filter__date-icon">
+                        <i class="bi bi-calendar-event"></i>
+                    </div>
+                    <div class="table-filter__date-input">
+                        <label class="table-filter__date-label">
+                            <i class="bi bi-calendar3"></i>
+                            From Date
+                        </label>
+                        <input type="date" @bind="StartDate" class="table-filter__date-field" />
+                    </div>
+                </div>
+                <div class="table-filter__date-separator">
+                    <i class="bi bi-arrow-right"></i>
+                </div>
+                <div class="table-filter__date-group">
+                    <div class="table-filter__date-icon">
+                        <i class="bi bi-calendar-event"></i>
+                    </div>
+                    <div class="table-filter__date-input">
+                        <label class="table-filter__date-label">
+                            <i class="bi bi-calendar3"></i>
+                            To Date
+                        </label>
+                        <input type="date" @bind="EndDate" class="table-filter__date-field" />
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="table-filter__input-container">
+                <div class="table-filter__input-wrapper">
+                    <div class="table-filter__input-icon">
+                        <i class="bi bi-search"></i>
+                    </div>
+                    <input type="text"
+                           class="table-filter__input"
+                           placeholder="@GetPlaceholder()"
+                           value="@FilterValue"
+                           @oninput="(ChangeEventArgs e) => FilterValue = e.Value?.ToString() ?? string.Empty"
+                           @onkeypress="OnKeyPress" />
+                </div>
+            </div>
+        }
+
+        <div class="table-filter__actions">
+            <button class="tab-btn table-filter__button table-filter__button--primary"
+                    @onclick="ApplyFilter"
+                    disabled="@string.IsNullOrWhiteSpace(SelectedColumn)"
+                    title="Apply filter">
+                <i class="bi bi-funnel-fill"></i>
+                <span>Filter</span>
+            </button>
+
+            @if (HasActiveFilter)
+            {
+                <button class="tab-btn table-filter__button table-filter__button--clear"
+                        @onclick="ClearFilter"
+                        title="Clear filter">
+                    <i class="bi bi-x-circle"></i>
+                    <span>Clear</span>
+                </button>
+            }
+        </div>
+    </div>
+
+    @if (HasActiveFilter)
+    {
+        <div class="table-filter__active-indicator">
+            <i class="bi bi-check-circle-fill"></i>
+            <span>Filter Active</span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public List<FilterColumn> AvailableColumns { get; set; } = new();
+    [Parameter] public EventCallback<FilterData> OnFilterApplied { get; set; }
+    [Parameter] public EventCallback OnFilterCleared { get; set; }
+
+    private string SelectedColumn { get; set; } = string.Empty;
+    private string FilterValue { get; set; } = string.Empty;
+    private DateTime? StartDate { get; set; }
+    private DateTime? EndDate { get; set; }
+
+    private bool IsDateColumn => !string.IsNullOrWhiteSpace(SelectedColumn) &&
+                                  AvailableColumns.FirstOrDefault(c => c.Value == SelectedColumn)?.IsDate == true;
+
+    private bool HasActiveFilter => !string.IsNullOrWhiteSpace(SelectedColumn) &&
+                                     (!string.IsNullOrWhiteSpace(FilterValue) ||
+                                      (IsDateColumn && (StartDate.HasValue || EndDate.HasValue)));
+
+    private string GetPlaceholder()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedColumn))
+            return "Select a column first";
+
+        var column = AvailableColumns.FirstOrDefault(c => c.Value == SelectedColumn);
+        return column != null ? $"Filter by {column.Label}..." : "Enter filter value...";
+    }
+
+    private async Task OnKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await ApplyFilter();
+        }
+    }
+
+    private void OnColumnChanged(ChangeEventArgs e)
+    {
+        SelectedColumn = e.Value?.ToString() ?? string.Empty;
+        FilterValue = string.Empty;
+        StartDate = null;
+        EndDate = null;
+    }
+
+    private async Task ApplyFilter()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedColumn))
+            return;
+
+        var filterData = new FilterData
+        {
+            Column = SelectedColumn,
+            Value = FilterValue,
+            StartDate = StartDate,
+            EndDate = EndDate
+        };
+
+        await OnFilterApplied.InvokeAsync(filterData);
+    }
+
+    private async Task ClearFilter()
+    {
+        SelectedColumn = string.Empty;
+        FilterValue = string.Empty;
+        StartDate = null;
+        EndDate = null;
+        await OnFilterCleared.InvokeAsync();
+    }
+
+    public class FilterColumn
+    {
+        public string Value { get; set; } = string.Empty;
+        public string Label { get; set; } = string.Empty;
+        public bool IsDate { get; set; } = false;
+    }
+
+    public class FilterData
+    {
+        public string Column { get; set; } = string.Empty;
+        public string Value { get; set; } = string.Empty;
+        public DateTime? StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+    }
+}
+

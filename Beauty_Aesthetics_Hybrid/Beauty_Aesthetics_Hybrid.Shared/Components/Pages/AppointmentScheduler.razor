@@ -1,0 +1,2060 @@
+@page "/appointments"
+@using Microsoft.Extensions.Localization
+
+<PageTitle>Appointment</PageTitle>
+@inject IStringLocalizer<AppointmentScheduler> Localizer
+
+<style>
+    /* Scoped CSS overrides to bypass build/redeploy cache and fix z-index layering */
+    .appointment-modal-overlay {
+        z-index: 2000 !important;
+    }
+
+    .appointment-modal-header {
+        background: #1173d4 !important;
+        background: linear-gradient(135deg, #1173d4 0%, #0d5cb5 100%) !important;
+    }
+
+    .appointment-modal-header h3 {
+        color: #ffffff !important;
+    }
+
+    .appointment-api-alert {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 12px 16px 0;
+        padding: 10px 12px;
+        border: 1px solid #fecaca;
+        border-radius: 6px;
+        color: #b91c1c;
+        background: #fef2f2;
+        font-size: 13px;
+    }
+
+    .appointment-api-filters {
+        display: grid;
+        grid-template-columns: minmax(180px, 1fr) minmax(150px, 0.75fr) minmax(150px, 0.75fr) minmax(150px, 0.7fr) auto auto;
+        align-items: end;
+        gap: 10px;
+        margin: 12px 16px;
+        padding: 12px;
+        border: 1px solid #dbe4ef;
+        border-radius: 6px;
+        background: #fff;
+    }
+
+    .appointment-api-filters label {
+        display: grid;
+        gap: 5px;
+        min-width: 0;
+        color: #44546a;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .appointment-api-filters select,
+    .appointment-filter-clear {
+        height: 38px;
+        min-width: 0;
+        border: 1px solid #ccd7e5;
+        border-radius: 5px;
+        background: #fff;
+        color: #243247;
+        padding: 0 10px;
+    }
+
+    .appointment-filter-clear {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        cursor: pointer;
+    }
+
+    .appointment-api-loading {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 38px;
+        color: #52657d;
+        font-size: 12px;
+    }
+
+    @@media (max-width: 768px) {
+        .appointment-api-filters { grid-template-columns: 1fr; margin: 8px; }
+        .appointment-modal-header {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 12px !important;
+            padding: 16px !important;
+        }
+
+        .header-primary {
+            width: 100% !important;
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 12px !important;
+        }
+
+        .header-secondary-actions,
+        .header-actions {
+            width: 100% !important;
+            display: flex !important;
+            flex-direction: row !important;
+            gap: 8px !important;
+            justify-content: stretch !important;
+        }
+
+        .header-secondary-actions button,
+        .header-secondary-actions .btn-ghost,
+        .header-actions button,
+        .header-actions .btn-ghost,
+        .header-actions .btn-save,
+        .header-actions .btn-danger {
+            flex: 1 !important;
+            justify-content: center !important;
+            text-align: center !important;
+            padding: 8px 10px !important;
+            font-size: 12px !important;
+            white-space: normal !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            line-height: 1.2 !important;
+        }
+    }
+</style>
+
+<div class="appointment-container" @onclick="CloseDropdowns">
+    <!-- Mobile backdrop overlay -->
+    @if (isSidebarExpanded)
+    {
+        <div class="mobile-sidebar-backdrop" @onclick="ToggleSidebar"></div>
+    }
+    <div class="scheduler-wrapper @(isSidebarExpanded ? "sidebar-expanded" : "sidebar-collapsed")">
+        <div class="scheduler-content">
+            <div class="mobile-appointment-toolbar">
+                <div class="mobile-appointment-title">
+                    <i class="bi bi-calendar3"></i>
+                    <span>Appointment</span>
+                </div>
+                <div class="mobile-appointment-actions">
+                    <button type="button"
+                            class="mobile-toolbar-button @(showMobileFilters ? "active" : string.Empty)"
+                            @onclick="ToggleMobileFilters"
+                            aria-label="Filters"
+                            aria-expanded="@showMobileFilters">
+                        <i class="bi bi-funnel"></i>
+                    </button>
+                    <button type="button"
+                            class="mobile-toolbar-button"
+                            @onclick="OpenQuickActions"
+                            aria-label="Quick actions"
+                            aria-expanded="@(isSidebarExpanded && currentSidebarView == SidebarView.QuickActions)">
+                        <i class="bi bi-three-dots-vertical"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="appointment-api-filters @(showMobileFilters ? "mobile-visible" : string.Empty)">
+                <label>
+                    <span>Customer</span>
+                    <select @bind="selectedCustomerFilterId" @bind:after="ReloadAppointmentsAsync" disabled="@isAppointmentLoading">
+                        <option value="">All customers</option>
+                        @foreach (var customer in customerOptions)
+                        {
+                            <option value="@customer.SystemID">@($"{customer.FirstName} {customer.LastName}".Trim())</option>
+                        }
+                    </select>
+                </label>
+                <label>
+                    <span>Employee</span>
+                    <select @bind="selectedEmployeeFilterId" @bind:after="ReloadAppointmentsAsync" disabled="@(isAppointmentLoading || !string.IsNullOrWhiteSpace(selectedCustomerFilterId))">
+                        <option value="">All employees</option>
+                        @foreach (var staff in GetStaffBySelectedLevel())
+                        {
+                            <option value="@staff.Id">@staff.Name</option>
+                        }
+                    </select>
+                </label>
+                <label>
+                    <span>Employee Level</span>
+                    <select @bind="selectedEmployeeLevelFilter" @bind:after="OnEmployeeLevelFilterChangedAsync" disabled="@isAppointmentLoading">
+                        <option value="">All levels</option>
+                        @foreach (var level in GetEmployeeLevelOptions())
+                        {
+                            <option value="@level">@level</option>
+                        }
+                    </select>
+                </label>
+                <label>
+                    <span>Status</span>
+                    <select @bind="selectedStatusFilter" @bind:after="ReloadAppointmentsAsync" disabled="@(isAppointmentLoading || string.IsNullOrWhiteSpace(selectedEmployeeFilterId) || !string.IsNullOrWhiteSpace(selectedCustomerFilterId))">
+                        <option value="">All statuses</option>
+                        @foreach (var status in appointmentStatuses)
+                        {
+                            <option value="@status.Value">@status.Name</option>
+                        }
+                    </select>
+                </label>
+                <button type="button" class="appointment-filter-clear" @onclick="ClearAppointmentFiltersAsync" disabled="@isAppointmentLoading">
+                    <i class="bi bi-x-circle"></i>
+                    <span>Clear</span>
+                </button>
+                @if (isAppointmentLoading)
+                {
+                    <span class="appointment-api-loading"><span class="spinner-border spinner-border-sm"></span> Loading</span>
+                }
+            </div>
+
+            <div class="appointment-status-legend" aria-label="Appointment status colours">
+                <span class="appointment-status-legend__item"><span class="appointment-status-legend__swatch appointment-status-confirmed"></span>Confirmed</span>
+                <span class="appointment-status-legend__item"><span class="appointment-status-legend__swatch appointment-status-completed"></span>Completed</span>
+                <span class="appointment-status-legend__item"><span class="appointment-status-legend__swatch appointment-status-pending-payment"></span>Pending Payment</span>
+                <span class="appointment-status-legend__item"><span class="appointment-status-legend__swatch appointment-status-paid"></span>Paid</span>
+                <span class="appointment-status-legend__item"><span class="appointment-status-legend__swatch appointment-status-no-show"></span>No Show</span>
+                <span class="appointment-status-legend__item"><span class="appointment-status-legend__swatch appointment-status-cancelled"></span>Cancelled</span>
+                <span class="appointment-status-legend__item"><span class="appointment-status-legend__swatch appointment-status-none"></span>No Status</span>
+            </div>
+
+            @if (showAdvancedOption)
+            {
+                <div class="advanced-options-wrapper" @onclick:stopPropagation="true">
+                    <div class="advanced-options-bar">
+                        <!-- Day View Dropdown -->
+                        <div class="dropdown-container" @onclick:stopPropagation="true">
+                            <button class="advanced-option-btn dropdown-btn @(currentViewType == ViewType.DayView ? "active" : "")"
+                                    type="button"
+                                    @onclick="(() => { showDayViewDropdown = !showDayViewDropdown; SetViewType(ViewType.DayView); })">
+                                <i class="bi bi-calendar3"></i>
+                                <span>@Localizer["DayView"]: @GetGroupByText()</span>
+                                <i class="bi bi-chevron-down"></i>
+                            </button>
+                            @if (showDayViewDropdown)
+                            {
+                                <div class="dropdown-menu">
+                                    <div class="dropdown-title">@Localizer["GroupBy"]</div>
+                                    <label class="dropdown-item @(currentGroupBy == GroupByOption.None ? "selected" : "")">
+                                        <input type="radio"
+                                               name="groupBy"
+                                               value="@GroupByOption.None"
+                                               checked="@(currentGroupBy == GroupByOption.None)"
+                                               @onchange="(() => SetGroupBy(GroupByOption.None))" />
+                                        <span>@Localizer["None"]</span>
+                                    </label>
+                                    <label class="dropdown-item @(currentGroupBy == GroupByOption.Room ? "selected" : "")">
+                                        <input type="radio"
+                                               name="groupBy"
+                                               value="@GroupByOption.Room"
+                                               checked="@(currentGroupBy == GroupByOption.Room)"
+                                               @onchange="(() => SetGroupBy(GroupByOption.Room))" />
+                                        <span>Room</span>
+                                    </label>
+                                    <label class="dropdown-item @(currentGroupBy == GroupByOption.Staff ? "selected" : "")">
+                                        <input type="radio"
+                                               name="groupBy"
+                                               value="@GroupByOption.Staff"
+                                               checked="@(currentGroupBy == GroupByOption.Staff)"
+                                               @onchange="(() => SetGroupBy(GroupByOption.Staff))" />
+                                        <span>@Localizer["Staff"]</span>
+                                    </label>
+                                </div>
+                            }
+                        </div>
+
+                        <!-- List View Button -->
+                        <button class="advanced-option-btn @(currentViewType == ViewType.ListView ? "active" : "")"
+                                type="button"
+                                @onclick="(() => SetViewType(ViewType.ListView))">
+                            <i class="bi bi-list-ul"></i>
+                            <span>@Localizer["ListView"]</span>
+                        </button>
+
+                        <!-- Timeline View Dropdown -->
+                        <div class="dropdown-container" @onclick:stopPropagation="true">
+                            <button class="advanced-option-btn dropdown-btn @(currentViewType == ViewType.TimelineView ? "active" : "")"
+                                    type="button"
+                                    @onclick="(() => { showTimelineViewDropdown = !showTimelineViewDropdown; SetViewType(ViewType.TimelineView); })">
+                                <i class="bi bi-graph-up"></i>
+                                <span>@Localizer["TimelineView"]: @GetGroupByText()</span>
+                                <i class="bi bi-chevron-down"></i>
+                            </button>
+                            @if (showTimelineViewDropdown)
+                            {
+                                <div class="dropdown-menu">
+                                    <div class="dropdown-title">@Localizer["GroupBy"]</div>
+                                    <label class="dropdown-item @(currentGroupBy == GroupByOption.None ? "selected" : "")">
+                                        <input type="radio"
+                                               name="timelineGroupBy"
+                                               value="@GroupByOption.None"
+                                               checked="@(currentGroupBy == GroupByOption.None)"
+                                               @onchange="(() => SetGroupBy(GroupByOption.None))" />
+                                        <span>@Localizer["None"]</span>
+                                    </label>
+                                    <label class="dropdown-item @(currentGroupBy == GroupByOption.Room ? "selected" : "")">
+                                        <input type="radio"
+                                               name="timelineGroupBy"
+                                               value="@GroupByOption.Room"
+                                               checked="@(currentGroupBy == GroupByOption.Room)"
+                                               @onchange="(() => SetGroupBy(GroupByOption.Room))" />
+                                        <span>Room</span>
+                                    </label>
+                                    <label class="dropdown-item @(currentGroupBy == GroupByOption.Staff ? "selected" : "")">
+                                        <input type="radio"
+                                               name="timelineGroupBy"
+                                               value="@GroupByOption.Staff"
+                                               checked="@(currentGroupBy == GroupByOption.Staff)"
+                                               @onchange="(() => SetGroupBy(GroupByOption.Staff))" />
+                                        <span>@Localizer["Staff"]</span>
+                                    </label>
+                                </div>
+                            }
+                        </div>
+
+                        <!-- Timescales Dropdown -->
+                        <div class="dropdown-container" @onclick:stopPropagation="true">
+                            <button class="advanced-option-btn dropdown-btn @(IsTimeScaleControlEnabled ? "" : "disabled")"
+                                    type="button"
+                                    disabled="@(!IsTimeScaleControlEnabled)"
+                                    aria-disabled="@(!IsTimeScaleControlEnabled)"
+                                    @onclick="ToggleTimeScaleDropdown">
+                                <i class="bi bi-clock"></i>
+                                <span>@Localizer["TimeScales"]: @GetTimeScaleText()</span>
+                                <i class="bi bi-chevron-down"></i>
+                            </button>
+                            @if (showTimeScaleDropdown)
+                            {
+                                <div class="dropdown-menu">
+                                    <button class="dropdown-item @(currentTimeScale == TimeScaleOption.OneHour ? "selected" : "")"
+                                            type="button"
+                                            @onclick="(() => SetTimeScale(TimeScaleOption.OneHour))">
+                                        @Localizer["TimeScale_1h"]
+                                    </button>
+                                    <button class="dropdown-item @(currentTimeScale == TimeScaleOption.ThirtyMinutes ? "selected" : "")"
+                                            type="button"
+                                            @onclick="(() => SetTimeScale(TimeScaleOption.ThirtyMinutes))">
+                                        @Localizer["TimeScale_30m"]
+                                    </button>
+                                    <button class="dropdown-item @(currentTimeScale == TimeScaleOption.FifteenMinutes ? "selected" : "")"
+                                            type="button"
+                                            @onclick="(() => SetTimeScale(TimeScaleOption.FifteenMinutes))">
+                                        @Localizer["TimeScale_15m"]
+                                    </button>
+                                    <button class="dropdown-item @(currentTimeScale == TimeScaleOption.TenMinutes ? "selected" : "")"
+                                            type="button"
+                                            @onclick="(() => SetTimeScale(TimeScaleOption.TenMinutes))">
+                                        @Localizer["TimeScale_10m"]
+                                    </button>
+                                    <button class="dropdown-item @(currentTimeScale == TimeScaleOption.FiveMinutes ? "selected" : "")"
+                                            type="button"
+                                            @onclick="(() => SetTimeScale(TimeScaleOption.FiveMinutes))">
+                                        @Localizer["TimeScale_5m"]
+                                    </button>
+                                </div>
+                            }
+                        </div>
+
+                        <!-- Working Hours Button -->
+                        <button class="advanced-option-btn @(showWorkingHoursOnly ? "active" : "") @(IsWorkingHoursControlEnabled ? "" : "disabled")"
+                                type="button"
+                                disabled="@(!IsWorkingHoursControlEnabled)"
+                                aria-disabled="@(!IsWorkingHoursControlEnabled)"
+                                aria-pressed="@(showWorkingHoursOnly.ToString().ToLower())"
+                                @onclick="OnWorkingHoursClicked">
+                            <i class="bi bi-briefcase"></i>
+                            <span>@(showWorkingHoursOnly ? Localizer["WorkingHoursOn"] : Localizer["ShowAllHours"])</span>
+                        </button>
+                    </div>
+                </div>
+            }
+
+            <!-- Date Navigation Bar -->
+            <div class="date-navigation-bar">
+                <button class="nav-arrow" @onclick="PreviousDate" title="@Localizer["PreviousDay"]">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+
+                <div class="date-display" role="button" tabindex="0" @onclick="ToggleDateSelector" @onclick:stopPropagation="true">
+                    <i class="bi bi-calendar3"></i>
+                    <span class="date-value">@GetDateRangeText()</span>
+
+                    @if (showDateSelector)
+                    {
+                        var dropdownClass = supportsShowPicker ? "date-picker-dropdown dropdown-hidden" : "date-picker-dropdown dropdown-visible";
+                        var inputClass = supportsShowPicker ? "date-input hidden-date-input" : "date-input visible-date-input";
+
+                        <div class="@dropdownClass">
+                            <input type="date"
+                                   id="inlineDatePicker"
+                                   class="@inputClass"
+                                   @ref="dateInputRef"
+                                   value="@SelectedDate.ToString("yyyy-MM-dd")"
+                                   @onchange="OnDateSelected" />
+                        </div>
+                    }
+                </div>
+
+                <button class="nav-arrow" @onclick="NextDate" title="@Localizer["NextDay"]">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+
+                <button type="button" class="add-appointment-btn" @onclick="AddAppointment">
+                    <i class="bi bi-plus-lg"></i>
+                    <span>@Localizer["AddAppointment"]</span>
+                </button>
+
+            </div>
+
+            <!-- Mobile Menu Button Row (below date navigation) -->
+            <div class="mobile-menu-row">
+                <button type="button" class="mobile-add-btn" @onclick="AddAppointment">
+                    <i class="bi bi-plus-lg"></i>
+                    <span>@Localizer["AddAppointment"]</span>
+                </button>
+                <button type="button" class="mobile-menu-btn" @onclick="ToggleSidebar" aria-label="@Localizer["ToggleMenu"]" aria-expanded="@isSidebarExpanded">
+                    <i class="bi @(isSidebarExpanded ? "bi-x-lg" : "bi-three-dots-vertical")"></i>
+                </button>
+            </div>
+
+            <button type="button" class="mobile-appointment-fab" @onclick="AddAppointment" aria-label="@Localizer["AddAppointment"]">
+                <i class="bi bi-plus-lg"></i>
+            </button>
+            @if (currentViewType == ViewType.ListView)
+            {
+                <!-- List View Table -->
+                var appointmentsForList = GetAppointmentsForDate(SelectedDate);
+
+                <div class="appointment-list-view">
+                    <div class="table-wrapper">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th class="col-time">@Localizer["ColTime"]</th>
+                                    <th class="col-customer">@Localizer["ColCustomer"]</th>
+                                    <th class="col-phone hide-mobile">@Localizer["ColPhone"]</th>
+                                    <th class="col-service">@Localizer["ColService"]</th>
+                                    <th class="col-staff hide-mobile">@Localizer["ColStaff"]</th>
+                                    <th class="col-room hide-mobile">Room</th>
+                                    <th class="col-location hide-mobile">@Localizer["ColLocation"]</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (appointmentsForList.Any())
+                                {
+                                    @foreach (var appt in appointmentsForList)
+                                    {
+                                        <tr @onclick="(() => OpenAppointment(appt))">
+                                            <td class="col-time">
+                                                <span class="time-text">@appt.Start.ToString("hh:mm tt")</span>
+                                                <span class="time-separator">-</span>
+                                                <span class="time-text">@appt.End.ToString("hh:mm tt")</span>
+                                            </td>
+                                            <td class="col-customer">
+                                                <div class="customer-info">
+                                                    <span class="customer-name">@appt.CustomerName</span>
+                                                    <span class="customer-phone show-mobile">@appt.Phone</span>
+                                                    <span class="appointment-status-badge @GetAppointmentStatusCssClass(appt)">@GetAppointmentStatusDisplayName(appt)</span>
+                                                </div>
+                                            </td>
+                                            <td class="col-phone hide-mobile">@appt.Phone</td>
+                                            <td class="col-service">
+                                                <div class="service-info">
+                                                    <span class="service-name">@appt.ServiceItem</span>
+                                                    <span class="service-staff show-mobile">@(string.IsNullOrEmpty(appt.StaffName) ? "" : appt.StaffName)</span>
+                                                </div>
+                                            </td>
+                                            <td class="col-staff hide-mobile">@(string.IsNullOrEmpty(appt.StaffName) ? Localizer["Dash"] : appt.StaffName)</td>
+                                            <td class="col-room hide-mobile">@(string.IsNullOrEmpty(appt.Room) ? Localizer["Dash"] : appt.Room)</td>
+                                            <td class="col-location hide-mobile">@(string.IsNullOrEmpty(appt.Location) ? Localizer["DefaultLocation"] : appt.Location)</td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr class="empty-row">
+                                        <td colspan="7">
+                                            <div class="empty-state">
+                                                <i class="bi bi-calendar-x"></i>
+                                                <span>@string.Format(Localizer["NoAppointmentsOn"], SelectedDate.ToString("MMMM dd, yyyy"))</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+            else if (currentViewType == ViewType.TimelineView)
+            {
+                <!-- Timeline View - Horizontal Layout (Rows = Staff/Room, Columns = Time) -->
+                var visibleStaff = GetVisibleStaff();
+                var visibleRooms = GetVisibleRooms();
+
+                var isGroupByRoom = currentGroupBy == GroupByOption.Room;
+                var isGroupByNone = currentGroupBy == GroupByOption.None;
+                var slotDurationMinutes = GetTimeScaleMinutes();
+                var slotWidthPixels = 100.0;
+                var scheduleStartMinutes = GetScheduleStartMinutes();
+                var lastVisibleSlot = TimeSlots[TimeSlots.Count - 1];
+                var scheduleRangeMinutes = (lastVisibleSlot.Hour * 60 + lastVisibleSlot.Minute) - scheduleStartMinutes;
+
+                <div class="timeline-view-container @(isAppointmentDragging ? "appointment-dragging-active" : "")">
+                    <div class="timeline-header-wrapper">
+                        <div class="timeline-corner-header">
+                            <span>@(isGroupByRoom ? Localizer["Room"] : isGroupByNone ? Localizer["Schedule"] : Localizer["Staff"])</span>
+                        </div>
+                        <div class="timeline-time-header-track">
+                            @foreach (var timeSlot in TimeSlots.Take(Math.Max(0, TimeSlots.Count - 1)))
+                            {
+                                <div class="timeline-header-slot">
+                                    @if (timeSlot.ShowLabel)
+                                    {
+                                        <span>@timeSlot.DisplayText</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="timeline-body-scroll">
+                        @if (isGroupByNone)
+                        {
+                                var noneDayStart = SelectedDate.Date.AddMinutes(scheduleStartMinutes);
+                                var noneAppointments = ViewModel.Appointments
+                                    .Where(appointment =>
+                                        appointment.Start.Date == SelectedDate.Date &&
+                                        appointment.Start >= noneDayStart &&
+                                        appointment.Start <= noneDayStart.AddMinutes(scheduleRangeMinutes))
+                                    .OrderBy(appointment => appointment.Start)
+                                    .ThenBy(appointment => appointment.End)
+                                    .ToList();
+                                var noneLaneEnds = new List<DateTime>();
+                                var noneAppointmentLanes = new Dictionary<Appointment, int>();
+
+                                foreach (var appointment in noneAppointments)
+                                {
+                                    var lane = noneLaneEnds.FindIndex(end => end <= appointment.Start);
+                                    if (lane < 0)
+                                    {
+                                        lane = noneLaneEnds.Count;
+                                        noneLaneEnds.Add(appointment.End);
+                                    }
+                                    else
+                                    {
+                                        noneLaneEnds[lane] = appointment.End;
+                                    }
+
+                                    noneAppointmentLanes[appointment] = lane;
+                                }
+
+                                var noneRowHeight = Math.Max(80, 12 + (noneLaneEnds.Count * 60));
+                            <div class="timeline-row timeline-row-none" style="@($"min-height: {noneRowHeight}px;")">
+                                <div class="timeline-resource-cell sticky-col">
+                                    <div class="resource-info">
+                                        <div class="resource-name">@Localizer["All"]</div>
+                                        <div class="resource-role">Appointments</div>
+                                    </div>
+                                </div>
+                                <div class="timeline-track-area">
+                                    @foreach (var timeSlot in TimeSlots.Take(Math.Max(0, TimeSlots.Count - 1)))
+                                    {
+                                        var isInSelection = IsSlotInSelectionRangeNone(timeSlot);
+                                        var isDragOver = isAppointmentDragging &&
+                                        dragTargetHour == timeSlot.Hour &&
+                                        dragTargetMinute == timeSlot.Minute;
+                                        var showDragPreview = isDragOver && draggingAppointmentDurationMinutes > 0;
+                                        var slotClass = $"timeline-grid-slot {(isInSelection ? "selected" : "")} {(isDragOver ? "drag-over" : "")} {(showDragPreview ? "drag-preview" : "")}";
+
+                                        <div class="@slotClass"
+                                             @ondblclick="@(() => SelectTimeSlotNone(timeSlot.Hour, timeSlot.Minute))"
+                                             @onmousedown="@((MouseEventArgs e) => OnMouseDownNone(e, timeSlot))"
+                                             @onmousemove="@((MouseEventArgs e) => OnMouseMoveNone(e, timeSlot))"
+                                             @onmouseup="@((MouseEventArgs e) => OnMouseUpNone(e, timeSlot))"
+                                             @ondragenter="@((DragEventArgs e) => OnDragEnterNone(e, timeSlot.Hour, timeSlot.Minute))"
+                                             @ondragleave="@((DragEventArgs e) => OnDragLeaveNone(e, timeSlot))"
+                                             @ondragover="@((DragEventArgs e) => OnDragOver(e))"
+                                             @ondragover:preventDefault="true"
+                                             @ondrop="@((DragEventArgs e) => OnDropNone(e, timeSlot.Hour, timeSlot.Minute))"
+                                             @ondrop:preventDefault="true">
+                                            @if (showDragPreview)
+                                            {
+                                                <div class="drag-indicator"></div>
+                                            }
+                                        </div>
+                                    }
+
+                                    @* Drag preview showing where appointment will be dropped *@
+                                    @if (isAppointmentDragging && dragTargetHour.HasValue && dragTargetMinute.HasValue && draggingAppointmentDurationMinutes > 0)
+                                    {
+                                        var previewStartMinutes = ((dragTargetHour.Value * 60 + dragTargetMinute.Value) - scheduleStartMinutes) + dragOffsetMinutes;
+                                        var previewLeftPx = (previewStartMinutes / (double)slotDurationMinutes) * slotWidthPixels;
+                                        var previewWidthPx = (draggingAppointmentDurationMinutes / (double)slotDurationMinutes) * slotWidthPixels;
+                                        <div class="timeline-drag-preview" style="left: @(previewLeftPx)px; width: @(previewWidthPx)px;"></div>
+                                    }
+
+
+                                    @foreach (var appt in noneAppointments)
+                                    {
+                                        var startOffset = (appt.Start - noneDayStart).TotalMinutes;
+                                        var duration = (appt.End - appt.Start).TotalMinutes;
+
+                                        if (startOffset >= 0 && startOffset <= scheduleRangeMinutes)
+                                        {
+                                            var leftPx = (startOffset / slotDurationMinutes) * slotWidthPixels;
+                                            var widthPx = (duration / slotDurationMinutes) * slotWidthPixels;
+                                            var isDraggingThis = isAppointmentDragging && draggingAppointmentId == appt.Id;
+                                            var topPx = 6 + (noneAppointmentLanes[appt] * 60);
+                                            var appointmentClass = $"timeline-appointment-block {GetAppointmentStatusCssClass(appt)}{(isDraggingThis ? " appointment-block--dragging" : "")}";
+
+                                            <div class="@appointmentClass"
+                                                 style="@($"left: {leftPx}px; width: {Math.Max(widthPx, 48)}px; top: {topPx}px; height: 52px; bottom: auto;")"
+                                                 @onclick="(() => OpenAppointment(appt))"
+                                                 @onclick:stopPropagation="true"
+                                                 @onmousedown:stopPropagation="true"
+                                                 draggable="true"
+                                                 @ondragstart="@((DragEventArgs e) => OnDragStartNone(e, appt, appt.Start.Hour, appt.Start.Minute))"
+                                                 @ondragend="OnDragEnd">
+                                                <div class="appointment-card-title">@GetAppointmentDisplayTitle(appt)</div>
+                                                <div class="appointment-card-meta">
+                                                    <span class="appointment-card-time">@GetAppointmentTimeRange(appt)</span>
+                                                    <span class="appointment-card-service">@GetAppointmentDisplayService(appt)</span>
+                                                        <span class="appointment-status-badge @GetAppointmentStatusCssClass(appt)">@GetAppointmentStatusDisplayName(appt)</span>
+                                                </div>
+                                                @if (isMobileScheduler)
+                                                {
+                                                    <button type="button" class="mobile-appointment-card-menu" title="Appointment actions" aria-label="Appointment actions for @appt.CustomerName" draggable="false" @onclick="(() => OpenMobileAppointmentActions(appt))" @onclick:stopPropagation="true" @onmousedown:stopPropagation="true">
+                                                    <i class="bi bi-three-dots-vertical"></i>
+                                                </button>
+                                                }
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                            </div>
+                        }
+                        else if (isGroupByRoom)
+                        {
+                            @foreach (var room in visibleRooms)
+                            {
+                                var roomAppointments = ViewModel.Appointments
+                                    .Where(appointment => appointment.Room == room && appointment.Start.Date == SelectedDate.Date)
+                                    .OrderBy(appointment => appointment.Start)
+                                    .ThenBy(appointment => appointment.End)
+                                    .ToList();
+                                var roomDayStart = SelectedDate.Date.AddMinutes(scheduleStartMinutes);
+                                var roomLanes = CalculateTimelineLanes(roomAppointments);
+                                var roomLaneCount = roomLanes.Count == 0 ? 0 : roomLanes.Values.Max() + 1;
+                                var roomRowHeight = Math.Max(80, 12 + (roomLaneCount * 60));
+                                <div class="timeline-row" style="@($"min-height: {roomRowHeight}px;")">
+                                    <div class="timeline-resource-cell sticky-col @GetRoomHeaderClass(room)">
+                                        <div class="resource-info">
+                                            <div class="resource-name">@room</div>
+                                        </div>
+                                    </div>
+                                    <div class="timeline-track-area">
+                                        @foreach (var timeSlot in TimeSlots.Take(Math.Max(0, TimeSlots.Count - 1)))
+                                        {
+                                            var isInSelection = IsSlotInSelectionRangeForRoom(room, timeSlot);
+                                            var isDragOver = isAppointmentDragging &&
+                                            dragTargetRoom == room &&
+                                            dragTargetHour == timeSlot.Hour &&
+                                            dragTargetMinute == timeSlot.Minute;
+                                            var showDragPreview = isDragOver && draggingAppointmentDurationMinutes > 0;
+                                            var slotClass = $"timeline-grid-slot {(isInSelection ? "selected" : "")} {(isDragOver ? "drag-over" : "")} {(showDragPreview ? "drag-preview" : "")}";
+
+                                            <div class="@slotClass"
+                                                 @ondblclick="@(() => SelectTimeSlotForRoom(room, timeSlot.Hour, timeSlot.Minute))"
+                                                 @onmousedown="@((MouseEventArgs e) => OnMouseDownRoom(e, room, timeSlot))"
+                                                 @onmousemove="@((MouseEventArgs e) => OnMouseMoveRoom(e, room, timeSlot))"
+                                                 @onmouseup="@((MouseEventArgs e) => OnMouseUpRoom(e, room, timeSlot))"
+                                                 @ondragenter="@((DragEventArgs e) => OnDragEnterRoom(e, room, timeSlot.Hour, timeSlot.Minute))"
+                                                 @ondragleave="@((DragEventArgs e) => OnDragLeaveRoom(e, room, timeSlot))"
+                                                 @ondragover="@((DragEventArgs e) => OnDragOver(e))"
+                                                 @ondragover:preventDefault="true"
+                                                 @ondrop="@((DragEventArgs e) => OnDropRoom(e, room, timeSlot.Hour, timeSlot.Minute))"
+                                                 @ondrop:preventDefault="true">
+                                                @if (showDragPreview)
+                                                {
+                                                    <div class="drag-indicator"></div>
+                                                }
+                                            </div>
+                                        }
+
+                                        @* Drag preview showing where appointment will be dropped *@
+                                        @if (isAppointmentDragging && dragTargetRoom == room && dragTargetHour.HasValue && dragTargetMinute.HasValue && draggingAppointmentDurationMinutes > 0)
+                                        {
+                                            var previewStartMinutes = ((dragTargetHour.Value * 60 + dragTargetMinute.Value) - scheduleStartMinutes) + dragOffsetMinutes;
+                                            var previewLeftPx = (previewStartMinutes / (double)slotDurationMinutes) * slotWidthPixels;
+                                            var previewWidthPx = (draggingAppointmentDurationMinutes / (double)slotDurationMinutes) * slotWidthPixels;
+                                            <div class="timeline-drag-preview" style="left: @(previewLeftPx)px; width: @(previewWidthPx)px;"></div>
+                                        }
+
+                                        @foreach (var appt in roomAppointments)
+                                        {
+                                            var startOffset = (appt.Start - roomDayStart).TotalMinutes;
+                                            var duration = (appt.End - appt.Start).TotalMinutes;
+
+                                            if (startOffset >= 0 && startOffset <= scheduleRangeMinutes)
+                                            {
+                                                var leftPx = (startOffset / slotDurationMinutes) * slotWidthPixels;
+                                                var widthPx = (duration / slotDurationMinutes) * slotWidthPixels;
+                                                var isDraggingThis = isAppointmentDragging && draggingAppointmentId == appt.Id;
+                                                var appointmentClass = $"timeline-appointment-block {GetAppointmentStatusCssClass(appt)}{(isDraggingThis ? " appointment-block--dragging" : "")}";
+
+                                                var topPx = 6 + (roomLanes[appt] * 60);
+                                                <div class="@appointmentClass"
+                                                     style="@($"left: {leftPx}px; width: {Math.Max(widthPx, 48)}px; top: {topPx}px; height: 52px; bottom: auto;")"
+                                                     @onclick="(() => OpenAppointment(appt))"
+                                                     @onclick:stopPropagation="true"
+                                                     @onmousedown:stopPropagation="true"
+                                                     draggable="true"
+                                                     @ondragstart="@((DragEventArgs e) => OnDragStartRoom(e, appt, room, appt.Start.Hour, appt.Start.Minute))"
+                                                     @ondragend="OnDragEnd">
+                                                    <div class="appointment-card-title">@GetAppointmentDisplayTitle(appt)</div>
+                                                    <div class="appointment-card-meta">
+                                                        <span class="appointment-card-time">@GetAppointmentTimeRange(appt)</span>
+                                                        <span class="appointment-card-service">@GetAppointmentDisplayService(appt)</span>
+                                                        <span class="appointment-status-badge @GetAppointmentStatusCssClass(appt)">@GetAppointmentStatusDisplayName(appt)</span>
+                                                    </div>
+                                                    @if (isMobileScheduler)
+                                                    {
+                                                        <button type="button" class="mobile-appointment-card-menu" title="Appointment actions" aria-label="Appointment actions for @appt.CustomerName" draggable="false" @onclick="(() => OpenMobileAppointmentActions(appt))" @onclick:stopPropagation="true" @onmousedown:stopPropagation="true">
+                                                        <i class="bi bi-three-dots-vertical"></i>
+                                                    </button>
+                                                    }
+                                                </div>
+                                            }
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            @foreach (var staff in visibleStaff)
+                            {
+                                var staffAppointments = ViewModel.Appointments
+                                    .Where(appointment => IsAppointmentForStaff(appointment, staff) && appointment.Start.Date == SelectedDate.Date)
+                                    .OrderBy(appointment => appointment.Start)
+                                    .ThenBy(appointment => appointment.End)
+                                    .ToList();
+                                var staffDayStart = SelectedDate.Date.AddMinutes(scheduleStartMinutes);
+                                var staffLanes = CalculateTimelineLanes(staffAppointments);
+                                var staffLaneCount = staffLanes.Count == 0 ? 0 : staffLanes.Values.Max() + 1;
+                                var staffRowHeight = Math.Max(80, 12 + (staffLaneCount * 60));
+                                <div class="timeline-row" style="@($"min-height: {staffRowHeight}px;")">
+                                    <div class="timeline-resource-cell sticky-col @GetStaffHeaderClass(staff)">
+                                        <div class="resource-info">
+                                            <div class="resource-name">@staff.Name</div>
+                                            <div class="resource-id" title="@staff.Id">@staff.Id</div>
+                                            <div class="resource-role">@staff.Role</div>
+                                        </div>
+                                    </div>
+                                    <div class="timeline-track-area">
+                                        @foreach (var timeSlot in TimeSlots.Take(Math.Max(0, TimeSlots.Count - 1)))
+                                        {
+                                            var isInSelection = IsSlotInSelectionRange(staff, timeSlot);
+                                            var isDragOver = isAppointmentDragging &&
+                                            dragTargetStaff?.Id == staff.Id &&
+                                            dragTargetHour == timeSlot.Hour &&
+                                            dragTargetMinute == timeSlot.Minute;
+                                            var showDragPreview = isDragOver && draggingAppointmentDurationMinutes > 0;
+                                            var slotClass = $"timeline-grid-slot {(isInSelection ? "selected" : "")} {(isDragOver ? "drag-over" : "")} {(showDragPreview ? "drag-preview" : "")}";
+
+                                            <div class="@slotClass"
+                                                 @ondblclick="@(() => SelectTimeSlot(staff, timeSlot.Hour, timeSlot.Minute))"
+                                                 @onmousedown="@((MouseEventArgs e) => OnMouseDown(e, staff, timeSlot))"
+                                                 @onmousemove="@((MouseEventArgs e) => OnMouseMove(e, staff, timeSlot))"
+                                                 @onmouseup="@((MouseEventArgs e) => OnMouseUp(e, staff, timeSlot))"
+                                                 @ondragenter="@((DragEventArgs e) => OnDragEnter(e, staff, timeSlot.Hour, timeSlot.Minute))"
+                                                 @ondragleave="@((DragEventArgs e) => OnDragLeave(e, staff, timeSlot))"
+                                                 @ondragover="@((DragEventArgs e) => OnDragOver(e))"
+                                                 @ondragover:preventDefault="true"
+                                                 @ondrop="@((DragEventArgs e) => OnDrop(e, staff, timeSlot.Hour, timeSlot.Minute))"
+                                                 @ondrop:preventDefault="true">
+                                                @if (showDragPreview)
+                                                {
+                                                    <div class="drag-indicator"></div>
+                                                }
+                                            </div>
+                                        }
+
+                                        @* Drag preview showing where appointment will be dropped *@
+                                        @if (isAppointmentDragging && dragTargetStaff?.Id == staff.Id && dragTargetHour.HasValue && dragTargetMinute.HasValue && draggingAppointmentDurationMinutes > 0)
+                                        {
+                                            var previewStartMinutes = ((dragTargetHour.Value * 60 + dragTargetMinute.Value) - scheduleStartMinutes) + dragOffsetMinutes;
+                                            var previewLeftPx = (previewStartMinutes / (double)slotDurationMinutes) * slotWidthPixels;
+                                            var previewWidthPx = (draggingAppointmentDurationMinutes / (double)slotDurationMinutes) * slotWidthPixels;
+                                            <div class="timeline-drag-preview" style="left: @(previewLeftPx)px; width: @(previewWidthPx)px;"></div>
+                                        }
+
+                                        @foreach (var appt in staffAppointments)
+                                        {
+                                            var startOffset = (appt.Start - staffDayStart).TotalMinutes;
+                                            var duration = (appt.End - appt.Start).TotalMinutes;
+
+                                            if (startOffset >= 0 && startOffset <= scheduleRangeMinutes)
+                                            {
+                                                var leftPx = (startOffset / slotDurationMinutes) * slotWidthPixels;
+                                                var widthPx = (duration / slotDurationMinutes) * slotWidthPixels;
+                                                var isDraggingThis = isAppointmentDragging && draggingAppointmentId == appt.Id;
+                                                var appointmentClass = $"timeline-appointment-block {GetAppointmentStatusCssClass(appt)}{(isDraggingThis ? " appointment-block--dragging" : "")}";
+
+                                                var topPx = 6 + (staffLanes[appt] * 60);
+                                                <div class="@appointmentClass"
+                                                     style="@($"left: {leftPx}px; width: {Math.Max(widthPx, 48)}px; top: {topPx}px; height: 52px; bottom: auto;")"
+                                                     @onclick="(() => OpenAppointment(appt))"
+                                                     @onclick:stopPropagation="true"
+                                                     @onmousedown:stopPropagation="true"
+                                                     draggable="true"
+                                                     @ondragstart="@((DragEventArgs e) => OnDragStart(e, appt, staff, appt.Start.Hour, appt.Start.Minute))"
+                                                     @ondragend="OnDragEnd">
+                                                    <div class="appointment-card-title">@GetAppointmentDisplayTitle(appt)</div>
+                                                    <div class="appointment-card-meta">
+                                                        <span class="appointment-card-time">@GetAppointmentTimeRange(appt)</span>
+                                                        <span class="appointment-card-service">@GetAppointmentDisplayService(appt)</span>
+                                                        <span class="appointment-status-badge @GetAppointmentStatusCssClass(appt)">@GetAppointmentStatusDisplayName(appt)</span>
+                                                    </div>
+                                                    @if (isMobileScheduler)
+                                                    {
+                                                        <button type="button" class="mobile-appointment-card-menu" title="Appointment actions" aria-label="Appointment actions for @appt.CustomerName" draggable="false" @onclick="(() => OpenMobileAppointmentActions(appt))" @onclick:stopPropagation="true" @onmousedown:stopPropagation="true">
+                                                        <i class="bi bi-three-dots-vertical"></i>
+                                                    </button>
+                                                    }
+                                                </div>
+                                            }
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            }
+            else
+            {
+                <!-- Main Scheduling Grid -->
+                var allVisibleStaff = GetVisibleStaff();
+                var allVisibleRooms = GetVisibleRooms();
+                var selectedMobileStaff = allVisibleStaff.FirstOrDefault(staff =>
+                    string.Equals(staff.Id, mobileSelectedEmployeeId, StringComparison.OrdinalIgnoreCase))
+                    ?? allVisibleStaff.FirstOrDefault();
+                var selectedMobileRoom = allVisibleRooms.FirstOrDefault(room =>
+                    string.Equals(room, mobileSelectedRoom, StringComparison.OrdinalIgnoreCase))
+                    ?? allVisibleRooms.FirstOrDefault();
+                IReadOnlyList<Staff> visibleStaff = isMobileScheduler && currentGroupBy == GroupByOption.Staff
+                    ? selectedMobileStaff is null ? Array.Empty<Staff>() : new[] { selectedMobileStaff }
+                    : allVisibleStaff;
+                IReadOnlyList<string> visibleRooms = isMobileScheduler && currentGroupBy == GroupByOption.Room
+                    ? string.IsNullOrWhiteSpace(selectedMobileRoom) ? Array.Empty<string>() : new[] { selectedMobileRoom }
+                    : allVisibleRooms;
+                var columnCount = currentGroupBy == GroupByOption.None
+                    ? 1
+                    : currentGroupBy == GroupByOption.Room
+                        ? Math.Max(visibleRooms.Count, 1)
+                        : Math.Max(visibleStaff.Count, 1);
+
+                var slotDurationMinutes = GetTimeScaleMinutes();
+                var mobileGridWidth = 50 + (columnCount * 150);
+
+                @if (isMobileScheduler && currentGroupBy == GroupByOption.Staff && allVisibleStaff.Any())
+                {
+                    <div class="mobile-resource-tabs" aria-label="Choose employee schedule">
+                        @foreach (var staff in allVisibleStaff)
+                        {
+                            var isSelected = string.Equals(selectedMobileStaff?.Id, staff.Id, StringComparison.OrdinalIgnoreCase);
+                            <button type="button"
+                                    class="mobile-resource-tab @(isSelected ? "active" : string.Empty)"
+                                    aria-pressed="@isSelected"
+                                    @onclick="(() => SelectMobileEmployee(staff.Id))">
+                                <span class="mobile-resource-name">@staff.Name</span>
+                                <span class="mobile-resource-id">@staff.Id</span>
+                            </button>
+                        }
+                    </div>
+                }
+                else if (isMobileScheduler && currentGroupBy == GroupByOption.Room && allVisibleRooms.Any())
+                {
+                    <div class="mobile-resource-tabs" aria-label="Choose room schedule">
+                        @foreach (var room in allVisibleRooms)
+                        {
+                            var isSelected = string.Equals(selectedMobileRoom, room, StringComparison.OrdinalIgnoreCase);
+                            <button type="button"
+                                    class="mobile-resource-tab @(isSelected ? "active" : string.Empty)"
+                                    aria-pressed="@isSelected"
+                                    @onclick="(() => SelectMobileRoom(room))">
+                                <span class="mobile-resource-name">@room</span>
+                                <span class="mobile-resource-id">@GetDayOfWeekText()</span>
+                            </button>
+                        }
+                    </div>
+                }
+
+                <div class="scheduler-grid-wrapper">
+                    <div class="scheduler-grid @(isMobileScheduler ? "mobile-focused-scheduler" : string.Empty) @(isAppointmentDragging ? "appointment-dragging-active" : "")" style="@($"--staff-count:{columnCount}; --mobile-grid-width:{mobileGridWidth}px;")" @onmouseup="OnSchedulerMouseUp" @onmousemove="OnSchedulerMouseMove">
+                        <!-- Time Slot Column Header -->
+                        <div class="time-header"></div>
+
+                        @if (currentGroupBy == GroupByOption.None)
+                        {
+                            <!-- Single Column Header for None view -->
+                            <div class="staff-header">
+                                <div class="staff-name">Appointments</div>
+                                <div class="staff-date">@GetDayOfWeekText()</div>
+                            </div>
+                        }
+                        else if (currentGroupBy == GroupByOption.Room)
+                        {
+                            <!-- Room Column Headers -->
+                            @foreach (var room in visibleRooms)
+                            {
+                                <div class="staff-header @GetRoomHeaderClass(room)">
+                                    <div class="staff-name">@room</div>
+                                    <div class="staff-date">@GetDayOfWeekText()</div>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <!-- Staff Column Headers -->
+                            @foreach (var staff in visibleStaff)
+                            {
+                                <div class="staff-header @GetStaffHeaderClass(staff)">
+                                    <div class="staff-name">@staff.Name</div>
+                                    <div class="staff-id" title="@staff.Id">@staff.Id</div>
+                                    <div class="staff-role">@staff.Role</div>
+                                    <div class="staff-date">@GetDayOfWeekText()</div>
+                                </div>
+                            }
+                        }
+
+                        <!-- Time Slots and Appointments -->
+                        @* The final time is a closing boundary (for example 7:00 PM),
+                           not another schedulable interval row. *@
+                        @foreach (var timeSlot in TimeSlots.Take(Math.Max(0, TimeSlots.Count - 1)))
+                        {
+                            <!-- Time Label -->
+                            <div class="time-slot-label @(timeSlot.Minute == 30 ? "half-hour-slot" : string.Empty)">
+                                @if (timeSlot.ShowLabel)
+                                {
+                                    @timeSlot.DisplayText
+                                }
+                            </div>
+
+                            @if (currentGroupBy == GroupByOption.None)
+                            {
+                                <!-- Single Column for None view - shows all appointments -->
+                                var appointmentsToRender = ViewModel.Appointments
+                                .Where(a => a.Start.Date == ViewModel.SelectedDate.Date &&
+                                ShouldShowAppointmentInSlot(a, timeSlot))
+                                .ToList();
+                                var allOverlappingAppointments = ViewModel.Appointments
+                                .Where(a => a.Start.Date == ViewModel.SelectedDate.Date)
+                                .ToList();
+                                var hasAppointments = appointmentsToRender.Any();
+                                var isInSelection = IsSlotInSelectionRangeNone(timeSlot);
+                                var showDragPreview = ShouldShowDragPreviewInSlot(timeSlot);
+                                var slotClass = $"staff-slot {(timeSlot.Minute == 30 ? "half-hour-slot" : string.Empty)} {(showDragPreview ? "drag-over drop-preview-active" : "")} {(isInSelection ? "time-range-selected" : "")}";
+                                var appointmentLayouts = CalculateAppointmentLayouts(allOverlappingAppointments);
+                                appointmentLayouts = appointmentLayouts.Where(l => appointmentsToRender.Contains(l.Appointment)).ToList();
+
+                                <div class="@slotClass"
+                                     @ondblclick="@(() => SelectTimeSlotNone(timeSlot.Hour, timeSlot.Minute))"
+                                     @onmousedown="@((MouseEventArgs e) => OnMouseDownNone(e, timeSlot))"
+                                     @onmousemove="@((MouseEventArgs e) => OnMouseMoveNone(e, timeSlot))"
+                                     @onmouseup="@((MouseEventArgs e) => OnMouseUpNone(e, timeSlot))"
+                                     @ondragenter="@((DragEventArgs e) => OnDragEnterNone(e, timeSlot.Hour, timeSlot.Minute))"
+                                     @ondragleave="@((DragEventArgs e) => OnDragLeaveNone(e, timeSlot))"
+                                     @ondragover="@((DragEventArgs e) => OnDragOver(e))"
+                                     @ondragover:preventDefault="true"
+                                     @ondrop="@((DragEventArgs e) => OnDropNone(e, timeSlot.Hour, timeSlot.Minute))"
+                                     @ondrop:preventDefault="true">
+                                    @if (hasAppointments)
+                                    {
+                                        @foreach (var layout in appointmentLayouts)
+                                        {
+                                            var appt = layout.Appointment;
+                                            var startSlot = GetAppointmentStartSlot(appt);
+                                            if (startSlot != null)
+                                            {
+                                                var topPositionPercent = GetAppointmentTopPositionPercent(appt, startSlot);
+                                                var heightPercent = GetAppointmentTotalHeightPercent(appt);
+                                                var isDraggingThis = isAppointmentDragging && draggingAppointmentId == appt.Id;
+                                                var style = $"position: absolute; top: {topPositionPercent}; height: {heightPercent}; left: {layout.Left}%; width: {layout.Width}%; z-index: 10;";
+                                                var isCompactAppointment = (appt.End - appt.Start).TotalMinutes < 60;
+                                                var appointmentClass = $"appointment-block {GetAppointmentStatusCssClass(appt)}{(isCompactAppointment ? " appointment-block--compact" : "")}{(isDraggingThis ? " appointment-block--dragging" : "")}";
+
+                                                <div class="@appointmentClass"
+                                                     style="@style"
+                                                     @onclick:stopPropagation="true"
+                                                     @onclick="(() => OpenAppointment(appt))"
+                                                     @onmousedown:stopPropagation="true"
+                                                     draggable="true"
+                                                     @ondragstart="@((DragEventArgs e) => OnDragStartNone(e, appt, startSlot.Hour, startSlot.Minute))"
+                                                     @ondragend="OnDragEnd">
+                                                    <div class="appointment-card-title">@GetAppointmentDisplayTitle(appt)</div>
+                                                    <div class="appointment-card-meta">
+                                                        <span class="appointment-card-time">@GetAppointmentTimeRange(appt)</span>
+                                                        <span class="appointment-card-service">@GetAppointmentDisplayService(appt)</span>
+                                                        <span class="appointment-status-badge @GetAppointmentStatusCssClass(appt)">@GetAppointmentStatusDisplayName(appt)</span>
+                                                    </div>
+                                                    @if (isMobileScheduler)
+                                                    {
+                                                        <button type="button" class="mobile-appointment-card-menu" title="Appointment actions" aria-label="Appointment actions for @appt.CustomerName" draggable="false" @onclick="(() => OpenMobileAppointmentActions(appt))" @onclick:stopPropagation="true" @onmousedown:stopPropagation="true">
+                                                        <i class="bi bi-three-dots-vertical"></i>
+                                                    </button>
+                                                    }
+                                                </div>
+                                            }
+                                        }
+                                    }
+
+                                    @if (showDragPreview)
+                                    {
+                                        var (previewTopPercent, previewHeightPercent) = GetDragPreviewPositionInSlot(timeSlot);
+                                        var previewStyle = $"top: {previewTopPercent}%; height: {previewHeightPercent}%;";
+                                        <div class="appointment-drag-preview" style="@previewStyle"></div>
+                                    }
+                                </div>
+                            }
+                            else if (currentGroupBy == GroupByOption.Room)
+                            {
+                                <!-- Room Slots for this time -->
+                                @foreach (var room in visibleRooms)
+                                {
+                                    var appointmentsToRender = ViewModel.Appointments
+                                    .Where(a => a.Room == room &&
+                                    a.Start.Date == ViewModel.SelectedDate.Date &&
+                                    ShouldShowAppointmentInSlot(a, timeSlot))
+                                    .ToList();
+                                    var allOverlappingAppointments = ViewModel.Appointments
+                                    .Where(a => a.Room == room &&
+                                    a.Start.Date == ViewModel.SelectedDate.Date)
+                                    .ToList();
+                                    var hasAppointments = appointmentsToRender.Any();
+                                    var isInSelection = IsSlotInSelectionRangeForRoom(room, timeSlot);
+                                    var showDragPreview = ShouldShowDragPreviewInSlot(timeSlot, room: room);
+                                    var slotClass = $"staff-slot {(timeSlot.Minute == 30 ? "half-hour-slot" : string.Empty)} {(showDragPreview ? "drag-over drop-preview-active" : "")} {(isInSelection ? "time-range-selected" : "")}";
+                                    var appointmentLayouts = CalculateAppointmentLayouts(allOverlappingAppointments);
+                                    appointmentLayouts = appointmentLayouts.Where(l => appointmentsToRender.Contains(l.Appointment)).ToList();
+
+                                    <div class="@slotClass"
+                                         @ondblclick="@(() => SelectTimeSlotForRoom(room, timeSlot.Hour, timeSlot.Minute))"
+                                         @onmousedown="@((MouseEventArgs e) => OnMouseDownRoom(e, room, timeSlot))"
+                                         @onmousemove="@((MouseEventArgs e) => OnMouseMoveRoom(e, room, timeSlot))"
+                                         @onmouseup="@((MouseEventArgs e) => OnMouseUpRoom(e, room, timeSlot))"
+                                         @ondragenter="@((DragEventArgs e) => OnDragEnterRoom(e, room, timeSlot.Hour, timeSlot.Minute))"
+                                         @ondragleave="@((DragEventArgs e) => OnDragLeaveRoom(e, room, timeSlot))"
+                                         @ondragover="@((DragEventArgs e) => OnDragOver(e))"
+                                         @ondragover:preventDefault="true"
+                                         @ondrop="@((DragEventArgs e) => OnDropRoom(e, room, timeSlot.Hour, timeSlot.Minute))"
+                                         @ondrop:preventDefault="true">
+                                        @if (hasAppointments)
+                                        {
+                                            @foreach (var layout in appointmentLayouts)
+                                            {
+                                                var appt = layout.Appointment;
+                                                var startSlot = GetAppointmentStartSlot(appt);
+                                                if (startSlot != null)
+                                                {
+                                                    var topPositionPercent = GetAppointmentTopPositionPercent(appt, startSlot);
+                                                    var heightPercent = GetAppointmentTotalHeightPercent(appt);
+                                                    var isDraggingThis = isAppointmentDragging && draggingAppointmentId == appt.Id;
+                                                    var style = $"position: absolute; top: {topPositionPercent}; height: {heightPercent}; left: {layout.Left}%; width: {layout.Width}%; z-index: 10;";
+                                                    var isCompactAppointment = (appt.End - appt.Start).TotalMinutes < 60;
+                                                var appointmentClass = $"appointment-block {GetAppointmentStatusCssClass(appt)}{(isCompactAppointment ? " appointment-block--compact" : "")}{(isDraggingThis ? " appointment-block--dragging" : "")}";
+
+                                                    <div class="@appointmentClass"
+                                                         style="@style"
+                                                         @onclick:stopPropagation="true"
+                                                         @onclick="(() => OpenAppointment(appt))"
+                                                         @onmousedown:stopPropagation="true"
+                                                         draggable="true"
+                                                         @ondragstart="@((DragEventArgs e) => OnDragStartRoom(e, appt, room, startSlot.Hour, startSlot.Minute))"
+                                                         @ondragend="OnDragEnd">
+                                                        <div class="appointment-card-title">@GetAppointmentDisplayTitle(appt)</div>
+                                                        <div class="appointment-card-meta">
+                                                            <span class="appointment-card-time">@GetAppointmentTimeRange(appt)</span>
+                                                            <span class="appointment-card-service">@GetAppointmentDisplayService(appt)</span>
+                                                        <span class="appointment-status-badge @GetAppointmentStatusCssClass(appt)">@GetAppointmentStatusDisplayName(appt)</span>
+                                                        </div>
+                                                        @if (isMobileScheduler)
+                                                        {
+                                                            <button type="button" class="mobile-appointment-card-menu" title="Appointment actions" aria-label="Appointment actions for @appt.CustomerName" draggable="false" @onclick="(() => OpenMobileAppointmentActions(appt))" @onclick:stopPropagation="true" @onmousedown:stopPropagation="true">
+                                                            <i class="bi bi-three-dots-vertical"></i>
+                                                        </button>
+                                                        }
+                                                    </div>
+                                                }
+                                            }
+                                        }
+
+                                        @if (showDragPreview)
+                                        {
+                                            var (previewTopPercent, previewHeightPercent) = GetDragPreviewPositionInSlot(timeSlot);
+                                            var previewStyle = $"top: {previewTopPercent}%; height: {previewHeightPercent}%;";
+                                            <div class="appointment-drag-preview" style="@previewStyle"></div>
+                                        }
+                                    </div>
+                                }
+                            }
+                            else
+                            {
+                                <!-- Staff Slots for this time -->
+                                @foreach (var staff in visibleStaff)
+                                {
+                                    var appointmentsToRender = ViewModel.Appointments
+                                    .Where(a => IsAppointmentForStaff(a, staff) &&
+                                    a.Start.Date == ViewModel.SelectedDate.Date &&
+                                    ShouldShowAppointmentInSlot(a, timeSlot))
+                                    .ToList();
+                                    var allOverlappingAppointments = ViewModel.Appointments
+                                    .Where(a => IsAppointmentForStaff(a, staff) &&
+                                    a.Start.Date == ViewModel.SelectedDate.Date)
+                                    .ToList();
+                                    var hasAppointments = appointmentsToRender.Any();
+                                    var isInSelection = IsSlotInSelectionRange(staff, timeSlot);
+                                    var showDragPreview = ShouldShowDragPreviewInSlot(timeSlot, staff: staff);
+                                    var slotClass = $"staff-slot {(timeSlot.Minute == 30 ? "half-hour-slot" : string.Empty)} {(showDragPreview ? "drag-over drop-preview-active" : "")} {(isInSelection ? "time-range-selected" : "")}";
+                                    var appointmentLayouts = CalculateAppointmentLayouts(allOverlappingAppointments);
+                                    appointmentLayouts = appointmentLayouts.Where(l => appointmentsToRender.Contains(l.Appointment)).ToList();
+
+                                    <div class="@slotClass"
+                                         @ondblclick="@(() => SelectTimeSlot(staff, timeSlot.Hour, timeSlot.Minute))"
+                                         @onmousedown="@((MouseEventArgs e) => OnMouseDown(e, staff, timeSlot))"
+                                         @onmousemove="@((MouseEventArgs e) => OnMouseMove(e, staff, timeSlot))"
+                                         @onmouseup="@((MouseEventArgs e) => OnMouseUp(e, staff, timeSlot))"
+                                         @ondragenter="@((DragEventArgs e) => OnDragEnter(e, staff, timeSlot.Hour, timeSlot.Minute))"
+                                         @ondragleave="@((DragEventArgs e) => OnDragLeave(e, staff, timeSlot))"
+                                         @ondragover="@((DragEventArgs e) => OnDragOver(e))"
+                                         @ondragover:preventDefault="true"
+                                         @ondrop="@((DragEventArgs e) => OnDrop(e, staff, timeSlot.Hour, timeSlot.Minute))"
+                                         @ondrop:preventDefault="true">
+                                        @if (hasAppointments)
+                                        {
+                                            @foreach (var layout in appointmentLayouts)
+                                            {
+                                                var appt = layout.Appointment;
+                                                var startSlot = GetAppointmentStartSlot(appt);
+                                                if (startSlot != null)
+                                                {
+                                                    var topPositionPercent = GetAppointmentTopPositionPercent(appt, startSlot);
+                                                    var heightPercent = GetAppointmentTotalHeightPercent(appt);
+                                                    var isDraggingThis = isAppointmentDragging && draggingAppointmentId == appt.Id;
+                                                    var style = $"position: absolute; top: {topPositionPercent}; height: {heightPercent}; left: {layout.Left}%; width: {layout.Width}%; z-index: 10;";
+                                                    var isCompactAppointment = (appt.End - appt.Start).TotalMinutes < 60;
+                                                var appointmentClass = $"appointment-block {GetAppointmentStatusCssClass(appt)}{(isCompactAppointment ? " appointment-block--compact" : "")}{(isDraggingThis ? " appointment-block--dragging" : "")}";
+
+                                                    <div class="@appointmentClass"
+                                                         style="@style"
+                                                         @onclick:stopPropagation="true"
+                                                         @onclick="(() => OpenAppointment(appt))"
+                                                         @onmousedown:stopPropagation="true"
+                                                         draggable="true"
+                                                         @ondragstart="@((DragEventArgs e) => OnDragStart(e, appt, staff, startSlot.Hour, startSlot.Minute))"
+                                                         @ondragend="OnDragEnd">
+                                                        <div class="appointment-card-title">@GetAppointmentDisplayTitle(appt)</div>
+                                                        <div class="appointment-card-meta">
+                                                            <span class="appointment-card-time">@GetAppointmentTimeRange(appt)</span>
+                                                            <span class="appointment-card-service">@GetAppointmentDisplayService(appt)</span>
+                                                        <span class="appointment-status-badge @GetAppointmentStatusCssClass(appt)">@GetAppointmentStatusDisplayName(appt)</span>
+                                                        </div>
+                                                        @if (isMobileScheduler)
+                                                        {
+                                                            <button type="button" class="mobile-appointment-card-menu" title="Appointment actions" aria-label="Appointment actions for @appt.CustomerName" draggable="false" @onclick="(() => OpenMobileAppointmentActions(appt))" @onclick:stopPropagation="true" @onmousedown:stopPropagation="true">
+                                                            <i class="bi bi-three-dots-vertical"></i>
+                                                        </button>
+                                                        }
+                                                    </div>
+                                                }
+                                            }
+                                        }
+
+                                        @if (showDragPreview)
+                                        {
+                                            var (previewTopPercent, previewHeightPercent) = GetDragPreviewPositionInSlot(timeSlot);
+                                            var previewStyle = $"top: {previewTopPercent}%; height: {previewHeightPercent}%;";
+                                            <div class="appointment-drag-preview" style="@previewStyle"></div>
+                                        }
+                                    </div>
+                                }
+                            }
+                        }
+
+                    </div>
+                </div>
+            }
+        </div>
+
+        <aside class="scheduler-sidebar @(isSidebarExpanded ? "expanded" : "collapsed")" aria-label="@Localizer["SchedulerUtilities"]">
+            <div class="sidebar-panel">
+                <div class="sidebar-panel-header">
+                    <div class="sidebar-panel-title">
+                    @if (currentSidebarView == SidebarView.QuickActions)
+                    {
+                        <button class="sidebar-toggle"
+                                @onclick="ToggleSidebar"
+                                aria-label="@Localizer["ToggleSidebar"]"
+                                aria-expanded="@isSidebarExpanded">
+                            <i class="bi @(isSidebarExpanded ? "bi-chevron-right" : "bi-chevron-left")"></i>
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="sidebar-close-button"
+                                @onclick="@(currentSidebarView == SidebarView.Queue ? CloseQueueSidebar : currentSidebarView == SidebarView.StaffVisibility ? CloseStaffSidebar : CloseSettingsSidebar)"
+                                aria-label="@Localizer["CloseSidebar"]"
+                                title="@Localizer["Close"]">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    }
+                    </div>
+                </div>
+
+                @if (currentSidebarView == SidebarView.QuickActions)
+                {
+                    <!-- Mobile View Options Section (hidden on desktop) -->
+                    <div class="mobile-view-options">
+                        <div class="view-options-section">
+                            <div class="view-options-label">@Localizer["ViewType"]</div>
+                            <div class="view-type-buttons">
+                                <button class="view-type-btn @(currentViewType == ViewType.DayView ? "active" : "")"
+                                        type="button"
+                                        @onclick="(() => SetViewType(ViewType.DayView))">
+                                    <i class="bi bi-calendar3"></i>
+                                    <span>@Localizer["Day"]</span>
+                                </button>
+                                <button class="view-type-btn @(currentViewType == ViewType.ListView ? "active" : "")"
+                                        type="button"
+                                        @onclick="(() => SetViewType(ViewType.ListView))">
+                                    <i class="bi bi-list-ul"></i>
+                                    <span>@Localizer["List"]</span>
+                                </button>
+                                <button class="view-type-btn @(currentViewType == ViewType.TimelineView ? "active" : "")"
+                                        type="button"
+                                        @onclick="(() => SetViewType(ViewType.TimelineView))">
+                                    <i class="bi bi-graph-up"></i>
+                                    <span>@Localizer["Timeline"]</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        @if (currentViewType != ViewType.ListView)
+                        {
+                            <div class="view-options-section">
+                                <div class="view-options-label">@Localizer["GroupByLabel"]</div>
+                                <div class="group-by-buttons">
+                                    <button class="group-by-btn @(currentGroupBy == GroupByOption.None ? "active" : "")"
+                                            type="button"
+                                            @onclick="(() => SetGroupBy(GroupByOption.None))">
+                                        @Localizer["None"]
+                                    </button>
+                                    <button class="group-by-btn @(currentGroupBy == GroupByOption.Staff ? "active" : "")"
+                                            type="button"
+                                            @onclick="(() => SetGroupBy(GroupByOption.Staff))">
+                                        @Localizer["Staff"]
+                                    </button>
+                                    <button class="group-by-btn @(currentGroupBy == GroupByOption.Room ? "active" : "")"
+                                            type="button"
+                                            @onclick="(() => SetGroupBy(GroupByOption.Room))">
+                                        Room
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="view-options-section">
+                                <div class="view-options-label">@Localizer["TimeScaleLabel"]</div>
+                                <select class="time-scale-select @(!IsTimeScaleControlEnabled ? "disabled" : "")"
+                                        disabled="@(!IsTimeScaleControlEnabled)"
+                                        @bind="SelectedTimeScale">
+                                    <option value="@TimeScaleOption.OneHour">@Localizer["TimeScale_1h"]</option>
+                                    <option value="@TimeScaleOption.ThirtyMinutes">@Localizer["TimeScale_30m"]</option>
+                                    <option value="@TimeScaleOption.FifteenMinutes">@Localizer["TimeScale_15m"]</option>
+                                    <option value="@TimeScaleOption.TenMinutes">@Localizer["TimeScale_10m"]</option>
+                                    <option value="@TimeScaleOption.FiveMinutes">@Localizer["TimeScale_5m"]</option>
+                                </select>
+                            </div>
+
+                            <div class="view-options-section">
+                                <button class="working-hours-toggle @(showWorkingHoursOnly ? "active" : "") @(!IsWorkingHoursControlEnabled ? "disabled" : "")"
+                                        type="button"
+                                        disabled="@(!IsWorkingHoursControlEnabled)"
+                                        @onclick="OnWorkingHoursClicked">
+                                    <i class="bi bi-briefcase"></i>
+                                    <span>@(showWorkingHoursOnly ? Localizer["WorkingHoursOnly"] : Localizer["ShowAllHours"])</span>
+                                    <div class="toggle-switch @(showWorkingHoursOnly ? "on" : "")">
+                                        <div class="toggle-knob"></div>
+                                    </div>
+                                </button>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="sidebar-actions">
+                        <button class="sidebar-action-button" type="button" title="@Localizer["ViewAllStaff"]" @onclick="ShowStaffVisibility">
+                            <div class="sidebar-action-icon">
+                                <i class="bi bi-person-workspace"></i>
+                            </div>
+                            <div class="sidebar-action-label">
+                                <span class="sidebar-action-title">@Localizer["ViewAllStaff"]</span>
+                            </div>
+                            <i class="bi bi-chevron-right sidebar-action-caret"></i>
+                        </button>
+                        <button class="sidebar-action-button" type="button" title="@Localizer["Queue"]" @onclick="ShowQueue">
+                            <div class="sidebar-action-icon">
+                                <i class="bi bi-people-fill"></i>
+                            </div>
+                            <div class="sidebar-action-label">
+                                <span class="sidebar-action-title">@Localizer["Queue"]</span>
+                            </div>
+                            <i class="bi bi-chevron-right sidebar-action-caret"></i>
+                        </button>
+                        <button class="sidebar-action-button" type="button" title="@Localizer["Settings"]" @onclick="ShowSettings">
+                            <div class="sidebar-action-icon">
+                                <i class="bi bi-gear-fill"></i>
+                            </div>
+                            <div class="sidebar-action-label">
+                                <span class="sidebar-action-title">@Localizer["Settings"]</span>
+                            </div>
+                            <i class="bi bi-chevron-right sidebar-action-caret"></i>
+                        </button>
+                    </div>
+
+                    <div class="appointment-delete-dropzone @(isDeleteDropOver ? "is-over" : "") @(isAppointmentDragging ? "drag-ready" : "")"
+                         role="region"
+                         aria-label="Drag an appointment here to delete it"
+                         aria-live="polite"
+                         @ondragenter="OnDeleteDragEnter"
+                         @ondragleave="OnDeleteDragLeave"
+                         @ondragover="OnDragOver"
+                         @ondragover:preventDefault="true"
+                         @ondrop="OnDeleteDrop"
+                         @ondrop:preventDefault="true">
+                        <span class="appointment-delete-icon" aria-hidden="true">
+                            <i class="bi bi-trash3 delete-icon-closed"></i>
+                            <i class="bi bi-trash3-fill delete-icon-open"></i>
+                        </span>
+                        <span class="appointment-delete-copy">
+                            <strong>@(isDeleteDropOver ? "Release to delete" : "Delete appointment")</strong>
+                            <small>@(isAppointmentDragging ? "Drop here to remove it" : "Drag an appointment here")</small>
+                        </span>
+                    </div>
+                }
+                else if (currentSidebarView == SidebarView.StaffVisibility)
+                {
+                    <div class="sidebar-staff-content">
+                        <div class="sidebar-staff-header">
+                            <div class="sidebar-staff-heading">
+                                <span>Staff to view</span>
+                                <small>Filter visible schedule columns</small>
+                            </div>
+                            <label class="sidebar-staff-toggle">
+                                <span>@Localizer["All"]</span>
+                                <input type="checkbox"
+                                       checked="@IsAllStaffSelected"
+                                       @onchange="OnToggleAllStaff" />
+                            </label>
+                        </div>
+                        <div class="staff-level-filter" aria-label="Filter staff by employee level">
+                            <button type="button"
+                                    class="staff-level-chip @(string.IsNullOrWhiteSpace(selectedEmployeeLevelFilter) ? "active" : string.Empty)"
+                                    @onclick="(() => SetEmployeeLevelFilterAsync(string.Empty))">
+                                All levels
+                                <span>@StaffList.Count</span>
+                            </button>
+                            @foreach (var level in GetEmployeeLevelOptions())
+                            {
+                                <button type="button"
+                                        class="staff-level-chip @(string.Equals(selectedEmployeeLevelFilter, level, StringComparison.OrdinalIgnoreCase) ? "active" : string.Empty)"
+                                        @onclick="(() => SetEmployeeLevelFilterAsync(level))">
+                                    @level
+                                    <span>@GetEmployeeLevelCount(level)</span>
+                                </button>
+                            }
+                        </div>
+                        <ul class="staff-visibility-list">
+                            @foreach (var staff in GetStaffBySelectedLevel())
+                            {
+                                var accentClass = GetStaffAccentClass(staff);
+                                <li class="staff-visibility-item @accentClass">
+                                    <div class="staff-visibility-info">
+                                        <span class="staff-visibility-avatar">@GetStaffInitials(staff.Name)</span>
+                                        <div class="staff-visibility-meta">
+                                            <span class="staff-visibility-name">@staff.Name</span>
+                                            <span class="staff-visibility-role">@staff.Role</span>
+                                        </div>
+                                    </div>
+                                    <label class="staff-visibility-toggle">
+                                        <input type="checkbox"
+                                               checked="@IsStaffVisible(staff)"
+                                               @onchange="(e) => OnStaffVisibilityChanged(staff, e)" />
+                                        <span class="staff-visibility-checkbox">
+                                            <i class="bi bi-check"></i>
+                                        </span>
+                                    </label>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                }
+                else if (currentSidebarView == SidebarView.Queue)
+                {
+                    <div class="sidebar-queue-content">
+                        <button class="queue-add-button" type="button" @onclick="AddToQueue">
+                            <i class="bi bi-plus-lg"></i>
+                            <span>@Localizer["AddToQueue"]</span>
+                        </button>
+
+                        <div class="queue-tabs">
+                            <button class="queue-tab queue-tab-waiting @(selectedQueueTab == QueueStatus.Waiting ? "active" : "")"
+                                    type="button"
+                                    @onclick="@(() => SetQueueTab(QueueStatus.Waiting))">
+                                <span>@Localizer["Waiting"]</span>
+                                @if (GetQueueCount(QueueStatus.Waiting) > 0)
+                                {
+                                    <span class="queue-badge queue-badge-blue">@GetQueueCount(QueueStatus.Waiting)</span>
+                                }
+                            </button>
+                            <button class="queue-tab queue-tab-served @(selectedQueueTab == QueueStatus.Served ? "active" : "")"
+                                    type="button"
+                                    @onclick="@(() => SetQueueTab(QueueStatus.Served))">
+                                <span>@Localizer["Served"]</span>
+                                @if (GetQueueCount(QueueStatus.Served) > 0)
+                                {
+                                    <span class="queue-badge queue-badge-green">@GetQueueCount(QueueStatus.Served)</span>
+                                }
+                            </button>
+                            <button class="queue-tab queue-tab-cancelled @(selectedQueueTab == QueueStatus.Cancelled ? "active" : "")"
+                                    type="button"
+                                    @onclick="@(() => SetQueueTab(QueueStatus.Cancelled))">
+                                <span>@Localizer["Cancelled"]</span>
+                                @if (GetQueueCount(QueueStatus.Cancelled) > 0)
+                                {
+                                    <span class="queue-badge queue-badge-red">@GetQueueCount(QueueStatus.Cancelled)</span>
+                                }
+                            </button>
+                        </div>
+
+                        <div class="queue-items-list">
+                            @foreach (var item in GetFilteredQueueItems())
+                            {
+                                var queueItemClass = $"queue-item {(item.Status == QueueStatus.Cancelled ? "queue-item-cancelled" : item.Status == QueueStatus.Served ? "queue-item-served" : string.Empty)} {(item.Status == QueueStatus.Waiting ? "queue-item-clickable" : string.Empty)}";
+                                <div class="@queueItemClass"
+                                     @onclick="@(() => OnQueueItemClick(item))">
+                                    <div class="queue-item-header">
+                                        <span class="queue-item-number">#@item.Id</span>
+                                        @if (item.Status == QueueStatus.Waiting)
+                                        {
+                                            <div class="queue-item-info">
+                                                <span class="queue-item-name">@item.CustomerName</span>
+                                                <div class="queue-item-waiting">
+                                                    <i class="bi bi-clock"></i>
+                                                    <span>@Localizer["Waiting"] @GetWaitingTime(item)</span>
+                                                </div>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="queue-item-info">
+                                                <span class="queue-item-name">@item.CustomerName</span>
+                                                <div class="queue-item-meta">
+                                                    <span class="queue-item-service">@item.Service</span>
+                                                </div>
+                                            </div>
+                                        }
+                                        @if (item.Status == QueueStatus.Served)
+                                        {
+                                            <i class="queue-item-status-icon queue-item-status-served bi bi-check2-circle"></i>
+                                        }
+                                        else if (item.Status == QueueStatus.Cancelled)
+                                        {
+                                            <i class="queue-item-status-icon queue-item-status-cancelled bi bi-x-circle"></i>
+                                        }
+                                    </div>
+                                    @if (item.Status == QueueStatus.Waiting)
+                                    {
+
+                                    }
+                                    else if (item.Status == QueueStatus.Served && item.ServedAt.HasValue)
+                                    {
+                                        <div class="queue-item-served-info">
+                                            <span>@string.Format(Localizer["ServedAtBy"], item.ServedAt.Value.ToString("hh:mm tt"), item.ServedBy)</span>
+                                        </div>
+                                    }
+                                    else if (item.Status == QueueStatus.Cancelled && item.CancelledAt.HasValue)
+                                    {
+                                        <div class="queue-item-cancelled-info">
+                                            <span>@string.Format(Localizer["CancelledAt"], item.CancelledAt.Value.ToString("hh:mm tt"))</span>
+                                        </div>
+                                    }
+                                    <div class="queue-item-details">
+                                        <i class="bi bi-telephone"></i>
+                                        <span class="queue-item-phone">@item.Phone</span>
+                                    </div>
+                                    @if (item.Status == QueueStatus.Waiting)
+                                    {
+                                        <div class="queue-item-details">
+                                            <span class="queue-item-service">@item.Service</span>
+                                        </div>
+                                    }
+                                    @if (item.Status == QueueStatus.Waiting)
+                                    {
+                                        <div class="queue-item-actions">
+                                            <button class="queue-action-button queue-action-serve" type="button" @onclick="@(() => ServeQueueItem(item))">
+                                                <i class="bi bi-check2-circle"></i>
+                                                <span>@Localizer["ServeNow"]</span>
+                                            </button>
+                                            <button class="queue-action-button queue-action-cancel" type="button" @onclick="@(() => CancelQueueItem(item))">
+                                                <i class="bi bi-x-circle"></i>
+                                                <span>@Localizer["Cancel"]</span>
+                                            </button>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            @if (!GetFilteredQueueItems().Any())
+                            {
+                                <div class="queue-empty">
+                                    <p>@string.Format(Localizer["NoItemsInQueue"], selectedQueueTab.ToString().ToLower())</p>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+                else if (currentSidebarView == SidebarView.Settings)
+                {
+                    <div class="sidebar-settings-content">
+                        <!-- Show Advanced Option Toggle -->
+                        <div class="settings-card">
+                            <div class="toggle-advanced-options">
+                                <div class="toggle-label">
+                                    <span>@Localizer["ShowAdvancedOptions"]</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" @bind="showAdvancedOption" @bind:after="OnAdvancedOptionChanged">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Calendar Section -->
+                        <div class="settings-card">
+                            <div class="card-header">
+                                <div class="card-title">
+                                    <i class="bi bi-calendar3"></i>
+                                    <span>@Localizer["SelectDate"]</span>
+                                </div>
+                            </div>
+                            <div class="card-content">
+                                <div class="settings-calendar">
+                                    <div class="calendar-header">
+                                        <button class="calendar-nav-btn" type="button" @onclick="@(() => NavigateCalendarMonth(-1))">
+                                            <i class="bi bi-chevron-left"></i>
+                                        </button>
+                                        <div class="calendar-month-year">
+                                            @settingsCalendarDate.ToString("MMMM yyyy")
+                                        </div>
+                                        <button class="calendar-nav-btn" type="button" @onclick="@(() => NavigateCalendarMonth(1))">
+                                            <i class="bi bi-chevron-right"></i>
+                                        </button>
+                                    </div>
+                                    <div class="calendar-weekdays">
+                                        <div class="calendar-weekday">@Localizer["Sun"]</div>
+                                        <div class="calendar-weekday">@Localizer["Mon"]</div>
+                                        <div class="calendar-weekday">@Localizer["Tue"]</div>
+                                        <div class="calendar-weekday">@Localizer["Wed"]</div>
+                                        <div class="calendar-weekday">@Localizer["Thu"]</div>
+                                        <div class="calendar-weekday">@Localizer["Fri"]</div>
+                                        <div class="calendar-weekday">@Localizer["Sat"]</div>
+                                    </div>
+                                    <div class="calendar-days">
+                                        @{
+                                            var firstDayOfMonth = new DateTime(settingsCalendarDate.Year, settingsCalendarDate.Month, 1);
+                                            var startDate = firstDayOfMonth.AddDays(-(int)firstDayOfMonth.DayOfWeek);
+                                            var today = DateTime.Today;
+                                            var selectedDate = SelectedDate.Date;
+                                        }
+                                        @for (int week = 0; week < 6; week++)
+                                        {
+                                            @for (int day = 0; day < 7; day++)
+                                            {
+                                                var dayOffset = week * 7 + day;
+                                                var currentDate = startDate.AddDays(dayOffset);
+                                                var isCurrentMonth = currentDate.Month == settingsCalendarDate.Month;
+                                                var isToday = currentDate.Date == today;
+                                                var isSelected = currentDate.Date == selectedDate;
+                                                var dateClass = $"calendar-day {(isCurrentMonth ? "" : "calendar-day-other-month")} {(isToday ? "calendar-day-today" : "")} {(isSelected ? "calendar-day-selected" : "")}";
+
+                                                <div class="@dateClass"
+                                                     @onclick="@(() => OnSettingsDateSelected(currentDate))">
+                                                    @currentDate.Day
+                                                </div>
+                                            }
+                                        }
+                                    </div>
+                                    <div class="calendar-footer">
+                                        <button class="calendar-today-btn" type="button" @onclick="GoToTodayInSettings">@Localizer["Today"]</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Appointment History Section -->
+                        <div class="settings-card">
+                            <div class="card-header">
+                                <div class="card-title">
+                                    <i class="bi bi-clock-history"></i>
+                                    <span>@Localizer["AppointmentHistory"]</span>
+                                </div>
+                            </div>
+                            <div class="card-content">
+                                <div class="appointment-history-list">
+                                    @{
+                                        var appointmentsForDate = GetAppointmentsForDate(settingsCalendarDate);
+                                    }
+                                    @if (appointmentsForDate.Any())
+                                    {
+                                        <div class="history-list-header">
+                                            <div class="history-header-customer">@Localizer["ColCustomer"]</div>
+                                            <div class="history-header-time">@Localizer["StartTime"]</div>
+                                        </div>
+                                        @foreach (var appt in appointmentsForDate)
+                                        {
+                                            <button class="history-list-item"
+                                                    type="button"
+                                                    title="View appointment details"
+                                                    aria-label="View appointment details for @appt.CustomerName"
+                                                    @onclick="(() => OpenAppointmentFromHistory(appt))">
+                                                <span class="history-item-customer">@appt.CustomerName</span>
+                                                <span class="history-item-time">@appt.Start.ToString("dd/MM/yyyy hh:mm tt")</span>
+                                            </button>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <div class="history-empty">
+                                            <p>@string.Format(Localizer["NoAppointmentsOn"], settingsCalendarDate.ToString("MMMM dd, yyyy"))</p>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </aside>
+    </div>
+</div>
+
+@if (showMobileAppointmentSheet && mobileActionAppointment is not null)
+{
+    <div class="mobile-appointment-sheet-overlay" @onclick="CloseMobileAppointmentActions">
+        <section class="mobile-appointment-sheet" role="dialog" aria-modal="true" aria-labelledby="mobile-appointment-sheet-title" @onclick:stopPropagation="true">
+            <div class="mobile-sheet-handle" aria-hidden="true"></div>
+            <header class="mobile-appointment-sheet-header">
+                <div>
+                    <span class="mobile-sheet-eyebrow">Appointment details</span>
+                    <h3 id="mobile-appointment-sheet-title">@(!string.IsNullOrWhiteSpace(mobileActionAppointment.CustomerName) ? mobileActionAppointment.CustomerName : "Unnamed customer")</h3>
+                </div>
+                <button type="button" class="mobile-sheet-close" aria-label="Close appointment details" @onclick="CloseMobileAppointmentActions">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </header>
+
+            <div class="mobile-appointment-summary">
+                <div class="mobile-appointment-summary-primary">
+                    <span class="mobile-appointment-summary-icon"><i class="bi bi-calendar3"></i></span>
+                    <div>
+                        <strong>@mobileActionAppointment.Start.ToString("dddd, dd MMMM yyyy")</strong>
+                        <span>@GetAppointmentTimeRange(mobileActionAppointment) &middot; @((int)Math.Max(0, (mobileActionAppointment.End - mobileActionAppointment.Start).TotalMinutes)) minutes</span>
+                    </div>
+                </div>
+                <div class="mobile-appointment-detail-grid">
+                    <div>
+                        <span>Service</span>
+                        <strong>@GetAppointmentDisplayService(mobileActionAppointment)</strong>
+                    </div>
+                    <div>
+                        <span>Employee</span>
+                        <strong>@(!string.IsNullOrWhiteSpace(mobileActionAppointment.StaffName) ? mobileActionAppointment.StaffName : "-")</strong>
+                    </div>
+                    <div>
+                        <span>Room</span>
+                        <strong>@(!string.IsNullOrWhiteSpace(mobileActionAppointment.Room) ? mobileActionAppointment.Room : "-")</strong>
+                    </div>
+                    <div>
+                        <span>Status</span>
+                        <strong class="appointment-status-badge @GetAppointmentStatusCssClass(mobileActionAppointment)">@GetAppointmentStatusDisplayName(mobileActionAppointment)</strong>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mobile-appointment-sheet-actions">
+                <button type="button" class="mobile-appointment-edit-action" @onclick="EditMobileAppointment">
+                    <i class="bi bi-pencil"></i>
+                    <span>Edit Appointment</span>
+                </button>
+                <button type="button" class="mobile-appointment-delete-action" title="Cancel the appointment before deleting it" disabled="@(mobileActionAppointment is null || !IsCancelledAppointment(mobileActionAppointment))" @onclick="RequestMobileAppointmentDelete">
+                    <i class="bi bi-trash3"></i>
+                    <span>Delete Appointment</span>
+                </button>
+            </div>
+        </section>
+    </div>
+}
+
+@if (showMobileDeleteConfirmation && mobileActionAppointment is not null)
+{
+    <div class="mobile-delete-confirm-overlay">
+        <section class="mobile-delete-confirm" role="alertdialog" aria-modal="true" aria-labelledby="mobile-delete-title" aria-describedby="mobile-delete-description">
+            <div class="mobile-delete-confirm-icon"><i class="bi bi-trash3"></i></div>
+            <h3 id="mobile-delete-title">Delete appointment?</h3>
+            <p id="mobile-delete-description">
+                This will remove the appointment for
+                <strong>@(!string.IsNullOrWhiteSpace(mobileActionAppointment.CustomerName) ? mobileActionAppointment.CustomerName : "this customer")</strong>
+                on <strong>@mobileActionAppointment.Start.ToString("dd/MM/yyyy 'at' hh:mm tt")</strong>.
+            </p>
+            <div class="mobile-delete-confirm-actions">
+                <button type="button" class="mobile-delete-cancel" disabled="@isMobileAppointmentDeleting" @onclick="CancelMobileAppointmentDelete">Keep Appointment</button>
+                <button type="button" class="mobile-delete-submit" disabled="@isMobileAppointmentDeleting" @onclick="ConfirmMobileAppointmentDelete">
+                    @if (isMobileAppointmentDeleting)
+                    {
+                        <span class="mobile-delete-spinner" aria-hidden="true"></span>
+                        <span>Deleting...</span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-trash3"></i>
+                        <span>Delete</span>
+                    }
+                </button>
+            </div>
+        </section>
+    </div>
+}
+<!-- Modal for Adding/Editing Appointment -->
+@if (showModal)
+{
+    <div class="appointment-modal-overlay" @onclick="CloseModal">
+        <div class="appointment-modal" @onclick:stopPropagation="true">
+            <div class="appointment-modal-header">
+                <div class="header-primary">
+                    <h3>@Localizer["AppointmentTitle"]</h3>
+                    <div class="header-secondary-actions">
+                        <button class="btn-ghost" type="button">@Localizer["ViewHistory"]</button>
+                        <button class="btn-ghost" type="button">@Localizer["CreateBill"]</button>
+                        @if (editingAppointment?.Id != 0)
+                        {
+                            <button class="btn-ghost" type="button" @onclick="NavigateToCaseNotes">
+                                <span>@Localizer["CaseNote"]</span>
+                            </button>
+                        }
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button class="btn-ghost" type="button" @onclick="CloseModal">@Localizer["Cancel"]</button>
+                    @if (editingAppointment?.Id != 0)
+                    {
+                        <button class="btn-danger" type="button" @onclick="CancelAppointment" disabled="@isAppointmentSaving">Cancel Appointment</button>
+                    }
+                    <button class="btn-save" type="button" @onclick="SaveAppointment" disabled="@isAppointmentSaving">@(isAppointmentSaving ? "Saving..." : Localizer["Save"].Value)</button>
+                </div>
+            </div>
+
+            <div class="appointment-modal-body">
+                <div class="appointment-modal-main">
+                    <section class="modal-card">
+                        <div class="card-content">
+                            <!-- General Info Section -->
+                            <div class="field-grid">
+                                <div class="field-group">
+                                    <label>@Localizer["RequestedBy"]</label>
+                                    <input type="text" @bind="editingAppointment.RequestedBy" placeholder="@Localizer["EnterRequesterName"]" />
+                                </div>
+                                <div class="field-group">
+                                    <label>@Localizer["CustomerName"]</label>
+                                    <input type="text" @bind="editingAppointment.CustomerName" @bind:after="OnCustomerSelectionChanged" list="appointment-customer-options" placeholder="@Localizer["EnterCustomerName"]" />
+                                    <datalist id="appointment-customer-options">
+                                        @foreach (var customer in customerOptions)
+                                        {
+                                            <option value="@($"{customer.FirstName} {customer.LastName}".Trim())"></option>
+                                        }
+                                    </datalist>
+                                </div>
+                                <div class="field-group">
+                                    <label>@Localizer["ColLocation"]</label>
+                                    <select @bind="editingAppointment.BranchId">
+                                        <option value="">@Localizer["SelectLocation"]</option>
+                                        @foreach (var branch in branchOptions)
+                                        {
+                                            <option value="@branch.Id">@branch.DisplayName</option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="field-group">
+                                    <label>Room</label>
+                                    <select @bind="editingAppointment.Room">
+                                        <option value="">Select room</option>
+                                        @foreach (var room in RoomList)
+                                        {
+                                            <option value="@room">@room</option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="field-group">
+                                    <label>@Localizer["ColService"]</label>
+                                    <select @bind="editingAppointment.ServiceItem">
+                                        <option value="">@Localizer["SelectService"]</option>
+                                        @foreach (var svc in ServicesList)
+                                        {
+                                            <option value="@svc">@svc</option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="field-group">
+                                    <label>@Localizer["ColStaff"]</label>
+                                    <select @bind="editingAppointment.EmployeeId">
+                                        <option value="">@Localizer["SelectStaff"]</option>
+                                        @foreach (var s in StaffList)
+                                        {
+                                            <option value="@s.Id">@s.Name (@s.Id)</option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="field-group">
+                                    <label>Status</label>
+                                    <select @bind="editingAppointment.Label" @bind:after="OnEditingAppointmentStatusChanged">
+                                        @foreach (var status in appointmentStatuses)
+                                        {
+                                            <option value="@status.Value">@status.Name</option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="field-group">
+                                    <label>@Localizer["ColPhone"]</label>
+                                    <input type="tel" @bind="editingAppointment.Phone" placeholder="@Localizer["ContactNumber"]" readonly />
+                                </div>
+                            </div>
+
+                            <hr class="form-divider" />
+
+                            <!-- Date and Time Section -->
+                            <div class="toggle-row">
+                                <div class="toggle-label">
+                                    <i class="bi bi-calendar3"></i>
+                                    <span>@Localizer["AllDayAppointment"]</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" @bind="editingAppointment.IsAllDay" @bind:after="OnAllDayChanged">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+
+                            <div class="field-grid">
+                                <div class="field-group">
+                                    <label>@Localizer["StartDate"]</label>
+                                    <input type="date" @bind="StartDateValue" disabled="@editingAppointment.IsAllDay" />
+                                </div>
+                                @if (!editingAppointment.IsAllDay)
+                                {
+                                    <div class="field-group">
+                                        <label>@Localizer["StartTime"]</label>
+                                        <input type="time" min="09:00" max="19:00" @bind="StartTimeValue" />
+                                    </div>
+                                }
+                                <div class="field-group">
+                                    <label>@Localizer["EndDate"]</label>
+                                    <input type="date" @bind="EndDateValue" disabled="@editingAppointment.IsAllDay" />
+                                </div>
+                                @if (!editingAppointment.IsAllDay)
+                                {
+                                    <div class="field-group">
+                                        <label>@Localizer["EndTime"]</label>
+                                        <input type="time" min="09:00" max="19:00" @bind="EndTimeValue" />
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="toggle-row">
+                                <div class="toggle-label">
+                                    <i class="bi bi-arrow-repeat"></i>
+                                    <span>@Localizer["RecurringAppointment"]</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" @bind="editingAppointment.IsRecurring" @bind:after="OnRecurringChanged">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+
+                            @if (editingAppointment.IsRecurring)
+                            {
+                                <div class="field-grid appointment-recurrence-grid">
+                                    <div class="field-group">
+                                        <label>Repeat every</label>
+                                        <select @bind="editingAppointment.RecurrencePattern">
+                                            <option value="Daily">1 day</option>
+                                            <option value="Weekly">1 week</option>
+                                            <option value="Monthly">1 month</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            }
+
+                            <hr class="form-divider" />
+
+                            <!-- Remarks Section -->
+                            <div class="field-group">
+                                <label>@Localizer["Remarks"]</label>
+                                <textarea class="remarks-input" @bind="editingAppointment.Remarks" placeholder="@Localizer["RemarksPlaceholder"]"></textarea>
+                            </div>
+                        </div>
+                    </section>
+                    @if (editingAppointment?.Id != 0)
+                    {
+                        <div class="mobile-editor-delete-row">
+                            <button type="button" class="mobile-appointment-delete-action" disabled="@isAppointmentSaving" @onclick="RequestEditingAppointmentDelete">
+                                <i class="bi bi-trash3"></i>
+                                <span>Delete Appointment</span>
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+                </div>
+            </div>
+        }
+
+        <!-- Modal for Adding Queue Item -->
+        @if (showQueueModal)
+        {
+            <div class="appointment-modal-overlay" @onclick="CloseQueueModal">
+                <div class="appointment-modal" @onclick:stopPropagation="true">
+                    <div class="appointment-modal-header">
+                        <div class="header-primary">
+                            <h3>@Localizer["AddToQueue"]</h3>
+                        </div>
+                        <div class="header-actions">
+                            <button class="btn-ghost" type="button" @onclick="CloseQueueModal">@Localizer["Cancel"]</button>
+                            <button class="btn-save" type="button" @onclick="SaveQueueItem">@Localizer["Add"]</button>
+                        </div>
+                    </div>
+
+                    <div class="appointment-modal-body">
+                        <div class="appointment-modal-main">
+                            <section class="modal-card">
+                                <div class="card-header">
+                                    <div class="card-title">
+                                        <i class="bi bi-person-circle"></i>
+                                        <span>@Localizer["CustomerInfo"]</span>
+                                    </div>
+                                </div>
+                                <div class="card-content">
+                                    <div class="field-grid">
+                                        <div class="field-group">
+                                            <label>@Localizer["Name"]</label>
+                                            <input type="text" @bind="newQueueItem.CustomerName" placeholder="@Localizer["EnterCustomerName"]" />
+                                        </div>
+                                        <div class="field-group">
+                                            <label>@Localizer["ContactNumber"]</label>
+                                            <input type="tel" @bind="newQueueItem.Phone" placeholder="@Localizer["EnterContactNumber"]" />
+                                        </div>
+                                        <div class="field-group">
+                                            <label>@Localizer["ColService"]</label>
+                                            <input type="text" @bind="newQueueItem.Service" placeholder="@Localizer["EnterService"]" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section class="modal-card">
+                                <div class="card-header">
+                                    <div class="card-title">
+                                        <i class="bi bi-chat-dots"></i>
+                                        <span>@Localizer["Remarks"]</span>
+                                    </div>
+                                </div>
+                                <div class="card-content">
+                                    <textarea class="remarks-input" @bind="newQueueItem.Remarks" placeholder="@Localizer["RemarksPlaceholder"]"></textarea>
+                                </div>
+                            </section>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (showQueueDetailsModal && selectedQueueItem != null)
+        {
+            <div class="appointment-modal-overlay" @onclick="CloseQueueItemModal">
+                <div class="appointment-modal" @onclick:stopPropagation="true">
+                    <div class="appointment-modal-header">
+                        <div class="header-primary">
+                            <h3>@Localizer["QueueDetails"]</h3>
+                        </div>
+                        <div class="header-actions">
+                            <button class="btn-ghost" type="button" @onclick="CloseQueueItemModal">@Localizer["Close"]</button>
+                            <button class="btn-danger" type="button" @onclick="@(() => CancelQueueItem(selectedQueueItem))">@Localizer["Cancel"]</button>
+                            <button class="btn-save" type="button" @onclick="@(() => ServeQueueItem(selectedQueueItem))">@Localizer["Serve"]</button>
+                        </div>
+                    </div>
+
+                    <div class="appointment-modal-body">
+                        <div class="appointment-modal-main">
+                            <section class="modal-card">
+                                <div class="card-header">
+                                    <div class="card-title">
+                                        <i class="bi bi-person-vcard"></i>
+                                        <span>@Localizer["CustomerInfo"]</span>
+                                    </div>
+                                </div>
+                                <div class="card-content">
+                                    <div class="field-grid">
+                                        <div class="field-group">
+                                            <label>@Localizer["QueueNumber"]</label>
+                                            <div class="queue-detail-value">#@selectedQueueItem.Id</div>
+                                        </div>
+                                        <div class="field-group">
+                                            <label>@Localizer["CustomerName"]</label>
+                                            <div class="queue-detail-value">@selectedQueueItem.CustomerName</div>
+                                        </div>
+                                        <div class="field-group">
+                                            <label>@Localizer["ContactNumber"]</label>
+                                            <div class="queue-detail-value">@selectedQueueItem.Phone</div>
+                                        </div>
+                                        <div class="field-group">
+                                            <label>@Localizer["ColService"]</label>
+                                            <div class="queue-detail-value">@selectedQueueItem.Service</div>
+                                        </div>
+                                        <div class="field-group">
+                                            <label>@Localizer["WaitingTime"]</label>
+                                            <div class="queue-detail-value">@GetWaitingTime(selectedQueueItem)</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section class="modal-card">
+                                <div class="card-header">
+                                    <div class="card-title">
+                                        <i class="bi bi-chat-dots"></i>
+                                        <span>@Localizer["Remarks"]</span>
+                                    </div>
+                                </div>
+                                <div class="card-content">
+                                    <div class="queue-detail-remarks">@(!string.IsNullOrWhiteSpace(selectedQueueItem.Remarks) ? selectedQueueItem.Remarks : Localizer["NoRemarks"])</div>
+                                </div>
+                            </section>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+<AppErrorPopup Title="Appointment request failed" Message="@appointmentError" />
+
+
+
+
+
+
+

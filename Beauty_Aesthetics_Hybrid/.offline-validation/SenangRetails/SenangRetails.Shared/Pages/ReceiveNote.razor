@@ -1,0 +1,1223 @@
+@page "/receivenote"
+@inherits SenangRetails.Shared.Pages.BasePage
+@inject NavigationManager NavigationManager
+@inject IInventoryService InventoryService
+@using SenangRetails.Shared.Services.InventoryService
+@using EBI.UC
+@using EBI.DM
+@using EBI.EF
+@using SenangRetails.Shared.Components.Common
+@using SenangRetails.Shared.Components.Inventory
+
+<div class="view-body @(noteDetailsIsOpen ? "scroll-locked" : "")">
+    <div class="header">
+        <div class="mobile-menu-btn" @onclick="ToggleNav">
+            <i class="bi bi-list"></i>
+        </div>
+        <div class="header-title">Receive Note</div>
+        <div class="top-right-button">
+            @* <i class="fa-solid fa-plus" @onclick="OpenAddRN" style="cursor: pointer; color: var(--primary-darker); font-size: 18px;"></i> *@
+        </div>
+    </div>
+
+    <!-- 2. Summary Cards -->
+    <div class="quick-summary-card">
+        <div class="card">
+            <span class="card-title">Total Notes</span>
+            <span class="card-value">@TotalNotes</span>
+        </div>
+        <div class="card">
+            <span class="card-title">Total SKU</span>
+            <span class="card-value">@TotalSKU Units</span>
+        </div>
+        <div class="card">
+            <span class="card-title">Total Cost</span>
+            <span class="card-value">@TotalCost.ToString("F2")</span>
+        </div>
+    </div>
+
+    <!-- 3. Action Toolbar -->
+    <div class="tool-bar">
+        <div class="search-bar" style="max-width: 300px; width: 100%;">
+            <i class="bi bi-search"></i>
+            <input class="search-stock-balance" type="text" placeholder="Search Receive Notes..." @bind="searchQuery" @bind:event="oninput" style="width: 100%;" />
+        </div>
+
+        <div @onclick="OpenDateRange" class="date-range-button">
+            <span><i class="bi bi-calendar3"></i> @SelectedDateRange <i class="bi bi-chevron-down" style="font-size: 11px; margin-left: 2px; color: #888;"></i></span>
+            @if (dateRangeIsOpen)
+            {
+                <div @onclick="CloseDateRange" @onclick:stopPropagation="true" class="all-modal-backdrop-no-color"></div>
+                <div class="dropdown-menu-simple">
+                    <span @onclick='() => SelectDateRange("Today")' @onclick:stopPropagation="true">Today</span>
+                    <span @onclick='() => SelectDateRange("Yesterday")' @onclick:stopPropagation="true">Yesterday</span>
+                    <span @onclick='() => SelectDateRange("Last 7 Days")' @onclick:stopPropagation="true">Last 7 Days</span>
+                    <span @onclick='() => SelectDateRange("This Month")' @onclick:stopPropagation="true">This Month</span>
+                    <span @onclick='() => SelectDateRange("Last Month")' @onclick:stopPropagation="true">Last Month</span>
+                    <span @onclick='() => SelectDateRange("All Time")' @onclick:stopPropagation="true">All Time</span>
+                    <span @onclick='() => SelectDateRange("Custom")' @onclick:stopPropagation="true">Custom...</span>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- 4. Data Table -->
+    <div class="stock-movement-table custom-shadow-sm">
+        <div class="GRN-table-row border-bottom">
+            <span class="text-align-left sortable" @onclick="ToggleSort">
+                GRN No. <i class="bi bi-arrow-@(isSortAscending ? "up" : "down")"></i>
+            </span>
+            <span class="text-align-left">Supplier</span>
+            <span class="text-align-right">Total</span>
+        </div>
+
+        @if (isLoadingData)
+        {
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; gap: 10px;">
+                <div class="spinner-border text-primary" role="status" style="width: 2rem; height: 2rem; border-color: var(--primary); border-right-color: transparent;">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <span style="color: #666; font-size: 14px; font-weight: 500;">Loading pending accept notes...</span>
+            </div>
+        }
+        else if (!FilteredNotes.Any())
+        {
+            <div style="text-align: center; padding: 40px; color: #888;">
+                <i class="bi bi-file-earmark-text" style="font-size: 2rem; display: block; margin-bottom: 8px; color: #bbb;"></i>
+                No receive notes found.
+            </div>
+        }
+        else
+        {
+            @foreach (var note in PaginatedNotes)
+            {
+                <div class="GRN-table-row cursor-pointer" @onclick="() => OpenNoteDetails(note)">
+                    <div class="table-card-content-row">
+                        <span class="table-item-name text-align-left">@note.GRNNumber</span>
+                        <span class="text-align-left muted-text">@note.Timestamp.ToString("dd/MM/yyyy, hh:mm tt")</span>
+                    </div>
+                    <div class="table-card-content-row">
+                        <span class="table-item-name text-align-left">@note.SupplierName</span>
+                        @if (!string.IsNullOrEmpty(note.SupplierDO))
+                        {
+                            <span class="text-align-left muted-text">DO: @note.SupplierDO</span>
+                        }
+                    </div>
+                    <div class="table-card-content-row text-align-right">
+                        <span class="table-item-name text-align-right">@note.TotalCost.ToString("F2")</span>
+                        <span class="text-align-right muted-text">@note.ItemCount Items</span>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+
+    <!-- 5. Pagination Bar -->
+    @if (TotalPages > 1)
+    {
+        <div class="pagination-bar custom-shadow-sm" style="border-radius: 8px;">
+            <span class="pagination-count">Showing page @currentPage of @TotalPages (@TotalNotes total notes)</span>
+            <div class="pagination-controls">
+                <button class="pagination-nav-btn" @onclick="PreviousPage" disabled="@(currentPage <= 1)" title="Previous Page">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                @{
+                    int lastPage = 0;
+                }
+                @foreach (var pageNum in GetPageNumbers())
+                {
+                    if (lastPage > 0 && pageNum - lastPage > 1)
+                    {
+                        <span style="padding: 0 4px; color: #888;">...</span>
+                    }
+                    <button class="pagination-page-btn @(currentPage == pageNum ? "active" : "")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                    lastPage = pageNum;
+                }
+                <button class="pagination-nav-btn" @onclick="NextPage" disabled="@(currentPage >= TotalPages)" title="Next Page">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    }
+</div>
+
+<!-- FULL SCREEN GRN DETAILS OVERLAY MODAL -->
+@if (noteDetailsIsOpen && selectedNote != null)
+{
+    <div class="full-screen-details">
+        <!-- Top Navigation -->
+        <div class="header">
+            <div @onclick="CloseNoteDetails" style="cursor: pointer; color: var(--color-primary, #007bff); display: flex; align-items: center;">
+                <i class="bi bi-chevron-left" style="font-size: 22px; font-weight: bold;"></i>
+            </div>
+            <div class="header-title">@selectedNote.GRNNumber</div>
+            <div style="width: 24px;"></div>
+        </div>
+
+        <div style="flex: 1; min-height: 0; overflow-y: auto; padding: 20px 0; display: flex; flex-direction: column; gap: 20px;">
+            <!-- STATIC VIEW MODE -->
+            @if (isLoadingDetails)
+            {
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; gap: 10px; flex: 1;">
+                    <div class="spinner-border text-primary" role="status" style="width: 2rem; height: 2rem; border-color: var(--primary, #007bff); border-right-color: transparent;">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <span style="color: #666; font-size: 14px; font-weight: 500;">Loading details from server...</span>
+                </div>
+            }
+            else
+            {
+                <div class="grn-summary-card custom-shadow-sm">
+                    <div class="grn-summary-card-top">
+                        <div class="grn-summary-card-top-left">
+                            <i class="bi bi-file-earmark-text-fill cart-icon"></i>
+                            <span class="grn-number-text">@selectedNote.GRNNumber</span>
+                            <span class="grn-timestamp-text">@selectedNote.Timestamp.ToString("dd/MM/yyyy, hh:mm tt")</span>
+                        </div>
+                        <div class="grn-summary-card-top-right">
+                            <div class="distinct-items-badge">
+                                <i class="bi bi-box-seam"></i>
+                                <span class="distinct-count">@GetDistinctItemsCount(selectedNote)</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grn-summary-card-bottom">
+                        <div class="grn-summary-card-bottom-left">
+                            <span class="grn-label">SUPPLIER</span>
+                            @if (!string.IsNullOrEmpty(selectedNote.SupplierDO))
+                            {
+                                <span class="grn-value">@selectedNote.SupplierName (DO: @selectedNote.SupplierDO)</span>
+                            }
+                            else
+                            {
+                                <span class="grn-value">@selectedNote.SupplierName</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grn-details-section-header">
+                    <span class="grn-details-section-title">Receive Contents</span>
+                    <button class="standalone-search-icon-btn @(detailsSearchIsOpen ? "active" : "")" @onclick="ToggleDetailsSearch">
+                        <i class="bi bi-search"></i>
+                    </button>
+                </div>
+                @if (detailsSearchIsOpen)
+                {
+                    <div class="grn-details-search-wrapper">
+                        <i class="bi bi-search details-search-icon"></i>
+                        <input class="grn-details-search-input" type="text" placeholder="Search products..." @bind="detailsSearchQuery" @bind:event="oninput" />
+                    </div>
+                }
+
+                <div class="details-table-wrapper">
+                    <div class="stock-movement-table custom-shadow-sm details-table-container" style="flex: none; margin-bottom: 20px;">
+                        <div class="details-table-grid-header">
+                            <span>Product</span>
+                            <span class="" style="text-align: center;">Quantity</span>
+                            <span>Remarks / DO</span>
+                        </div>
+                        
+                        @foreach (var item in GetFilteredNoteItems(selectedNote))
+                        {
+                            <div class="details-table-grid-row">
+                                <div class="product-info-cell">
+                                    <div class="green-thumbnail">
+                                        <div class="item-thumbnail-inner">
+                                            <i class="bi bi-box-fill"></i>
+                                        </div>
+                                    </div>
+                                    <div class="product-text-details">
+                                        <span class="product-name">@item.Name</span>
+                                        <span class="product-price">RM @item.Price.ToString("F2") / unit • Total: <strong>RM @(item.TotalCost.ToString("F2"))</strong></span>
+                                        @if (!string.IsNullOrEmpty(item.ItemDisplayCode) || !string.IsNullOrEmpty(item.DisplayCode))
+                                        {
+                                            <span class="item-code-badge">
+                                                <i class="bi bi-tag-fill"></i> Code: @(item.ItemDisplayCode ?? item.DisplayCode)
+                                            </span>
+                                        }
+                                        
+                                        @if (!string.IsNullOrEmpty(item.BatchNo) || (item.ExpiryDate.HasValue && item.ExpiryDate != DateTime.MinValue && item.ExpiryDate.Value.Year > 1))
+                                        {
+                                            <div class="details-meta-row">
+                                                @if (!string.IsNullOrEmpty(item.BatchNo))
+                                                {
+                                                    <span class="meta-badge batch-badge">
+                                                        <i class="bi bi-hash"></i> Batch: @item.BatchNo
+                                                    </span>
+                                                }
+                                                @if (item.ExpiryDate.HasValue && item.ExpiryDate != DateTime.MinValue && item.ExpiryDate.Value.Year > 1)
+                                                {
+                                                    <span class="meta-badge expiry-badge">
+                                                        <i class="bi bi-calendar-event"></i> Exp: @item.ExpiryDate.Value.ToString("dd/MM/yyyy")
+                                                    </span>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="font-bold" style="color: #333; font-size: 15px; text-align: center;">
+                                    @item.Quantity
+                                </div>
+                                <div class="remarks-cell">
+                                    @if (!string.IsNullOrEmpty(item.Remarks))
+                                    {
+                                        <div class="remarks-text">@item.Remarks</div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(selectedNote.SupplierDO))
+                                    {
+                                        <div class="do-text">DO: @selectedNote.SupplierDO</div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="details-footer-actions" style="flex: none; padding-top: 15px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 10px; background-color: #F8F9FA;">
+            @if (isAccepting)
+            {
+                <button class="confirm-btn disabled" disabled style="width: auto; padding: 12px 24px; display: inline-flex; align-items: center; gap: 8px;">
+                    <div class="spinner-border spinner-border-sm" role="status" style="width: 1rem; height: 1rem; border-color: var(--primary, #007bff); border-right-color: transparent;"></div>
+                    Accepting...
+                </button>
+            }
+            else
+            {
+                <button class="confirm-btn" @onclick="HandleAcceptStockIn" style="width: auto; padding: 12px 24px;">
+                    Accept Stock In
+                </button>
+            }
+        </div>
+    </div>
+}
+
+<!-- CREATE RECEIVE NOTE FULL SCREEN MODAL -->
+@if (addRNIsOpen)
+{
+    <div class="full-screen-modal">
+        <div class="header">
+            <div @onclick="CloseAddRN" style="cursor: pointer;">
+                <i class="bi bi-x-lg" style="font-size: 24px;"></i>
+            </div>
+            <div class="header-title">Create Receive Note</div>
+            <div style="width: 24px;"></div>
+        </div>
+
+        <div style="flex: 1; min-height: 0; overflow-y: auto; padding: 20px 0; display: flex; flex-direction: column; gap: 20px;">
+            <div class="form-card custom-shadow-sm">
+                <div class="form-row border-bottom" @onclick="OpenSupplierModal">
+                    <div class="left-icon-label">
+                        <i class="bi bi-shop purple-icon"></i>
+                        <span>Supplier</span>
+                    </div>
+                    <div class="right-selection">
+                        <span class="@(string.IsNullOrEmpty(selectedSupplier) ? "placeholder-text" : "")">
+                            @(string.IsNullOrEmpty(selectedSupplier) ? "Select Supplier" : selectedSupplier)
+                        </span>
+                        <i class="bi bi-chevron-down"></i>
+                    </div>
+                </div>
+                
+                <div class="form-row border-bottom" @onclick="OpenStaffModal">
+                    <div class="left-icon-label">
+                        <i class="bi bi-person-fill purple-icon"></i>
+                        <span>Staff</span>
+                    </div>
+                    <div class="right-selection">
+                        <span class="@(string.IsNullOrEmpty(selectedStaff) ? "placeholder-text" : "")">
+                            @(string.IsNullOrEmpty(selectedStaff) ? "Select Staff" : selectedStaff)
+                        </span>
+                        <i class="bi bi-chevron-down"></i>
+                    </div>
+                </div>
+
+                <div class="form-row border-bottom">
+                    <div class="left-icon-label">
+                        <i class="bi bi-file-earmark-text purple-icon"></i>
+                        <span>DO Number</span>
+                    </div>
+                    <div class="right-selection" style="width: 50%;">
+                        <input type="text" class="custom-input" placeholder="DO Number" @bind="selectedDO" style="border: none; text-align: right; outline: none; width: 100%; font-size: 14px; font-weight: 500;" />
+                    </div>
+                </div>
+                
+                <div class="form-row" @onclick="OpenReceiveDateModal">
+                    <div class="left-icon-label">
+                        <i class="bi bi-calendar3 purple-icon"></i>
+                        <span>Receive Date</span>
+                    </div>
+                    <div class="right-selection">
+                        <span class="@(receiveDate == null ? "placeholder-text" : "")">
+                            @(receiveDate == null ? "Not Set" : receiveDate.Value.ToString("dd/MM/yyyy"))
+                        </span>
+                        <i class="bi bi-chevron-down"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Product Section -->
+            <div class="product-section-card custom-shadow-sm">
+                <div class="add-product-row" @onclick="OpenAddProductModal">
+                    <div class="left-icon-label">
+                        <i class="bi bi-box-seam purple-icon"></i>
+                        <span class="text-blue font-bold">Add Product</span>
+                    </div>
+                    <i class="bi bi-chevron-right"></i>
+                </div>
+            </div>
+
+            @if (addedProducts.Any())
+            {
+                <div class="stock-balance-table custom-shadow-sm">
+                    <div class="added-product-grid-header">
+                        <span>Product</span>
+                        <span class="text-align-center">Quantity</span>
+                        <span class="text-align-right">Cost</span>
+                        <span class="text-align-right">Total</span>
+                        <span class="text-align-center">Action</span>
+                    </div>
+                    @foreach (var prod in addedProducts)
+                    {
+                        <div class="added-product-grid-row">
+                            <div class="stock-in-details">
+                                <span class="stock-in-title">@prod.Name</span>
+                                <span class="stock-in-subtitle">RM @prod.Price.ToString("F2") / unit</span>
+                            </div>
+                            <div class="text-align-center">
+                                <span class="number-button compact-number-btn" @onclick="() => EditAddedProductQty(prod)">@prod.Quantity</span>
+                            </div>
+                            <div class="text-align-right">
+                                <span class="number-button compact-number-btn" @onclick="() => EditAddedProductPrice(prod)">@prod.Price.ToString("F2")</span>
+                            </div>
+                            <div class="text-align-right font-bold" style="color: #333;">
+                                RM @prod.TotalCost.ToString("F2")
+                            </div>
+                            <div class="text-align-center">
+                                <button class="btn-delete" @onclick="() => RemoveAddedProduct(prod)"><i class="bi bi-trash-fill"></i></button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="bottom-action-bar">
+            <button class="confirm-btn @(IsSaveDisabled ? "disabled" : "")" disabled="@IsSaveDisabled" @onclick="SaveNewRN">
+                Save
+            </button>
+        </div>
+    </div>
+}
+
+<div class="transaction-modal-root">
+    <!-- SELECT SUPPLIER MODAL -->
+    <SlideModal IsOpen="@supplierModalIsOpen" CssClass="supplier-details-modal" ZIndexBackdrop="4000" ZIndexModal="4001" OnClose="CloseSupplierModal">
+        <div class="header">
+            <div @onclick="CloseSupplierModal" style="cursor: pointer;">
+                <i class="bi bi-x-lg"></i>
+            </div>
+            <div class="header-title">Select Supplier</div>
+            <div style="width: 24px;"></div>
+        </div>
+        <div class="tool-bar" style="padding: 10px 0;">
+            <div class="search-bar" style="width: 100%;">
+                <i class="bi bi-search"></i>
+                <input class="search-stock-balance" style="width: 100%;" type="text" placeholder="Search suppliers..." @bind="supplierSearchQuery" @bind:event="oninput" />
+            </div>
+        </div>
+        <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;">
+            @foreach (var supplier in FilteredSuppliersList)
+            {
+                <div class="option-card custom-shadow-sm cursor-pointer" @onclick="() => SelectSupplier(supplier)" style="padding: 15px; background: white; border-radius: 8px; border: 1px solid var(--border); display: flex; flex-direction: column;">
+                    <span style="font-weight: bold; color: #333;">@supplier</span>
+                    <span style="color: #888; font-size: 0.8em;">Supplier Partner</span>
+                </div>
+            }
+        </div>
+    </SlideModal>
+
+    <!-- SELECT STAFF MODAL -->
+    <SlideModal IsOpen="@staffModalIsOpen" CssClass="supplier-details-modal" ZIndexBackdrop="4000" ZIndexModal="4001" OnClose="CloseStaffModal">
+        <div class="header">
+            <div @onclick="CloseStaffModal" style="cursor: pointer;">
+                <i class="bi bi-x-lg"></i>
+            </div>
+            <div class="header-title">Select Staff</div>
+            <div style="width: 24px;"></div>
+        </div>
+        <div class="tool-bar" style="padding: 10px 0;">
+            <div class="search-bar" style="width: 100%;">
+                <i class="bi bi-search"></i>
+                <input class="search-stock-balance" style="width: 100%;" type="text" placeholder="Search staff..." @bind="staffSearchQuery" @bind:event="oninput" />
+            </div>
+        </div>
+        <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;">
+            @foreach (var staff in FilteredStaffList)
+            {
+                <div class="option-card custom-shadow-sm cursor-pointer" @onclick="() => SelectStaff(staff)" style="padding: 15px; background: white; border-radius: 8px; border: 1px solid var(--border); display: flex; flex-direction: column;">
+                    <span style="font-weight: bold; color: #333;">@staff</span>
+                    <span style="color: #888; font-size: 0.8em;">Team Member</span>
+                </div>
+            }
+        </div>
+    </SlideModal>
+
+    <!-- RECEIVE DATE MODAL -->
+    <SlideModal IsOpen="@receiveDateModalIsOpen" CssClass="supplier-details-modal" ZIndexBackdrop="4000" ZIndexModal="4001" OnClose="CloseReceiveDateModal">
+        <div class="header">
+            <div @onclick="CloseReceiveDateModal" style="cursor: pointer;">
+                <i class="bi bi-x-lg"></i>
+            </div>
+            <div class="header-title">Receive Date</div>
+            <div style="width: 24px;"></div>
+        </div>
+        <div class="details-form-container">
+            <div class="form-group">
+                <label>Select Date</label>
+                <MobileDatePicker @bind-Value="tempReceiveDate"
+                                  DateFormat="dd/MM/yyyy"
+                                  Placeholder="Select Date" />
+            </div>
+        </div>
+        <button class="confirm-btn" @onclick="SaveReceiveDate" style="margin-top: 15px;">
+            Save
+        </button>
+    </SlideModal>
+
+    <!-- CUSTOM DATE RANGE TIME FRAME MODAL -->
+    <SlideModal IsOpen="@customDateModalIsOpen" CssClass="supplier-details-modal custom-timeframe-modal" ZIndexBackdrop="4000" ZIndexModal="4001" OnClose="CloseCustomDateModal">
+        <div class="header">
+            <div @onclick="CloseCustomDateModal" style="cursor: pointer;">
+                <i class="bi bi-x-lg"></i>
+            </div>
+            <div class="header-title">Custom Timeframe</div>
+            <div style="width: 24px;"></div>
+        </div>
+        <div class="details-form-container">
+            <div class="form-group">
+                <label>Start Date</label>
+                <MobileDatePicker @bind-Value="customStartDate"
+                                  DateFormat="dd/MM/yyyy"
+                                  Placeholder="Start Date" />
+            </div>
+            <div class="form-group" style="margin-top: 15px;">
+                <label>End Date</label>
+                <MobileDatePicker @bind-Value="customEndDate"
+                                  DateFormat="dd/MM/yyyy"
+                                  Placeholder="End Date" />
+            </div>
+        </div>
+        <button class="confirm-btn" @onclick="SaveCustomDateRange" style="margin-top: 25px;">
+            Apply Filter
+        </button>
+    </SlideModal>
+
+    <!-- ADD PRODUCT FULL SCREEN MODAL -->
+    <InventoryAddProductModal IsOpen="@addProductModalIsOpen"
+                              Title="Add Product"
+                              OnClose="CloseAddProductModal"
+                              OnProductSelected="HandleProductSelected" />
+
+    <!-- ADDED PRODUCT DETAILS ENTRY MODAL -->
+    <SlideModal IsOpen="@productDetailsModalIsOpen" CssClass="supplier-details-modal" ZIndexBackdrop="6000" ZIndexModal="6001" OnClose="CloseProductDetailsModal">
+        <div class="header">
+            <div @onclick="CloseProductDetailsModal" style="cursor: pointer;">
+                <i class="bi bi-x-lg"></i>
+            </div>
+            <div class="header-title">Item Details</div>
+            <div style="width: 24px;"></div>
+        </div>
+        <div class="details-form-container">
+            <div class="form-group">
+                <label>Product</label>
+                <input type="text" class="custom-input" value="@selectedProductName" readonly />
+            </div>
+            <div class="form-group">
+                <label>Cost Per Unit</label>
+                <div class="input-wrapper" @onclick="OpenPriceCalculator" style="cursor: pointer;">
+                    <span>$</span>
+                    <input type="number" class="custom-input" value="@selectedProductPrice" readonly />
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Quantity</label>
+                <div class="input-wrapper" @onclick="OpenQuantityCalculator" style="cursor: pointer;">
+                    <input type="number" class="custom-input" value="@selectedProductQuantity" readonly style="padding-left: 10px;" />
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Total Cost</label>
+                <input type="text" class="custom-input" value="$@((selectedProductQuantity * selectedProductPrice).ToString("F2"))" readonly />
+            </div>
+        </div>
+        <button class="confirm-btn" @onclick="ConfirmAddProduct" style="margin-top: 15px;">
+            Confirm &amp; Add
+        </button>
+    </SlideModal>
+
+    <!-- SHARED CALCULATORS -->
+    <Calculator IsOpen="@quantityCalculatorIsOpen"
+                Title="Quantity"
+                InitialValue="@selectedProductQuantity"
+                OnSave="HandleQuantitySave"
+                OnClose="CloseQuantityCalculator" />
+
+    <Calculator IsOpen="@priceCalculatorIsOpen"
+                Title="Price"
+                AllowDecimal="true"
+                InitialValue="@selectedProductPrice"
+                OnSave="HandlePriceSave"
+                OnClose="ClosePriceCalculator" />
+
+    <!-- ALERT DIALOG MODAL -->
+    @if (showAlertDialogModal)
+    {
+        <div class="all-modal-backdrop" @onclick="CloseAlertDialog" style="z-index: 9999;"></div>
+        <div class="supplier-details-modal" @onclick:stopPropagation style="max-width: 400px; height: auto; z-index: 10000; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 24px; box-sizing: border-box; background: white; border-radius: 16px; box-shadow: var(--shadow-lg, 0 12px 40px rgba(0,0,0,0.16)); display: flex; flex-direction: column; gap: 15px;">
+            <h4 style="margin: 0; font-size: 1.2em; font-weight: bold; color: #1a1a1a;">@alertDialogTitle</h4>
+            <p style="color: #444; margin: 0 0 10px 0; font-size: 15px; line-height: 1.5;">
+                @((MarkupString)alertDialogMessage)
+            </p>
+
+            <div style="display: flex; gap: 10px; margin-top: 10px; justify-content: flex-end;">
+                <button class="confirm-btn" style="width: auto; padding: 10px 24px; margin: 0;" @onclick="CloseAlertDialog">
+                    OK
+                </button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public EventCallback OnToggleNav { get; set; }
+
+    private bool isNavOpen = true;
+
+    private string _searchQuery = "";
+    private string searchQuery
+    {
+        get => _searchQuery;
+        set
+        {
+            if (_searchQuery != value)
+            {
+                _searchQuery = value;
+                currentPage = 1;
+            }
+        }
+    }
+
+    private bool dateRangeIsOpen = false;
+
+    private string _selectedDateRange = "All Time";
+    private string SelectedDateRange
+    {
+        get => _selectedDateRange;
+        set
+        {
+            if (_selectedDateRange != value)
+            {
+                _selectedDateRange = value;
+                currentPage = 1;
+            }
+        }
+    }
+
+    private bool isSortAscending = false; // Downward sorting arrow by default
+
+    // Custom Date Selection State
+    private bool customDateModalIsOpen = false;
+    private DateTime customStartDate = DateTime.Today.AddDays(-7);
+    private DateTime customEndDate = DateTime.Today;
+
+    // Pagination
+    private int currentPage = 1;
+    private int pageSize = 10;
+
+    private List<GRNModel> PaginatedNotes
+    {
+        get
+        {
+            return FilteredNotes.Skip((currentPage - 1) * pageSize).Take(pageSize).ToList();
+        }
+    }
+
+    private int TotalPages => (int)Math.Ceiling((double)FilteredNotes.Count / pageSize);
+
+    private void PreviousPage()
+    {
+        if (currentPage > 1) currentPage--;
+    }
+
+    private void NextPage()
+    {
+        if (currentPage < TotalPages) currentPage++;
+    }
+
+    private void GoToPage(int page)
+    {
+        currentPage = page;
+    }
+
+    private IEnumerable<int> GetPageNumbers()
+    {
+        int range = 2;
+        var pages = new List<int>();
+        for (int i = 1; i <= TotalPages; i++)
+        {
+            if (i == 1 || i == TotalPages || Math.Abs(i - currentPage) <= range)
+            {
+                pages.Add(i);
+            }
+        }
+        return pages;
+    }
+
+    // Create RN Form states
+    private bool addRNIsOpen = false;
+    private string selectedSupplier = "";
+    private string selectedStaff = "";
+    private string selectedDO = "";
+    private DateTime? receiveDate = null;
+    private List<AddedProductModel> addedProducts = new();
+
+    // Details overlay state
+    private bool noteDetailsIsOpen = false;
+    private GRNModel? selectedNote = null;
+    private bool detailsSearchIsOpen = false;
+    private string detailsSearchQuery = "";
+    private bool moreOptionsIsOpen = false;
+
+    // Accept stock in states
+    private bool isAccepting = false;
+    private bool showAlertDialogModal = false;
+    private string alertDialogTitle = "";
+    private string alertDialogMessage = "";
+
+    // Sub-modal states
+    private bool supplierModalIsOpen = false;
+    private string supplierSearchQuery = "";
+    private bool staffModalIsOpen = false;
+    private string staffSearchQuery = "";
+    private bool receiveDateModalIsOpen = false;
+    private DateTime tempReceiveDate = DateTime.Today;
+
+    // Add Product Modal states
+    private bool addProductModalIsOpen = false;
+    private bool productDetailsModalIsOpen = false;
+    private string selectedProductName = "";
+    private int selectedProductQuantity = 1;
+    private double selectedProductPrice = 1.00;
+    private bool quantityCalculatorIsOpen = false;
+    private bool priceCalculatorIsOpen = false;
+    private bool isEditingPriceMode = false;
+    private AddedProductModel? editingProductRef = null;
+
+    private int TotalNotes => FilteredNotes.Count;
+    private int TotalSKU => FilteredNotes.Sum(n => n.ItemCount);
+    private double TotalCost => FilteredNotes.Sum(n => n.TotalCost);
+
+    public class GRNModel
+    {
+        public string GRNNumber { get; set; } = "";
+        public DateTime Timestamp { get; set; }
+        public string SupplierName { get; set; } = "";
+        public string SupplierDO { get; set; } = "";
+        public string StaffInitials { get; set; } = "";
+        public string StaffPhone { get; set; } = "";
+        public List<AddedProductModel> Items { get; set; } = new();
+
+        public int ItemCount => Items.Sum(i => i.Quantity);
+        public double TotalCost => Items.Sum(i => i.TotalCost);
+    }
+
+    public class AddedProductModel
+    {
+        public string Name { get; set; } = "";
+        public int Quantity { get; set; } = 1;
+        public double Price { get; set; } = 1.00;
+        public double TotalCost => Quantity * Price;
+        public string? DisplayCode { get; set; }
+        public string? ItemDisplayCode { get; set; }
+        public string? BatchNo { get; set; }
+        public DateTime? ExpiryDate { get; set; }
+        public string? Remarks { get; set; }
+    }
+
+    private bool isLoadingData = false;
+    private bool isLoadingDetails = false;
+    private List<GRNModel> ReceiveNotes = new();
+
+    private List<string> SuppliersList = new()
+    {
+        "rtty", "Acme Corp", "General Medical", "Supplier A", "Supplier B"
+    };
+
+    private List<string> StaffList = new()
+    {
+        "YJ", "John Doe", "Jane Smith", "No Staff"
+    };
+
+    private List<string> FilteredSuppliersList => string.IsNullOrWhiteSpace(supplierSearchQuery)
+        ? SuppliersList
+        : SuppliersList.Where(s => s.Contains(supplierSearchQuery, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private List<string> FilteredStaffList => string.IsNullOrWhiteSpace(staffSearchQuery)
+        ? StaffList
+        : StaffList.Where(s => s.Contains(staffSearchQuery, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private List<GRNModel> FilteredNotes
+    {
+        get
+        {
+            var list = ReceiveNotes;
+            if (!string.IsNullOrWhiteSpace(searchQuery))
+            {
+                list = list.Where(n => n.GRNNumber.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                                       n.SupplierName.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                                       n.StaffInitials.Contains(searchQuery, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+
+            // Date Range Filter
+            if (SelectedDateRange == "Today")
+            {
+                list = list.Where(n => n.Timestamp.Date == DateTime.Today).ToList();
+            }
+            else if (SelectedDateRange == "Yesterday")
+            {
+                list = list.Where(n => n.Timestamp.Date == DateTime.Today.AddDays(-1)).ToList();
+            }
+            else if (SelectedDateRange == "Last 7 Days")
+            {
+                list = list.Where(n => n.Timestamp.Date >= DateTime.Today.AddDays(-7)).ToList();
+            }
+            else if (SelectedDateRange == "This Month")
+            {
+                list = list.Where(n => n.Timestamp.Month == DateTime.Today.Month && n.Timestamp.Year == DateTime.Today.Year).ToList();
+            }
+            else if (SelectedDateRange == "Last Month")
+            {
+                var lm = DateTime.Today.AddMonths(-1);
+                list = list.Where(n => n.Timestamp.Month == lm.Month && n.Timestamp.Year == lm.Year).ToList();
+            }
+            else if (SelectedDateRange.Contains(" - "))
+            {
+                list = list.Where(n => n.Timestamp.Date >= customStartDate.Date && n.Timestamp.Date <= customEndDate.Date).ToList();
+            }
+
+            if (isSortAscending)
+            {
+                list = list.OrderBy(n => n.GRNNumber).ToList();
+            }
+            else
+            {
+                list = list.OrderByDescending(n => n.GRNNumber).ToList();
+            }
+
+            return list;
+        }
+    }
+
+    private bool IsSaveDisabled => string.IsNullOrEmpty(selectedSupplier) || 
+                                   string.IsNullOrEmpty(selectedStaff) || 
+                                   string.IsNullOrEmpty(selectedDO) || 
+                                   receiveDate == null || 
+                                   !addedProducts.Any();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        selectedNote = null;
+        noteDetailsIsOpen = false;
+        await LoadPendingAcceptDocumentsAsync();
+    }
+
+    private async Task LoadPendingAcceptDocumentsAsync()
+    {
+        isLoadingData = true;
+        try
+        {
+            var pendingDocs = await InventoryService.GetPendingAcceptDocumentByBranchIdAsync();
+            if (pendingDocs != null && pendingDocs.Any())
+            {
+                var grouped = pendingDocs.GroupBy(d => d.DocumentID ?? "UNKNOWN");
+                ReceiveNotes = grouped.Select(group => {
+                    var first = group.First();
+                    return new GRNModel
+                    {
+                        GRNNumber = group.Key,
+                        Timestamp = first.FinancialDate,
+                        SupplierName = first.RefAccountID ?? "From HQ",
+                        SupplierDO = "",
+                        StaffInitials = first.GroupID ?? "EBI",
+                        StaffPhone = "",
+                        Items = group.Select(item => new AddedProductModel
+                        {
+                            Name = !string.IsNullOrEmpty(item.AccountName) ? item.AccountName : 
+                                   (!string.IsNullOrEmpty(item.ItemDisplayCode) ? item.ItemDisplayCode : 
+                                   (!string.IsNullOrEmpty(item.LineItemID) ? item.LineItemID : 
+                                   (!string.IsNullOrEmpty(item.InventoryItemAccountID) ? item.InventoryItemAccountID : "Unknown Product"))),
+                            Quantity = (int)item.Quantity,
+                            Price = item.Quantity > 0 ? (double)(item.TotalCost / item.Quantity) : (double)item.TotalCost
+                        }).ToList()
+                    };
+                }).ToList();
+            }
+            else
+            {
+                ReceiveNotes = new();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading pending accept documents: {ex.Message}");
+        }
+        finally
+        {
+            isLoadingData = false;
+        }
+    }
+
+    private async Task ToggleNav()
+    {
+        if (OnToggleNav.HasDelegate)
+        {
+            await OnToggleNav.InvokeAsync();
+        }
+        else
+        {
+            isNavOpen = !isNavOpen;
+        }
+    }
+
+    private void OpenDateRange()
+    {
+        dateRangeIsOpen = true;
+    }
+
+    private void CloseDateRange()
+    {
+        dateRangeIsOpen = false;
+    }
+
+    private void SelectDateRange(string range)
+    {
+        dateRangeIsOpen = false;
+        if (range == "Custom")
+        {
+            customDateModalIsOpen = true;
+        }
+        else
+        {
+            SelectedDateRange = range;
+        }
+    }
+
+    private void CloseCustomDateModal()
+    {
+        customDateModalIsOpen = false;
+    }
+
+    private void SaveCustomDateRange()
+    {
+        SelectedDateRange = $"{customStartDate.ToString("dd/MM/yyyy")} - {customEndDate.ToString("dd/MM/yyyy")}";
+        customDateModalIsOpen = false;
+    }
+
+    private void ToggleSort()
+    {
+        isSortAscending = !isSortAscending;
+    }
+
+    private void OpenAddRN()
+    {
+        selectedSupplier = "";
+        selectedStaff = "";
+        selectedDO = "";
+        receiveDate = null;
+        addedProducts.Clear();
+        addRNIsOpen = true;
+    }
+
+    private void CloseAddRN()
+    {
+        addRNIsOpen = false;
+    }
+
+    private void SaveNewRN()
+    {
+        if (IsSaveDisabled) return;
+
+        var note = new GRNModel
+        {
+            GRNNumber = "GRN-00000" + (560 + ReceiveNotes.Count),
+            Timestamp = receiveDate ?? DateTime.Now,
+            SupplierName = selectedSupplier,
+            SupplierDO = selectedDO,
+            StaffInitials = selectedStaff,
+            StaffPhone = "(6019) 731-2802",
+            Items = addedProducts.Select(p => new AddedProductModel
+            {
+                Name = p.Name,
+                Quantity = p.Quantity,
+                Price = p.Price
+            }).ToList()
+        };
+
+        ReceiveNotes.Add(note);
+        addRNIsOpen = false;
+    }
+
+    private async Task OpenNoteDetails(GRNModel note)
+    {
+        selectedNote = note;
+        noteDetailsIsOpen = true;
+        isLoadingDetails = true;
+        StateHasChanged();
+        try
+        {
+            var details = await InventoryService.GetPendingAcceptDocumentDetailsAsync(note.GRNNumber);
+            if (details != null && details.Any())
+            {
+                selectedNote.Items = details.Select(item => new AddedProductModel
+                {
+                    Name = !string.IsNullOrEmpty(item.AccountName) ? item.AccountName : 
+                           (!string.IsNullOrEmpty(item.ItemDisplayCode) ? item.ItemDisplayCode : 
+                           (!string.IsNullOrEmpty(item.LineItemID) ? item.LineItemID : 
+                           (!string.IsNullOrEmpty(item.InventoryItemAccountID) ? item.InventoryItemAccountID : "Unknown Product"))),
+                    Quantity = (int)item.Quantity,
+                    Price = item.Quantity > 0 ? (double)(item.TotalCost / item.Quantity) : (double)item.TotalCost,
+                    DisplayCode = item.DisplayCode,
+                    ItemDisplayCode = item.ItemDisplayCode,
+                    BatchNo = item.BatchNo,
+                    ExpiryDate = item.ExpiryDate,
+                    Remarks = item.Remarks
+                }).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading document details: {ex.Message}");
+        }
+        finally
+        {
+            isLoadingDetails = false;
+        }
+    }
+
+    private void CloseNoteDetails()
+    {
+        selectedNote = null;
+        noteDetailsIsOpen = false;
+    }
+
+    private void ShowNotification(string message, bool isSuccess = false)
+    {
+        alertDialogTitle = isSuccess ? "Success" : "Error";
+        alertDialogMessage = message;
+        showAlertDialogModal = true;
+        StateHasChanged();
+    }
+
+    private void CloseAlertDialog()
+    {
+        showAlertDialogModal = false;
+        StateHasChanged();
+    }
+
+    private async Task HandleAcceptStockIn()
+    {
+        if (selectedNote == null || isAccepting) return;
+        isAccepting = true;
+        StateHasChanged();
+        try
+        {
+            var result = await InventoryService.AcceptStockInAsync(selectedNote.GRNNumber);
+            if (result != null && result.statusCode == 200)
+            {
+                ShowNotification("Stock accepted successfully.", isSuccess: true);
+                noteDetailsIsOpen = false;
+                selectedNote = null;
+                await LoadPendingAcceptDocumentsAsync();
+            }
+            else
+            {
+                ShowNotification(result?.message ?? "Failed to accept stock in.");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowNotification($"Error accepting stock: {ex.Message}");
+        }
+        finally
+        {
+            isAccepting = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ExportData()
+    {
+        Console.WriteLine("Exporting data to Excel/PDF...");
+    }
+
+    private void OpenSupplierModal()
+    {
+        supplierSearchQuery = "";
+        supplierModalIsOpen = true;
+    }
+
+    private void CloseSupplierModal() => supplierModalIsOpen = false;
+
+    private void SelectSupplier(string name)
+    {
+        selectedSupplier = name;
+        supplierModalIsOpen = false;
+    }
+
+    private void OpenStaffModal()
+    {
+        staffSearchQuery = "";
+        staffModalIsOpen = true;
+    }
+
+    private void CloseStaffModal() => staffModalIsOpen = false;
+
+    private void SelectStaff(string name)
+    {
+        selectedStaff = name;
+        staffModalIsOpen = false;
+    }
+
+    private void OpenReceiveDateModal()
+    {
+        tempReceiveDate = receiveDate ?? DateTime.Today;
+        receiveDateModalIsOpen = true;
+    }
+
+    private void CloseReceiveDateModal() => receiveDateModalIsOpen = false;
+
+    private void SaveReceiveDate()
+    {
+        receiveDate = tempReceiveDate;
+        receiveDateModalIsOpen = false;
+    }
+
+    private void OpenAddProductModal()
+    {
+        addProductModalIsOpen = true;
+    }
+
+    private void CloseAddProductModal() => addProductModalIsOpen = false;
+
+    private void HandleProductSelected(string name)
+    {
+        selectedProductName = name;
+        selectedProductQuantity = 1;
+        selectedProductPrice = 1.00;
+        isEditingPriceMode = false;
+        addProductModalIsOpen = false;
+        productDetailsModalIsOpen = true;
+    }
+
+    private void CloseProductDetailsModal() => productDetailsModalIsOpen = false;
+
+    private void ConfirmAddProduct()
+    {
+        productDetailsModalIsOpen = false;
+
+        if (isEditingPriceMode && editingProductRef != null)
+        {
+            editingProductRef.Quantity = selectedProductQuantity;
+            editingProductRef.Price = selectedProductPrice;
+        }
+        else
+        {
+            addedProducts.Add(new AddedProductModel
+            {
+                Name = selectedProductName,
+                Quantity = selectedProductQuantity,
+                Price = selectedProductPrice
+            });
+        }
+    }
+
+    private void OpenQuantityCalculator()
+    {
+        quantityCalculatorIsOpen = true;
+    }
+
+    private void CloseQuantityCalculator() => quantityCalculatorIsOpen = false;
+
+    private void HandleQuantitySave(double value)
+    {
+        selectedProductQuantity = (int)value;
+        quantityCalculatorIsOpen = false;
+    }
+
+    private void OpenPriceCalculator()
+    {
+        priceCalculatorIsOpen = true;
+    }
+
+    private void ClosePriceCalculator() => priceCalculatorIsOpen = false;
+
+    private void HandlePriceSave(double value)
+    {
+        selectedProductPrice = value;
+        priceCalculatorIsOpen = false;
+    }
+
+    private void EditAddedProductQty(AddedProductModel prod)
+    {
+        selectedProductName = prod.Name;
+        selectedProductQuantity = prod.Quantity;
+        selectedProductPrice = prod.Price;
+        isEditingPriceMode = true;
+        editingProductRef = prod;
+        productDetailsModalIsOpen = true;
+    }
+
+    private void EditAddedProductPrice(AddedProductModel prod)
+    {
+        selectedProductName = prod.Name;
+        selectedProductQuantity = prod.Quantity;
+        selectedProductPrice = prod.Price;
+        isEditingPriceMode = true;
+        editingProductRef = prod;
+        productDetailsModalIsOpen = true;
+    }
+
+    private void RemoveAddedProduct(AddedProductModel prod)
+    {
+        addedProducts.Remove(prod);
+    }
+
+    private int GetDistinctItemsCount(GRNModel note)
+    {
+        return note.Items.Count;
+    }
+
+    private void ToggleDetailsSearch()
+    {
+        detailsSearchIsOpen = !detailsSearchIsOpen;
+        if (!detailsSearchIsOpen)
+        {
+            detailsSearchQuery = "";
+        }
+    }
+
+    private List<AddedProductModel> GetFilteredNoteItems(GRNModel note)
+    {
+        var items = note.Items;
+        if (!string.IsNullOrWhiteSpace(detailsSearchQuery))
+        {
+            items = items.Where(i => i.Name.Contains(detailsSearchQuery, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+        return items;
+    }
+}

@@ -1,0 +1,249 @@
+@page "/generatedvoucher/{code}"
+@namespace Beauty_Aesthetics_WebPos.Components.Pages.Voucher
+@using Beauty_Aesthetics_WebPos.Components.Layout
+@using Beauty_Aesthetics_WebPos.ViewModels
+@using Beauty_Aesthetics_WebPos.Components.Models.Voucher
+@layout MainLayout
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L
+
+<div class="generated-page">
+
+    <!-- HEADER BUTTON BAR -->
+    <div class="header-bar">
+        <div class="header-left">
+            <a class="btn-back" href="@VoucherBackUrl" aria-label="Back"><i class="bi bi-arrow-left"></i></a>
+            <h2>@L["Edit"] @L["Voucher"]</h2>
+        </div>
+
+        <div class="header-actions">
+            <button class="btn-save" @onclick="Save">
+                <img src="images/save_icon.png" class="btn-icon" /> @L["Save"]
+            </button>
+
+            <button type="button" class="btn-cancel" @onclick="Cancel">
+                <img src="images/cancel_icon.png" class="btn-icon" /> @L["Cancel"]
+            </button>
+        </div>
+    </div>
+    
+    <AppErrorPopup Title="Unable to save voucher" Message="@ViewModel.ErrorMessage" />
+
+    <!-- ======================== VOUCHER DETAILS ======================== -->
+    <div class="section-box">
+        <h3 class="section-title">@L["VoucherDetails"]</h3>
+
+        <div class="form-grid">
+            <div class="form-row">
+                <div class="field-group">
+                    <label>@L["VoucherNo"]</label>
+                    <input class="custom-input"
+                           @bind-value="ViewModel.Voucher.VoucherNo"
+                           placeholder="A000001" />
+                </div>
+
+                <div class="field-group">
+                    <label>@L["VoucherAmount"]</label>
+                    <input class="custom-input"
+                           type="number"
+                           @bind-value="ViewModel.Voucher.VoucherAmount" />
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="field-group">
+                    <label>@L["VoucherName"]</label>
+                    <input class="custom-input"
+                           @bind-value="ViewModel.Voucher.Name"
+                           placeholder="DISCOUNT ABC" />
+                </div>
+
+                <div class="field-group">
+                    <label>@L["SalesAmount"]</label>
+                    <input class="custom-input"
+                           type="number"
+                           @bind-value="ViewModel.Voucher.SalesAmount" />
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="field-group">
+                    <label>@L["VoucherType"]</label>
+                    <input class="custom-input"
+                           value="@ViewModel.Voucher.DiscountType"
+                           disabled />
+                </div>
+
+                <div class="field-group">
+                    <label>@L["VoucherDiscount"]</label>
+                    <input class="custom-input"
+                           @bind-value="ViewModel.Voucher.DiscountValue"
+                           disabled />
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="field-group checkbox-field">
+                    <label>@L["ImmediateRedeemable"]</label>
+                    <InputCheckbox @bind-value="ViewModel.Voucher.ImmediateRedeemable" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======================== BRANCH & EXPIRY ======================== -->
+    <div class="section-box">
+        <div class="collapsible-header" @onclick="() => showBranch = !showBranch">
+            <h3 class="section-title">
+                @L["BranchAndExpiryControl"]
+                <svg class="arrow @(showBranch ? "open" : "")" width="16" height="16" viewBox="0 0 16 16">
+                    <path d="M2 5l6 6 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" />
+                </svg>
+            </h3>
+        </div>
+        @if (showBranch)
+        {
+            <div class="form-grid">
+                <div class="form-row">
+                <div class="field-group">
+                    <label>@L["CanSellAtBranch"]</label>
+                    <select class="custom-input"
+                            @bind="ViewModel.Voucher.CanSellBranch">
+                        <option>@L["AllBranches"]</option>
+                        <option>HQ</option>
+                        <option>SUBANG</option>
+                        <option>PUCHONG</option>
+                    </select>
+                </div>
+
+                <div class="field-group">
+                    <label>@L["CanRedeemAtBranch"]</label>
+                    <select class="custom-input"
+                            @bind="ViewModel.Voucher.CanRedeemBranch">
+                        <option>@L["AllBranches"]</option>
+                        <option>HQ</option>
+                        <option>SUBANG</option>
+                        <option>PUCHONG</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="field-group">
+                    <label>@L["ExpiryDays"]</label>
+                    <input class="custom-input"
+                           type="number"
+                           @bind-value="ViewModel.Voucher.ExpiryDays" />
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="field-group">
+                    <label>@L["EffectiveDate"]</label>
+                    <input class="custom-input"
+                           type="date"
+                           @bind-value="ViewModel.Voucher.StartDate" />
+                </div>
+
+                <div class="field-group">
+                    <label>@L["ExpiryDate"]</label>
+                    <input class="custom-input"
+                           type="date"
+                           @bind-value="ViewModel.Voucher.EndDate" />
+                </div>
+            </div>
+        </div>
+        }
+    </div>
+
+    <!-- ======================== STATUS ======================== -->
+    <div class="section-box">
+        <div class="collapsible-header" @onclick="() => showStatus = !showStatus">
+            <h3 class="section-title">@L["Status"]
+                <svg class="arrow @(showBranch ? "open" : "")" width="16" height="16" viewBox="0 0 16 16">
+                    <path d="M2 5l6 6 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" />
+                </svg>
+            </h3>
+        </div>
+        @if (showStatus)
+        {
+            <div class="form-grid">
+
+                <div class="form-row">
+                    <div class="field-group checkbox-field">
+                        <label>@L["IsBlock"]</label>
+                        <InputCheckbox @bind-value="ViewModel.Voucher.IsBlock" />
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="field-group">
+                        <label>@L["SalesOutlet"]</label>
+                        <input class="custom-input"
+                        @bind-value="ViewModel.Voucher.SalesOutlet" />
+                    </div>
+
+                    <div class="field-group">
+                        <label>@L["RedeemOutlet"]</label>
+                        <input class="custom-input"
+                        @bind-value="ViewModel.Voucher.RedeemOutlet" />
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="field-group">
+                        <label>@L["SalesDate"]</label>
+                        <input class="custom-input"
+                        type="date"
+                        @bind-value="ViewModel.Voucher.SalesDate" />
+                    </div>
+
+                    <div class="field-group">
+                        <label>@L["RedeemDate"]</label>
+                        <input class="custom-input"
+                        type="date"
+                        @bind-value="ViewModel.Voucher.RedeemDate" />
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="field-group">
+                        <label>@L["SalesValue"]</label>
+                        <input class="custom-input"
+                        @bind-value="ViewModel.Voucher.SalesValue" />
+                    </div>
+
+                    <div class="field-group">
+                        <label>@L["RedeemValue"]</label>
+                        <input class="custom-input"
+                        @bind-value="ViewModel.Voucher.RedeemValue" />
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="field-group">
+                        <label>@L["SalesDocNo"]</label>
+                        <input class="custom-input"
+                        @bind-value="ViewModel.Voucher.SalesDocNo" />
+                    </div>
+
+                    <div class="field-group">
+                        <label>@L["RedeemDocNo"]</label>
+                        <input class="custom-input"
+                        @bind-value="ViewModel.Voucher.RedeemDocNo" />
+                    </div>
+                </div>
+
+            </div>
+
+        }
+</div>
+</div>
+<style>
+    .field-group.checkbox-field input[type="checkbox"] {
+        width: 22px;
+        height: 44px;
+        accent-color: #2563eb;
+        cursor: pointer;
+        border-radius: 4px;
+    }
+</style>

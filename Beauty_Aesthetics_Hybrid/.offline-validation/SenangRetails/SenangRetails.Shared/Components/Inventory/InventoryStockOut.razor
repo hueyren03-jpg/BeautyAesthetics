@@ -1,0 +1,374 @@
+@inherits SenangRetails.Shared.Pages.BasePage
+@using SenangRetails.Shared.Services
+@using SenangRetails.Shared.Services.InventoryService
+@using SenangRetails.Shared.Models.DTOs
+@using EBI.DM
+@inject IInventoryService InventoryService
+@inject AppState AppState
+@inject LocalImageCacheService LocalImageCache
+
+<div class="view-body">
+    <div class="header">
+        <div class="@(IsInModal ? "modal-close-btn" : "mobile-menu-btn")" @onclick="ToggleNav">
+            @if (IsInModal)
+            {
+                <i class="bi bi-x-lg"></i>
+            }
+            else
+            {
+                <i class="bi bi-list"></i>
+            }
+        </div>
+        <div class="header-title">Stock Out</div>
+        <div class="top-right-button"><i class="bi bi-truck"></i></div>
+    </div>
+    
+    <div class="stock-in-dropdown-card custom-shadow-sm">
+        <span>
+            <i class="bi bi-arrows-move"></i> Action
+        </span>
+        <div @onclick="OpenOrderOut" class="order-button" style="position: relative; z-index: 51;">
+            @selectedAction <i class="bi bi-chevron-down"></i>
+            @if (orderIsOpenOut)
+            {
+                <div @onclick="CloseOrderOut" @onclick:stopPropagation="true" class="all-modal-backdrop-no-color"></div>
+                <div class="order-option-wrapper-summary">
+                    <span @onclick='() => SelectAction("Broken")' @onclick:stopPropagation="true">Broken</span>
+                    <span @onclick='() => SelectAction("Expired")' @onclick:stopPropagation="true">Expired</span>
+                    <span @onclick='() => SelectAction("Missing")' @onclick:stopPropagation="true">Missing</span>
+                    <span @onclick='() => SelectAction("Shop Used")' @onclick:stopPropagation="true">Shop Used</span>
+                    <span @onclick='() => SelectAction("Gift / Present")' @onclick:stopPropagation="true">Gift / Present</span>
+                    <span @onclick='() => SelectAction("Adjustment")' @onclick:stopPropagation="true">Adjustment</span>
+                    <span @onclick='() => SelectAction("Internal Transferred Out")' @onclick:stopPropagation="true">Internal Transferred Out</span>
+                </div>
+            }
+        </div>
+    </div>
+    
+    <div class="stock-in-dropdown-card custom-shadow-sm">
+        <textarea placeholder="Remarks" @bind="remarks" />
+    </div>
+    
+    <div @onclick="OpenAddProductModal" class="stock-in-dropdown-card custom-shadow-sm cursor-pointer mb-15">
+        <span><i class="bi bi-box-seam"></i> Add Product</span>
+    </div>
+
+    @if (isLoading)
+    {
+        <div style="display: flex; align-items: center; justify-content: center; padding: 40px;">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="stock-movement-table custom-shadow-sm">
+            <div class="stock-movement-table-row border-bottom">
+                <span>Image</span>
+                <span>Product</span>
+                <span class="text-align-center">Qty</span>
+                <span class="text-align-right">Cost</span>
+            </div>
+
+            @if (!stockOutItems.Any())
+            {
+                <div style="text-align: center; padding: 40px; color: #888;">
+                    <i class="bi bi-box-seam" style="font-size: 2rem; display: block; margin-bottom: 8px; color: #bbb;"></i>
+                    No products added yet. Click "Add Product" above to select products.
+                </div>
+            }
+            else
+            {
+                @foreach (var item in stockOutItems)
+                {
+                    <div class="stock-movement-table-row">
+                        <img src="@GetImageUrl(item)" class="stock-in-image" alt="@item.Name" />
+
+                        <div class="stock-in-details">
+                            <span class="stock-in-title">@item.Name</span>
+                            <span class="stock-in-subtitle">RM @item.PurchasePrice.ToString("N2") | Stock: @item.CurrentStock.ToString("N0")</span>
+                        </div>
+
+                        <div class="text-align-center" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+                            <button class="btn btn-sm btn-light" style="padding: 2px 8px; border-radius: 4px; border: 1px solid #ccc;" @onclick="() => DecrementQty(item)">-</button>
+                            <span class="number-button compact-number-btn" style="min-width: 36px; text-align: center; display: inline-block;" @onclick='() => OpenCalculator(item, "Quantity")'>@item.StockOutQuantity</span>
+                            <button class="btn btn-sm btn-light" style="padding: 2px 8px; border-radius: 4px; border: 1px solid #ccc;" @onclick="() => IncrementQty(item)">+</button>
+                        </div>
+
+                        <div class="text-align-right">
+                            <span class="number-button compact-number-btn" @onclick='() => OpenCalculator(item, "Price")'>@item.StockOutCost.ToString("N2")</span>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+
+        <div class="delivery-order-total custom-shadow-sm summary-card-container">
+            <div class="side-by-side summary-line">
+                <span class="summary-text">Total SKU</span>
+                <span class="summary-value">@TotalSku</span>
+            </div>
+            <div class="side-by-side summary-line">
+                <span class="summary-text">Total Quantity</span>
+                <span class="summary-value">@TotalQuantity</span>
+            </div>
+            <div class="side-by-side summary-total-line">
+                <span class="summary-total-text">Total Cost</span>
+                <span class="summary-total-value">RM @TotalCost.ToString("N2")</span>
+            </div>
+
+            <button class="confirm-btn w-100" @onclick="ConfirmStockOut">
+                Confirm Stock Out
+            </button>
+        </div>
+    }
+    <Calculator IsOpen="@isLocalCalculatorOpen"
+                Title="@calculatorType"
+                AllowDecimal="@(calculatorType == "Price")"
+                InitialValue="@calculatorInitialValue"
+                OnSave="HandleCalculatorSave"
+                OnClose="CloseLocalCalculator" />
+</div>
+
+@code {
+    [Parameter] public EventCallback OnToggleNav { get; set; }
+    [Parameter] public bool IsInModal { get; set; } = false;
+
+    [Parameter] public int Quantity { get; set; } = 2;
+    [Parameter] public double Price { get; set; } = 5;
+
+    [Parameter] public EventCallback OnOpenAddProduct { get; set; }
+    [Parameter] public EventCallback OnEditQuantity { get; set; }
+    [Parameter] public EventCallback OnEditPrice { get; set; }
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    public class StockOutItemDisplay
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public decimal CurrentStock { get; set; }
+        public string Unit { get; set; } = "Unit";
+        public decimal PurchasePrice { get; set; }
+        public string? ImagePath { get; set; }
+        public string? ImageFileName { get; set; }
+
+        public int StockOutQuantity { get; set; }
+        public decimal StockOutCost { get; set; }
+    }
+
+    private List<StockOutItemDisplay> allAvailableItems = new();
+    private List<StockOutItemDisplay> stockOutItems = new();
+    private string selectedAction = "Broken";
+    private bool orderIsOpenOut = false;
+    private bool isLoading = true;
+    private string remarks = "";
+
+    private StockOutItemDisplay? editingItem;
+    private string calculatorType = "";
+    private bool isLocalCalculatorOpen = false;
+    private double calculatorInitialValue = 0;
+
+    // Dynamic calculations
+    private int TotalSku => stockOutItems.Count(i => i.StockOutQuantity > 0);
+    private int TotalQuantity => stockOutItems.Sum(i => i.StockOutQuantity);
+    private decimal TotalCost => stockOutItems.Where(i => i.StockOutQuantity > 0).Sum(i => (decimal)i.StockOutQuantity * i.StockOutCost);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    public void AddProductToStockOut(string masterAccountId)
+    {
+        var existing = stockOutItems.FirstOrDefault(i => i.Id == masterAccountId);
+        if (existing != null)
+        {
+            existing.StockOutQuantity++;
+        }
+        else
+        {
+            var matched = allAvailableItems.FirstOrDefault(i => i.Id == masterAccountId);
+            if (matched != null)
+            {
+                stockOutItems.Add(new StockOutItemDisplay
+                {
+                    Id = matched.Id,
+                    Name = matched.Name,
+                    CurrentStock = matched.CurrentStock,
+                    Unit = matched.Unit,
+                    PurchasePrice = matched.PurchasePrice,
+                    ImagePath = matched.ImagePath,
+                    ImageFileName = matched.ImageFileName,
+                    StockOutQuantity = 1,
+                    StockOutCost = matched.PurchasePrice
+                });
+            }
+        }
+        StateHasChanged();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        isLoading = true;
+        try
+        {
+            var branchId = AppState.SelectedBranchID;
+
+            // Load master items
+            var allItemsList = await InventoryService.LoadItemsAsync(branchId) ?? new List<InventoryDM>();
+            var productItems = allItemsList.Where(i => i.InventoryTypeID == 1).ToList();
+
+            if (productItems.Any())
+            {
+                // Load stock balances
+                var req = new StockBalanceRequest
+                {
+                    BranchID = branchId,
+                    InventoryIDs = string.Join(",", productItems.Select(p => p.MasterAccountID)),
+                    FinancialDate = DateTime.Today,
+                    EndDate = DateTime.Today,
+                    RedemptionEndDate = DateTime.Today,
+                    NewExpiryDate = DateTime.Today
+                };
+
+                var balances = await InventoryService.GetStockBalanceByBranchAndByItemAsync(req)
+                              ?? new Dictionary<string, StockBalanceItem>();
+
+                allAvailableItems.Clear();
+                foreach (var pi in productItems)
+                {
+                    decimal currentQty = 0;
+                    if (balances.TryGetValue(pi.MasterAccountID ?? string.Empty, out var balItem))
+                    {
+                        currentQty = balItem.ExistingQuantity;
+                    }
+
+                    allAvailableItems.Add(new StockOutItemDisplay
+                    {
+                        Id = pi.MasterAccountID ?? string.Empty,
+                        Name = pi.AccountName ?? string.Empty,
+                        CurrentStock = currentQty,
+                        Unit = pi.UnitOfMeasureName ?? pi.UnitOfMeasureID ?? "Unit",
+                        PurchasePrice = pi.PurchasePrice,
+                        ImagePath = pi.ImagePath,
+                        ImageFileName = pi.ImageFileName,
+                        StockOutQuantity = 0,
+                        StockOutCost = pi.PurchasePrice
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[InventoryStockOut] Error loading data: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private string GetImageUrl(StockOutItemDisplay item)
+    {
+        var cached = LocalImageCache.GetImage(item.Id);
+        if (!string.IsNullOrEmpty(cached)) return cached;
+        if (!string.IsNullOrEmpty(item.ImagePath))
+        {
+            return item.ImagePath;
+        }
+        return "https://placehold.co/400";
+    }
+
+    private void IncrementQty(StockOutItemDisplay item)
+    {
+        item.StockOutQuantity++;
+    }
+
+    private void DecrementQty(StockOutItemDisplay item)
+    {
+        if (item.StockOutQuantity > 1)
+        {
+            item.StockOutQuantity--;
+        }
+        else
+        {
+            stockOutItems.Remove(item);
+        }
+    }
+
+    private void ToggleNav()
+    {
+        OnToggleNav.InvokeAsync();
+    }
+
+    private void OpenOrderOut()
+    {
+        orderIsOpenOut = true;
+    }
+
+    private void CloseOrderOut()
+    {
+        orderIsOpenOut = false;
+    }
+
+    private void SelectAction(string action)
+    {
+        selectedAction = action;
+        orderIsOpenOut = false;
+    }
+
+    private async Task OpenAddProductModal()
+    {
+        await OnOpenAddProduct.InvokeAsync();
+    }
+
+    private async Task ConfirmStockOut()
+    {
+        var activeItems = stockOutItems.Where(i => i.StockOutQuantity > 0).ToList();
+        System.Text.StringBuilder sb = new();
+        sb.AppendLine($"Confirmed Stock Out ({selectedAction}) - Remarks: {remarks}");
+        foreach (var item in activeItems)
+        {
+            sb.AppendLine($"- {item.Name} (ID: {item.Id}): Qty: {item.StockOutQuantity}, Cost: {item.StockOutCost.ToString("N2")}");
+        }
+        Console.WriteLine(sb.ToString());
+        System.Diagnostics.Debug.WriteLine(sb.ToString());
+        await OnConfirm.InvokeAsync();
+    }
+
+    private void OpenCalculator(StockOutItemDisplay item, string type)
+    {
+        editingItem = item;
+        calculatorType = type;
+        calculatorInitialValue = type == "Quantity" ? item.StockOutQuantity : (double)item.StockOutCost;
+        isLocalCalculatorOpen = true;
+    }
+
+    private void CloseLocalCalculator()
+    {
+        isLocalCalculatorOpen = false;
+        editingItem = null;
+    }
+
+    private void HandleCalculatorSave(double value)
+    {
+        if (editingItem != null)
+        {
+            if (calculatorType == "Quantity")
+            {
+                editingItem.StockOutQuantity = (int)value;
+                if (editingItem.StockOutQuantity < 1)
+                {
+                    stockOutItems.Remove(editingItem);
+                }
+            }
+            else if (calculatorType == "Price")
+            {
+                editingItem.StockOutCost = (decimal)value;
+            }
+        }
+        isLocalCalculatorOpen = false;
+        editingItem = null;
+    }
+}

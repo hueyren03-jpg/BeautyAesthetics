@@ -1,0 +1,351 @@
+@page "/passcode"
+@using Beauty_Aesthetics_WebPos.Components.Layout
+@using Beauty_Aesthetics_WebPos.Components.ViewModels
+@using Beauty_Aesthetics_WebPos.Components.Models.Passcode
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L
+@layout MainLayout
+
+<div class="passcode-page">
+    <header class="passcode-page-header">
+        <div>
+            <div class="passcode-title-row">
+                <span class="passcode-title-icon"><i class="bi bi-key"></i></span>
+                <div>
+                    <h1>Passcode Management</h1>
+                    <p>Create and control temporary permission passcodes.</p>
+                </div>
+            </div>
+        </div>
+        <button type="button" class="passcode-primary-btn" @onclick="ShowAddPopup">
+            <i class="bi bi-plus-lg"></i>
+            <span>@L["AddPasscode"]</span>
+        </button>
+    </header>
+
+    <section class="passcode-summary" aria-label="Passcode summary">
+        <div class="passcode-summary-item passcode-summary-item--total">
+            <span class="passcode-summary-icon"><i class="bi bi-key-fill"></i></span>
+            <div><small>Total passcodes</small><strong>@TotalPasscodes</strong></div>
+        </div>
+        <div class="passcode-summary-item passcode-summary-item--active">
+            <span class="passcode-summary-icon"><i class="bi bi-check-circle-fill"></i></span>
+            <div><small>Active</small><strong>@ActivePasscodes</strong></div>
+        </div>
+        <div class="passcode-summary-item passcode-summary-item--used">
+            <span class="passcode-summary-icon"><i class="bi bi-person-check-fill"></i></span>
+            <div><small>Used</small><strong>@UsedPasscodes</strong></div>
+        </div>
+        <div class="passcode-summary-item passcode-summary-item--inactive">
+            <span class="passcode-summary-icon"><i class="bi bi-slash-circle-fill"></i></span>
+            <div><small>Inactive</small><strong>@InactivePasscodes</strong></div>
+        </div>
+    </section>
+
+    <section class="passcode-toolbar">
+        <label class="passcode-search">
+            <i class="bi bi-search"></i>
+            <input value="@VM!.SearchTerm"
+                   @oninput="OnSearchChanged"
+                   placeholder="Search passcode, permission, or employee" />
+        </label>
+        <label class="passcode-status-filter">
+            <span>Status</span>
+            <select value="@VM!.SelectedStatus" @onchange="OnStatusChanged">
+                <option value="All Status">@L["AllStatus"]</option>
+                <option value="Active">@L["Active"]</option>
+                <option value="Used">@L["Used"]</option>
+                <option value="Inactive">@L["Inactive"]</option>
+            </select>
+        </label>
+        @if (HasActiveFilters)
+        {
+            <button type="button" class="passcode-clear-btn" @onclick="ClearFilters">
+                <i class="bi bi-x-circle"></i>
+                Clear
+            </button>
+        }
+    </section>
+
+    <section class="passcode-list-panel">
+        <div class="passcode-table-shell">
+            <table class="passcode-data-table">
+                <thead>
+                    <tr>
+                        <th>@L["Passcode"]</th>
+                        <th>@L["Permission"]</th>
+                        <th>@L["UsedBy"]</th>
+                        <th>@L["CreatedBy"]</th>
+                        <th>@L["Status"]</th>
+                        <th class="passcode-actions-heading">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (!PaginatedPasscodes.Any())
+                    {
+                        <tr><td colspan="6" class="passcode-empty-cell">No passcodes match the current filters.</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var p in PaginatedPasscodes)
+                        {
+                            <tr>
+                                <td><span class="passcode-value">@DisplayValue(p.Code)</span></td>
+                                <td>
+                                    <div class="passcode-permission-list passcode-permission-list--compact">
+                                        @foreach (var permission in PermissionList)
+                                        {
+                                            var granted = HasPermission(p, permission);
+                                            <div class="passcode-permission-row @(granted ? "is-granted" : null)">
+                                                <span>@L[GetPermissionTranslationKey(permission)]</span>
+                                                <span class="passcode-permission-check @(granted ? "is-checked" : null)" aria-label="@(granted ? "Permission granted" : "Permission not granted")">
+                                                    @if (granted) { <i class="bi bi-check-lg"></i> }
+                                                </span>
+                                            </div>
+                                        }
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="passcode-person-cell">
+                                        <strong>@DisplayValue(p.UsedBy)</strong>
+                                        @if (!string.IsNullOrWhiteSpace(p.UsedDate))
+                                        {
+                                            <span>@p.UsedDate</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="passcode-person-cell">
+                                        <strong>@DisplayValue(p.CreatedBy)</strong>
+                                        <span>@DisplayValue(p.CreatedDate)</span>
+                                    </div>
+                                </td>
+                                <td><span class="passcode-status passcode-status--@GetStatusClass(p.Status)">@DisplayValue(p.Status)</span></td>
+                                <td class="passcode-actions-cell">
+                                    <div class="passcode-row-actions">
+                                        <button type="button" class="passcode-icon-btn" title="View details" aria-label="View passcode details" @onclick="() => ShowViewPopup(p)"><i class="bi bi-eye"></i></button>
+                                        <button type="button" class="passcode-icon-btn" title="Edit passcode" aria-label="Edit passcode" @onclick="() => ShowEditPopup(p)"><i class="bi bi-pencil"></i></button>
+                                        <button type="button" class="passcode-icon-btn passcode-icon-btn--danger" title="Delete passcode" aria-label="Delete passcode" @onclick="() => ShowDeleteConfirmation(p)"><i class="bi bi-trash3"></i></button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="passcode-mobile-list">
+            @if (!PaginatedPasscodes.Any())
+            {
+                <div class="passcode-mobile-empty">No passcodes match the current filters.</div>
+            }
+            else
+            {
+                @foreach (var p in PaginatedPasscodes)
+                {
+                    <article class="passcode-mobile-card">
+                        <div class="passcode-mobile-card__header">
+                            <div>
+                                <small>Passcode</small>
+                                <strong>@DisplayValue(p.Code)</strong>
+                            </div>
+                            <span class="passcode-status passcode-status--@GetStatusClass(p.Status)">@DisplayValue(p.Status)</span>
+                        </div>
+                        <dl>
+                            <div class="passcode-mobile-permissions">
+                                <dt>Permissions</dt>
+                                <dd>
+                                    <div class="passcode-permission-list passcode-permission-list--compact">
+                                        @foreach (var permission in PermissionList)
+                                        {
+                                            var granted = HasPermission(p, permission);
+                                            <div class="passcode-permission-row @(granted ? "is-granted" : null)">
+                                                <span>@L[GetPermissionTranslationKey(permission)]</span>
+                                                <span class="passcode-permission-check @(granted ? "is-checked" : null)">
+                                                    @if (granted) { <i class="bi bi-check-lg"></i> }
+                                                </span>
+                                            </div>
+                                        }
+                                    </div>
+                                </dd>
+                            </div>
+                            <div><dt>Assigned / used by</dt><dd>@DisplayValue(p.UsedBy)</dd></div>
+                            <div><dt>Created by</dt><dd>@DisplayValue(p.CreatedBy)</dd></div>
+                            <div><dt>Created</dt><dd>@DisplayValue(p.CreatedDate)</dd></div>
+                        </dl>
+                        <div class="passcode-mobile-actions">
+                            <button type="button" @onclick="() => ShowViewPopup(p)"><i class="bi bi-eye"></i><span>View</span></button>
+                            <button type="button" @onclick="() => ShowEditPopup(p)"><i class="bi bi-pencil"></i><span>Edit</span></button>
+                            <button type="button" class="danger" @onclick="() => ShowDeleteConfirmation(p)"><i class="bi bi-trash3"></i><span>Delete</span></button>
+                        </div>
+                    </article>
+                }
+            }
+        </div>
+
+        <footer class="passcode-list-footer">
+            <Pagination CurrentPage="@CurrentPage"
+                        ItemsPerPage="@ItemsPerPage"
+                        TotalItems="@FilteredPasscodes.Count"
+                        OnPageChanged="ChangePage" />
+            <span>@L["TotalItems"]: @FilteredPasscodes.Count</span>
+        </footer>
+    </section>
+
+    @if (showAddPopup)
+    {
+        <div class="passcode-modal-backdrop" @onclick="CloseAddPopup">
+            <section class="passcode-modal" role="dialog" aria-modal="true" aria-labelledby="add-passcode-title" @onclick:stopPropagation="true">
+                <header class="passcode-modal-header">
+                    <div><span><i class="bi bi-key"></i></span><div><h2 id="add-passcode-title">@L["GeneratePasscode"]</h2><p>Create a temporary authorization code.</p></div></div>
+                    <button type="button" @onclick="CloseAddPopup" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+                </header>
+                <div class="passcode-modal-body">
+                    <div class="passcode-info"><i class="bi bi-info-circle"></i><span>@L["PasscodeInfoText"]</span></div>
+                    <div class="passcode-form-grid">
+                        <label><span>@L["Passcode"] <em>*</em></span><input @bind="newPasscode.Code" placeholder="@L["EnterPasscode"]" inputmode="numeric" /></label>
+                        <fieldset class="passcode-permission-fieldset passcode-form-wide">
+                            <legend>@L["Permission"] <em>*</em></legend>
+                            <div class="passcode-permission-list">
+                                @foreach (var permission in PermissionList)
+                                {
+                                    var granted = HasPermission(newPasscode, permission);
+                                    <button type="button" class="passcode-permission-row passcode-permission-option @(granted ? "is-granted" : null)" @onclick="() => TogglePermission(newPasscode, permission)">
+                                        <span>@L[GetPermissionTranslationKey(permission)]</span>
+                                        <span class="passcode-permission-check @(granted ? "is-checked" : null)">
+                                            @if (granted) { <i class="bi bi-check-lg"></i> }
+                                        </span>
+                                    </button>
+                                }
+                            </div>
+                        </fieldset>
+                        <label class="passcode-form-wide">
+                            <span>@L["AssignToEmployeeOptional"]</span>
+                            <select @bind="newPasscode.UsedByEmployeeId" disabled="@isEmployeesLoading">
+                                <option value="">@(isEmployeesLoading ? "Loading employees..." : "Not assigned")</option>
+                                @foreach (var employee in activeEmployees)
+                                {
+                                    <option value="@employee.Code">@employee.Name (@employee.Code)</option>
+                                }
+                            </select>
+                            @if (!string.IsNullOrWhiteSpace(employeeLoadError))
+                            {
+                                <small class="passcode-field-error">@employeeLoadError</small>
+                            }
+                        </label>
+                    </div>
+                </div>
+                <footer class="passcode-modal-footer">
+                    <button type="button" class="passcode-secondary-btn" @onclick="CloseAddPopup">Cancel</button>
+                    <button type="button" class="passcode-save-btn" @onclick="SavePasscode"><i class="bi bi-check-lg"></i>@L["GeneratePasscode"]</button>
+                </footer>
+            </section>
+        </div>
+    }
+
+    @if (showViewPopup && selectedPasscode is not null)
+    {
+        <div class="passcode-modal-backdrop" @onclick="CloseViewPopup">
+            <section class="passcode-modal passcode-modal--details" role="dialog" aria-modal="true" aria-labelledby="view-passcode-title" @onclick:stopPropagation="true">
+                <header class="passcode-modal-header">
+                    <div><span><i class="bi bi-eye"></i></span><div><h2 id="view-passcode-title">Passcode Details</h2><p>Authorization and usage information.</p></div></div>
+                    <button type="button" @onclick="CloseViewPopup" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+                </header>
+                <div class="passcode-modal-body">
+                    <div class="passcode-detail-hero">
+                        <div><small>Passcode</small><strong>@DisplayValue(selectedPasscode.Code)</strong></div>
+                        <span class="passcode-status passcode-status--@GetStatusClass(selectedPasscode.Status)">@DisplayValue(selectedPasscode.Status)</span>
+                    </div>
+                    <div class="passcode-detail-grid">
+                        <div class="wide">
+                            <small>Permissions</small>
+                            <div class="passcode-permission-list passcode-detail-permissions">
+                                @foreach (var permission in PermissionList)
+                                {
+                                    var granted = HasPermission(selectedPasscode, permission);
+                                    <div class="passcode-permission-row @(granted ? "is-granted" : null)">
+                                        <span>@L[GetPermissionTranslationKey(permission)]</span>
+                                        <span class="passcode-permission-check @(granted ? "is-checked" : null)">
+                                            @if (granted) { <i class="bi bi-check-lg"></i> }
+                                        </span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                        <div><small>Assigned / used by</small><strong>@DisplayValue(selectedPasscode.UsedBy)</strong></div>
+                        <div><small>Employee ID</small><strong>@DisplayValue(selectedPasscode.UsedByEmployeeId)</strong></div>
+                        <div><small>Used date</small><strong>@DisplayValue(selectedPasscode.UsedDate)</strong></div>
+                        <div><small>Created by</small><strong>@DisplayValue(selectedPasscode.CreatedBy)</strong></div>
+                        <div class="wide"><small>Created date</small><strong>@DisplayValue(selectedPasscode.CreatedDate)</strong></div>
+                    </div>
+                </div>
+                <footer class="passcode-modal-footer">
+                    <button type="button" class="passcode-secondary-btn" @onclick="CloseViewPopup">Close</button>
+                    <button type="button" class="passcode-primary-btn" @onclick="EditSelectedPasscode"><i class="bi bi-pencil"></i>Edit</button>
+                </footer>
+            </section>
+        </div>
+    }
+
+    @if (showEditPopup)
+    {
+        <div class="passcode-modal-backdrop" @onclick="CloseEditPopup">
+            <section class="passcode-modal" role="dialog" aria-modal="true" aria-labelledby="edit-passcode-title" @onclick:stopPropagation="true">
+                <header class="passcode-modal-header">
+                    <div><span><i class="bi bi-pencil"></i></span><div><h2 id="edit-passcode-title">@L["EditPasscode"]</h2><p>Update permission, assignment, or status.</p></div></div>
+                    <button type="button" @onclick="CloseEditPopup" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+                </header>
+                <div class="passcode-modal-body">
+                    <div class="passcode-form-grid">
+                        <label><span>@L["Passcode"]</span><input @bind="editPasscode.Code" disabled /></label>
+                        <label><span>@L["Status"]</span><select @bind="editPasscode.Status"><option value="Active">@L["Active"]</option><option value="Used">@L["Used"]</option><option value="Inactive">@L["Inactive"]</option></select></label>
+                        <fieldset class="passcode-permission-fieldset passcode-form-wide">
+                            <legend>@L["Permission"] <em>*</em></legend>
+                            <div class="passcode-permission-list">
+                                @foreach (var permission in PermissionList)
+                                {
+                                    var granted = HasPermission(editPasscode, permission);
+                                    <button type="button" class="passcode-permission-row passcode-permission-option @(granted ? "is-granted" : null)" @onclick="() => TogglePermission(editPasscode, permission)">
+                                        <span>@L[GetPermissionTranslationKey(permission)]</span>
+                                        <span class="passcode-permission-check @(granted ? "is-checked" : null)">
+                                            @if (granted) { <i class="bi bi-check-lg"></i> }
+                                        </span>
+                                    </button>
+                                }
+                            </div>
+                        </fieldset>
+                        <label>
+                            <span>@L["AssignToEmployeeOptional"]</span>
+                            <select @bind="editPasscode.UsedByEmployeeId" disabled="@isEmployeesLoading">
+                                <option value="">@(isEmployeesLoading ? "Loading employees..." : "Not assigned")</option>
+                                @foreach (var employee in activeEmployees)
+                                {
+                                    <option value="@employee.Code">@employee.Name (@employee.Code)</option>
+                                }
+                            </select>
+                        </label>
+                    </div>
+                </div>
+                <footer class="passcode-modal-footer">
+                    <button type="button" class="passcode-secondary-btn" @onclick="CloseEditPopup">Cancel</button>
+                    <button type="button" class="passcode-save-btn" @onclick="UpdatePasscode"><i class="bi bi-check-lg"></i>@L["SaveChanges"]</button>
+                </footer>
+            </section>
+        </div>
+    }
+
+    @if (showDeletePopup && selectedPasscode is not null)
+    {
+        <div class="passcode-modal-backdrop" @onclick="CloseDeleteConfirmation">
+            <section class="passcode-delete-dialog" role="alertdialog" aria-modal="true" @onclick:stopPropagation="true">
+                <span class="passcode-delete-icon"><i class="bi bi-trash3"></i></span>
+                <h2>Delete passcode?</h2>
+                <p>Passcode <strong>@DisplayValue(selectedPasscode.Code)</strong> will be removed from this list. This action cannot be undone.</p>
+                <div>
+                    <button type="button" class="passcode-secondary-btn" @onclick="CloseDeleteConfirmation">Cancel</button>
+                    <button type="button" class="passcode-delete-btn" @onclick="DeleteSelectedPasscode"><i class="bi bi-trash3"></i>Delete</button>
+                </div>
+            </section>
+        </div>
+    }
+</div>

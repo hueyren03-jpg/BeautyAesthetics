@@ -1,0 +1,1296 @@
+﻿@page "/members"
+@page "/members/{MemberId}"
+@inherits SenangRetails.Shared.Pages.BasePage
+@using System.Collections.Generic
+@using System.Linq
+@using SenangRetails.Shared.Services.FilePickerService;
+@using SenangRetails.Shared.Services
+@using Microsoft.JSInterop
+@using SenangRetails.Shared.Services.CustomerService
+@using SenangRetails.Shared.Services.FileDownloadService
+@inject IJSRuntime JS
+@inject AppState AppState
+@inject NavigationManager Nav
+@inject IFileDownloadService FileDownloadService
+@inject ICustomerService CustomerService
+@inject IFilePickerService FilePickerService
+@inject IFormFactor FormFactor
+
+<div class="page-layout @(selectedMember != null ? "details-open" : "")">
+
+    <div class="page-content @(selectedMember != null ? "details-open" : "")" style="position: relative;">
+        <!-- Top Bar with Back Button -->
+        <div class="top-bar">
+            <div class="top-bar-top">
+                <div class="top-bar-left">
+                    <button class="back-button" @onclick="GoBack">
+                        <i class="bi bi-chevron-left"></i>
+                        <span>@LangSvc.GetText("MemberBack")</span>
+                    </button>
+                    <span class="page-title-text" style="margin-left: 8px;">@LangSvc.GetText("MemberCustomerProfile")</span>
+                </div>
+                <div class="header-button">
+                    <button class="button-secondary" @onclick="OpenUploadMemberModal">
+                        <img style="height: 20px;" src="_content/SenangRetails.Shared/images/material-symbols-light--bookmark-manager-outline.svg" /> @LangSvc.GetText("MemberImport")
+                    </button>
+                    <button class="button-primary" @onclick="OpenAddMemberModal">
+                        <i class="bi bi-plus"></i> @LangSvc.GetText("MemberAdd")
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="member-card">
+            <div class="member-card-header">
+                <div style="display: flex; align-items: center; gap: 16px; flex: 1;">
+                    <input @bind="SearchTerm" @bind:event="oninput" class="search-box" type="search" placeholder="🔍︎ @LangSvc.GetText("MemberSearchPlaceholder")" style="flex: 1;" />
+                    <span class="page-title-subtitle primary-color">@_customerList.Count(c => !string.Equals(c.AccountStatus, "Inactive", StringComparison.OrdinalIgnoreCase)) @LangSvc.GetText("MemberTotalCustomers")</span>
+                </div>
+                <div class="card-header-button">
+                    <button class="button-alternate"><img style="height: 20px;" src="_content/SenangRetails.Shared/images/lets-icons--export.svg" />  @LangSvc.GetText("MemberExport")</button>
+                </div>
+            </div>
+            <div class="card-content">
+                <div class="member-table-wrapper">
+                    <table class="member-table">
+                        <thead>
+                            <tr>
+                                <th class="table-body-row col-1" style="font-size: 20px; font-weight: 500;">@LangSvc.GetText("MemberCustomerNameHeader")</th>
+                                <th class="col-2" style="font-size: 20px; font-weight: 500;">@LangSvc.GetText("MemberPhoneHeader")</th>
+                                <th class="col-2" style="font-size: 20px; font-weight: 500;">@LangSvc.GetText("MemberMembershipHeader")</th>
+                                <th class="col-2" style="font-size: 20px; font-weight: 500;">@LangSvc.GetText("MemberBirthdayHeader")</th>
+                                <th class="member-table-column col-2" style="font-size: 20px; font-weight: 500;">@LangSvc.GetText("MemberStatusHeader")</th>
+                                <th class="member-table-column col-2" style="font-size: 20px; font-weight: 500;">@LangSvc.GetText("MemberActionsHeader")</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var member in FilteredMembers)
+                            {
+                                <tr @onclick="() => SelectMember(member)" class="table-body">
+                                    <td data-label="@LangSvc.GetText("MemberCustomerNameHeader")" class="table-body-row member-table-name">
+                                        <img class="profile-border" src="_content/SenangRetails.Shared/images/fluent--person-16-regular.svg" />
+                                        @member.AccountName
+                                    </td>
+                                    <td data-label="@LangSvc.GetText("MemberPhoneHeader")" class="member-table-body">
+                                        @PhoneFormatter.Format(member.Phone)
+                                    </td>
+                                    <td data-label="@LangSvc.GetText("MemberMembershipHeader")" class="member-table-body">
+                                        @member.MembershipTypeName
+                                    </td>
+                                    <td data-label="@LangSvc.GetText("MemberBirthdayHeader")" class="member-table-body">
+                                        @member.BirthdayDay/@member.BirthdayMonth/@member.BirthdayYear
+                                    </td>
+                                    <td data-label="@LangSvc.GetText("MemberStatusHeader")" class="member-table-column member-table-body">
+                                        @{
+                                            var isActive = !string.Equals(member.AccountStatus, "Inactive", StringComparison.OrdinalIgnoreCase);
+                                            <span class="@(isActive ? "status-active" : "status-inactive")">
+                                                @(isActive ? LangSvc.GetText("MemberActiveLabel") : LangSvc.GetText("MemberInactiveLabel"))
+                                            </span>
+                                        }
+                                    </td>
+                                    <td data-label="@LangSvc.GetText("MemberActionsHeader")" class="member-table-column member-table-body">
+                                        <i class="bi bi-pencil-square" style="cursor: pointer;" @onclick="async () => { await SelectMember(member); OpenProfileEditModal(); }" @onclick:stopPropagation></i>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        @if (selectedMember != null)
+        {
+            <div class="modal-overlay" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 10; border-radius: inherit; border: none; background-color: var(--color-background);" @onclick="CloseMemberDetailsModal">
+                <div class="modal-content member-details-modal" style="width: 100%; height: 100%; max-width: none; max-height: none; border-radius: inherit; display: flex; flex-direction: column; margin: 0; border: none; background-color: var(--color-background);" @onclick:stopPropagation>
+                    <div class="members-modal-header" style="align-items: center;">
+                        <h3 @onclick="CloseMemberDetailsModal" class="back-button" style="margin-bottom: 0; display: flex; align-items: center;"><i class="bi bi-chevron-left"></i> @LangSvc.GetText("MemberBack")</h3>
+                        <button class="button-primary" @onclick="ViewCart" style="display: flex; align-items: center; gap: 8px;">
+                            <i class="bi bi-cart3"></i> @LangSvc.GetText("MemberOrder") 
+                        </button>
+                    </div>
+                    <div class="modal-body" style="flex: 1; overflow-y: auto;">
+                        <div class="profile-main-info-wrapper">
+                            <div class="profile-stat-wrapper">
+                                <div class="profile-main-info">
+                                    <div class="avatar-container" @onclick="OpenProfileEditModal">
+                                        <div class="avatar">
+                                            <i class="bi bi-person profile-picture"></i>
+                                        </div>
+                                    </div>
+                                    <div class="profile-info">
+                                        <div class="member-name-wrapper" style="align-items: center;">
+                                            <span class="selected-member-name">@selectedMember.AccountName</span>
+                                            @if (!String.IsNullOrEmpty(selectedMember.MembershipTypeName))
+                                            {
+ 
+                                                <span class="selected-member-membership">
+                                                    @selectedMember.MembershipTypeName
+                                                </span>
+                                            }
+                                            @{
+                                                var isActive = !string.Equals(selectedMember.AccountStatus, "Inactive", StringComparison.OrdinalIgnoreCase);
+                                                <span class="@(isActive ? "status-active" : "status-inactive")">
+                                                    @(isActive ? LangSvc.GetText("MemberActiveLabel") : LangSvc.GetText("MemberInactiveLabel"))
+                                                </span>
+                                            }
+                                        </div>
+                                        <span class="page-title-subtitle">@PhoneFormatter.Format(selectedMember.Phone)</span>
+                                        <span class="page-title-subtitle">@LangSvc.GetText("MemberSince") @FormatDate(selectedMember.CreatedDateTime, "Short")</span>
+                                    </div>
+                                    <div class="member-option-wrapper">
+                                        <div class="member-option">
+                                            <i class="bi bi-telephone-forward" style="cursor: pointer;" @onclick="async () => { contactMember = selectedMember; await ConfirmCall(); }"></i>
+                                            <i class="bi bi-whatsapp" style="cursor: pointer;" @onclick="async () => { contactMember = selectedMember; await OpenWhatsApp(); }"></i>
+                                            <i @onclick="OpenProfileEditModal" class="bi bi-pencil-square" style="cursor: pointer;"></i>
+                                            
+                                        </div>
+                                        <div>
+                                            <div class="tag-id page-title-subtitle">@selectedMember.MasterAccountID</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="stats-card">
+ 
+                                    <div class="pill card" style="cursor:pointer;">
+                                        <span class="card-icon"><i class="bi bi-currency-dollar"></i></span>
+                                        <span class="balance">@(otherBalanceSummary?.Outstanding.ToString("N2") ?? "0.00")</span>
+                                        <div class="pill-label page-title-subtitle">@LangSvc.GetText("MemberOutstanding")</div>
+                                    </div>
+                                    <div class="pill voucher card" @onclick="OpenPackageModal" style="cursor:pointer;">
+                                        <span class="card-icon"><img src="_content/SenangRetails.Shared/images/circum--wallet.svg" alt="Alternate Text" /></span>
+                                        <span class="balance">@creditResponseDTO.PackageBalance</span>
+                                        <div class="pill-label page-title-subtitle">@LangSvc.GetText("MemberTotalPackage")</div>
+                                    </div>
+                                    <div class="pill credit card" @onclick="@(() => OpenBalanceModal(false))" style="cursor:pointer;">
+                                        <span class="card-icon"><i class="bi bi-star"></i></span>
+                                        <span class="balance">@creditResponseDTO.CreditBalance</span>
+                                        <div class="pill-label page-title-subtitle">@LangSvc.GetText("MemberTotalCredit")</div>
+                                    </div>
+                                    <div class="pill points card" style="cursor:pointer;">
+                                        <span class="card-icon"><i class="bi bi-gift"></i></span>
+                                        <span class="balance">@creditResponseDTO.PointBalance</span>
+                                        <div class="pill-label page-title-subtitle">@LangSvc.GetText("MemberTotalPoints")</div>
+ 
+                                    </div>
+                                </div>
+                            </div>
+ 
+                        </div>
+                        <div class="package-appointment-wrapper">
+                            <div class="packages-card">
+                                <div style="display: flex; align-items: center; justify-content: space-between;">
+                                    <span class="modal-title" style="margin-bottom: 0;"><img src="_content/SenangRetails.Shared/images/circum--wallet-black.svg" alt="Alternate Text" /> @LangSvc.GetText("MemberActivePackages")</span>
+                                </div>
+                                <div class="package-list">
+                                    @if (ActivePackages != null && ActivePackages.Any())
+                                    {
+ 
+                                        @foreach (var package in ActivePackages)
+                                        {
+                                            <div class="package-info-wrapper">
+                                                <span class="package-name">@package.PackageName</span>
+                                                <div class="column-2-end">
+                                                    <span class="page-title-subtitle">@LangSvc.GetText("MemberAvailablePackage")</span>
+                                                    <span class="page-title-subtitle-color">@package.NetBalanceAfterUtilised.ToString("N0")</span>
+                                                </div>
+                                                <div class="column-2-end">
+                                                    <span class="page-title-subtitle">@LangSvc.GetText("MemberExpires")</span>
+                                                    <span class="page-title-subtitle">@FormatDate(package.ExpiryDate, "Short")</span>
+                                                </div>
+                                            </div>
+                                        }
+ 
+                                    }
+                                    else
+                                    {
+                                        <div style="margin: auto;">
+                                            @LangSvc.GetText("MemberNoActivePackage")
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        <div class="packages-card">
+                            <div class="purchase-history-header">
+                                <span class="modal-title">
+                                    <i class="bi bi-cart2"></i> <span>@LangSvc.GetText("MemberPurchaseHistoryByMonth")</span>
+                                </span>
+                            </div>
+                            <div class="purchase-history-table-wrapper">
+                                <table class="purchase-history-table">
+                                    <thead>
+                                        <tr>
+                                            <th class="purchase-history-table-body-row col-2" style="font-size: 20px; font-weight: 500;">@LangSvc.GetText("MemberDate")</th>
+                                            <th class="col-2" style="font-size: 20px; font-weight: 500;">@LangSvc.GetText("MemberService")</th>
+                                            <th class="purchase-history-table-column col-2" style="font-size: 20px; font-weight: 500;">@LangSvc.GetText("MemberQuantity")</th>
+                                            <th class="purchase-history-table-column col-2" style="font-size: 20px; font-weight: 500;">@LangSvc.GetText("MemberDiscount")</th>
+                                            <th class="purchase-history-table-column col-2" style="font-size: 20px; font-weight: 500;">@LangSvc.GetText("MemberStaff")</th>
+                                            <th class="purchase-history-table-right col-2" style="font-size: 20px; font-weight: 500;">@LangSvc.GetText("MemberAmount")</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @if (isLoadingServiceRecords)
+                                        {
+                                            <tr>
+                                                <td colspan="6" style="text-align: center; padding: 20px; color: var(--text-tertiary);">@LangSvc.GetText("MemberLoading")</td>
+                                            </tr>
+                                        }
+                                        else if (customerServiceRecords == null || !customerServiceRecords.Any())
+                                        {
+                                            <tr>
+                                                <td colspan="6" style="text-align: center; padding: 20px; color: var(--text-tertiary);">@LangSvc.GetText("MemberNoPurchaseHistoryCurrentMonth")</td>
+                                            </tr>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var record in customerServiceRecords)
+                                            {
+                                                <tr class="purchase-history-table-body">
+                                                    <td data-label="@LangSvc.GetText("MemberDate")" class="purchase-history-table-body-row purchase-history-table-name">
+                                                        @record.RecordDate.ToString("dd/MM/yyyy")
+                                                    </td>
+                                                    <td data-label="@LangSvc.GetText("MemberService")" class="purchase-history-table-name">
+                                                        @record.ItemName
+                                                    </td>
+                                                    <td data-label="@LangSvc.GetText("MemberQuantity")" class="purchase-history-table-column">
+                                                        @record.Quantity
+                                                    </td>
+                                                    <td data-label="@LangSvc.GetText("MemberDiscount")" class="purchase-history-table-column">
+                                                        @(record.DiscountAmount > 0 ? $"RM {record.DiscountAmount.ToString("F2")}" : "-")
+                                                    </td>
+                                                    <td data-label="@LangSvc.GetText("MemberStaff")" class="purchase-history-table-column">
+                                                        
+                                                    </td>
+                                                    <td data-label="@LangSvc.GetText("MemberAmount")" class="purchase-history-table-right">
+                                                        RM @record.SubTotal.ToString("F2")
+                                                    </td>
+                                                </tr>
+                                            }
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+      
+                        @*  <div class="photos-section">
+                            <div class="section-header">
+                                <h4>Photos</h4>
+                                <span class="subtitle">Member gallery</span>
+                                <span class="view-more">→</span>
+                            </div>
+                            <div class="photo-grid">
+                                @if (selectedMember.Photos?.Any() == true)
+                                {
+                                    @foreach (var photo in selectedMember.Photos)
+                                    {
+                                        <div class="photo-item">
+                                            <img src="@photo" alt="Member photo" style="width:100%; height:100%; object-fit:cover; border-radius:12px;" />
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+
+                                }
+                                <div class="photo-item add" @onclick="OpenPhotoUploadModal">
+                                    <span>+</span>
+                                </div>
+                            </div>
+                        </div> *@
+
+                        @* <h4 class="section-title">@LangSvc.GetText("QuickAccess")</h4>
+                            <div class="feature-grid">
+                                <div class="feature-item" @onclick="OpenBreakdown"><div class="icon">🕘</div><span>@LangSvc.GetText("Breakdown")</span></div> *@
+                        @*  <div class="feature-item" @onclick="OpenRemarks"><div class="icon">📝</div><span>Remarks</span></div>
+                                <div class="feature-item" @onclick="OpenChecklist"><div class="icon">🗹</div><span>Checklist</span></div>
+                                <div class="feature-item" @onclick="OpenReferral"><div class="icon">🎁</div><span>Referral</span></div> *@
+                        @* <div class="feature-item" @onclick="OpenMessage"><div class="icon">💬</div><span>@LangSvc.GetText("MessageAction")</span></div>*@                    @*  <div class="feature-item" @onclick="OpenForm"><div class="icon">📄</div><span>Form</span></div> *@
+                        @* <div class="feature-item" @onclick="OpenDocument"><div class="icon">📑</div><span>Document</span></div> *@
+                        @* <div class="feature-item" @onclick="OpenBroadcast"><div class="icon">🔊</div><span>@LangSvc.GetText("Broadcast")</span></div> *@
+                        @*  <div class="feature-item" @onclick="OpenBeautyRecord"><div class="icon">🗂️</div><span>Beauty Record</span></div>
+                                <div class="feature-item" @onclick="OpenConsentForm"><div class="icon">✅</div><span>Consent Form</span></div>
+                                <div class="feature-item" @onclick="OpenEngagement"><div class="icon">👥</div><span>Engagement</span></div>
+                                <div class="feature-item" @onclick="OpenFamily"><div class="icon">👨‍👩‍👧‍👦</div><span>Family</span></div>
+                                <div class="feature-item" @onclick="OpenNotes"><div class="icon">📒</div><span>Notes</span></div> *@
+                        @* </div> *@
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@if (showUploadMemberModal)
+{
+    <div class="modal-overlay" @onclick="CloseUploadMemberModal">
+        <div class="modal-container" @onclick:stopPropagation>
+            <div class="">
+                <h3 class="modal-title members-modal-header">@LangSvc.GetText("MemberImportCustomerData")</h3>
+                <div style="width: 40px;"></div>
+            </div>
+
+            <div class="modal-body">
+                <div class="processing-container @(IsProcessing ? "" : "hidden")">
+                    <div class="spinner"></div>
+                    <p class="status-text">@UploadStatus</p>
+                </div>
+
+                @if (!string.IsNullOrEmpty(ErrorMessage))
+                {
+                    <div class="error-alert-container">
+                        <div class="error-alert-header">
+                            <span>@LangSvc.GetText("MemberUploadError")</span>
+                            <button class="close-icon-btn" @onclick="() => ErrorMessage = null">&times;</button>
+                        </div>
+                        <div class="error-alert-body">
+                            @ErrorMessage
+                        </div>
+                    </div>
+                }
+
+                <div class="@(IsProcessing ? "hidden" : "")">
+                    <div class="template-download-section">
+                        <button class="btn-download-template" @onclick="DownloadTemplate">
+                            <i class="fa-solid fa-file-csv"></i> @LangSvc.GetText("MemberDownloadCSVTemplate")
+                        </button>
+                    </div>
+
+                    <div class="upload-section">
+                        <div class="file-upload-area">
+                            <div class="upload-icon"><img class="upload-file-image" src="_content/SenangRetails.Shared/images/glyphs-poly--folder-open.svg" /></div>
+                            @if (FormFactor.GetFormFactor() == "Web")
+                            {
+                                <InputFile OnChange="HandleFileSelected"
+                                           id="memberUploadInput"
+                                           accept=".csv"
+                                           hidden />
+                                <label for="memberUploadInput" class="select-file-btn" style="cursor:pointer;">
+                                    @LangSvc.GetText("DataControlSelectFile")
+                                </label>
+                            }
+                            else
+                            {
+                                <button class="select-file-btn" @onclick="PickFileNativeAsync">
+                                    @LangSvc.GetText("DataControlSelectFile")
+                                </button>
+                            }
+                            <p class="upload-hint">@(selectedFileName ?? LangSvc.GetText("MemberChooseCSVFileToUpload"))</p>
+                        </div>
+                    </div>
+
+                    <div class="import-instructions">
+                        <div class="instruction-header">
+                            @LangSvc.GetText("MemberImportInstructions")
+                        </div>
+                        <ul class="instruction-list">
+                            <li><strong>@LangSvc.GetText("MemberInstructionFileFormat")</strong> CSV</li>
+                            <li>@LangSvc.GetText("MemberInstructionHeaderRequired")</li>
+                            <li><strong>@LangSvc.GetText("MemberInstructionColumnsInOrder")</strong> Name, Contact, Birthday Year, Birthday Month, Birthday Day, Gender, Email, NRIC, Ethnicity, Marital Status, Source, Member Tier, Remarks, Address 1, Address 2, Postal Code, City, State, Country</li>
+                            <li>@LangSvc.GetText("MemberInstructionNameAndContactRequired")</li>
+                            <li>@LangSvc.GetText("MemberInstructionBirthdayNumbers")</li>
+                            <li>@LangSvc.GetText("MemberInstructionOptionalFields")</li>
+                            <li>@LangSvc.GetText("MemberInstructionIfAnyRowMissing")</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-outline" @onclick="CloseUploadMemberModal">@LangSvc.GetText("Cancel")</button>
+                <button class="btn btn-primary" @onclick="ConfirmUpload">@LangSvc.GetText("DataControlUploadModalTitle")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showAddMemberModal)
+{
+    <div class="modal-overlay" @onclick="CloseAddMemberModal">
+        <div class="modal-content add-member-modal" @onclick:stopPropagation>
+            <div style="padding-bottom: 0;" class="members-modal-header">
+                <h3 class="modal-title">@LangSvc.GetText("AddNewMemberTitle")</h3>
+                <div class="modal-controls">
+                    <button class="button-alternative-primary" @onclick="OpenFormSettings"><i class="bi bi-gear"></i> @LangSvc.GetText("MemberSettingsLink")</button>
+                </div>
+            </div>
+            <div class="modal-body" style="max-height:68vh; overflow-y:auto; padding-bottom:24px;">
+                @if (formSettings.ShowName)
+                {
+                    <div class="form-group">
+                        <label>@LangSvc.GetText("MemberName")<span style="color: var(--color-red);"> *</span></label>
+                        <input type="text" @bind="newName" placeholder="@LangSvc.GetText("FullNamePlaceholder")" autofocus />
+                    </div>
+                }
+                <div class="form-2-columns">
+                    @if (formSettings.ShowMobile)
+                    {
+                        <div class="form-group">
+                            <label>@LangSvc.GetText("MemberMobile")<span style="color: var(--color-red);"> *</span></label>
+                            <input type="text" readonly value="@PhoneFormatter.Format(newPhone)" placeholder="@LangSvc.GetText("MemberPhoneHeader")" @onclick="OpenNewPhoneNumpad" style="cursor: pointer;" />
+                        </div>
+                    }
+                    @if (formSettings.ShowBirthday)
+                    {
+                        <div class="form-group">
+                            <label>@LangSvc.GetText("MemberBirthday")</label>
+                            <MobileDatePicker @bind-Value="newBirthday"
+                                              DateFormat="dd/MM/yyyy"
+                                              Placeholder="@LangSvc.GetText("AppointmentSelectDate")" />
+                        </div>
+                    }
+                    @if (formSettings.ShowGender)
+                    {
+                        <div class="form-group">
+                            <label>@LangSvc.GetText("MemberGender")</label>
+                            <div style="display:flex; gap:32px; margin-top:8px;">
+                                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                                    <input type="radio" name="gender" value="Male" checked="@(newGender == "Male")" @onchange="@(() => newGender = "Male")" style="accent-color: var(--color-primary);" /> @LangSvc.GetText("MemberGenderMale")
+                                </label>
+                                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                                    <input type="radio" name="gender" value="Female" checked="@(newGender == "Female")" @onchange="@(() => newGender = "Female")" style="accent-color: var(--color-primary);" /> @LangSvc.GetText("MemberGenderFemale")
+                                </label>
+                            </div>
+                        </div>
+                    }
+                    @if (formSettings.ShowEmail)
+                    {
+                        <div class="form-group">
+                            <label>@LangSvc.GetText("MemberEmail")</label>
+                            <input type="email" @bind="newEmail" placeholder="example@email.com" />
+                        </div>
+                    }
+                    @if (formSettings.ShowIC)
+                    {
+                        <div class="form-group">
+                            <label>@LangSvc.GetText("MemberIC")</label>
+                            <input type="text" @bind="newIC" placeholder="......xxxxxx" />
+                        </div>
+                    }
+                    @if (formSettings.ShowEthnic)
+                    {
+                        <div class="form-group">
+                            <label>@LangSvc.GetText("MemberEthnicity")</label>
+                            <input type="text" @bind="newEthnic" placeholder="@LangSvc.GetText("MemberEthnicityPlaceholder")" />
+                        </div>
+                    }
+                    @if (formSettings.ShowMarital)
+                    {
+                        <div class="form-group">
+                            <label>@LangSvc.GetText("MemberMaritalStatus")</label>
+                            <div class="custom-select-container">
+
+                                <select class="form-select-custom" @bind="newMarital">
+                                    <option value="">@LangSvc.GetText("MemberSelectStatus")</option>
+                                    <option value="Single">@LangSvc.GetText("MemberSingle")</option>
+                                    <option value="Married">@LangSvc.GetText("MemberMarried")</option>
+                                    <option value="Divorced">@LangSvc.GetText("MemberDivorced")</option>
+                                    <option value="Widowed">@LangSvc.GetText("MemberWidowed")</option>
+                                </select>
+                            </div>
+
+                        </div>
+                    }
+                    @if (formSettings.ShowSource)
+                    {
+                        <div class="form-group">
+                            <label>@LangSvc.GetText("MemberSource")</label>
+                            <input type="text" @bind="newSource" placeholder="@LangSvc.GetText("SourcePlaceholder")" />
+                        </div>
+                    }
+                    @if (formSettings.ShowTier)
+                    {
+                        <div class="form-group">
+                            <label>@LangSvc.GetText("MemberTier")</label>
+                            <div class="custom-select-container" @onclick="() => OpenMembershipPicker(false)">
+                                <input type="text" class="form-select-custom" readonly style="background: white;" value="@(string.IsNullOrEmpty(newTier) ? LangSvc.GetText("MemberNoneValue") : newTier)" />
+                            </div>
+                        </div>
+                    }
+                    @if (formSettings.ShowTag)
+                    {
+                        <div class="form-group">
+                            <label>@LangSvc.GetText("MemberTags")</label>
+                            <input type="text" @bind="newTags" placeholder="@LangSvc.GetText("MemberTagsPlaceholder")" />
+                        </div>
+                    }
+                </div>
+
+            </div>
+            <div class="member-modal-footer">
+                <div class="form-2-columns">
+                    <button class="modal-button-secondary" @onclick="CloseAddMemberModal">@LangSvc.GetText("Cancel")</button>
+                    <button class="modal-button-primary" @onclick="SaveNewMember">@LangSvc.GetText("SaveMember")</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+
+@if (showFormSettingsModal)
+{
+    <div class="modal-overlay" @onclick="CloseFormSettingsModal">
+        <div class="modal-content settings-modal" @onclick:stopPropagation>
+            <div class="members-modal-header">
+                <h3 class="modal-title">@LangSvc.GetText("MemberFormSettings")</h3>
+            </div>
+            <div class="modal-body">
+                <div class="checkbox-list">
+                    @* Required Fields (Disabled) *@
+                    <label class="custom-checkbox disabled">
+                        <input type="checkbox" checked disabled />
+                        <span class="checkmark-disable"></span>
+                        @LangSvc.GetText("MobileRequired")
+                    </label>
+
+                    <label class="custom-checkbox disabled">
+                        <input type="checkbox" checked disabled />
+                        <span class="checkmark-disable"></span> <!-- Changed from checkmark to checkmark-disable -->
+                        @LangSvc.GetText("NameRequired")
+                    </label>
+
+                    @* Configurable Fields *@
+                    <label class="custom-checkbox">
+                        <input type="checkbox" @bind="formSettings.ShowBirthday" />
+                        <span class="checkmark"></span>
+                        @LangSvc.GetText("MemberBirthday")
+                    </label>
+
+                    <label class="custom-checkbox">
+                        <input type="checkbox" @bind="formSettings.ShowGender" />
+                        <span class="checkmark"></span>
+                        @LangSvc.GetText("MemberGender")
+                    </label>
+
+                    <label class="custom-checkbox">
+                        <input type="checkbox" @bind="formSettings.ShowEmail" />
+                        <span class="checkmark"></span>
+                        @LangSvc.GetText("MemberEmail")
+                    </label>
+
+                    <label class="custom-checkbox">
+                        <input type="checkbox" @bind="formSettings.ShowIC" />
+                        <span class="checkmark"></span>
+                        @LangSvc.GetText("MemberIC")
+                    </label>
+
+                    <label class="custom-checkbox">
+                        <input type="checkbox" @bind="formSettings.ShowEthnic" />
+                        <span class="checkmark"></span>
+                        @LangSvc.GetText("MemberEthnicity")
+                    </label>
+
+                    <label class="custom-checkbox">
+                        <input type="checkbox" @bind="formSettings.ShowMarital" />
+                        <span class="checkmark"></span>
+                        @LangSvc.GetText("MemberMaritalStatus")
+                    </label>
+
+                    <label class="custom-checkbox">
+                        <input type="checkbox" @bind="formSettings.ShowSource" />
+                        <span class="checkmark"></span>
+                        @LangSvc.GetText("MemberSource")
+                    </label>
+
+                    <label class="custom-checkbox">
+                        <input type="checkbox" @bind="formSettings.ShowTier" />
+                        <span class="checkmark"></span>
+                        @LangSvc.GetText("MemberTier")
+                    </label>
+                </div>
+            </div>
+            <div class="member-modal-footer">
+                <div class="form-2-columns-sm">
+                    <button class="modal-button-secondary" @onclick="CloseFormSettingsModal">@LangSvc.GetText("Cancel")</button>
+                    <button class="modal-button-primary" @onclick="CloseFormSettingsModal">@LangSvc.GetText("Done")</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+
+@if (showProfileEditModal && selectedMember != null)
+{
+    <div class="modal-overlay" @onclick="() => showProfileEditModal = false">
+        <div class="modal-content add-member-modal" style="display: flex; flex-direction: column; max-height: 92vh;" @onclick:stopPropagation>
+            <div class="members-modal-header">
+                <h3 class="modal-title">@LangSvc.GetText("EditProfile")</h3>
+            </div>
+
+            <div class="modal-body" style="flex: 1; overflow-y: auto; padding-bottom: 24px;">
+                <!-- Avatar section -->
+                <div class="profile-avatar-section" style="display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 20px;">
+                    <div class="avatar">
+                        <i class="bi bi-person profile-picture"></i>
+                    </div>
+                    <div class="avatar-label" style="font-weight: 600; font-size: 18px;">@selectedMember.AccountName</div>
+                </div>
+
+                <!-- Tabs -->
+                <div class="profile-tabs" style="display: flex; width: 100%; margin-bottom: 20px; border-bottom: 1px solid #c4c4c4;">
+                    <button style="flex: 1; text-align: center; background: none; border: none; padding: 12px 0; cursor: pointer; transition: all 0.2s; border-bottom: @(activeProfileTab == "Info" ? "2px solid var(--color-primary)" : "2px solid transparent"); color: @(activeProfileTab == "Info" ? "var(--color-primary)" : "#666"); font-weight: @(activeProfileTab == "Info" ? "600" : "500");"
+                            @onclick='@(() => activeProfileTab = "Info")'>
+                        @LangSvc.GetText("ProfileTabInfo")
+                    </button>
+                    <button style="flex: 1; text-align: center; background: none; border: none; padding: 12px 0; cursor: pointer; transition: all 0.2s; border-bottom: @(activeProfileTab == "Details" ? "2px solid var(--color-primary)" : "2px solid transparent"); color: @(activeProfileTab == "Details" ? "var(--color-primary)" : "#666"); font-weight: @(activeProfileTab == "Details" ? "600" : "500");"
+                            @onclick='@(() => activeProfileTab = "Details")'>
+                        @LangSvc.GetText("ProfileTabDetails")
+                    </button>
+                    <button style="flex: 1; text-align: center; background: none; border: none; padding: 12px 0; cursor: pointer; transition: all 0.2s; border-bottom: @(activeProfileTab == "Address" ? "2px solid var(--color-primary)" : "2px solid transparent"); color: @(activeProfileTab == "Address" ? "var(--color-primary)" : "#666"); font-weight: @(activeProfileTab == "Address" ? "600" : "500");"
+                            @onclick='@(() => activeProfileTab = "Address")'>
+                        @LangSvc.GetText("ProfileTabAddress")
+                    </button>
+                </div>
+
+                <!-- Scrollable content area -->
+                <div>
+                    @if (activeProfileTab == "Info")
+                    {
+                        <div class="form-2-columns">
+                            <div class="form-group">
+                                <label>@LangSvc.GetText("MemberName")<span style="color: var(--color-red);"> *</span></label>
+                                <input type="text" @bind="editName" placeholder="@LangSvc.GetText("FullNamePlaceholder")" autofocus />
+                            </div>
+                            <div class="form-group">
+                                <label>@LangSvc.GetText("Contact")<span style="color: var(--color-red);"> *</span></label>
+                                <input type="text" readonly value="@PhoneFormatter.Format(editPhone)" placeholder="@LangSvc.GetText("MemberPhoneHeader")" @onclick="OpenEditPhoneNumpad" style="cursor: pointer;" />
+                            </div>
+                            <div class="form-group">
+                                <label>@LangSvc.GetText("ICPassport")</label>
+                                <input type="text" @bind="editIC" placeholder="......xxxxxx" />
+                            </div>
+                            <div class="form-group">
+                                <label>@LangSvc.GetText("MemberBirthday")</label>
+                                <MobileDatePicker @bind-Value="editBirthday"
+                                                  DateFormat="dd/MM/yyyy"
+                                                  Placeholder="@LangSvc.GetText("AppointmentSelectDate")" />
+                            </div>
+                            <div class="form-group">
+                                <label>@LangSvc.GetText("Ethnicity")</label>
+                                <input type="text" @bind="editEthnic" placeholder="@LangSvc.GetText("MemberEthnicityPlaceholder")" />
+                            </div>
+                            <div class="form-group">
+                                <label>@LangSvc.GetText("Source")</label>
+                                <input type="text" @bind="editSource" placeholder="Walk-in / Instagram / Referral..." />
+                            </div>
+                            <div class="form-group">
+                                <label>@LangSvc.GetText("Email")</label>
+                                <input type="email" @bind="editEmail" placeholder="example@email.com" />
+                            </div>
+                            <div class="form-group">
+                                <label>@LangSvc.GetText("MaritalStatus")</label>
+                                <div class="custom-select-container">
+                                    <select class="form-select-custom" @bind="editMarital">
+                                        <option value="">@LangSvc.GetText("MemberSelectStatus")</option>
+                                        <option value="Single">@LangSvc.GetText("MemberSingle")</option>
+                                        <option value="Married">@LangSvc.GetText("MemberMarried")</option>
+                                        <option value="Divorced">@LangSvc.GetText("MemberDivorced")</option>
+                                        <option value="Widowed">@LangSvc.GetText("MemberWidowed")</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>@LangSvc.GetText("MemberGender")</label>
+                                <div style="display:flex; gap:32px; margin-top:8px;">
+                                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                                        <input type="radio" name="editGender" value="Male" checked="@(editGender == "Male")" @onchange='() => editGender = "Male"' style="accent-color: var(--color-primary);" /> @LangSvc.GetText("MemberGenderMale")
+                                    </label>
+                                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                                        <input type="radio" name="editGender" value="Female" checked="@(editGender == "Female")" @onchange='() => editGender = "Female"' style="accent-color: var(--color-primary);" /> @LangSvc.GetText("MemberGenderFemale")
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else if (activeProfileTab == "Details")
+                    {
+                        <div class="form-2-columns">
+                            <div class="form-group">
+                                <label>@LangSvc.GetText("MemberTierLabel")</label>
+                                <div class="custom-select-container" @onclick="() => OpenMembershipPicker(true)">
+                                    <input type="text" class="form-select-custom" readonly style="background: white;" value="@(string.IsNullOrEmpty(editMemberTier) ? LangSvc.GetText("MemberNoneValue") : editMemberTier)" />
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label>@LangSvc.GetText("MemberRemarks")</label>
+                                <input type="text" @bind="editRemarks" placeholder="@LangSvc.GetText("MemberEmpty")" />
+                            </div>
+                        </div>
+                    }
+                    else if (activeProfileTab == "Address")
+                    {
+                        <div class="form-2-columns">
+                            <div class="form-group">
+                                <label>@LangSvc.GetText("MemberAddressLine1")</label>
+                                <input type="text" @bind="editAddress1" placeholder="@LangSvc.GetText("MemberAddressLine1")" />
+                            </div>
+
+                            <div class="form-group">
+                                <label>@LangSvc.GetText("MemberAddressLine2")</label>
+                                <input type="text" @bind="editAddress2" placeholder="@LangSvc.GetText("MemberAddressLine2")" />
+                            </div>
+
+                            <div class="form-group">
+                                <label>@LangSvc.GetText("MemberPostalCode")</label>
+                                <input type="text" @bind="editZipCode" placeholder="@LangSvc.GetText("MemberPostalCode")" maxlength="10" />
+                            </div>
+                            <div class="form-group">
+                                <label>@LangSvc.GetText("MemberCity")</label>
+                                <input type="text" @bind="editCity" placeholder="@LangSvc.GetText("MemberCity")" />
+                            </div>
+
+                            <div class="form-group">
+                                <label>@LangSvc.GetText("MemberState")</label>
+                                <div class="custom-select-container">
+                                    <select class="form-select-custom" @bind="editCountryState">
+                                        <option value="">@LangSvc.GetText("MemberSelectState")</option>
+                                        <option value="All States">@LangSvc.GetText("MemberAllStates")</option>
+                                        <option value="Johor">Johor</option>
+                                        <option value="Kedah">Kedah</option>
+                                        <option value="Kelantan">Kelantan</option>
+                                        <option value="Melaka">Melaka</option>
+                                        <option value="Negeri Sembilan">Negeri Sembilan</option>
+                                        <option value="Pahang">Pahang</option>
+                                        <option value="Pulau Pinang">Pulau Pinang</option>
+                                        <option value="Perak">Perak</option>
+                                        <option value="Perlis">Perlis</option>
+                                        <option value="Selangor">Selangor</option>
+                                        <option value="Terengganu">Terengganu</option>
+                                        <option value="Sabah">Sabah</option>
+                                        <option value="Sarawak">Sarawak</option>
+                                        <option value="Wilayah Persekutuan Kuala Lumpur">Wilayah Persekutuan Kuala Lumpur</option>
+                                        <option value="Wilayah Persekutuan Labuan">Wilayah Persekutuan Labuan</option>
+                                        <option value="Wilayah Persekutuan Putrajaya">Wilayah Persekutuan Putrajaya</option>
+                                        <option value="Not Applicable">@LangSvc.GetText("MemberNotApplicable")</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>@LangSvc.GetText("MemberCountry")</label>
+                                <input type="text" @bind="editCountry" placeholder="@LangSvc.GetText("MemberCountry")" />
+                            </div>
+                        </div>
+                    }
+                    else if (activeProfileTab == "Settings")
+                    {
+                        <div class="form-2-columns">
+                            <button class="modal-button-secondary" style="height: fit-content; display: none;" @onclick="MergeMember">
+                                @LangSvc.GetText("MergeMember")
+                            </button>
+
+                            <button class="modal-button-secondary" style="height: fit-content;" @onclick="HideMember">
+                                @LangSvc.GetText("MemberDeactivateMember")
+                            </button>
+
+                            <button class="modal-button-secondary" style="color: var(--color-red); border-color: var(--color-red); height: fit-content;" @onclick="DeleteMember">
+                                @LangSvc.GetText("DeleteMember")
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="tab-placeholder">
+                            <h4>@activeProfileTab Tab</h4>
+                            <p>@LangSvc.GetText("MemberContentComingSoon")</p>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="member-modal-footer profile-edit-footer">
+                <div class="form-2-columns">
+                    <button class="modal-button-secondary" @onclick="() => showProfileEditModal = false">@LangSvc.GetText("Cancel")</button>
+                    <button class="modal-button-primary"
+                            @onclick="SaveProfileChanges"
+                            disabled="@(string.IsNullOrWhiteSpace(editName) || string.IsNullOrWhiteSpace(editPhone))">
+                        @LangSvc.GetText("SaveChanges")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (isDeleteConfirmOpen)
+{
+    <div class="prod-modal-overlay" style="z-index: 3200;" @onclick="() => isDeleteConfirmOpen = false">
+        <div class="prod-modal-box prod-modal-sm" style="text-align: center;" @onclick:stopPropagation>
+            <div class="prod-modal-header">
+                <span class="prod-modal-title">@LangSvc.GetText("ProductConfirmDelete")</span>
+                <button class="prod-modal-close" @onclick="() => isDeleteConfirmOpen = false"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="prod-modal-body" style="padding: 1.5rem 2rem; display: flex; flex-direction: column; align-items: center; gap: 0.75rem;">
+                <div style="width: 56px; height: 56px; border-radius: 50%; background: #FFF0F0; display: flex; align-items: center; justify-content: center;">
+                    <i class="fa-solid fa-trash" style="font-size: 1.4rem; color: var(--primary);"></i>
+                </div>
+                <p style="color: #555; margin: 0;">@LangSvc.GetText("ProductDeleteConfirmMsg") <strong>@(selectedMember?.AccountName)</strong>?</p>
+            </div>
+            <div class="prod-modal-footer">
+                <button class="prod-modal-cancel-btn" @onclick="() => isDeleteConfirmOpen = false">@LangSvc.GetText("Cancel")</button>
+                <button class="prod-modal-save-btn" @onclick="ConfirmDeleteMember">@LangSvc.GetText("Delete")</button>
+            </div>
+        </div>
+    </div>
+}
+
+<PhoneNumpad IsOpen="isNumpadOpen" InitialValue="@numpadInitialValue" OnSave="OnNumpadSaved" OnClose="() => isNumpadOpen = false" />
+
+@if (showVoucherModal && selectedMember != null)
+{
+    <div class="modal-overlay" @onclick="() => showVoucherModal = false">
+        <div class="modal-content package-detail-modal" @onclick:stopPropagation>
+            <div class="modal-header">
+                <div class="page-title">@LangSvc.GetText("MemberVoucherModalTitle")</div>
+            </div>
+
+            <div class="modal-body package-modal-body">
+                @if (isLoadingPackages)
+                {
+                    <div class="package-loading">
+                        <div class="spinner"></div>
+                        <p>@LangSvc.GetText("MemberFetchingBalances")</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="package-grid-container">
+                        <div class="table-scroll-wrapper" style="max-height:310px;">
+                            <table class="package-table">
+                                <thead>
+                                    <tr>
+                                        <th class="col-id">@LangSvc.GetText("MemberPackageColumn")</th>
+                                        <th>@LangSvc.GetText("MemberPackageNameColumn")</th>
+                                        <th>@LangSvc.GetText("MemberPackageItemColumn")</th>
+                                        <th>@LangSvc.GetText("MemberPurchaseDateColumn")</th>
+                                        <th>@LangSvc.GetText("MemberExpiryDateColumn")</th>
+                                        <th>@LangSvc.GetText("MemberUnitValueColumn")</th>
+                                        <th>@LangSvc.GetText("MemberQtyPurchasedColumn")</th>
+                                        <th>@LangSvc.GetText("MemberBalanceColumn")</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var pkg in customerPackages)
+                                    {
+                                        <tr @onclick="() => SelectPackageForRedemption(pkg)"
+                                            class="package-row @(selectedPackageAutoID == pkg.AutoID ? "selected-row" : "")">
+                                            <td data-label="@LangSvc.GetText("MemberPackageColumn")" class="col-id">@pkg.AutoID</td>
+                                            <td data-label="@LangSvc.GetText("MemberPackageNameColumn")">@pkg.PackageName</td>
+                                            <td data-label="@LangSvc.GetText("MemberPackageItemColumn")">@pkg.Description</td>
+                                            <td data-label="@LangSvc.GetText("MemberPurchaseDateColumn")">@pkg.FinancialDate.ToString("dd/MM/yyyy")</td>
+                                            <td data-label="@LangSvc.GetText("MemberExpiryDateColumn")">@pkg.ExpiryDate.ToString("dd/MM/yyyy")</td>
+                                            <td data-label="@LangSvc.GetText("MemberUnitValueColumn")">@pkg.UnitPrice.ToString("N2")</td>
+                                            <td data-label="@LangSvc.GetText("MemberQtyPurchasedColumn")">@pkg.QuantityPurchased.ToString("N0")</td>
+                                            <td data-label="@LangSvc.GetText("MemberBalanceColumn")">@pkg.NetBalanceAfterUtilised.ToString("N0")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="package-grid-footer">
+                            <div class="footer-left-space">
+                                <span class="footer-label">@LangSvc.GetText("MemberTotalPackage"): @customerPackages.Count</span>
+                            </div>
+                            <div class="footer-right-align">
+                                <span class="footer-label">@LangSvc.GetText("MemberTotalBalance"): @customerPackages.Sum(x => x.NetBalanceAfterUtilised).ToString("N0")</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="redemption-history-section" style="margin-top: 5px;">
+                        <div class="modal-header">
+                            <div class="page-title">@LangSvc.GetText("MemberRedemptionHistory")</div>
+                        </div>
+                        <div class="package-grid-container" style="margin-top: 5px;">
+                            <div class="table-scroll-wrapper" style="max-height: 155px;">
+                                <table class="package-table">
+                                    <thead>
+                                        <tr>
+                                            <th>@LangSvc.GetText("MemberPackageColumn")</th>
+                                            <th>@LangSvc.GetText("MemberDocNoColumn")</th>
+                                            <th>@LangSvc.GetText("MemberRedeemDateColumn")</th>
+                                            <th>@LangSvc.GetText("MemberQtyRedeemedColumn")</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @if (isLoadingHistory)
+                                        {
+                                            <tr><td colspan="5" class="text-center">@LangSvc.GetText("MemberLoadingHistory")</td></tr>
+                                        }
+                                        else if (redemptionHistory.Any())
+                                        {
+                                            @foreach (var history in redemptionHistory)
+                                            {
+                                                <tr>
+                                                    <td data-label="@LangSvc.GetText("MemberPackageColumn")">@history.SourceDocumentLineID</td>
+                                                    <td data-label="@LangSvc.GetText("MemberDocNoColumn")">@history.DocumentID</td>
+                                                    <td data-label="@LangSvc.GetText("MemberRedeemDateColumn")">@history.FinancialDate.ToString("dd/MM/yyyy")</td>
+                                                    <td data-label="@LangSvc.GetText("MemberQtyRedeemedColumn")">@Math.Abs(history.QuantityRedeemed).ToString("N0")</td>
+                                                </tr>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <tr class="empty-row"><td colspan="5">@LangSvc.GetText("MemberNoHistoryFound")</td></tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="orders-btn-secondary" style="flex: 1;"
+                        @onclick="() => showVoucherModal = false">
+                    @LangSvc.GetText("MemberClose")
+                </button>
+                <button class="orders-btn-primary" style="flex: 1;"
+                        disabled="@(selectedPackageToRedeem == null || isRedeemingPackage)"
+                        @onclick="ProceedToEditPackageRedemption">
+                    @if (isRedeemingPackage)
+                    {
+                        <span>@LangSvc.GetText("MemberLoading")</span>
+                    }
+                    else
+                    {
+                        <span>@LangSvc.GetText("MemberProceedNext")</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showEditOrderItemModal && selectedOrderItem != null)
+{
+    <div class="modal-overlay" @onclick="CloseEditOrderItemModal">
+        <div class="modal-content order-item-edit-modal" @onclick:stopPropagation>
+            <div class="modal-header">
+                <div class="page-title">@selectedOrderItem.Description</div>
+            </div>
+            <div class="order-item-edit-modal-body">
+                <div class="order-item-edit-modal-body-part">
+                    <!-- Treatment Section -->
+                    <div class="treatment-section">
+                        <!-- Price Row -->
+                        <div class="edit-row"
+                             @onclick='() => OpenNumpadForField("Price", selectedOrderItem.UnitPrice.ToString("F2"))'>
+                            <span class="row-label">@LangSvc.GetText("OrdersPrice")</span>
+                            <span class="row-value">RM @selectedOrderItem.UnitPrice.ToString("F2")</span>
+                        </div>
+
+                        <!-- Quantity Row -->
+                        <div class="edit-row"
+                             @onclick='() => OpenNumpadForField("Quantity", selectedOrderItem.Quantity.ToString())'>
+                            <span class="row-label">@LangSvc.GetText("OrdersQuantity")</span>
+                            <span class="row-value">@selectedOrderItem.Quantity</span>
+                        </div>
+
+                        <!-- Discount Row -->
+                        @if (isSalesMode)
+                        {
+                            <div class="edit-row discount-row">
+                                <span class="row-label">@LangSvc.GetText("OrdersDiscount")</span>
+                                <div class="discount-fields">
+                                    <div class="discount-percent"
+                                         @onclick='() => OpenNumpadForField("DiscountPercent", editDiscountPercent)'>
+                                        <span>@editDiscountPercent %</span>
+                                    </div>
+                                    <div class="discount-amount"
+                                         @onclick='() => OpenNumpadForField("DiscountAmount", editDiscountAmount)'>
+                                        <span>RM @editDiscountAmount</span>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
+                        <!-- Total Row -->
+                        <div class="edit-row total-row">
+                            <span class="row-label">@LangSvc.GetText("OrdersTotal")</span>
+                            <span class="row-value">RM @CalculateItemTotal().ToString("F2")</span>
+                        </div>
+                    </div>
+                    <!-- Remarks Section -->
+                    <div class="treatment-section">
+                        <span class="row-label" style="margin-bottom: 14px;">
+                            @LangSvc.GetText("OrdersRemarks")
+                        </span>
+                        <textarea @bind="editRemarks" placeholder="@LangSvc.GetText("OrdersRemarksPlaceholder")" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="order-item-edit-modal-body-part">
+                    <div class="treatment-section">
+                        <div class="edit-row total-row">
+                            <span class="row-label">@LangSvc.GetText("MemberCommission")</span>
+                        </div>
+                        <div class="staff-rows-scroll-area">
+                            @for (int i = 0; i < commissionRows.Count; i++)
+                            {
+                                var row = commissionRows[i];
+                                int displayIndex = i + 1;
+                                <div class="edit-row total-row">
+                                    <span class="row-label">@LangSvc.GetText("MemberCommissionStaff") @displayIndex:</span>
+                                    <select @bind="row.StaffId" class="staff-select">
+                                        <option value="">@LangSvc.GetText("MemberSelectStaffPlaceholder")</option>
+                                        @if (!staffList.Any())
+                                        {
+                                            <option disabled>@LangSvc.GetText("MemberNoActiveStaff")</option>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var staff in staffList)
+                                            {
+                                                <option value="@staff.MasterAccountID">@staff.AccountName</option>
+                                            }
+                                        }
+                                    </select>
+                                    <div class="staff-commission-amount" @onclick="() => OpenNumpadForCommission(row)">
+                                        <span>@row.Amount.ToString("F2")</span>
+                                    </div>
+                                    <select @bind="row.CommissionType" class="commission-type-select">
+                                        <option value="%">%</option>
+                                        <option value="MYR">MYR</option>
+                                    </select>
+                                    <button type="button" class="remove-staff-btn" @onclick="() => RemoveCommissionRow(row)">&times;</button>
+                                </div>
+                            }
+                        </div>
+
+                        <button class="orders-btn-tertiary" style="margin-top: 14px;" @onclick="AddCommissionRow">
+                            <i class="bi bi-plus-lg"></i>
+                            @LangSvc.GetText("MemberAddStaff")
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="orders-btn-secondary" style="flex: 1;" @onclick="CloseEditOrderItemModal">@LangSvc.GetText("OrdersCancel")</button>
+                <button class="orders-btn-primary" style="flex: 1;" @onclick="SaveOrderItemChanges">
+                    @if (isAddingNewItem)
+                    {
+                        @LangSvc.GetText("AddToCart")
+                    }
+                    else
+                    {
+                        @LangSvc.GetText("OrdersSave")
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showNumpadModal)
+{
+    <div class="modal-overlay" style="z-index: 3000;" @onclick="CloseNumpadModal">
+        <div class="modal-content keypad-modal" style="max-width: 350px;" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h3>@LangSvc.GetText("Update") @GetFriendlyFieldName(currentEditField)</h3>
+                <button class="close-btn" @onclick="CloseNumpadModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="keypad-display">
+                    <div class="keypad-display-wrapper">
+                        @if (currentEditField == "Price" || currentEditField == "DiscountAmount")
+                        {
+                            <span class="keypad-display-sign prefix">RM</span>
+                        }
+                        <span class="keypad-display-value">@currentEditValue</span>
+                        @if (currentEditField == "DiscountPercent")
+                        {
+                            <span class="keypad-display-sign suffix">%</span>
+                        }
+                    </div>
+                </div>
+                @if (currentEditField == "Quantity" && (decimal.Parse(currentEditValue) <= 0))
+                {
+                    <div style="color: var(--color-red); text-align: center; font-size: 14px; font-weight: bold; margin-top: -10px; margin-bottom: 10px;">
+                        @LangSvc.GetText("MemberMinValue"): 0.01
+                    </div>
+                }
+                <div class="keypad-grid">
+                    <button class="keypad-btn" @onclick='() => HandleNumpadEdit("1")'>1</button>
+                    <button class="keypad-btn" @onclick='() => HandleNumpadEdit("2")'>2</button>
+                    <button class="keypad-btn" @onclick='() => HandleNumpadEdit("3")'>3</button>
+                    <button class="keypad-btn" @onclick='() => HandleNumpadEdit("4")'>4</button>
+                    <button class="keypad-btn" @onclick='() => HandleNumpadEdit("5")'>5</button>
+                    <button class="keypad-btn" @onclick='() => HandleNumpadEdit("6")'>6</button>
+                    <button class="keypad-btn" @onclick='() => HandleNumpadEdit("7")'>7</button>
+                    <button class="keypad-btn" @onclick='() => HandleNumpadEdit("8")'>8</button>
+                    <button class="keypad-btn" @onclick='() => HandleNumpadEdit("9")'>9</button>
+                    <button class="keypad-btn" @onclick='() => HandleNumpadEdit(".")'>.</button>
+                    <button class="keypad-btn" @onclick='() => HandleNumpadEdit("0")'>0</button>
+                    <button class="keypad-btn" @onclick='() => HandleNumpadEdit("⌫")'>⌫</button>
+                </div>
+                <div style="margin-top: 1rem; display: flex; gap: 10px; padding: 1rem;">
+                    <button class="orders-btn-secondary" style="flex: 1;" @onclick='() => currentEditValue = "0"'>@LangSvc.GetText("OrdersClear")</button>
+                    <button class="orders-btn-primary" style="flex: 1;" @onclick="SaveNumpadValue">@LangSvc.GetText("OrdersSave")</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showAlertDialogModal)
+{
+    <div class="modal-overlay" @onclick="() => showAlertDialogModal = false">
+        <div class="modal-content" @onclick:stopPropagation style="max-width: 400px; height: auto;">
+            <h4 style="margin: 0 0 1rem 0;">@alertDialogTitle</h4>
+            <p style="color: var(--text-primary); margin-bottom: 2rem; font-size: 18px; line-height: 1.5;">
+                @((MarkupString)alertDialogMessage)
+            </p>
+
+            <div class="modal-footer">
+                <button class="orders-btn-primary" style="flex: 1;" @onclick="() => showAlertDialogModal = false">
+                    @LangSvc.GetText("StatusPaid") <!-- using generic OK/Paid equivalent or static fallback if desired -->
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showBalanceModal && selectedMember != null)
+{
+    <div class="modal-overlay" @onclick="() => showBalanceModal = false">
+        <div class="modal-content package-detail-modal" @onclick:stopPropagation>
+            <div class="modal-header">
+                <div class="page-title">@LangSvc.GetText("MemberCreditModalTitle")</div>
+            </div>
+
+            <div class="modal-body package-modal-body">
+                @if (isLoadingPackages)
+                {
+                    <div class="package-loading">
+                        <div class="spinner"></div>
+                        <p>@LangSvc.GetText("MemberFetchingBalances")</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="package-grid-container">
+                        <div class="table-scroll-wrapper" style="max-height:310px;">
+                            <table class="package-table">
+                                <thead>
+                                    <tr>
+                                        <th class="col-id">@LangSvc.GetText("MemberCreditColumn")</th>
+                                        <th>@LangSvc.GetText("MemberPurchaseDateColumn")</th>
+                                        <th>@LangSvc.GetText("MemberDocNoColumn")</th>
+                                        <th>@LangSvc.GetText("MemberTypeColumn")</th>
+                                        <th>@LangSvc.GetText("MemberPurchaseViaItemColumn")</th>
+                                        <th>@LangSvc.GetText("MemberExpiryDateColumn")</th>
+                                        <th>@LangSvc.GetText("MemberQtyPurchasedColumn")</th>
+                                        <th>@LangSvc.GetText("MemberBalanceColumn")</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (customerCreditDetails != null)
+                                    {
+                                        @foreach (var credit in customerCreditDetails)
+                                        {
+                                            <tr @onclick="() => FetchCreditHistory(credit.ARAPOutstandingID)"
+                                                class="package-row @(selectedCreditArapID == credit.ARAPOutstandingID ? "selected-row" : "")">
+                                                <td data-label="@LangSvc.GetText("MemberCreditColumn")" class="col-id">@credit.ARAPOutstandingID</td>
+                                                <td data-label="@LangSvc.GetText("MemberPurchaseDateColumn")">@credit.FinancialDate.ToString("dd/MM/yyyy")</td>
+                                                <td data-label="@LangSvc.GetText("MemberDocNoColumn")">@credit.DisplayCode</td>
+                                                <td data-label="@LangSvc.GetText("MemberTypeColumn")">@credit.MemberTypeID</td>
+                                                <td data-label="@LangSvc.GetText("MemberPurchaseViaItemColumn")">@credit.ItemDescription</td>
+                                                <td data-label="@LangSvc.GetText("MemberExpiryDateColumn")">@credit.DueDate.ToString("dd/MM/yyyy")</td>
+                                                <td data-label="@LangSvc.GetText("MemberQtyPurchasedColumn")">@credit.TotalAmount.ToString("N2")</td>
+                                                <td data-label="@LangSvc.GetText("MemberBalanceColumn")">
+                                                    @credit.NetBalanceAfterUtilised.ToString("N2")
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="redemption-history-section" style="margin-top: 5px;">
+                        <div class="modal-header">
+                            <div class="page-title">@LangSvc.GetText("MemberRedemptionHistory")</div>
+                        </div>
+                        <div class="package-grid-container" style="margin-top: 5px;">
+                            <div class="table-scroll-wrapper" style="max-height: 155px;">
+                                <table class="package-table">
+                                    <thead>
+                                        <tr>
+                                            <th>@LangSvc.GetText("MemberCreditColumn")</th>
+                                            <th>@LangSvc.GetText("MemberRedeemDateColumn")</th>
+                                            <th>@LangSvc.GetText("MemberDocNoColumn")</th>
+                                            <th>@LangSvc.GetText("MemberRedeemAmtColumn")</th>
+                                            <th>@LangSvc.GetText("MemberBranchIDColumn")</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @if (isLoadingCreditHistory)
+                                        {
+                                            <tr><td colspan="5" class="text-center">@LangSvc.GetText("MemberLoadingCreditHistory")</td></tr>
+                                        }
+                                        else if (creditRedemptionHistory != null && creditRedemptionHistory.Any())
+                                        {
+                                            @foreach (var h in creditRedemptionHistory)
+                                            {
+                                                <tr>
+                                                    <td data-label="@LangSvc.GetText("MemberCreditColumn")">@h.SourceARAPOutstandingID</td>
+                                                    <td data-label="@LangSvc.GetText("MemberRedeemDateColumn")">@h.FinancialDate.ToString("dd/MM/yyyy")</td>
+                                                    <td data-label="@LangSvc.GetText("MemberDocNoColumn")">@h.DisplayCode</td>
+                                                    <td data-label="@LangSvc.GetText("MemberRedeemAmtColumn")" class="text-center">@Math.Abs(h.TotalAmount).ToString("N2")</td>
+                                                    <td data-label="@LangSvc.GetText("MemberBranchIDColumn")">@h.BranchID</td>
+                                                </tr>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <tr class="empty-row"><td colspan="5">@LangSvc.GetText("MemberNoHistoryFound")</td></tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="orders-btn-secondary" style="flex: 1;"
+                        @onclick="() => showBalanceModal = false">
+                    @LangSvc.GetText("MemberClose")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- MEMBERSHIP TYPE PICKER MODAL -->
+@if (showMembershipPicker)
+{
+    <div class="modal-overlay" style="z-index: 5000;" @onclick="() => showMembershipPicker = false">
+        <div class="modal-content" style="max-width:320px; padding: 0;" @onclick:stopPropagation>
+            <div class="modal-header" style="position: relative; border-bottom: 1px solid #eee; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); text-align: center; flex-grow: 1; margin: 0;">@LangSvc.GetText("MemberSelectMembershipTier")</h3>
+                <button class="close-btn" style="position: absolute; right: 1.5rem; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 1.5rem; color: black !important; cursor: pointer;" @onclick="() => showMembershipPicker = false">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 0; overflow-y: auto; max-height: 60vh; gap: 0;">
+                <div class="picker-list-row" @onclick='() => SelectMembershipType("")'>
+                    <span>@LangSvc.GetText("MemberNoneTier")</span>
+                </div>
+                @if (!AllMembershipTypes.Any())
+                {
+                    <div class="empty-state" style="padding:1.5rem;font-size:0.9rem;">@LangSvc.GetText("MemberNoMembershipTiers")</div>
+                }
+                else
+                {
+                    @foreach (var type in AllMembershipTypes)
+                    {
+                        <div class="picker-list-row" @onclick="() => SelectMembershipType(type.MemberTypeName)">
+                            <span>@type.MemberTypeName</span>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+}

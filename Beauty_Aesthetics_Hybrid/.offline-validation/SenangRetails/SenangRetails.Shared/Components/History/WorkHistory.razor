@@ -1,0 +1,170 @@
+@using SenangRetails.Shared.Enums
+@using SenangRetails.Shared.Components.Common
+@using SenangRetails.Shared.Components.Modals.Work
+@using SenangRetails.Shared.Components.Modals
+@using SenangRetails.Shared.Models
+
+<div class="work-container">
+    <h3 class="view-title">Work: @GetViewTitle()</h3>
+
+    @if (View == HistoryView.WorkItem)
+    {
+        <div class="segmented-control">
+            @foreach (var tab in itemTabs)
+            {
+                <div class="segment @(activeTab == tab ? "active" : "")"
+                     @onclick="() => activeTab = tab">
+                    @tab
+                </div>
+            }
+        </div>
+
+        <div class="summary-section">
+            <div class="total-text">Total - @FilteredReceipts.Count()</div>
+            @if (activeTab != "All")
+            {
+                <div class="group-label">@activeTab.ToUpper()</div>
+            }
+        </div>
+
+        <div class="item-cardlist">
+            @foreach (var receipt in FilteredReceipts)
+            {
+                @foreach (var item in receipt.Items)
+                {
+                    @if (activeTab == "All" || item.Category == activeTab)
+                    {
+                        <div class="item-card" @onclick="() => OpenItemDetail(item,receipt)">
+                            <div class="item-icon-box">
+                                <i class="fas @(item.Category == "Package" ? "fa-box" : "fa-concierge-bell")"></i>
+                            </div>
+                            <div class="item-info">
+                                <div class="primary-text">@item.ItemName</div>
+                                <div class="secondary-text">@item.Category</div>
+                            </div>
+                            <div class="item-meta">
+                                <div class="qty-text">x @item.Quantity</div>
+                                <div class="price-text">RM @item.Price.ToString("N2")</div>
+                            </div>
+                        </div>
+                    }
+                }
+            }
+        </div>
+    }
+    else if (View == HistoryView.WorkCustomer)
+    {
+        <div class="summary-section">
+            <div class="total-text">Total - @CustomerSummaries.Count()</div>
+        </div>
+
+        <div class="item-cardlist">
+            @foreach (var summary in CustomerSummaries)
+            {
+                <div class="customer-card" @onclick="() => OpenCustomerModal(summary)">
+                    <div class="card-top">
+                        <div class="customer-avatar">
+                            <i class="fas fa-user-circle fa-2x"></i>
+                        </div>
+                        <div class="customer-info">
+                            <div class="primary-text">@(summary.Member?.Name ?? "Guest")</div>
+                            <div class="secondary-text">@(summary.Member?.PhoneNumber ?? "-")</div>
+                        </div>
+                        <div class="customer-stats">
+                            <div class="price-text">@summary.TotalSales.ToString("N2")</div>
+                            <div class="secondary-text">@summary.OrderCount Order(s)</div>
+                        </div>
+                    </div>
+
+                    <div class="card-bottom d-flex flex-wrap gap-2">
+                        @foreach (var pay in summary.PaymentDetails)
+                        {
+                            <span class="payment-badge">
+                                @pay.Method : @pay.Amount.ToString("N2")
+                            </span>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else if (View == HistoryView.WorkStaff)
+    {
+        <div class="summary-section">
+            <div class="total-text">Total - 1</div>
+        </div>
+
+        <div class="staff-card " @onclick='() => OpenStaffDetail("Effie")'>
+            <div class="staff-profile">
+                <div class="staff-avatar-box"><i class="fas fa-image"></i></div>
+                <div class="staff-info">
+                    <div class="primary-text">Effie</div>
+                    <div class="secondary-text">(6016) 629-9810</div>
+                </div>
+            </div>
+            <div class="staff-metrics">
+                <div class="metric-column">
+                    <div class="metric-label">Effort</div>
+                    <div class="metric-value price-text">209.00</div>
+                </div>
+                <div class="metric-column">
+                    <div class="metric-label">Sale</div>
+                    <div class="metric-value text-bold">209.00</div>
+                </div>
+                <div class="metric-column">
+                    <div class="metric-label">Credit</div>
+                    <div class="metric-value">0.00</div>
+                </div>
+                <div class="metric-column">
+                    <div class="metric-label">Voucher</div>
+                    <div class="metric-value">0.00</div>
+                </div>
+                <div class="metric-column">
+                    <div class="metric-label">Point</div>
+                    <div class="metric-value">0.00</div>
+                </div>
+                <div class="metric-column">
+                    <div class="metric-label">H.O.F</div>
+                    <div class="metric-value">0.00</div>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="summary-section">
+            <div class="total-text">Total - 1</div>
+        </div>
+        <div class="order-card" @onclick="OpenReceipt">
+            <div class="primary-text">Order #000000015</div>
+            <div class="secondary-text">05:41 PM, 06/02/2026</div>
+        </div>
+    }
+</div>
+
+
+<StaffDetailModal Visible="isStaffModalVisible"
+                  StaffName="@selectedStaffName"
+                  OnClose="CloseStaffDetail" />
+
+
+<ItemDetailsModal @key="isItemDetailModalVisible"
+                  Visible="isItemDetailModalVisible"
+                  ItemModel="SelectedItem"
+                  ReceiptModel="SelectedReceipt"
+                  OnOpenReceiptHistory="HandleOpenHistoryFromItem"
+                  OnClose="CloseItemDetail" />
+
+<CustomerDetailsModal Visible="isCustomerDetailModalVisible"
+                      MemberModel="SelectedMember"
+                      ReceiptList="SelectedCustomerReceipts"
+                      OnOpenReceiptHistory="HandleOpenHistoryFromCustomer"
+                      OnClose="CloseCustomerModal" />
+
+<HistoryDetailsModal Visible="@ShowReceiptModal"
+                     ReceiptModel="@SelectedReceipt"
+                     OnClose="@CloseReceipt" />
+
+@code {
+
+}

@@ -1,0 +1,286 @@
+@page "/follow-up-history"
+@using Beauty_Aesthetics_WebPos.Components.Layout
+@layout EmptyLayout
+@using Beauty_Aesthetics_WebPos.Components.ViewModels
+@using Microsoft.JSInterop
+@using Microsoft.AspNetCore.Components
+
+@inject IJSRuntime JS
+@inject NavigationManager NavigationManager
+@inject FollowUpPageViewModel ViewModel
+
+<PageTitle>Follow Up History - Beauty Aesthetics</PageTitle>
+
+<div class="case-history-page">
+    <!-- Top Header -->
+    <header class="mobile-header">
+        <button class="btn-back-arrow" @onclick="NavigateBack" title="Back to Follow Up" aria-label="Back to Follow Up">
+            <i class="bi bi-arrow-left"></i>
+        </button>
+        <div class="header-title">
+            <h2>Follow Up History</h2>
+        </div>
+        <div class="header-right-space"></div>
+    </header>
+
+    <div class="main-content">
+        <!-- Search and Filter Section -->
+        <div class="search-filter-section">
+            <!-- Search Box -->
+            <div class="search-box">
+                <i class="bi bi-search"></i>
+                <input type="text" 
+                       class="search-input" 
+                       @bind="ViewModel.SearchQuery" 
+                       @bind:event="oninput"
+                       placeholder="Search by patient, content, or date..." />
+                @if (!string.IsNullOrWhiteSpace(ViewModel.SearchQuery))
+                {
+                    <button class="search-clear-btn" @onclick="@(() => ViewModel.SearchQuery = string.Empty)" title="Clear search">
+                        <i class="bi bi-x-circle-fill"></i>
+                    </button>
+                }
+            </div>
+            
+            <!-- Date Filter Dropdown -->
+            <div class="date-filter-wrapper">
+                <div class="date-filter @(_isDateFilterOpen ? "open" : "")" @onclick="ToggleDateFilter">
+                    <i class="bi bi-calendar-range"></i>
+                    <span class="date-filter-label">@GetDateFilterLabel()</span>
+                    <i class="bi bi-chevron-down filter-arrow"></i>
+                </div>
+                
+                @if (_isDateFilterOpen)
+                {
+                    <div class="date-filter-dropdown" @onclick:stopPropagation="true">
+                        <div class="filter-option @(ViewModel.DateFilter == "all" ? "selected" : "")" 
+                             @onclick="@(() => SelectDateFilter("all"))">
+                            <i class="bi bi-calendar-week"></i>
+                            <span>All Dates</span>
+                            @if (ViewModel.DateFilter == "all")
+                            {
+                                <i class="bi bi-check-circle-fill check-icon"></i>
+                            }
+                        </div>
+                        <div class="filter-option @(ViewModel.DateFilter == "today" ? "selected" : "")" 
+                             @onclick="@(() => SelectDateFilter("today"))">
+                            <i class="bi bi-calendar-day"></i>
+                            <span>Today</span>
+                            @if (ViewModel.DateFilter == "today")
+                            {
+                                <i class="bi bi-check-circle-fill check-icon"></i>
+                            }
+                        </div>
+                        <div class="filter-option @(ViewModel.DateFilter == "yesterday" ? "selected" : "")" 
+                             @onclick="@(() => SelectDateFilter("yesterday"))">
+                            <i class="bi bi-calendar-minus"></i>
+                            <span>Yesterday</span>
+                            @if (ViewModel.DateFilter == "yesterday")
+                            {
+                                <i class="bi bi-check-circle-fill check-icon"></i>
+                            }
+                        </div>
+                        <div class="filter-divider"></div>
+                        <div class="filter-option @(ViewModel.DateFilter == "last7days" ? "selected" : "")" 
+                             @onclick="@(() => SelectDateFilter("last7days"))">
+                            <i class="bi bi-calendar-range"></i>
+                            <span>Last 7 Days</span>
+                            @if (ViewModel.DateFilter == "last7days")
+                            {
+                                <i class="bi bi-check-circle-fill check-icon"></i>
+                            }
+                        </div>
+                        <div class="filter-option @(ViewModel.DateFilter == "last30days" ? "selected" : "")" 
+                             @onclick="@(() => SelectDateFilter("last30days"))">
+                            <i class="bi bi-calendar-range"></i>
+                            <span>Last 30 Days</span>
+                            @if (ViewModel.DateFilter == "last30days")
+                            {
+                                <i class="bi bi-check-circle-fill check-icon"></i>
+                            }
+                        </div>
+                        <div class="filter-divider"></div>
+                        <div class="filter-option @(ViewModel.DateFilter == "thisMonth" ? "selected" : "")" 
+                             @onclick="@(() => SelectDateFilter("thisMonth"))">
+                            <i class="bi bi-calendar-month"></i>
+                            <span>This Month</span>
+                            @if (ViewModel.DateFilter == "thisMonth")
+                            {
+                                <i class="bi bi-check-circle-fill check-icon"></i>
+                            }
+                        </div>
+                        <div class="filter-option @(ViewModel.DateFilter == "lastMonth" ? "selected" : "")" 
+                             @onclick="@(() => SelectDateFilter("lastMonth"))">
+                            <i class="bi bi-calendar-month"></i>
+                            <span>Last Month</span>
+                            @if (ViewModel.DateFilter == "lastMonth")
+                            {
+                                <i class="bi bi-check-circle-fill check-icon"></i>
+                            }
+                        </div>
+                        <div class="filter-divider"></div>
+                        <div class="filter-option custom-option @(ViewModel.DateFilter == "custom" ? "selected" : "")" 
+                             @onclick="@(() => SelectDateFilter("custom"))">
+                            <i class="bi bi-calendar2-range"></i>
+                            <span>Custom Range</span>
+                            @if (ViewModel.DateFilter == "custom")
+                            {
+                                <i class="bi bi-check-circle-fill check-icon"></i>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+            
+            <!-- Custom Date Range -->
+            @if (ViewModel.IsCustomDateRange)
+            {
+                <div class="custom-date-range">
+                    <div class="date-input-group">
+                        <label>From:</label>
+                        <input type="date" 
+                               class="date-input" 
+                               @bind="ViewModel.CustomStartDate" />
+                    </div>
+                    <div class="date-input-group">
+                        <label>To:</label>
+                        <input type="date" 
+                               class="date-input" 
+                               @bind="ViewModel.CustomEndDate" />
+                    </div>
+                </div>
+            }
+            
+            <!-- Clear Filters Button -->
+            @if (!string.IsNullOrWhiteSpace(ViewModel.SearchQuery) || ViewModel.DateFilter != "all")
+            {
+                <button class="btn-clear-filters" @onclick="@(() => ViewModel.ClearFilters())" title="Clear all filters">
+                    <i class="bi bi-x-circle"></i>
+                    <span>Clear Filters</span>
+                </button>
+            }
+        </div>
+        
+        <!-- Sidebar Content -->
+        <div class="history-content">
+            @if (ViewModel.FilteredFollowUpHistory.Any())
+            {
+                @foreach (var followUp in ViewModel.FilteredFollowUpHistory)
+                {
+                    <div class="history-card @(ViewModel.CurrentlyViewingFollowUpId == followUp.Id ? "active" : "") @(followUp.IsPinned ? "pinned" : "")" 
+                         @onclick="() => SelectFollowUp(followUp)">
+                        <div class="history-card-header">
+                            <span class="history-date">
+                                <i class="bi bi-calendar3"></i>
+                                @followUp.Date.ToString("MMM dd, yyyy")
+                            </span>
+                            <div class="history-card-actions">
+                                <button class="btn-pin @(followUp.IsPinned ? "pinned" : "")" 
+                                        @onclick="() => TogglePin(followUp.Id)" 
+                                        @onclick:stopPropagation="true" 
+                                        title="@(followUp.IsPinned ? "Unpin" : "Pin to top")">
+                                    <i class="bi @(followUp.IsPinned ? "bi-pin-fill" : "bi-pin")"></i>
+                                </button>
+                                <button class="btn-delete" @onclick="() => DeleteFollowUp(followUp.Id)" 
+                                        @onclick:stopPropagation="true" title="Delete">
+                                    <i class="bi bi-trash3"></i>
+                                </button>
+                            </div>
+                        </div>
+                        @if (!string.IsNullOrEmpty(followUp.ImageUrl))
+                        {
+                            <div class="history-image-preview">
+                                <img src="@followUp.ImageUrl" alt="Follow-up preview" />
+                            </div>
+                        }
+
+                        <p class="history-preview">@followUp.Preview</p>
+                        <span class="history-patient">@followUp.PatientName</span>
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="empty-state">
+                    @if (!string.IsNullOrWhiteSpace(ViewModel.SearchQuery) || ViewModel.DateFilter != "all")
+                    {
+                        <i class="bi bi-search"></i>
+                        <p>No follow-ups match your filters</p>
+                        <button class="btn-reset-filters" @onclick="@(() => ViewModel.ClearFilters())">
+                            <i class="bi bi-arrow-counterclockwise"></i>
+                            <span>Reset Filters</span>
+                        </button>
+                    }
+                    else
+                    {
+                        <i class="bi bi-inbox"></i>
+                        <p>No follow-ups yet</p>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool _isDateFilterOpen = false;
+
+    private void ToggleDateFilter()
+    {
+        _isDateFilterOpen = !_isDateFilterOpen;
+    }
+
+    private void SelectDateFilter(string filter)
+    {
+        ViewModel.DateFilter = filter;
+        _isDateFilterOpen = false;
+        StateHasChanged();
+    }
+
+    private string GetDateFilterLabel()
+    {
+        return ViewModel.DateFilter switch
+        {
+            "all" => "All Dates",
+            "today" => "Today",
+            "yesterday" => "Yesterday",
+            "last7days" => "Last 7 Days",
+            "last30days" => "Last 30 Days",
+            "thisMonth" => "This Month",
+            "lastMonth" => "Last Month",
+            "custom" => "Custom Range",
+            _ => "All Dates"
+        };
+    }
+
+    private void TogglePin(int followUpId)
+    {
+        ViewModel.TogglePin(followUpId);
+        StateHasChanged();
+    }
+
+    private async Task DeleteFollowUp(int followUpId)
+    {
+        bool confirmed = await JS.InvokeAsync<bool>("confirm", "Are you sure you want to delete this follow-up record?");
+        if (confirmed)
+        {
+            ViewModel.DeleteFollowUp(followUpId);
+            if (ViewModel.CurrentlyViewingFollowUpId == followUpId)
+            {
+                ViewModel.CurrentlyViewingFollowUpId = null;
+            }
+            StateHasChanged();
+        }
+    }
+
+    private void SelectFollowUp(FollowUpPageViewModel.FollowUp followUp)
+    {
+        ViewModel.CurrentlyViewingFollowUpId = followUp.Id;
+        NavigationManager.NavigateTo("/follow-up");
+    }
+
+    private void NavigateBack()
+    {
+        NavigationManager.NavigateTo("/follow-up");
+    }
+}

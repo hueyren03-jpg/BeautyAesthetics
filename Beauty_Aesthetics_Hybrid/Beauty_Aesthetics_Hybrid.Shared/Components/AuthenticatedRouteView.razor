@@ -1,0 +1,112 @@
+@inject NavigationManager Navigation
+@inject IAuthService AuthService
+@inject IBranchSessionService BranchSession
+
+@if (isLoginRoute || (isAuthenticated == true && (!BranchSession.RequiresSelection || isBranchSelectionRoute)))
+{
+    <RouteView RouteData="RouteData" DefaultLayout="DefaultLayout" />
+}
+else if (isCheckingAuthentication)
+{
+    <LayoutView Layout="DefaultLayout">
+        <div class="auth-checking" aria-live="polite">Checking session...</div>
+    </LayoutView>
+}
+
+@code {
+    [Parameter]
+    public RouteData RouteData { get; set; } = default!;
+
+    [Parameter]
+    public Type DefaultLayout { get; set; } = typeof(MainLayout);
+
+    private bool isLoginRoute;
+    private bool isBranchSelectionRoute;
+    private bool isCheckingAuthentication = true;
+    private bool? isAuthenticated;
+    private Task<AuthResult>? authenticationTask;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        isLoginRoute = RouteData.PageType == typeof(Pages.Login);
+        isBranchSelectionRoute = RouteData.PageType == typeof(Pages.SelectBranch);
+
+        if (isLoginRoute)
+        {
+            isAuthenticated = true;
+            isCheckingAuthentication = false;
+            authenticationTask = null;
+            return;
+        }
+
+        // Route parameters can be applied repeatedly while layouts and pages render.
+        // Keep the verified in-memory session instead of flashing the session screen.
+        if (isAuthenticated == true && !string.IsNullOrWhiteSpace(AuthService.CurrentUserJson))
+        {
+            await InitializeBranchSessionAsync();
+            isCheckingAuthentication = false;
+            return;
+        }
+
+        isCheckingAuthentication = true;
+        isAuthenticated = null;
+
+        // Preserve the route that started this asynchronous authentication check.
+        // This component can receive a newer route before the check completes.
+        var requestedPageType = RouteData.PageType;
+        var requestedReturnUrl = Navigation.ToBaseRelativePath(Navigation.Uri);
+
+        authenticationTask ??= AuthService.EnsureAuthenticatedAsync();
+        var currentTask = authenticationTask;
+        var result = await currentTask;
+
+        if (ReferenceEquals(authenticationTask, currentTask))
+        {
+            authenticationTask = null;
+        }
+
+        // A newer navigation superseded this check. Ignore its stale continuation
+        // so it cannot replace the newer route or corrupt the return URL.
+        if (RouteData.PageType != requestedPageType || RouteData.PageType == typeof(Pages.Login))
+        {
+            return;
+        }
+
+        isAuthenticated = result.Success;
+
+        if (!result.Success)
+        {
+            if (string.IsNullOrWhiteSpace(requestedReturnUrl) ||
+                requestedReturnUrl.StartsWith("login", StringComparison.OrdinalIgnoreCase))
+            {
+                requestedReturnUrl = "/";
+            }
+
+            var encodedReturnUrl = Uri.EscapeDataString(requestedReturnUrl);
+            Navigation.NavigateTo($"/login?returnUrl={encodedReturnUrl}", replace: true);
+            isCheckingAuthentication = false;
+            return;
+        }
+
+        await InitializeBranchSessionAsync();
+        isCheckingAuthentication = false;
+    }
+
+    private async Task InitializeBranchSessionAsync()
+    {
+        await BranchSession.InitializeAsync();
+        if (!BranchSession.RequiresSelection || isBranchSelectionRoute)
+        {
+            return;
+        }
+
+        var returnUrl = Navigation.ToBaseRelativePath(Navigation.Uri);
+        if (string.IsNullOrWhiteSpace(returnUrl) ||
+            returnUrl.StartsWith("select-branch", StringComparison.OrdinalIgnoreCase))
+        {
+            returnUrl = "/";
+        }
+
+        Navigation.NavigateTo($"/select-branch?returnUrl={Uri.EscapeDataString(returnUrl)}", replace: true);
+    }
+}

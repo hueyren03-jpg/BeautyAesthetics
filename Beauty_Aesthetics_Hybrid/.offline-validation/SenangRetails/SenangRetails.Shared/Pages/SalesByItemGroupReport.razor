@@ -1,0 +1,248 @@
+@inherits SenangRetails.Shared.Pages.BasePage
+@using BlazorBootstrap
+@using SenangRetails.Shared.Services
+@using System.Net.Http.Json
+@using System.Text
+@using QuestPDF.Fluent
+@using QuestPDF.Helpers
+@using QuestPDF.Infrastructure
+
+<div class="sales-by-itemgroup-container">
+    <div class="sales-by-itemgroup-list-container">
+        <!-- Date Filter Section -->
+        <div class="report-date-filter">
+            <div class="date-filter-controls">
+                <!-- Quick Date Range Buttons -->
+                <div class="quick-date-buttons">
+                    <button class="quick-date-btn @(selectedDateRange == "Today" ? "active" : "")" @onclick='() => SetDateRange("Today")'>
+                        @LangSvc.GetText("Today")
+                    </button>
+                    <button class="quick-date-btn @(selectedDateRange == "Week" ? "active" : "")" @onclick='() => SetDateRange("Week")'>
+                        @LangSvc.GetText("This Week")
+                    </button>
+                    <button class="quick-date-btn @(selectedDateRange == "Month" ? "active" : "")" @onclick='() => SetDateRange("Month")'>
+                        @LangSvc.GetText("This Month")
+                    </button>
+                    <button class="quick-date-btn @(selectedDateRange == "Year" ? "active" : "")" @onclick='() => SetDateRange("Year")'>
+                        @LangSvc.GetText("This Year")
+                    </button>
+                </div>
+
+                <!-- Date Pickers with Labels and Refresh Button -->
+                <div class="date-picker-group">
+                    <div class="date-picker-item">
+                        <label class="date-picker-label">@LangSvc.GetText("Start Date")</label>
+                        <MobileDatePicker @bind-Value="startDate"
+                                          DateFormat="dd/MM/yyyy"
+                                          Placeholder="Select Date" />
+                    </div>
+                    <div class="date-picker-item">
+                        <label class="date-picker-label">@LangSvc.GetText("End Date")</label>
+                        <MobileDatePicker @bind-Value="endDate"
+                                          DateFormat="dd/MM/yyyy"
+                                          Placeholder="Select Date" />
+                    </div>
+                    <button class="refresh-btn" @onclick="RefreshData" title="Refresh">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+
+                <!-- Export Dropdown Button -->
+                <div class="export-dropdown">
+                    <button class="export-btn" @onclick="ToggleExportDropdown" @onclick:preventDefault="true">
+                        <i class="bi bi-download"></i>
+                        <span class="action-btn-text">@LangSvc.GetText("Export")</span>
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+                    @if (showExportDropdown)
+                    {
+                        <div class="export-dropdown-menu">
+                            <button class="export-dropdown-item" @onclick="ExportToCSV">
+                                <i class="bi bi-file-spreadsheet"></i>
+                                @LangSvc.GetText("Export CSV")
+                            </button>
+                            <button class="export-dropdown-item" @onclick="ExportToPDF">
+                                <i class="bi bi-file-pdf"></i>
+                                @LangSvc.GetText("Export PDF")
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- KPI Summary Cards -->
+        <div class="kpi-cards">
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-folder"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">@totalItemGroups.ToString("N0")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("Total Item Groups")</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-graph-up"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">RM @totalSales.ToString("N2")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("Total Sales")</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-box-seam"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">@totalItems.ToString("N0")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("Total Items")</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter Tabs for Type Selection -->
+        <div class="report-type-tabs">
+            <button class="type-tab @(selectedTypeTab == "Service" ? "active" : "")"
+                    @onclick="@(() => SelectTypeTab("Service"))">
+                <i class="bi bi-star"></i>
+                @LangSvc.GetText("ReportService")
+            </button>
+            <button class="type-tab @(selectedTypeTab == "Product" ? "active" : "")"
+                    @onclick="@(() => SelectTypeTab("Product"))">
+                <i class="bi bi-box"></i>
+                @LangSvc.GetText("ReportProduct")
+            </button>
+            <button class="type-tab @(selectedTypeTab == "Package" ? "active" : "")"
+                    @onclick="@(() => SelectTypeTab("Package"))">
+                <i class="bi bi-gift"></i>
+                @LangSvc.GetText("ReportPackage")
+            </button>
+            <button class="type-tab @(selectedTypeTab == "TopUp" ? "active" : "")"
+                    @onclick="@(() => SelectTypeTab("TopUp"))">
+                <i class="bi bi-plus-circle"></i>
+                @LangSvc.GetText("ReportTopUp")
+            </button>
+        </div>
+
+        <!-- Sales by Item Group Table -->
+        <div class="sales-by-itemgroup-table">
+            <div class="sales-by-itemgroup-table-header">
+                <div class="sales-by-itemgroup-table-header-cell">@LangSvc.GetText("Item Group")</div>
+                <div class="sales-by-itemgroup-table-header-cell">@LangSvc.GetText("Item Type")</div>
+                <div class="sales-by-itemgroup-table-header-cell">@LangSvc.GetText("Quantity")</div>
+                <div class="sales-by-itemgroup-table-header-cell">@LangSvc.GetText("Amount")</div>
+            </div>
+            <div class="sales-by-itemgroup-table-body">
+                @if (isLoading)
+                {
+                    <div class="text-center py-5">
+                        <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Medium" />
+                        <p>Loading data...</p>
+                    </div>
+                }
+                else if (!string.IsNullOrEmpty(exportMessage))
+                {
+                    <div class="alert alert-@alertType">@exportMessage</div>
+                }
+                else if (itemGroupData.Any())
+                {
+                    @foreach (var group in itemGroupData)
+                    {
+                        <!-- Item Group Header Row -->
+                        <div class="sales-by-itemgroup-table-row group-row" @onclick="() => ToggleItemGroup(group.ItemGroupId)">
+                            <div class="sales-by-itemgroup-table-cell group-cell" data-label="@LangSvc.GetText("Item Group")">
+                                <div class="sales-by-itemgroup-folder-icon">
+                                    <i class="bi bi-folder-fill"></i>
+                                </div>
+                                <span class="sales-by-itemgroup-name">@group.ItemGroupName</span>
+                            </div>
+                            <div class="sales-by-itemgroup-table-cell" data-label="@LangSvc.GetText("Item Type")"></div>
+                            <div class="sales-by-itemgroup-table-cell group-quantity" data-label="@LangSvc.GetText("Quantity")">@group.TotalQuantity.ToString("N2")</div>
+                            <div class="sales-by-itemgroup-table-cell group-amount" data-label="@LangSvc.GetText("Amount")">RM @group.TotalAmount.ToString("N2")</div>
+                        </div>
+
+                        <!-- Service/Product Items (visible when expanded) -->
+                        @if (group.IsExpanded)
+                        {
+                            @foreach (var item in group.Items)
+                            {
+                                <div class="sales-by-itemgroup-table-row item-row">
+                                    <div class="sales-by-itemgroup-table-cell item-cell" data-label="@LangSvc.GetText("Item Group")">
+                                        <div class="sales-by-itemgroup-icon">
+                                            <i class="bi @GetItemIcon(item.Type)"></i>
+                                        </div>
+                                        <div class="item-info">
+                                            <span class="sales-by-itemgroup-item-name">@item.ItemName</span>
+                                            @if (!string.IsNullOrEmpty(item.ItemCode))
+                                            {
+                                                <span class="sales-by-itemgroup-item-code">@item.ItemCode</span>
+                                            }
+                                        </div>
+                                    </div>
+                                    <div class="sales-by-itemgroup-table-cell item-type-cell" data-label="@LangSvc.GetText("Item Type")">
+                                        <span class="item-type-badge @item.Type.ToLower()">@item.Type</span>
+                                    </div>
+                                    <div class="sales-by-itemgroup-table-cell item-quantity" data-label="@LangSvc.GetText("Quantity")">@item.Quantity.ToString("N2")</div>
+                                    <div class="sales-by-itemgroup-table-cell item-amount" data-label="@LangSvc.GetText("Amount")">RM @item.Amount.ToString("N2")</div>
+                                </div>
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    <div class="text-center py-3 text-muted">No data available</div>
+                }
+            </div>
+        </div>
+    </div>
+    @if (showAlertDialogModal)
+    {
+        <div class="modal-overlay" @onclick="CloseAlertDialog">
+            <div class="modal-content" @onclick:stopPropagation="true">
+                <div class="appointment-modal-header">
+                    <div class="appt-title">@alertDialogTitle</div>
+                </div>
+                <div class="modal-body">
+                    <p>@alertDialogMessage</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="appt-btn-primary" style="flex: 1;" @onclick="CloseAlertDialog">
+                        OK
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>

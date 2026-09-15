@@ -1,0 +1,1745 @@
+﻿@inherits SenangRetails.Shared.Pages.BasePage
+@using SenangRetails.Shared.Model
+@using SenangRetails.Shared.Pages
+
+<!-- MAIN CONTAINER SWITCH: SECTION SETTINGS VS NORMAL PRODUCT VIEW -->
+@if (isSectionSettingsMode)
+{
+    <!-- SECTION SETTINGS MODE -->
+    <div class="product-view-wrapper">
+
+        <div class="content-area product-content-area">
+            <!-- SECTION LIST -->
+            <div class="product-table-wrap">
+                @if (isLoading)
+                {
+                    <div style="padding: 2rem; text-align: center; color: #aaa;">
+                        <div class="loading-spinner"></div>
+                        <div style="margin-top: 0.8rem; font-size: 0.95rem;">@LangSvc.GetText("ProductLoadingSections")</div>
+                    </div>
+                }
+                else
+                {
+                    <!-- TITLE + ADD BUTTON (outside box, consistent with other tabs) -->
+                    <div class="product-table-title-row">
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <button class="mobile-menu-btn" style="@(ShowRestoreButton ? "display:flex;" : "")" @onclick="TriggerToggleSidebar">
+                                <i class="fa-solid fa-bars"></i>
+                            </button>
+                            <!-- BACK BUTTON -->
+                            <div class="back-button" @onclick="GoBack">
+                                <i class="fa-solid fa-chevron-left"></i>
+                                <span>@LangSvc.GetText("MenuBack")</span>
+                            </div>
+                            <div class="page-title"><h2>@LangSvc.GetText("MenuItemGroup")</h2></div>
+                        </div>
+                        <button class="add-btn" @onclick="OpenAddSectionMode" title="@(LangSvc.GetText("ProductAddPrefix") + " " + LangSvc.GetText("MenuItemGroup"))">+ @LangSvc.GetText("ProductAddPrefix")</button>
+                    </div>
+                    <div class="product-table">
+                        <!-- FILTERS inside the box -->
+                        <div class="filters-bar" style="padding: 0.6rem 1.2rem;">
+                            <div style="position: relative; flex: 0 1 400px;">
+                                <input type="text" class="search-filter-control" style="width: 100%; padding-left: 2.2rem;" placeholder="@LangSvc.GetText("ProductSearchSection")" value="@sectionSearchQuery" @oninput="(e) => { sectionSearchQuery = e.Value?.ToString() ?? string.Empty; ResetSectionPage(); }" />
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 0.8rem; top: 50%; transform: translateY(-50%);">
+                                    <circle cx="11" cy="11" r="8"></circle>
+                                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                </svg>
+                            </div>
+                            <div style="flex: 1;"></div>
+                            <div style="position: relative;">
+                                <button class="flat-action-btn @(isSectionFilterVisible ? "active" : "")" title="Filter" @onclick="ToggleSectionFilterVisibility">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+                                </button>
+                                @if (isSectionFilterVisible)
+                                {
+                                    <div style="position: absolute; top: calc(100% + 6px); right: 0; background: white; border: 1px solid #e0e0e0; border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,0.12); z-index: 300; width: 220px; padding: 1.2rem;" @onclick:stopPropagation>
+                                        <label style="font-weight: 600; color: #555; margin-bottom: 0.4rem; display: block; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">@LangSvc.GetText("Status")</label>
+                                        <div class="select-wrapper">
+                                            <select class="form-control" value="@sectionFilterStatus" @onchange="(e) => { sectionFilterStatus = e.Value?.ToString() ?? string.Empty; ResetSectionPage(); }" style="appearance: none; font-size: 0.9rem; padding: 0.6rem 2rem 0.6rem 0.8rem;">
+                                                <option value="All">@LangSvc.GetText("ProductFilterAll")</option>
+                                                <option value="Newest">@LangSvc.GetText("ProductFilterHasItems")</option>
+                                                <option value="Oldest">@LangSvc.GetText("ProductFilterEmpty")</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="product-table-header">
+                            <!-- Item Group - Sortable -->
+                            <div class="ptcol-section-name sortable-header" @onclick='() => SortItemGroupBy("Name")'>
+                                <span>@LangSvc.GetText("MenuItemGroup")</span>
+                                @if (itemGroupSortColumn == "Name")
+                                {
+                                    <span class="sort-indicator active">@(itemGroupSortAscending ? "▲" : "▼")</span>
+                                }
+                                else
+                                {
+                                    <span class="sort-indicator">↕</span>
+                                }
+                            </div>
+                            <!-- Actions - Not Sortable -->
+                            <div class="ptcol-actions">@LangSvc.GetText("ProductAction")</div>
+                        </div>
+                        @foreach (var sec in PagedSections)
+                        {
+                            <div class="product-table-row" @onclick="() => OpenEditSectionMode(sec)" style="cursor: pointer;">
+                                <div class="ptcol-section-name">
+                                    <div class="pt-item-thumb pt-item-icon" style="background: #eef2ff; color: #6366f1;">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                                    </div>
+                                    <span class="pt-item-name">@sec.Name</span>
+                                </div>
+                                <div class="ptcol-actions">
+                                    <button class="pt-action-btn" @onclick:stopPropagation="true" @onclick="() => OpenEditSectionMode(sec)" title="Edit">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                    </button>
+                                    <button class="pt-action-btn pt-delete-btn" @onclick:stopPropagation="true" @onclick="() => RequestDeleteSection(sec)" title="Delete">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                        @if (!FilteredSections.Any())
+                        {
+                            <div class="empty-state">@LangSvc.GetText("ProductNoSections")</div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- SECTION PAGINATION BAR -->
+        <div class="pagination-bar">
+            <span class="pagination-count">@string.Format(LangSvc.GetText("ProductShowingCount"), SectionPageRangeEnd, TotalSectionCount, LangSvc.GetText("MenuItemGroup"))</span>
+            <div class="pagination-controls">
+                <!-- First Page Button -->
+                <button class="pagination-nav-btn pagination-edge-btn" @onclick="SectionFirstPage" disabled="@(_sectionCurrentPage <= 1)" title="First Page">
+                    <i class="fa-solid fa-angles-left"></i>
+                </button>
+
+                <!-- Previous Page Button -->
+                <button class="pagination-nav-btn" @onclick="SectionPreviousPage" disabled="@(_sectionCurrentPage <= 1)" title="Previous Page">
+                    <i class="fa-solid fa-chevron-left"></i>
+                </button>
+
+                @foreach (var p in GetVisibleSectionPages())
+                {
+                    var pageNum = p;
+                    <button class="pagination-page-btn @(_sectionCurrentPage == pageNum ? "active" : "")" @onclick="() => GoToSectionPage(pageNum)">@pageNum</button>
+                }
+
+                <!-- Next Page Button -->
+                <button class="pagination-nav-btn" @onclick="SectionNextPage" disabled="@(_sectionCurrentPage >= TotalSectionPages)" title="Next Page">
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+
+                <!-- Last Page Button -->
+                <button class="pagination-nav-btn pagination-edge-btn" @onclick="SectionLastPage" disabled="@(_sectionCurrentPage >= TotalSectionPages)" title="Last Page">
+                    <i class="fa-solid fa-angles-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ADD / EDIT ITEM GROUP MODAL -->
+    @if (isAddSectionMode)
+    {
+        <div class="prod-modal-overlay" @onclick="CloseAddSectionMode">
+            <div class="prod-modal-box prod-modal-sm" @onclick:stopPropagation="true">
+                <div class="prod-modal-header">
+                    <span class="prod-modal-title">@(isEditSectionMode ? string.Format(LangSvc.GetText("ProductEditTitle"), LangSvc.GetText("MenuItemGroup")) : string.Format(LangSvc.GetText("ProductAddTitle"), LangSvc.GetText("MenuItemGroup")))</span>
+                </div>
+                <div class="prod-modal-body">
+                    <div class="add-mode-container" style="background: white; border-radius: 0; padding: 1.5rem;">
+                        <div class="form-section">
+                            <div class="form-group">
+                                <label>@LangSvc.GetText("ProductItemGroupNameLabel") <span style="color: #e53935;">*</span></label>
+                                <input type="text" class="form-control" value="@newSection.Name" @oninput="(e) => newSection.Name = e.Value?.ToString() ?? string.Empty" placeholder="@LangSvc.GetText("ServiceSectionNamePlaceholder")" />
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+                <div class="prod-modal-footer">
+                    <button class="prod-modal-cancel-btn" @onclick="CloseAddSectionMode">@LangSvc.GetText("Cancel")</button>
+                    <button class="prod-modal-save-btn" @onclick="SaveSection" disabled="@_isSavingSection">@(_isSavingSection ? "..." : LangSvc.GetText("Save"))</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- DELETE ITEM GROUP CONFIRMATION POPUP -->
+    @if (isSectionDeleteConfirmOpen)
+    {
+        <div class="prod-modal-overlay" style="z-index: 3200;" @onclick="() => isSectionDeleteConfirmOpen = false">
+            <div class="prod-modal-box prod-modal-sm" style="text-align: center;" @onclick:stopPropagation>
+                <div class="prod-modal-header">
+                    <span class="prod-modal-title">@LangSvc.GetText("ProductConfirmDelete")</span>
+                    <button class="prod-modal-close" @onclick="() => isSectionDeleteConfirmOpen = false"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="prod-modal-body" style="padding: 1.5rem 2rem; display: flex; flex-direction: column; align-items: center; gap: 0.75rem;">
+                    <div style="width: 56px; height: 56px; border-radius: 50%; background: #FFF0F0; display: flex; align-items: center; justify-content: center;">
+                        <i class="fa-solid fa-trash" style="font-size: 1.4rem; color: var(--primary);"></i>
+                    </div>
+                    <p style="color: #555; margin: 0;">@LangSvc.GetText("ProductDeleteSectionConfirmMsg") <strong>@(_sectionToDelete?.Name)</strong>?</p>
+                </div>
+                <div class="prod-modal-footer">
+                    <button class="prod-modal-cancel-btn" @onclick="() => isSectionDeleteConfirmOpen = false">@LangSvc.GetText("Cancel")</button>
+                    <button class="prod-modal-save-btn" @onclick="ConfirmDeleteSection">@LangSvc.GetText("Delete")</button>
+                </div>
+            </div>
+        </div>
+    }
+}
+else
+{
+    <!-- NORMAL PRODUCT VIEW -->
+    <div class="product-view-wrapper">
+        <!-- Mobile hamburger — only visible on small screens -->
+        <div class="top-bar" style="display: none;">
+            <button class="mobile-menu-btn" @onclick="TriggerToggleSidebar">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+        </div>
+
+        <!-- LIST VIEW -->
+        <div class="content-area product-content-area">
+            <div class="product-table-wrap">
+                @if (isLoading)
+                {
+                    <div style="padding: 2rem; text-align: center; color: #aaa;">
+                        <div class="loading-spinner"></div>
+                        <div style="margin-top: 0.8rem; font-size: 0.95rem;">@LangSvc.GetText("ProductLoadingItems")</div>
+                    </div>
+                }
+                else
+                {
+                    <!-- TITLE + ACTION BUTTONS ROW (outside the box) -->
+                    <div class="product-table-title-row">
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <button class="mobile-menu-btn" style="@(ShowRestoreButton ? "display:flex;" : "")" @onclick="TriggerToggleSidebar">
+                                <i class="fa-solid fa-bars"></i>
+                            </button>
+                            <!-- BACK BUTTON -->
+                            <div class="back-button" @onclick="GoBack">
+                                <i class="fa-solid fa-chevron-left"></i>
+                                <span>@LangSvc.GetText("MenuBack")</span>
+                            </div>
+                            <div class="page-title">
+                                <h2>@ViewTypeDisplay</h2>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <button class="stock-manage-btn" @onclick="OpenStockInMode" title="Stock In">
+                                <i class="fa-solid fa-boxes-stacked" style="font-size: 1rem;"></i> @LangSvc.GetText("ProductManageStock")
+                            </button>
+                            <button class="add-btn" @onclick="OpenAddProductMode" title="@(LangSvc.GetText("ProductAddPrefix") + " " + ViewTypeDisplay)">+ @LangSvc.GetText("ProductAddPrefix")</button>
+                        </div>
+                    </div>
+                    <div class="product-table">
+                        <div class="filters-bar" style="padding: 0.6rem 1.2rem;">
+                            <div style="position: relative; flex: 0 1 400px;">
+                                <input type="text" class="search-filter-control" style="width: 100%; padding-left: 2.2rem;" placeholder="@($"{LangSvc.GetText("ProductSearch")} {ViewTypeDisplay}...")" value="@filterSearchQuery" @oninput="(e) => { filterSearchQuery = e.Value?.ToString() ?? string.Empty; ResetPage(); }" />
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 0.8rem; top: 50%; transform: translateY(-50%);">
+                                    <circle cx="11" cy="11" r="8"></circle>
+                                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                </svg>
+                            </div>
+
+                            <div style="flex: 1;"></div>
+
+                            <div style="position: relative;">
+                                <button class="flat-action-btn @(isFilterVisible ? "active" : "")" title="Filter" @onclick="ToggleFilterVisibility">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+                                </button>
+                               @if (isFilterVisible)
+{
+    <div class="filter-dropdown-wrapper">
+        <div class="filter-dropdown-content">
+            <!-- Active Status Filter -->
+            <div style="margin-bottom: 1rem;">
+                <label style="font-weight: 600; color: #555; margin-bottom: 0.4rem; display: block; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">@LangSvc.GetText("ProductFilterisActive")</label>
+                <div class="select-wrapper">
+                    <select class="form-control" value="@filterActiveStatus" @onchange="OnActiveStatusChanged" style="appearance: none; font-size: 0.9rem; padding: 0.6rem 2rem 0.6rem 0.8rem;">
+                        <option value="All">@LangSvc.GetText("ProductFilterAll")</option>
+                        <option value="Active">@LangSvc.GetText("Active")</option>
+                        <option value="Inactive">@LangSvc.GetText("Inactive")</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Item Category Filter with Search inside dropdown -->
+            <div>
+                <label style="font-weight: 600; color: #555; margin-bottom: 0.4rem; display: block; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">@LangSvc.GetText("ProductFilterItemCategory")</label>
+                
+                <!-- Custom dropdown with search -->
+                <div class="category-dropdown-container">
+                    <!-- Search Input inside dropdown -->
+                    <div class="category-search-wrapper" style="position: relative; margin-bottom: 0.5rem;">
+                        <input type="text" 
+                               class="form-control" 
+                               placeholder="@LangSvc.GetText("ProductSearchCategories")" 
+                               value="@_categorySearchQuery" 
+                               @oninput="(e) => { _categorySearchQuery = e.Value?.ToString() ?? string.Empty; }"
+                               @onclick:stopPropagation="true"
+                               style="padding-left: 2rem; font-size: 0.85rem; width: 100%;" />
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 0.6rem; top: 50%; transform: translateY(-50%);">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                        @if (!string.IsNullOrEmpty(_categorySearchQuery))
+                        {
+                            <button type="button" 
+                                    @onclick="() => { _categorySearchQuery = string.Empty; }" 
+                                    @onclick:stopPropagation="true"
+                                    style="position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); background: none; border: none; color: #999; cursor: pointer; font-size: 1rem; padding: 0 0.25rem;">
+                                ✕
+                            </button>
+                        }
+                    </div>
+
+                    <!-- Custom dropdown list -->
+                    <div class="category-list-wrapper" style="max-height: 200px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 6px; background: white;">
+                        <!-- All option -->
+                        <div class="category-option @(filterCategory == "All" ? "selected" : "")"
+                             @onclick='() => { filterCategory = "All"; ResetPage(); _categorySearchQuery = string.Empty; }'
+                             style="padding: 0.5rem 0.8rem; cursor: pointer; transition: background 0.15s; border-bottom: 1px solid #f5f5f5; @(filterCategory == "All" ? "background: var(--bg-surface); color: var(--primary); font-weight: 600;" : "")">
+                            @LangSvc.GetText("ProductFilterAll")
+                        </div>
+                        
+                        @foreach (var cat in FilteredCategories)
+                        {
+                            <div class="category-option @(filterCategory == cat ? "selected" : "")" 
+                                 @onclick="() => { filterCategory = cat; ResetPage(); _categorySearchQuery = string.Empty; }"
+                                 style="padding: 0.5rem 0.8rem; cursor: pointer; transition: background 0.15s; border-bottom: 1px solid #f5f5f5; @(filterCategory == cat ? "background: var(--bg-surface); color: var(--primary); font-weight: 600;" : "")">
+                                @cat
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+                            </div>
+
+                            <button class="flat-action-btn" title="Export Excel" @onclick="DownloadExcel">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+                                <span style="color: #1A1A1A; font-weight: 400;">@LangSvc.GetText("Export")</span>
+                            </button>
+                        </div>
+
+                        <div class="product-table-header">
+                            <!-- Name - Sortable -->
+                            <div class="ptcol-name sortable-header" @onclick='() => SortBy("Name")'>
+                                <span>@ViewTypeDisplay</span>
+                                @if (sortColumn == "Name")
+                                {
+                                    <span class="sort-indicator active">@(sortAscending ? "▲" : "▼")</span>
+                                }
+                                else
+                                {
+                                    <span class="sort-indicator">↕</span>
+                                }
+                            </div>
+
+                            <!-- Category - Sortable -->
+                            <div class="ptcol-category sortable-header" @onclick='() => SortBy("Category")'>
+                                <span>@LangSvc.GetText("MemberNoteCategory")</span>
+                                @if (sortColumn == "Category")
+                                {
+                                    <span class="sort-indicator active">@(sortAscending ? "▲" : "▼")</span>
+                                }
+                                else
+                                {
+                                    <span class="sort-indicator">↕</span>
+                                }
+                            </div>
+
+                            <!-- Reorder Level / Expiry Date - Sortable -->
+                            @if (ViewType != "TopUp" && ViewType != "Service")
+                            {
+                                <div class="ptcol-reorder sortable-header" @onclick='() => SortBy("Reorder")'>
+                                    <span>@(ViewType == "Package" ? LangSvc.GetText("ProductExpiryDate") : LangSvc.GetText("ProductReorderLevel"))</span>
+                                    @if (sortColumn == "Reorder")
+                                    {
+                                        <span class="sort-indicator active">@(sortAscending ? "▲" : "▼")</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="sort-indicator">↕</span>
+                                    }
+                                </div>
+                            }
+
+                            <!-- Price - Sortable -->
+                            <div class="ptcol-price sortable-header" @onclick='() => SortBy("Price")'>
+                                <span>@LangSvc.GetText("ProductSalesPrice")</span>
+                                @if (sortColumn == "Price")
+                                {
+                                    <span class="sort-indicator active">@(sortAscending ? "▲" : "▼")</span>
+                                }
+                                else
+                                {
+                                    <span class="sort-indicator">↕</span>
+                                }
+                            </div>
+
+                            <!-- Actions - Not Sortable -->
+                            <div class="ptcol-actions">@LangSvc.GetText("ProductAction")</div>
+                        </div>
+                        @foreach (var item in PagedItems)
+                        {
+                            <div class="product-table-row" @onclick="async () => await ShowItemDetails(item)" style="cursor: pointer;">
+                                <div class="ptcol-name">
+                                    @if (!string.IsNullOrEmpty(GetDisplayImageUrl(item)))
+                                    {
+                                        <img src="@GetDisplayImageUrl(item)" alt="@item.AccountName" class="pt-item-thumb" style="object-fit: fill; border: 1px solid #eee;" />
+                                    }
+                                    else
+                                    {
+                                        <div class="pt-item-thumb pt-item-icon">@((MarkupString)GetIconForCategory(item.ItemGroupName))</div>
+                                    }
+                                    <span class="pt-item-name">@item.AccountName</span>
+                                </div>
+                                <div class="ptcol-category">
+                                    @if (!string.IsNullOrEmpty(item.ItemGroupName))
+                                    {
+                                        <span class="pt-category-pill">@item.ItemGroupName</span>
+                                    }
+                                    else
+                                    {
+                                        <span>-</span>
+                                    }
+                                </div>
+                                @if (ViewType != "TopUp" && ViewType != "Service")
+                                {
+                                    <div class="ptcol-reorder">@(ViewType == "Package" ? "-" : (item.StockReorderLevel > 0 ? item.StockReorderLevel.ToString("0.##") : "-"))</div>
+                                }
+                                <div class="ptcol-price">RM @item.SalesPrice.ToString("N2")</div>
+                                <div class="ptcol-actions">
+                                    <button class="pt-action-btn" @onclick:stopPropagation="true" @onclick="async () => await ShowItemDetails(item)" title="Edit">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                    </button>
+                                    <button class="pt-action-btn pt-delete-btn" @onclick:stopPropagation="true" @onclick="() => RequestDelete(item)" title="Delete">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                        @if (!FilteredItems.Any())
+                        {
+                            <div class="empty-state">@LangSvc.GetText("ProductNoItemsFound") @ViewTypeDisplay.</div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- PAGINATION BAR -->
+        <div class="pagination-bar">
+            <span class="pagination-count">@string.Format(LangSvc.GetText("ProductShowingCount"), PageRangeEnd, TotalFilteredCount, ViewTypeDisplay)</span>
+            <div class="pagination-controls">
+                <!-- First Page Button -->
+                <button class="pagination-nav-btn pagination-edge-btn" @onclick="FirstPage" disabled="@(_currentPage <= 1)" title="First Page">
+                    <i class="fa-solid fa-angles-left"></i>
+                </button>
+
+                <!-- Previous Page Button -->
+                <button class="pagination-nav-btn" @onclick="PreviousPage" disabled="@(_currentPage <= 1)" title="Previous Page">
+                    <i class="fa-solid fa-chevron-left"></i>
+                </button>
+
+                @foreach (var p in GetVisiblePages())
+                {
+                    var pageNum = p;
+                    <button class="pagination-page-btn @(_currentPage == pageNum ? "active" : "")" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                }
+
+                <!-- Next Page Button -->
+                <button class="pagination-nav-btn" @onclick="NextPage" disabled="@(_currentPage >= TotalPages)" title="Next Page">
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+
+                <!-- Last Page Button -->
+                <button class="pagination-nav-btn pagination-edge-btn" @onclick="LastPage" disabled="@(_currentPage >= TotalPages)" title="Last Page">
+                    <i class="fa-solid fa-angles-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ADD / EDIT PRODUCT MODAL -->
+    @if (isAddMode)
+    {
+        <div class="prod-modal-overlay" @onclick="CloseAddMode">
+            <div class="prod-modal-box @(ViewType == "Package" || ViewType == "TopUp" ? "add-mode-pkg" : "")" @onclick:stopPropagation="true">
+                <div class="prod-modal-header">
+                    <span class="prod-modal-title">@(isEditingExistingItem ? string.Format(LangSvc.GetText("ProductEditTitle"), ViewTypeDisplay) : string.Format(LangSvc.GetText("ProductAddTitle"), ViewTypeDisplay))</span>
+                    @if (!isEditingExistingItem)
+                    {
+                        <button class="prod-modal-import-btn" @onclick="OpenUploadMenuModal" title="@LangSvc.GetText("MemberImport")">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            @LangSvc.GetText("MemberImport")
+                        </button>
+                    }
+                </div>
+                <div class="prod-modal-body">
+                    <div class="add-mode-container @(ViewType == "Package" || ViewType == "TopUp" ? "add-mode-pkg" : "")">
+                        <!-- Top Image Adder -->
+                        <div class="add-image-section">
+                            <label for="directImageInput" class="image-placeholder" style="@GetPlaceholderStyle(); cursor: pointer;">
+                                @if (!string.IsNullOrEmpty(_tempImagePreview))
+                                {
+                                    <img src="@_tempImagePreview" alt="Product Image" style="width: 100%; height: 100%; object-fit: fill; border-radius: 12px;" />
+                                }
+                                else if (string.IsNullOrEmpty(_imageName))
+                                {
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                                    <span>@LangSvc.GetText("ProductAddImage")</span>
+                                }
+                                else
+                                {
+                                    <div style="font-weight: bold; color: var(--primary-rose);">@_imageName</div>
+                                    <span style="font-size: 0.8rem;">@LangSvc.GetText("ProductClickToChange")</span>
+                                }
+                            </label>
+                            <InputFile id="directImageInput" OnChange="HandleFileSelected" style="display:none;" accept="image/*" />
+                        </div>
+                        @if (!string.IsNullOrEmpty(_tempImagePreview))
+                        {
+                            <div style="display:flex; justify-content:center; margin-top:6px;">
+                                <button type="button" @onclick="ClearImage"
+                                        style="background:none; border:none; color:#e53935; font-size:0.85rem; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4h6v2"></path></svg>
+                                    @LangSvc.GetText("ProductRemoveImage")
+                                </button>
+                            </div>
+                        }
+
+                        <!-- Tabs -->
+                        <div class="add-tabs">
+                            <button class="tab-btn @(activeAddTab == "Info" ? "active" : "")" @onclick='() => activeAddTab = "Info"'>@LangSvc.GetText("ProductTabInfo")</button>
+                            @if (ViewType == "Package")
+                            {
+                                <button class="tab-btn @(activeAddTab == "packageItems" ? "active" : "")" @onclick='() => activeAddTab = "packageItems"'>@LangSvc.GetText("ProductPackageItems")</button>
+                                <button class="tab-btn @(activeAddTab == "Membership" ? "active" : "")" @onclick='() => activeAddTab = "Membership"'>@LangSvc.GetText("ProductMembership")</button>
+                            }
+                            else if (ViewType == "TopUp")
+                            {
+                                <button class="tab-btn @(activeAddTab == "Membership" ? "active" : "")" @onclick='() => activeAddTab = "Membership"'>@LangSvc.GetText("ProductMembership")</button>
+                            }
+                            else if (ViewType != "TopUp")
+                            {
+                                <button class="tab-btn @(activeAddTab == "Advance" ? "active" : "")" @onclick='() => activeAddTab = "Advance"'>@LangSvc.GetText("ProductTabAdvance")</button>
+                            }
+                        </div>
+
+                        <!-- Tab Content -->
+                        <div class="tab-content-area @(ViewType == "Package" || ViewType == "TopUp" ? "tab-content-pkg" : "")">
+                            @if (activeAddTab == "Info")
+                            {
+                                <div class="form-section">
+                                    <!-- Item Name -->
+                                    <div class="form-group">
+                                        <label>@(ViewType == "Service" ? LangSvc.GetText("ProductServiceName") : ViewType == "Package" ? LangSvc.GetText("ProductPackageName") : ViewType == "TopUp" ? LangSvc.GetText("ProductTopUpName") : LangSvc.GetText("ProductItemNameLabel")) <span style="color: #e53935;">*</span></label>
+                                        <input id="product-name-input" type="text" class="form-control" value="@newItem.AccountName" @oninput="(e) => newItem.AccountName = e.Value?.ToString() ?? string.Empty"
+                                               placeholder="@(ViewType == "Service" ? LangSvc.GetText("ProductServiceName") : ViewType == "Package" ? LangSvc.GetText("ProductPackageName") : ViewType == "TopUp" ? LangSvc.GetText("ProductTopUpName") : LangSvc.GetText("ProductNamePlaceholder"))" />
+                                    </div>
+
+                                    <!-- Item Code -->
+                                    <div class="form-group">
+                                        <label>@LangSvc.GetText("ProductItemCodeLabel")</label>
+                                        <input type="text" class="form-control" @bind="newItem.DisplayCode" placeholder="@LangSvc.GetText("ProductItemCodePlaceholder")" />
+                                    </div>
+
+                                    <!-- Select Item Group + isActive -->
+                                    <div style="display: flex; gap: 1rem; align-items: flex-end;">
+                                        <div class="form-group" style="flex: 1; position: relative; margin-bottom: 0;">
+                                            <label>@LangSvc.GetText("MenuItemGroup") <span style="color: #e53935;">*</span></label>
+ 
+                                            <!-- Custom searchable dropdown -->
+                                            <div class="searchable-dropdown-container">
+                                                <!-- Display selected value or placeholder -->
+                                                <div class="form-control clickable" @onclick="ToggleItemGroupDropdown" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;">
+                                                    <span style="@(string.IsNullOrEmpty(newItem.ItemGroupName) ? "color: #999;" : "")">
+                                                        @(string.IsNullOrEmpty(newItem.ItemGroupName) ? LangSvc.GetText("MenuItemGroup") : newItem.ItemGroupName)
+                                                    </span>
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="@(isItemGroupDropdownOpen ? "transform:rotate(180deg);transition:transform 0.2s;" : "transform:rotate(0deg);transition:transform 0.2s;")">
+                                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                                    </svg>
+                                                </div>
+
+                                                <!-- Dropdown with search -->
+                                                @if (isItemGroupDropdownOpen)
+                                                {
+                                                    <div class="searchable-dropdown-menu" @onclick:stopPropagation="true">
+                                                        <!-- Search Input -->
+                                                        <div class="dropdown-search-wrapper" style="position: relative; padding: 0.5rem;">
+                                                            <input type="text"
+                                                                   class="form-control"
+                                                                   placeholder="@LangSvc.GetText("ProductSearchItemGroupPlaceholder")"
+                                                                   value="@_itemGroupSearchQuery"
+                                                                   @oninput="(e) => { _itemGroupSearchQuery = e.Value?.ToString() ?? string.Empty; }"
+                                                                   @onclick:stopPropagation="true"
+                                                                   style="padding-left: 2rem; font-size: 0.85rem; width: 100%;" />
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 1.2rem; top: 50%; transform: translateY(-50%);">
+                                                                <circle cx="11" cy="11" r="8"></circle>
+                                                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                                            </svg>
+                                                            @if (!string.IsNullOrEmpty(_itemGroupSearchQuery))
+                                                            {
+                                                                <button type="button"
+                                                                        @onclick="() => { _itemGroupSearchQuery = string.Empty; }"
+                                                                        @onclick:stopPropagation="true"
+                                                                        style="position: absolute; right: 1.2rem; top: 50%; transform: translateY(-50%); background: none; border: none; color: #999; cursor: pointer; font-size: 1rem; padding: 0 0.25rem;">
+                                                                    ✕
+                                                                </button>
+                                                            }
+                                                        </div>
+
+                                                        <!-- Options List -->
+                                                        <div class="dropdown-options-list" style="max-height: 200px; overflow-y: auto; padding: 0.25rem 0;">
+                                                            @{
+                                                                var filteredItemGroups = string.IsNullOrEmpty(_itemGroupSearchQuery)
+                                                                    ? Categories
+                                                                    : Categories.Where(c => c.Contains(_itemGroupSearchQuery, StringComparison.OrdinalIgnoreCase)).ToList();
+                                                            }
+                                                            @if (!filteredItemGroups.Any())
+                                                            {
+                                                                <div style="padding: 0.75rem 1rem; color: #999; font-style: italic; text-align: center;">
+                                                                    @LangSvc.GetText("ProductNoItemGroupsFound")
+                                                                </div>
+                                                            }
+                                                            else
+                                                            {
+                                                                @foreach (var cat in filteredItemGroups)
+                                                                {
+                                                                    <div class="dropdown-option @(newItem.ItemGroupName == cat ? "selected" : "")"
+                                                                         @onclick="() => SelectCategoryFromDropdown(cat)"
+                                                                         style="padding: 0.6rem 1rem; cursor: pointer; transition: background 0.15s; border-bottom: 1px solid #f5f5f5; @(newItem.ItemGroupName == cat ? "background: var(--bg-surface); color: var(--primary); font-weight: 600;" : "")">
+                                                                        @cat
+                                                                    </div>
+                                                                }
+                                                            }
+                                                        </div>
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 0.5rem; padding-bottom: 0.8rem; flex-shrink: 0;">
+                                            <input type="checkbox" id="itemIsActive" @bind="NewItemIsAvailable" style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary-rose);" />
+                                            <label for="itemIsActive" style="margin: 0; font-weight: 600; color: #555; white-space: nowrap; cursor: pointer; font-size: 0.9rem;">@LangSvc.GetText("ProductFilterisActive")</label>
+                                        </div>
+                                    </div>
+
+                                    <!-- Tax Code + Inclusive Tax -->
+                                    <div class="row-group" style="margin-top: 0.5rem;">
+                                        <div class="form-group" style="flex: 1; position: relative;">
+                                            <label>@LangSvc.GetText("ProductTaxCode")</label>
+                                            <div class="select-wrapper">
+                                                <select class="form-control" @bind="newItem.TaxCodeID" style="appearance: none; color: @(string.IsNullOrEmpty(newItem.TaxCodeID) ? "#999" : "#1A1A1A");">
+                                                    <option value="" style="color: #999;">@LangSvc.GetText("ProductSelectTaxCode")</option>
+                                                    <option value="SV-6" style="color: #1A1A1A;">SV-6</option>
+                                                    <option value="SST-8" style="color: #1A1A1A;">SST-8</option>
+                                                    <option value="GST-6" style="color: #1A1A1A;">GST-6</option>
+                                                    <option value="NA" style="color: #1A1A1A;">NA</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="form-group" style="flex: 1;">
+                                            <label>@LangSvc.GetText("ProductInclusiveTax")</label>
+                                            <div style="display: flex; gap: 1rem; align-items: center; padding: 0.75rem 0;">
+                                                <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; margin: 0;">
+                                                    <input type="radio" name="pit_@newItem.MasterAccountID" checked="@newItem.IsTaxInclusive" @onchange="@(() => newItem.IsTaxInclusive = true)" style="accent-color: var(--primary-rose); width: 16px; height: 16px;" />
+                                                    <span style="font-size: 0.95rem;">@LangSvc.GetText("ProductYes")</span>
+                                                </label>
+                                                <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; margin: 0;">
+                                                    <input type="radio" name="pit_@newItem.MasterAccountID" checked="@(!newItem.IsTaxInclusive)" @onchange="@(() => newItem.IsTaxInclusive = false)" style="accent-color: var(--primary-rose); width: 16px; height: 16px;" />
+                                                    <span style="font-size: 0.95rem;">@LangSvc.GetText("ProductNo")</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Price + Cost -->
+                                    <div class="row-group">
+                                        <div class="form-group" style="flex: 1;">
+                                            <label>
+                                                @LangSvc.GetText("ProductPriceMYR")
+                                                @if (!string.IsNullOrEmpty(selectedPriceGroupCode))
+                                                {
+                                                    <span style="font-size: 0.75rem; background: var(--bg-surface-2); color: var(--primary-darker); padding: 2px 6px; border-radius: 4px; font-weight: 700; margin-left: 6px;">
+                                                        Price Group: @selectedPriceGroupCode
+                                                    </span>
+                                                }
+                                            </label>
+                                            <div class="form-control clickable" @onclick="@(() => OpenAmountPopup("Price"))">
+                                                <span style="color: var(--primary-rose); font-weight: bold;">@newItem.SalesPrice.ToString("N2")</span>
+                                            </div>
+                                        </div>
+                                        @if (ViewType != "TopUp")
+                                        {
+                                            <div class="form-group" style="flex: 1;">
+                                                <label>@LangSvc.GetText("ProductCostMYR")</label>
+                                                <div class="form-control clickable" @onclick="@(() => OpenAmountPopup("Cost"))">
+                                                    <span style="color: var(--primary-rose); font-weight: bold;">@newItem.PurchasePrice.ToString("N2")</span>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+
+                                    <!-- Visible At Branch — Package only -->
+                                    @if (ViewType == "Package")
+                                    {
+                                        <div class="form-group">
+                                            <label>@LangSvc.GetText("ProductVisibleAtBranch")</label>
+                                            <div class="branch-list branch-grid">
+                                                @if (AppState.AvailableBranches != null && AppState.AvailableBranches.Any())
+                                                {
+                                                    <label class="branch-check-row branch-check-full select-all-row">
+                                                        <input type="checkbox"
+                                                               checked="@IsAllVisibleBranchesSelected()"
+                                                               @onchange="ToggleAllVisibleBranches"
+                                                               class="branch-checkbox" />
+                                                        <span style="font-weight: 700;">@LangSvc.GetText("SelectAll")</span>
+                                                    </label>
+                                                    @foreach (var branchId in AppState.AvailableBranches)
+                                                    {
+                                                        var branchDisplayName = _branchNames.TryGetValue(branchId, out var bn) ? bn : branchId;
+                                                        <label class="branch-check-row">
+                                                            <input type="checkbox"
+                                                                   checked="@_visibleAtBranchIds.Contains(branchId)"
+                                                                   @onchange="() => ToggleVisibleAtBranch(branchId)"
+                                                                   class="branch-checkbox" />
+                                                            <span>@branchDisplayName</span>
+                                                        </label>
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    <div class="branch-check-full" style="padding: 10px; font-size: 12px; color: #999; font-style: italic;">No branches available.</div>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+
+                                    <!-- Visible At Branch — Product and Service only -->
+                                    @if (ViewType == "Product" || ViewType == "Service")
+                                    {
+                                        <div class="form-group">
+                                            <label>@LangSvc.GetText("ProductVisibleAtBranch")</label>
+                                            <div class="branch-list branch-grid">
+                                                @if (AppState.AvailableBranches != null && AppState.AvailableBranches.Any())
+                                                {
+                                                    <label class="branch-check-row branch-check-full select-all-row">
+                                                        <input type="checkbox"
+                                                               checked="@IsAllVisibleBranchesSelected()"
+                                                               @onchange="ToggleAllVisibleBranches"
+                                                               class="branch-checkbox" />
+                                                        <span style="font-weight: 700;">@LangSvc.GetText("SelectAll")</span>
+                                                    </label>
+                                                    @foreach (var branchId in AppState.AvailableBranches)
+                                                    {
+                                                        var branchDisplayName = _branchNames.TryGetValue(branchId, out var bn) ? bn : branchId;
+                                                        <label class="branch-check-row">
+                                                            <input type="checkbox"
+                                                                   checked="@_visibleAtBranchIds.Contains(branchId)"
+                                                                   @onchange="() => ToggleVisibleAtBranch(branchId)"
+                                                                   class="branch-checkbox" />
+                                                            <span>@branchDisplayName</span>
+                                                        </label>
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    <div class="branch-check-full" style="padding: 10px; font-size: 12px; color: #999; font-style: italic;">No branches available.</div>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+
+                                    <!-- Staff Commission — Product, Service, Package only (NOT TopUp) -->
+                                    @if (ViewType == "Product" || ViewType == "Service" || ViewType == "Package")
+                                    {
+                                        <div class="form-group" style="margin-top: 0.5rem;">
+                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem;">
+                                                <label style="margin: 0;">@LangSvc.GetText("ProductStaffCommission")</label>
+                                            </div>
+                                            <div style="display: flex; flex-direction: column; gap: 0.6rem;">
+                                                <!-- Staff 1 -->
+                                                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                                    <span style="width: 54px; font-size: 0.9rem; color: #555; flex-shrink: 0;">Staff 1:</span>
+                                                    <div class="form-control clickable" style="flex: 1; height: 38px; display: flex; align-items: center;" @onclick='() => OpenAmountPopup("Commission1")'>
+                                                        <span style="color: var(--primary-rose); font-weight: bold;">@_commission1.ToString("N2")</span>
+                                                    </div>
+                                                    <div style="position: relative; width: 85px;">
+                                                        <div class="form-control clickable" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; height: 38px; display: flex; align-items: center; justify-content: space-between;" @onclick='() => ToggleCommissionTypeDropdown("Staff1")'>
+                                                            <span>@(_commission1IsPercent ? "%" : "MYR")</span>
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="@(_activeCommissionStaff == "Staff1" && isCommissionTypeDropdownOpen ? "transform:rotate(180deg);transition:transform 0.2s;" : "transform:rotate(0deg);transition:transform 0.2s;")">
+                                                                <polyline points="6 9 12 15 18 9"></polyline>
+                                                            </svg>
+                                                        </div>
+                                                        @if (_activeCommissionStaff == "Staff1" && isCommissionTypeDropdownOpen)
+                                                        {
+                                                            <div class="custom-dropdown-menu" style="min-width: 85px; width: 100%;">
+                                                                <div class="dropdown-item" @onclick='() => SelectCommissionType("Staff1", true)'>%</div>
+                                                                <div class="dropdown-item" @onclick='() => SelectCommissionType("Staff1", false)'>MYR</div>
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                </div>
+                                                <!-- Staff 2 -->
+                                                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                                    <span style="width: 54px; font-size: 0.9rem; color: #555; flex-shrink: 0;">Staff 2:</span>
+                                                    <div class="form-control clickable" style="flex: 1; height: 38px; display: flex; align-items: center;" @onclick='() => OpenAmountPopup("Commission2")'>
+                                                        <span style="color: var(--primary-rose); font-weight: bold;">@_commission2.ToString("N2")</span>
+                                                    </div>
+                                                    <div style="position: relative; width: 85px;">
+                                                        <div class="form-control clickable" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; height: 38px; display: flex; align-items: center; justify-content: space-between;" @onclick='() => ToggleCommissionTypeDropdown("Staff2")'>
+                                                            <span>@(_commission2IsPercent ? "%" : "MYR")</span>
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="@(_activeCommissionStaff == "Staff2" && isCommissionTypeDropdownOpen ? "transform:rotate(180deg);transition:transform 0.2s;" : "transform:rotate(0deg);transition:transform 0.2s;")">
+                                                                <polyline points="6 9 12 15 18 9"></polyline>
+                                                            </svg>
+                                                        </div>
+                                                        @if (_activeCommissionStaff == "Staff2" && isCommissionTypeDropdownOpen)
+                                                        {
+                                                            <div class="custom-dropdown-menu" style="min-width: 85px; width: 100%;">
+                                                                <div class="dropdown-item" @onclick='() => SelectCommissionType("Staff2", true)'>%</div>
+                                                                <div class="dropdown-item" @onclick='() => SelectCommissionType("Staff2", false)'>MYR</div>
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                </div>
+                                                <!-- Staff 3 -->
+                                                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                                    <span style="width: 54px; font-size: 0.9rem; color: #555; flex-shrink: 0;">Staff 3:</span>
+                                                    <div class="form-control clickable" style="flex: 1; height: 38px; display: flex; align-items: center;" @onclick='() => OpenAmountPopup("Commission3")'>
+                                                        <span style="color: var(--primary-rose); font-weight: bold;">@_commission3.ToString("N2")</span>
+                                                    </div>
+                                                    <div style="position: relative; width: 85px;">
+                                                        <div class="form-control clickable" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; height: 38px; display: flex; align-items: center; justify-content: space-between;" @onclick='() => ToggleCommissionTypeDropdown("Staff3")'>
+                                                            <span>@(_commission3IsPercent ? "%" : "MYR")</span>
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="@(_activeCommissionStaff == "Staff3" && isCommissionTypeDropdownOpen ? "transform:rotate(180deg);transition:transform 0.2s;" : "transform:rotate(0deg);transition:transform 0.2s;")">
+                                                                <polyline points="6 9 12 15 18 9"></polyline>
+                                                            </svg>
+                                                        </div>
+                                                        @if (_activeCommissionStaff == "Staff3" && isCommissionTypeDropdownOpen)
+                                                        {
+                                                            <div class="custom-dropdown-menu" style="min-width: 85px; width: 100%;">
+                                                                <div class="dropdown-item" @onclick='() => SelectCommissionType("Staff3", true)'>%</div>
+                                                                <div class="dropdown-item" @onclick='() => SelectCommissionType("Staff3", false)'>MYR</div>
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+
+                                    <!-- Visible At Branch — TopUp only -->
+                                    @if (ViewType == "TopUp")
+                                    {
+                                        <div class="form-group">
+                                            <label>@LangSvc.GetText("ProductVisibleAtBranch")</label>
+                                            <div class="branch-list branch-grid">
+                                                @if (AppState.AvailableBranches != null && AppState.AvailableBranches.Any())
+                                                {
+                                                    <label class="branch-check-row branch-check-full select-all-row">
+                                                        <input type="checkbox"
+                                                               checked="@IsAllVisibleBranchesSelected()"
+                                                               @onchange="ToggleAllVisibleBranches"
+                                                               class="branch-checkbox" />
+                                                        <span style="font-weight: 700;">@LangSvc.GetText("SelectAll")</span>
+                                                    </label>
+                                                    @foreach (var branchId in AppState.AvailableBranches)
+                                                    {
+                                                        var branchDisplayName = _branchNames.TryGetValue(branchId, out var bn) ? bn : branchId;
+                                                        <label class="branch-check-row">
+                                                            <input type="checkbox"
+                                                                   checked="@_visibleAtBranchIds.Contains(branchId)"
+                                                                   @onchange="() => ToggleVisibleAtBranch(branchId)"
+                                                                   class="branch-checkbox" />
+                                                            <span>@branchDisplayName</span>
+                                                        </label>
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    <div class="branch-check-full" style="padding: 10px; font-size: 12px; color: #999; font-style: italic;">No branches available.</div>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+
+                                    <!-- Remark -->
+                                    <div class="form-group">
+                                        <label>@LangSvc.GetText("ProductRemarks")</label>
+                                        <textarea id="product-remark-input" class="form-control" rows="3" placeholder="Write your notes here..."
+                                                  value="@newItem.Remarks"
+                                                  @oninput="(e) => newItem.Remarks = e.Value?.ToString() ?? string.Empty"
+                                                  @onchange="(e) => newItem.Remarks = e.Value?.ToString() ?? newItem.Remarks"></textarea>
+                                    </div>
+                                </div>
+                            }
+                            else if (activeAddTab == "packageItems" && ViewType == "Package")
+                            {
+                                <!-- Package Items tab - ONLY for Package type -->
+                                <div class="form-section">
+                                    <div class="pkg-tab-header">
+                                        <span class="pkg-tab-hint">@LangSvc.GetText("ProductPkgSelectItemsHint")</span>
+                                        <button class="pkg-add-item-btn" @onclick="OpenItemPicker">+ @LangSvc.GetText("ProductAddPrefix")</button>
+                                    </div>
+                                    @if (packageItems.Count == 0)
+                                    {
+                                        <div class="pkg-empty-box">@LangSvc.GetText("ProductNoItemsAddedYet")</div>
+                                    }
+                                    else
+                                    {
+                                        <div class="pkg-items-card">
+                                            <!-- Header row -->
+                                            <div class="pkg-items-header">
+                                                <span class="pkg-header-item">@LangSvc.GetText("ProductItem")</span>
+                                                <span class="pkg-col-label">@LangSvc.GetText("ProductQty")</span>
+                                                <span class="pkg-col-label">@LangSvc.GetText("ProductPrice")</span>
+                                                <span class="pkg-header-spacer"></span>
+                                            </div>
+                                            <div class="pkg-items-list">
+                                                @foreach (var pi in packageItems)
+                                                {
+                                                    <div class="pkg-item-row">
+                                                        <!-- Item name row - matches header structure exactly -->
+                                                        <div class="pkg-item-name-row">
+                                                            <div class="pkg-item-name-content">
+                                                                <span class="pkg-type-badge @(pi.ItemType == "Service" ? "badge-service" : "")">@pi.ItemType</span>
+                                                                <span class="pkg-name-text">@pi.Name</span>
+                                                            </div>
+                                                            <!-- These spacers match the header columns to keep alignment -->
+                                                            <div class="pkg-name-spacer"></div>
+                                                            <div class="pkg-name-spacer"></div>
+                                                            <div class="pkg-name-remove-spacer"></div>
+                                                        </div>
+                                                        <!-- Inputs row -->
+                                                        <div class="pkg-input-row">
+                                                            <div class="pkg-input-spacer"></div>
+                                                            <input type="number" class="form-control pkg-num-input" min="1"
+                                                                   value="@pi.Qty"
+                                                                   @onchange="@((e) => pi.Qty = int.TryParse(e.Value?.ToString(), out var q) && q > 0 ? q : 1)" />
+                                                            <input type="number" class="form-control pkg-num-input" min="0" step="0.01"
+                                                                   value="@pi.Price"
+                                                                   @onchange="@((e) => pi.Price = decimal.TryParse(e.Value?.ToString(), out var p) ? p : pi.Price)" />
+                                                            <button class="pkg-remove-btn" @onclick="() => packageItems.Remove(pi)">✕</button>
+                                                        </div>
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else if (activeAddTab == "Membership" && (ViewType == "Package" || ViewType == "TopUp"))
+                            {
+                                <!-- Membership tab - for both Package and TopUp -->
+                                <div class="form-section pkg-membership-section">
+                                    <!-- Membership Credit title + Add / Remove -->
+                                    <div class="pkg-tab-header pkg-credit-header-bar">
+                                        <span class="pkg-credit-title">@LangSvc.GetText("ProductMembershipCredit")</span>
+                                        <div style="display:flex;gap:0.5rem;">
+                                            <button class="pkg-add-item-btn" @onclick="OpenMemberTypePicker">+ @LangSvc.GetText("ProductAddPrefix")</button>
+                                            <button class="pkg-remove-selected-btn" @onclick="RemoveSelectedCredits">@LangSvc.GetText("ProductRemove")</button>
+                                        </div>
+                                    </div>
+
+                                    <div class="pkg-credit-card">
+                                        @if (membershipCredits.Count == 0)
+                                        {
+                                            <div class="pkg-empty-inner">@LangSvc.GetText("ProductNoMembershipCreditConfigured")</div>
+                                        }
+                                        else
+                                        {
+                                            <!-- Column header -->
+                                            <div class="pkg-credit-col-header">
+                                                <span style="width:22px;"></span>
+                                                <span style="flex:1;">@LangSvc.GetText("ProductMemberType")</span>
+                                                <span class="pkg-col-label">@LangSvc.GetText("ProductCreditAmount")</span>
+                                            </div>
+                                            <div class="pkg-credit-list">
+                                                @foreach (var mc in membershipCredits)
+                                                {
+                                                    <div class="pkg-credit-row">
+                                                        <input type="checkbox" @bind="mc.IsSelected"
+                                                               style="width:15px;height:15px;accent-color:var(--primary-rose);cursor:pointer;flex-shrink:0;" />
+                                                        <span class="pkg-credit-name">@mc.MemberTypeName</span>
+                                                        <input type="number" class="form-control pkg-num-input" min="0" step="0.01"
+                                                               value="@mc.CreditAmount"
+                                                               @oninput="@((e) => { if (decimal.TryParse(e.Value?.ToString(), out var v)) mc.CreditAmount = v; })"
+                                                               placeholder="0.00" />
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+
+                                   @*  <!-- Is Open Top Up - Checkbox -->
+                                    <div class="pkg-open-topup-group">
+                                        <label class="pkg-open-topup-label">
+                                            <input type="checkbox" @bind="isOpenTopUp" class="pkg-open-topup-checkbox" />
+                                            <span class="pkg-open-topup-text">Is Open Top Up</span>
+                                        </label>
+                                    </div> *@
+
+                                    <!-- Expiry Days - for both Package and TopUp -->
+                                    <div class="form-group pkg-expiry-group">
+                                        <label>@LangSvc.GetText("ProductExpiryDays")</label>
+                                        <input type="number" class="form-control" min="0"
+                                               value="@expiryDays"
+                                               @oninput="@((e) => { if (int.TryParse(e.Value?.ToString(), out var v)) expiryDays = v; })"
+                                               placeholder="@LangSvc.GetText("ProductNoExpiryPlaceholder")" />
+                                        <span class="input-description">@string.Format(LangSvc.GetText("ProductExpiryDaysDescription"), ViewType == "Package" ? LangSvc.GetText("MenuPackage").ToLower() : LangSvc.GetText("MenuTopUp").ToLower())</span>
+                                    </div>
+
+                                    <!-- Non-Credit Membership -->
+                                    <div class="pkg-noncredit-section">
+                                        <div class="pkg-tab-header pkg-credit-header-bar">
+                                            <span class="pkg-credit-title">@LangSvc.GetText("ProductNonCreditMembership")</span>
+                                            <div style="display:flex;gap:0.5rem;">
+                                                <button class="pkg-add-item-btn" @onclick="OpenNonCreditMemberPicker">+ @LangSvc.GetText("ProductAddPrefix")</button>
+                                                <button class="pkg-remove-selected-btn" @onclick="RemoveNonCreditMember">@LangSvc.GetText("ProductRemove")</button>
+                                            </div>
+                                        </div>
+
+                                        <div class="pkg-credit-card">
+                                            @if (string.IsNullOrEmpty(selectedNonCreditMemberTypeID))
+                                            {
+                                                <div class="pkg-empty-inner">@LangSvc.GetText("ProductNoNonCreditMembershipConfigured")</div>
+                                            }
+                                            else
+                                            {
+                                                <!-- Column header -->
+                                                <div class="pkg-credit-col-header">
+                                                    <span style="width:22px;"></span>
+                                                    <span style="flex:1;">@LangSvc.GetText("ProductMemberType")</span>
+                                                </div>
+                                                <div class="pkg-credit-list">
+                                                    <div class="pkg-credit-row">
+                                                        <input type="checkbox"
+                                                               checked="@_isNonCreditSelected"
+                                                               @onchange="() => _isNonCreditSelected = !_isNonCreditSelected"
+                                                               style="width:15px;height:15px;accent-color:var(--primary-rose);cursor:pointer;flex-shrink:0;" />
+                                                        <span class="pkg-credit-name">@selectedNonCreditMemberTypeName</span>
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                            else if (activeAddTab == "Advance" && ViewType != "TopUp" && ViewType != "Package")
+                            {
+                                <!-- Advance tab - for Product and Service only -->
+                                <div class="form-section">
+                                    <!-- Row 1: Barcode (left) | UOM (right) -->
+                                    <div class="adv-field-row">
+                                        <div class="form-group adv-field-half">
+                                            <label>@LangSvc.GetText("Barcode")</label>
+                                            <div class="form-control clickable" @onclick="() => isBarcodePopupOpen = true">
+                                                <span>@(string.IsNullOrEmpty(_barcode) ? LangSvc.GetText("ProductScanOrTypeBarcode") : _barcode)</span>
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto; color: #888;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="8" y1="7" x2="8" y2="17"></line><line x1="12" y1="7" x2="12" y2="17"></line><line x1="16" y1="7" x2="16" y2="17"></line></svg>
+                                            </div>
+                                        </div>
+                                        <div class="form-group adv-field-half">
+                                            <label>@LangSvc.GetText("ProductUOM")</label>
+                                            <input type="text" class="form-control"
+                                                   value="@newItem.UnitOfMeasureName"
+                                                   @oninput="(e) => { newItem.UnitOfMeasureName = e.Value?.ToString() ?? string.Empty; newItem.UnitOfMeasureID = newItem.UnitOfMeasureName; }"
+                                                   placeholder="e.g. pcs, kg, litre" />
+                                        </div>
+                                    </div>
+
+                                    <!-- Row 2: Reorder Level or Duration (left) | Redeem Point (right) -->
+                                    <div class="adv-field-row">
+                                        @if (ViewType != "Service")
+                                        {
+                                            <div class="form-group adv-field-half">
+                                                <label>@LangSvc.GetText("ProductReorderLevel")</label>
+                                                <div class="form-control clickable" @onclick="@(() => OpenAmountPopup("LowStockAlert"))">
+                                                    <span style="color: var(--primary-rose); font-weight: bold;">@newItem.StockReorderLevel.ToString("0.##")</span>
+                                                </div>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="form-group adv-field-half">
+                                                <label>@LangSvc.GetText("ProductDuration")</label>
+                                                <div class="form-control clickable" @onclick="OpenDurationPopup" style="display: flex; justify-content: space-between; align-items: center;">
+                                                    <span style="color: var(--primary-rose); font-weight: bold;">
+                                                        @(_duration == null ? LangSvc.GetText("ProductDurationOff") :
+                                                          _duration == 15 ? "15 min" :
+                                                          _duration == 30 ? "30 min" :
+                                                          _duration == 45 ? "45 min" :
+                                                          _duration == 60 ? "1 hour" :
+                                                          _duration == 75 ? "1 hour 15 min" :
+                                                          _duration == 90 ? "1 hour 30 min" :
+                                                          _duration == 105 ? "1 hour 45 min" :
+                                                          _duration == 120 ? "2 hours" :
+                                                          $"{_duration} min")
+                                                    </span>
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                                </div>
+                                            </div>
+                                        }
+                                        <div class="form-group adv-field-half">
+                                            <label>@LangSvc.GetText("ProductRedeemPoint")</label>
+                                            <div class="form-control clickable" @onclick="@(() => OpenAmountPopup("RedeemPoint"))">
+                                                <span style="color: var(--primary-rose); font-weight: bold;">@_redeemPoint.ToString("N0")</span>
+                                            </div>
+                                            <span class="input-description">@LangSvc.GetText("ProductRedeemPointDesc")</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Row 3: Price Group & Promotion Assignment (Touch Optimized) -->
+                                    <div class="adv-field-row" style="margin-top: 0.75rem;">
+                                        <div class="form-group adv-field-half">
+                                            <label style="font-weight: 700; font-size: 0.88rem; color: #334155;">Price Group</label>
+                                            <div class="select-wrapper">
+                                                <select class="form-control" value="@selectedPriceGroupCode" @onchange="OnPriceGroupChanged" style="appearance: none; height: 48px; min-height: 48px; font-size: 0.95rem; font-weight: 600; border-radius: 10px; padding: 0 14px;">
+                                                    <option value="">-- None (Standard Price) --</option>
+                                                    @foreach (var pg in availablePriceGroups)
+                                                    {
+                                                        <option value="@pg.Code">@pg.Name (@pg.Code)@(pg.Price > 0 ? $" - RM {pg.Price:N2}" : "")</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                            <span class="input-description">Assign a price group to apply custom pricing rules.</span>
+                                        </div>
+
+                                        <div class="form-group adv-field-half">
+                                            <label style="font-weight: 700; font-size: 0.88rem; color: #334155;">Promotion Assignment</label>
+                                            <div class="select-wrapper">
+                                                <select class="form-control" @bind="selectedPromoCode" style="appearance: none; height: 48px; min-height: 48px; font-size: 0.95rem; font-weight: 600; border-radius: 10px; padding: 0 14px;">
+                                                    <option value="">-- None (Standard Price) --</option>
+                                                    @foreach (var pr in availablePromotions.Where(p => p.IsActive))
+                                                    {
+                                                        <option value="@pr.Code">@pr.Name (@pr.Code)</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                            <span class="input-description">Assign a master promotion rule configured in Settings.</span>
+                                        </div>
+                                    </div>
+
+                                    @if (!string.IsNullOrEmpty(selectedPriceGroupCode))
+                                    {
+                                        var assignedPg = availablePriceGroups.FirstOrDefault(p => p.Code.Equals(selectedPriceGroupCode, StringComparison.OrdinalIgnoreCase));
+                                        if (assignedPg != null)
+                                        {
+                                            <div class="adv-promo-card" style="margin-top: 1rem; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; box-shadow: 0 2px 8px rgba(var(--primary-rgb),0.06);">
+                                                <div style="display: flex; align-items: center; justify-content: space-between;">
+                                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                                        <i class="fa-solid fa-layer-group" style="color: var(--primary); font-size: 1.1rem;"></i>
+                                                        <div>
+                                                            <strong style="color: #1E293B; font-size: 0.95rem;">@assignedPg.Name</strong>
+                                                            <span style="background: var(--bg-surface-2); color: var(--primary-darker); font-family: monospace; font-weight: 800; padding: 0.15rem 0.5rem; border-radius: 6px; font-size: 0.8rem; margin-left: 0.4rem;">@assignedPg.Code</span>
+                                                            @if (assignedPg.Price > 0)
+                                                            {
+                                                                <span style="background: #DCFCE7; color: #16A34A; font-weight: 800; font-size: 0.85rem; padding: 0.2rem 0.6rem; border-radius: 6px; margin-left: 0.4rem;">
+                                                                    Group Price: RM @assignedPg.Price.ToString("N2")
+                                                                </span>
+                                                            }
+                                                        </div>
+                                                    </div>
+                                                    <span style="font-size: 0.8rem; color: var(--primary-dark); font-weight: 700; background: var(--bg-surface-2); padding: 0.25rem 0.6rem; border-radius: 6px;">Price Group Active</span>
+                                                </div>
+                                                <div style="margin-top: 0.6rem; font-size: 0.82rem; color: #64748B; display: flex; gap: 1.25rem; flex-wrap: wrap;">
+                                                    @if (assignedPg.Price > 0)
+                                                    {
+                                                        <span><i class="fa-solid fa-tag"></i> Original Price: <strong>RM @_originalSalesPrice.ToString("N2")</strong></span>
+                                                        <span><i class="fa-solid fa-arrow-right"></i> Overridden Price: <strong style="color: #16A34A;">RM @assignedPg.Price.ToString("N2")</strong></span>
+                                                    }
+                                                    @if (assignedPg.MlmCommRate > 0)
+                                                    {
+                                                        <span><i class="fa-solid fa-percent"></i> MLM Comm: @assignedPg.MlmCommRate.ToString("0.00")%</span>
+                                                    }
+                                                    @if (assignedPg.MlmSalesTarget > 0)
+                                                    {
+                                                        <span><i class="fa-solid fa-bullseye"></i> MLM Target: RM @assignedPg.MlmSalesTarget.ToString("N2")</span>
+                                                    }
+                                                </div>
+                                            </div>
+                                        }
+                                    }
+
+                                    @if (!string.IsNullOrEmpty(selectedPromoCode))
+                                    {
+                                        var assignedPromo = availablePromotions.FirstOrDefault(p => p.Code == selectedPromoCode);
+                                        if (assignedPromo != null)
+                                        {
+                                            <div class="adv-promo-card" style="margin-top: 1rem; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; box-shadow: 0 2px 8px rgba(var(--primary-rgb),0.06);">
+                                                <div style="display: flex; align-items: center; justify-content: space-between;">
+                                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                                        <i class="fa-solid fa-tags" style="color: var(--primary); font-size: 1.1rem;"></i>
+                                                        <div>
+                                                            <strong style="color: #1E293B; font-size: 0.95rem;">@assignedPromo.Name</strong>
+                                                            <span style="background: var(--bg-surface-2); color: var(--primary-darker); font-weight: 700; font-size: 0.78rem; padding: 0.15rem 0.5rem; border-radius: 6px; margin-left: 0.5rem;">
+                                                                @(assignedPromo.PromoType == "Fixed Price" ? $"RM {assignedPromo.DiscountValue:N2}" : $"{assignedPromo.DiscountValue:N2}% OFF")
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <span style="font-size: 0.8rem; color: #16A34A; font-weight: 700; background: #DCFCE7; padding: 0.2rem 0.55rem; border-radius: 6px;">Active</span>
+                                                </div>
+                                                <div style="margin-top: 0.6rem; font-size: 0.82rem; color: #64748B; display: flex; gap: 1.25rem; flex-wrap: wrap;">
+                                                    <span><i class="fa-solid fa-calendar-days"></i> Valid: @(assignedPromo.StartDate?.ToString("dd MMM yyyy") ?? "Any") – @(assignedPromo.EndDate?.ToString("dd MMM yyyy") ?? "Any")</span>
+                                                    <span><i class="fa-solid fa-cubes"></i> Min Qty: @assignedPromo.MinQuantity</span>
+                                                </div>
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="prod-modal-footer">
+                    <button class="prod-modal-cancel-btn" @onclick="CloseAddMode">@LangSvc.GetText("Cancel")</button>
+                    <button class="prod-modal-save-btn" @onclick="SaveItem" disabled="@_isSaving">@(_isSaving ? "..." : LangSvc.GetText("Save"))</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- PACKAGE ITEM PICKER MODAL -->
+    @if (_showItemPicker)
+    {
+        <div class="modal-overlay" style="z-index: 3000;" @onclick="() => _showItemPicker = false">
+            <div class="modal-content" style="max-width:420px;max-height:75vh;display:flex;flex-direction:column;" @onclick:stopPropagation>
+                <div class="modal-header">
+                    <h3>@LangSvc.GetText("ProductSelectItemTitle")</h3>
+                    <button class="close-btn" @onclick="() => _showItemPicker = false">&times;</button>
+                </div>
+                <div style="padding:0.75rem 1rem;border-bottom:1px solid #eee;flex-shrink:0;">
+                    <input type="text" class="form-control" placeholder="@LangSvc.GetText("ProductSearchProductServicePlaceholder")"
+                           value="@_itemPickerSearch"
+                           @oninput="@((e) => _itemPickerSearch = e.Value?.ToString() ?? string.Empty)" />
+                </div>
+                <div style="overflow-y:auto;flex:1;">
+                    @{
+                        var pickerItems = menuDb
+                            .Where(x => x.InventoryTypeID != 5 && x.InventoryTypeID != 7)
+                            .Where(x => string.IsNullOrEmpty(_itemPickerSearch) || (x.AccountName ?? "").Contains(_itemPickerSearch, StringComparison.OrdinalIgnoreCase))
+                            .OrderBy(x => x.InventoryTypeID).ThenBy(x => x.AccountName);
+                    }
+                    @if (!pickerItems.Any())
+                    {
+                        <div class="empty-state" style="padding:2rem;font-size:0.9rem;">@LangSvc.GetText("NoItemsFound")</div>
+                    }
+                    else
+                    {
+                        @foreach (var pi in pickerItems)
+                        {
+                            var piType = GetItemType(pi.InventoryTypeID);
+                            <div class="picker-list-row" @onclick="() => SelectPackageItem(pi)">
+                                <span class="pkg-type-badge @(piType == "Service" ? "badge-service" : "")">@piType</span>
+                                <div class="picker-list-info">
+                                    <span class="picker-list-name">@pi.AccountName</span>
+                                    <span class="picker-list-price">@pi.SalesPrice.ToString("N2")</span>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- MEMBER TYPE PICKER MODAL -->
+    @if (_showMemberTypePicker)
+    {
+        <div class="modal-overlay" style="z-index: 3000;" @onclick="() => _showMemberTypePicker = false">
+            <div class="modal-content" style="max-width:320px;" @onclick:stopPropagation>
+                <div class="modal-header">
+                    <h3>@LangSvc.GetText("ProductSelectMemberTypeTitle")</h3>
+                    <button class="close-btn" @onclick="() => _showMemberTypePicker = false">&times;</button>
+                </div>
+                <div>
+                    @if (!availableMembershipTypes.Any())
+                    {
+                        <div class="empty-state" style="padding:1.5rem;font-size:0.9rem;">@LangSvc.GetText("ProductNoMemberTypesDefined")</div>
+                    }
+                    else
+                    {
+                        @foreach (var mt in availableMembershipTypes)
+                        {
+                            var alreadyAdded = membershipCredits.Any(m => m.MemberTypeName == mt);
+                            <div class="picker-list-row @(alreadyAdded ? "picker-row-disabled" : "")"
+                                 @onclick="() => { if (!alreadyAdded) SelectMemberTypeForCredit(mt); }">
+                                <span>@mt</span>
+                                @if (alreadyAdded)
+                                {
+                                    <span class="picker-added-badge">@LangSvc.GetText("ProductAddedBadge")</span>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- NON-CREDIT MEMBER TYPE PICKER MODAL -->
+    @if (_showNonCreditMemberPicker)
+    {
+        <div class="modal-overlay" style="z-index: 3000;" @onclick="() => _showNonCreditMemberPicker = false">
+            <div class="modal-content" style="max-width:320px;" @onclick:stopPropagation>
+                <div class="modal-header">
+                    <h3>@LangSvc.GetText("ProductSelectMemberTypeTitle")</h3>
+                    <button class="close-btn" @onclick="() => _showNonCreditMemberPicker = false">&times;</button>
+                </div>
+                <div>
+                    @if (!availableMembershipTypes.Any())
+                    {
+                        <div class="empty-state" style="padding:1.5rem;font-size:0.9rem;">@LangSvc.GetText("ProductNoMemberTypesDefined")</div>
+                    }
+                    else
+                    {
+                        @foreach (var mt in availableMembershipTypes)
+                        {
+                            var isSelected = selectedNonCreditMemberTypeName == mt;
+                            <div class="picker-list-row @(isSelected ? "picker-row-disabled" : "")"
+                                 @onclick="() => { if (!isSelected) SelectNonCreditMemberTypeFromPicker(mt); }">
+                                <span>@mt</span>
+                                @if (isSelected)
+                                {
+                                    <span class="picker-added-badge">@LangSvc.GetText("ProductSelectedBadge")</span>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- UPLOAD MENU MODAL -->
+    @if (showUploadMenuModal)
+    {
+        <div class="prod-modal-overlay" @onclick="CloseUploadMenuModal">
+            <div class="prod-modal-box prod-modal-sm" @onclick:stopPropagation="true">
+                <div class="prod-modal-header">
+                    <span class="prod-modal-title">@LangSvc.GetText("ProductUploadMenu")</span>
+                </div>
+                <div class="prod-modal-body" style="overflow-y: auto;">
+                    @if (menuUploadSuccess)
+                    {
+                        <div style="text-align: center; padding: 2rem;">
+                            <div style="font-size: 3rem;">✅</div>
+                            <h4 style="margin: 1rem 0 0.5rem;">@LangSvc.GetText("ProductImportSuccessful")</h4>
+                            <p style="color: #666;">@menuSuccessMessage</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="padding: 1.2rem; display: flex; flex-direction: column; gap: 1rem;">
+                            @if (IsMenuProcessing)
+                            {
+                                <div style="text-align: center; padding: 1rem;">
+                                    <div class="loading-spinner"></div>
+                                    <p style="margin-top: 0.8rem; color: #888;">@MenuUploadStatus</p>
+                                </div>
+                            }
+                            else
+                            {
+                                @if (!string.IsNullOrEmpty(MenuErrorMessage))
+                                {
+                                    <div style="background: #fff3f3; border: 1px solid #f5c6cb; border-radius: 8px; padding: 0.8rem 1rem;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; font-weight: 600; color: #721c24;">
+                                            <span>@LangSvc.GetText("ProductUploadError")</span>
+                                            <button style="background: none; border: none; cursor: pointer; font-size: 1.1rem; color: #721c24;" @onclick="() => MenuErrorMessage = null">&times;</button>
+                                        </div>
+                                        <div style="color: #721c24; font-size: 0.9rem; margin-top: 0.3rem;">@MenuErrorMessage</div>
+                                    </div>
+                                }
+                                <button class="btn-download-template" @onclick="DownloadMenuTemplate">
+                                    <i class="fa-solid fa-file-csv"></i> @LangSvc.GetText("ProductDownloadCSVTemplate")
+                                </button>
+                                <div style="border: 2px dashed #ddd; border-radius: 10px; padding: 1.5rem; text-align: center;">
+                                    <div style="font-size: 2rem; margin-bottom: 0.5rem;">📁</div>
+                                    @if (FormFactor.GetFormFactor() == "Web")
+                                    {
+                                        <InputFile OnChange="HandleMenuFileSelected" id="menuUploadInputProduct" accept=".csv" hidden />
+                                        <label for="menuUploadInputProduct" class="prod-modal-save-btn" style="cursor: pointer; display: inline-block; padding: 8px 20px;">@LangSvc.GetText("ProductSelectFile")</label>
+                                    }
+                                    else
+                                    {
+                                        <button class="prod-modal-save-btn" style="padding: 8px 20px;" @onclick="PickMenuFileNativeAsync">@LangSvc.GetText("ProductSelectFile")</button>
+                                    }
+                                    <p style="margin-top: 0.6rem; font-size: 0.85rem; color: #888;">
+                                        @(menuSelectedFileName != null ? string.Format(LangSvc.GetText("ProductReadyToImport"), menuSelectedFileName) : LangSvc.GetText("ProductChooseCSVToUpload"))
+                                    </p>
+                                </div>
+                                <div style="background: #f9f9f9; border-radius: 8px; padding: 1rem; font-size: 0.85rem;">
+                                    <div style="font-weight: 600; margin-bottom: 0.5rem;">@LangSvc.GetText("ProductImportInstructionsTitle")</div>
+                                    <ul style="margin: 0; padding-left: 1.2rem; color: #555; line-height: 1.8;">
+                                        <li><strong>@LangSvc.GetText("ProductInstFormat")</strong> CSV</li>
+                                        <li>@LangSvc.GetText("ProductInstHeaderRequired")</li>
+                                        <li><strong>@LangSvc.GetText("ProductInstColumns")</strong> @LangSvc.GetText("ProductInstColNames")</li>
+                                        <li>@LangSvc.GetText("ProductInstRequiredCols")</li>
+                                        <li>@LangSvc.GetText("ProductInstYesNo")</li>
+                                        <li>@LangSvc.GetText("ProductInstAutoCreate")</li>
+                                    </ul>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+                <div class="prod-modal-footer">
+                    @if (menuUploadSuccess)
+                    {
+                        <button class="prod-modal-save-btn" @onclick="CloseUploadMenuModal">@LangSvc.GetText("Done")</button>
+                    }
+                    else
+                    {
+                        <button class="prod-modal-cancel-btn" @onclick="CloseUploadMenuModal">@LangSvc.GetText("Cancel")</button>
+                        <button class="prod-modal-save-btn" @onclick="ConfirmMenuUpload" disabled="@IsMenuProcessing">@LangSvc.GetText("ProductUploadMenu")</button>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- DELETE ITEM CONFIRMATION POPUP -->
+    @if (isDeleteConfirmOpen)
+    {
+        <div class="prod-modal-overlay" style="z-index: 3200;" @onclick="() => isDeleteConfirmOpen = false">
+            <div class="prod-modal-box prod-modal-sm" style="text-align: center;" @onclick:stopPropagation>
+                <div class="prod-modal-header">
+                    <span class="prod-modal-title">@LangSvc.GetText("ProductConfirmDelete")</span>
+                    <button class="prod-modal-close" @onclick="() => isDeleteConfirmOpen = false"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="prod-modal-body" style="padding: 1.5rem 2rem; display: flex; flex-direction: column; align-items: center; gap: 0.75rem;">
+                    <div style="width: 56px; height: 56px; border-radius: 50%; background: #FFF0F0; display: flex; align-items: center; justify-content: center;">
+                        <i class="fa-solid fa-trash" style="font-size: 1.4rem; color: var(--primary);"></i>
+                    </div>
+                    <p style="color: #555; margin: 0;">@LangSvc.GetText("ProductDeleteConfirmMsg") <strong>@(_itemToDelete?.AccountName)</strong>?</p>
+                </div>
+                <div class="prod-modal-footer">
+                    <button class="prod-modal-cancel-btn" @onclick="() => isDeleteConfirmOpen = false">@LangSvc.GetText("Cancel")</button>
+                    <button class="prod-modal-save-btn" @onclick="ConfirmDelete">@LangSvc.GetText("Delete")</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- STOCK IN POPUP MODE -->
+    @if (isStockInMode)
+    {
+        <div class="prod-modal-overlay" style="z-index: 2500;" @onclick="CloseStockInMode">
+            <div class="prod-modal-box" style="max-width: 480px; min-height: 420px;" @onclick:stopPropagation>
+
+                <!-- HEADER -->
+                <div class="prod-modal-header">
+                    <span class="prod-modal-title">Stock Management</span>
+                </div>
+
+                <!-- BODY -->
+                <div class="prod-modal-body" style="padding: 1.5rem; overflow-y: auto;">
+
+                    <!-- Action -->
+                    <div class="form-group" style="margin-bottom: 1.2rem;">
+                        <label style="font-size: 0.85rem; font-weight: 600; color: #1A1A1A; margin-bottom: 0.4rem; display: block;">Action</label>
+                        <div class="stock-action-select-wrapper">
+                            <select class="stock-action-select" @bind="stockInAction">
+                                <option value="" disabled selected hidden>Cash Purchase, GIN, Stock Transfer</option>
+                                <option value="Cash Purchase">Cash Purchase</option>
+                                <option value="GIN">GIN</option>
+                                <option value="Stock Transfer">Stock Transfer</option>
+                            </select>
+                            <svg class="stock-action-arrow" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </div>
+                    </div>
+
+                    <!-- Remarks -->
+                    <div class="form-group" style="margin-bottom: 1.2rem;">
+                        <label style="font-size: 0.85rem; font-weight: 600; color: #1A1A1A; margin-bottom: 0.4rem; display: block;">@LangSvc.GetText("ProductRemarks")</label>
+                        <input type="text" class="form-control" @bind="stockInRemarks" placeholder="Enter Remarks..." />
+                    </div>
+
+                    <!-- Product Title -->
+                    <div class="form-group">
+                        <label style="font-size: 0.85rem; font-weight: 600; color: #1A1A1A; margin-bottom: 0.4rem; display: block;">Product Title</label>
+                        <button class="stock-add-product-btn" @onclick="OpenStockInProductSelection">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            Add Product
+                        </button>
+                        <div class="stock-empty-hint">No product added yet.</div>
+                    </div>
+
+                </div>
+
+                <!-- FOOTER -->
+                <div class="prod-modal-footer">
+                    <button class="prod-modal-cancel-btn" @onclick="CloseStockInMode">Cancel</button>
+                    <button class="prod-modal-save-btn" @onclick="SaveStockIn">Save</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- STOCK IN PRODUCT SELECTION POPUP (Stacked on top) -->
+    @if (isStockInProductSelectionOpen)
+    {
+        <div class="modal-overlay" style="z-index: 2600;" @onclick="CloseStockInProductSelection">
+            <div class="modal-content" style="max-width: 500px; max-height: 85vh; display: flex; flex-direction: column;" @onclick:stopPropagation>
+
+                <!-- SELECTION HEADER -->
+                <div class="modal-header" style="padding: 1rem;">
+                    <button class="close-btn" style="position: static;" @onclick="CloseStockInProductSelection">&times;</button>
+                    <div style="flex: 1; display: flex; justify-content: flex-end; gap: 8px;">
+                        <!-- Filter Button -->
+                        <button class="icon-btn-square" style="width: 32px; height: 32px;" @onclick="ToggleStockInFilter">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+                        </button>
+                        <!-- Search Button -->
+                        <button class="icon-btn-square" style="width: 32px; height: 32px;" @onclick="ToggleStockInSearch">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- SEARCH BAR (Conditional) -->
+                @if (isStockInSearchVisible)
+                {
+                    <div style="padding: 0 1rem 0.5rem 1rem;">
+                        <input type="text" class="search-filter-control" placeholder="@LangSvc.GetText("ProductSearchProduct")" @bind="stockInSearchQuery" @bind:event="oninput" style="width: 100%;" />
+                    </div>
+                }
+
+                <!-- FILTER DROPDOWN -->
+                @if (isStockInFilterDropdownOpen)
+                {
+                    <div class="sort-menu" style="position: absolute; top: 60px; right: 60px; background: white; border: 1px solid #eee; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 2700; width: 150px;">
+                        <div style="padding: 0.8rem 1rem; cursor: pointer; border-bottom: 1px solid #f0f0f0; font-size: 0.9rem;" @onclick='() => SelectStockInSort("Name")'>@LangSvc.GetText("ProductSortName")</div>
+                        <div style="padding: 0.8rem 1rem; cursor: pointer; border-bottom: 1px solid #f0f0f0; font-size: 0.9rem;" @onclick='() => SelectStockInSort("Low Price")'>@LangSvc.GetText("ProductSortLowPrice")</div>
+                        <div style="padding: 0.8rem 1rem; cursor: pointer; font-size: 0.9rem;" @onclick='() => SelectStockInSort("High Price")'>@LangSvc.GetText("ProductSortHighPrice")</div>
+                    </div>
+                }
+
+                <!-- CATEGORIES -->
+                <div class="secs-scroll-area" style="padding: 0.5rem 1rem; border-bottom: 1px solid #eee;">
+                    <button class="sec-btn @(stockInSelectedCategory == "All" ? "active" : "")" @onclick='() => SelectStockInCategory("All")'>@LangSvc.GetText("ProductFilterAll")</button>
+                    @foreach (var cat in Categories)
+                    {
+                        <button class="sec-btn @(stockInSelectedCategory == cat ? "active" : "")" @onclick='() => SelectStockInCategory(cat)'>@cat</button>
+                    }
+                </div>
+
+                <!-- PRODUCT LIST -->
+                <div class="content-area" style="flex: 1; overflow-y: auto; padding: 1rem;">
+                    <div class="product-list">
+                        @foreach (var item in StockInFilteredItems)
+                        {
+                            <div class="product-card" style="padding: 0.8rem; gap: 1rem;">
+                                @if (!string.IsNullOrEmpty(GetDisplayImageUrl(item)))
+                                {
+                                    <img src="@GetDisplayImageUrl(item)" alt="@item.AccountName" class="product-card-icon" style="width: 40px; height: 40px; object-fit: fill; border: 1px solid #eee; background: #fff;" />
+                                }
+                                else
+                                {
+                                    <div class="product-card-icon" style="width: 40px; height: 40px;">@((MarkupString)GetIconForCategory(item.ItemGroupName))</div>
+                                }
+
+                                <div class="product-details">
+                                    <div class="product-title" style="font-size: 1rem;">@item.AccountName</div>
+                                    <div class="product-meta" style="font-size: 0.8rem;">
+                                        <span>@item.ItemGroupName</span>
+                                    </div>
+                                </div>
+                                <div class="product-amount-display" style="font-size: 0.9rem; color: #666; font-weight: normal;">
+                                    <span>@LangSvc.GetText("ProductRemainingStock"): 0</span>
+                                    <button class="card-card-action-btn" style="background: var(--primary-rose); color: white; border-radius: 50%; width: 28px; height: 28px; padding: 0; margin-left: 8px;" @onclick="@(() => OpenAmountPopup("StockInQty", item))">+</button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- ERROR POPUP -->
+    @if (isErrorPopupOpen)
+    {
+        <div class="modal-overlay" style="z-index: 2200;" @onclick="CloseErrorPopup">
+            <div class="modal-content" style="max-width: 350px; text-align: center; padding: 2rem;" @onclick:stopPropagation>
+                <div style="font-size: 3rem; margin-bottom: 1rem;">⚠️</div>
+                <h4 style="margin: 0 0 1rem 0; color: #333;">@LangSvc.GetText(errorTitle)</h4>
+                <p style="color: #666; margin-bottom: 2rem;">@LangSvc.GetText(errorMessage)</p>
+                <button class="btn btn-primary" style="width: 100%;" @onclick="CloseErrorPopup">@LangSvc.GetText("ProductOK")</button>
+            </div>
+        </div>
+    }
+
+    <!-- SUCCESS POPUP -->
+    @if (isSuccessPopupOpen)
+    {
+        <div class="modal-overlay" style="z-index: 2200;" @onclick="CloseSuccessPopup">
+            <div class="modal-content" style="max-width: 350px; text-align: center; padding: 2rem;" @onclick:stopPropagation>
+                <div style="font-size: 3rem; margin-bottom: 1rem;">✅</div>
+                <h4 style="margin: 0 0 1rem 0; color: #333;">@LangSvc.GetText("ProductSavedSuccessfully")</h4>
+                <p style="color: #666; margin-bottom: 2rem;">@successMessage</p>
+                <button class="btn btn-primary" style="width: 100%;" @onclick="CloseSuccessPopup">@LangSvc.GetText("ProductOK")</button>
+            </div>
+        </div>
+    }
+
+    <!-- CALCULATOR POPUP -->
+    @if (isAmountPopupOpen)
+    {
+        <div class="modal-overlay" style="z-index: 3000;" @onclick="() => isAmountPopupOpen = false">
+            <div class="modal-content keypad-modal" style="max-width: 350px;" @onclick:stopPropagation>
+                <div class="modal-header"><h3>@(_calculatorTarget.Contains("Point") || _calculatorTarget == "LowStockAlert" || _calculatorTarget == "StockInQty" ? (_calculatorTarget == "LowStockAlert" || _calculatorTarget == "StockInQty" ? LangSvc.GetText("ProductEnterNumber") : LangSvc.GetText("ProductEnterPoints")) : LangSvc.GetText("ProductEnterAmount"))</h3><button class="close-btn" @onclick="() => isAmountPopupOpen = false">&times;</button></div>
+                <div class="modal-body">
+                    <div class="keypad-display">@_tempAmountString</div>
+                    <div class="keypad-grid">
+                        <button class="keypad-btn" @onclick='() => AppendToAmount("1")'>1</button><button class="keypad-btn" @onclick='() => AppendToAmount("2")'>2</button><button class="keypad-btn" @onclick='() => AppendToAmount("3")'>3</button>
+                        <button class="keypad-btn" @onclick='() => AppendToAmount("4")'>4</button><button class="keypad-btn" @onclick='() => AppendToAmount("5")'>5</button><button class="keypad-btn" @onclick='() => AppendToAmount("6")'>6</button>
+                        <button class="keypad-btn" @onclick='() => AppendToAmount("7")'>7</button><button class="keypad-btn" @onclick='() => AppendToAmount("8")'>8</button><button class="keypad-btn" @onclick='() => AppendToAmount("9")'>9</button>
+                        <!-- Hide decimal for LowStockAlert and StockInQty -->
+                        @if (_calculatorTarget == "LowStockAlert" || _calculatorTarget == "StockInQty")
+                        {
+                            <button class="keypad-btn" style="visibility: hidden;">.</button>
+                        }
+                        else
+                        {
+                            <button class="keypad-btn" @onclick='() => AppendToAmount(".")'>.</button>
+                        }
+                        <button class="keypad-btn" @onclick='() => AppendToAmount("0")'>0</button><button class="keypad-btn" @onclick="BackspaceAmount">⌫</button>
+                    </div>
+                    <div style="margin-top: 1rem; display: flex; gap: 10px; padding: 1rem;">
+                        <button class="orders-btn-secondary" style="flex: 1;" @onclick="ClearAmount">@LangSvc.GetText("Clear")</button>
+                        <button class="orders-btn-primary" style="flex: 1;" @onclick="SaveAmount">@LangSvc.GetText("Done")</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- DURATION POPUP -->
+    @if (isDurationPopupOpen)
+    {
+        <div class="modal-overlay" style="z-index: 2000;" @onclick="() => isDurationPopupOpen = false">
+            <div class="modal-content" style="max-width: 400px;" @onclick:stopPropagation>
+                <div class="modal-header"><h3>@LangSvc.GetText("ProductDuration")</h3><button class="close-btn" @onclick="() => isDurationPopupOpen = false">&times;</button></div>
+                <div class="modal-body">
+                    <div class="duration-grid">
+                        <button class="duration-btn @(_duration == null ? "active" : "")" @onclick='() => SelectDuration(null)'><span>@LangSvc.GetText("ProductDurationOff")</span></button>
+                        <button class="duration-btn @(_duration == 15 ? "active" : "")" @onclick='() => SelectDuration(15)'><span>15 min</span></button>
+                        <button class="duration-btn @(_duration == 30 ? "active" : "")" @onclick='() => SelectDuration(30)'><span>30 min</span></button>
+                        <button class="duration-btn @(_duration == 45 ? "active" : "")" @onclick='() => SelectDuration(45)'><span>45 min</span></button>
+                        <button class="duration-btn @(_duration == 60 ? "active" : "")" @onclick='() => SelectDuration(60)'><span>1 hour</span></button>
+                        <button class="duration-btn @(_duration == 75 ? "active" : "")" @onclick='() => SelectDuration(75)'><span>1 hour</span><span>15 min</span></button>
+                        <button class="duration-btn @(_duration == 90 ? "active" : "")" @onclick='() => SelectDuration(90)'><span>1 hour</span><span>30 min</span></button>
+                        <button class="duration-btn @(_duration == 105 ? "active" : "")" @onclick='() => SelectDuration(105)'><span>1 hour</span><span>45 min</span></button>
+                        <button class="duration-btn @(_duration == 120 ? "active" : "")" @onclick='() => SelectDuration(120)'><span>2 hours</span></button>
+                        <button class="duration-btn @(_isCustomDuration ? "active" : "")" @onclick="OpenCustomDuration"><span>Custom</span></button>
+                    </div>
+                    @if (_isCustomDuration)
+                    {
+                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem; padding: 0 0.25rem;">
+                            <input type="number" class="form-control" min="1" max="999" placeholder="Enter minutes"
+                                   value="@_customDurationValue"
+                                   @oninput="@((e) => _customDurationValue = e.Value?.ToString() ?? string.Empty)"
+                                   style="flex: 1; text-align: center;" />
+                            <span style="color: #888; font-size: 0.9rem; white-space: nowrap;">min</span>
+                            <button class="save-outline-btn" @onclick="ConfirmCustomDuration">OK</button>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- BARCODE POPUP -->
+    @if (isBarcodePopupOpen)
+    {
+        <div class="modal-overlay" style="z-index: 2000;" @onclick="CloseBarcodePopup">
+            <div class="modal-content" style="max-width: 350px; padding: 1.5rem;" @onclick:stopPropagation>
+                <div class="modal-header" style="background: none; border: none; padding: 0 0 1rem 0;"><h3>@LangSvc.GetText("ProductScanBarcode")</h3><button class="close-btn" @onclick="CloseBarcodePopup">&times;</button></div>
+
+                <div style="display: flex; flex-direction: column; gap: 1.5rem; text-align: center;">
+                    @if (isScanning)
+                    {
+                        <div class="barcode-container" style="max-height: 300px; width: 100%; max-width: 100%; overflow: hidden; border-radius: 8px;">
+                            <BarcodeReader ScanResult="OnBarcodeScan"
+                                           Close="CancelScanning"
+                                           ScanBtnTitle="Scan"
+                                           ResetBtnTitle="Reset"
+                                           CloseBtnTitle="Close"
+                                           SelectDeviceBtnTitle="Select Camera" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="scan-btn-placeholder" @onclick="StartScanning" style="border: 2px dashed #ccc; padding: 2rem; border-radius: 12px; cursor: pointer;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="8" y1="7" x2="8" y2="17"></line><line x1="12" y1="7" x2="12" y2="17"></line><line x1="16" y1="7" x2="16" y2="17"></line></svg>
+                            <div style="margin-top: 0.5rem; color: #888; font-weight: 600;">@LangSvc.GetText("ProductTapToScan")</div>
+                        </div>
+                    }
+
+                    <div style="position: relative; display: flex; align-items: center; justify-content: center;">
+                        <span style="background: #fff; padding: 0 10px; color: #888; z-index: 1;">OR</span>
+                        <div style="position: absolute; height: 1px; background: #eee; width: 100%; top: 50%;"></div>
+                    </div>
+
+                    <div class="form-group" style="text-align: left;">
+                        <label>@LangSvc.GetText("ProductTypeManually")</label>
+                        <textarea class="form-control" @bind="_barcode" rows="2" placeholder="@LangSvc.GetText("ProductBarcodePlaceholder")"></textarea>
+                    </div>
+
+                    <button class="btn btn-primary" style="width: 100%;" @onclick="CloseBarcodePopup">@LangSvc.GetText("Done")</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- OUTLET POPUP -->
+    @if (isOutletPopupOpen)
+    {
+        <div class="modal-overlay" style="z-index: 2000;" @onclick="() => isOutletPopupOpen = false">
+            <div class="modal-content" style="max-width: 400px; max-height: 70vh; display: flex; flex-direction: column;" @onclick:stopPropagation>
+                <div class="modal-header"><h3>@LangSvc.GetText("ProductSelectOutlet")</h3><button class="close-btn" @onclick="() => isOutletPopupOpen = false">&times;</button></div>
+                <div class="selection-list" style="flex: 1; overflow-y: auto;">
+                    @foreach (var outlet in outletList)
+                    {
+                        <div class="outlet-row" @onclick="() => ToggleOutletSelection(outlet.Code)">
+                            <div class="custom-checkbox @(selectedOutletCodes.Contains(outlet.Code) ? "checked" : "")">
+                                @if (selectedOutletCodes.Contains(outlet.Code))
+                                {
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                }
+                            </div>
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600;">@outlet.Name</div>
+                                <div style="font-size: 0.85rem; color: #888;">@outlet.Code</div>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div style="padding: 1rem; border-top: 1px solid #eee;">
+                    <button class="btn btn-primary" style="width: 100%;" @onclick="() => isOutletPopupOpen = false">@LangSvc.GetText("Confirm")</button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+
+@code {
+    private string GetPlaceholderStyle()
+    {
+        return (!string.IsNullOrEmpty(_tempImagePreview) || !string.IsNullOrEmpty(_imageName))
+            ? "border: none; padding: 0; overflow: hidden;"
+            : "";
+    }
+}

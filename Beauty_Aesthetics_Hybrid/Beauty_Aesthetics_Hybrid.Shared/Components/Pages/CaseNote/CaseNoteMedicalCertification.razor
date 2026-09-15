@@ -1,0 +1,1180 @@
+@page "/case-note-medical-certification"
+@using Beauty_Aesthetics_WebPos.Components.Layout
+@layout EmptyLayout
+@using Beauty_Aesthetics_WebPos.Components.ViewModels
+@implements IDisposable
+@inject IJSRuntime JS
+
+<PageTitle>Medical Certificate</PageTitle>
+
+<div class="mc-container">
+    <!-- Tab Navigation -->
+    <div class="tab-navigation">
+        <button 
+            class="tab-button @(ViewModel.ActiveTab == "day-off" ? "active" : "")"
+            @onclick='() => ViewModel.SetTab("day-off")'>
+            <i class="bi bi-calendar-x"></i>
+            <span>Day-Off Slip</span>
+        </button>
+        <button 
+            class="tab-button @(ViewModel.ActiveTab == "time-off" ? "active" : "")"
+            @onclick='() => ViewModel.SetTab("time-off")'>
+            <i class="bi bi-clock-history"></i>
+            <span>Time-Off Slip</span>
+        </button>
+
+        <a href="/case-notes" class="btn-close">
+            <i class="bi bi-x-lg"></i>
+        </a>
+    </div>
+
+    <!-- Status Message -->
+    @if (!string.IsNullOrEmpty(ViewModel.StatusMessage))
+    {
+        <div class="status-banner @(ViewModel.IsSuccess ? "status-success" : "status-error")">
+            <i class="bi @(ViewModel.IsSuccess ? "bi-check-circle-fill" : "bi-exclamation-circle-fill")"></i>
+            <span>@ViewModel.StatusMessage</span>
+            <button class="btn-dismiss" @onclick="DismissMessage">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+    }
+
+    <!-- Tab Content -->
+    <div class="tab-content">
+        @if (ViewModel.ActiveTab == "day-off")
+        {
+            <!-- Day-Off Slip Tab -->
+            <div class="form-panel">
+                <div class="form-content">
+                    <!-- Patient Name -->
+                    <div class="form-group">
+                        <label class="form-label">Patient Name <span class="required">*</span></label>
+                        <input 
+                            type="text" 
+                            class="form-input" 
+                            placeholder="Enter patient full name"
+                            @bind="ViewModel.PatientName"
+                            @bind:event="oninput" />
+                    </div>
+
+                    <!-- Date Range -->
+                    <div class="form-group">
+                        <label class="form-label">Start Date</label>
+                        <div class="date-input-wrapper">
+                            <i class="bi bi-calendar3 date-icon"></i>
+                            <input 
+                                type="date" 
+                                class="form-input date-input" 
+                                @bind="ViewModel.DayOffStartDate" />
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">End Date</label>
+                        <div class="date-input-wrapper">
+                            <i class="bi bi-calendar3 date-icon"></i>
+                            <input 
+                                type="date" 
+                                class="form-input date-input" 
+                                @bind="ViewModel.DayOffEndDate" />
+                        </div>
+                    </div>
+
+                    <!-- Duration Display -->
+                    <div class="duration-card">
+                        <div class="duration-content">
+                            <div class="duration-info">
+                                <span class="duration-label">Duration:</span>
+                                <span class="duration-value">@ViewModel.DurationDays @(ViewModel.DurationDays == 1 ? "Day" : "Days")@(ViewModel.IncludeHalfDay ? " + 0.5 Day" : "")</span>
+                            </div>
+                            <label class="checkbox-label">
+                                <input 
+                                    type="checkbox" 
+                                    class="checkbox-input"
+                                    @bind="ViewModel.IncludeHalfDay" />
+                                <span class="checkbox-text">Add Half Day</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Reason -->
+                    <div class="form-group">
+                        <div class="reason-heading">
+                            <label class="form-label">Reason <span class="required">*</span></label>
+                            <a href="/reason-manager" class="btn-manage-reasons" title="Manage Custom Reasons">
+                                <i class="bi bi-gear"></i>
+                                <span>Manage reasons</span>
+                            </a>
+                        </div>
+                        
+                        <!-- Predefined Reasons Buttons -->
+                        <div class="reason-buttons">
+                            @foreach (var reason in _customReasons)
+                            {
+                                <button 
+                                    type="button"
+                                    class="btn-reason"
+                                    @onclick="() => ViewModel.SetDayOffPredefinedReason(reason.Value)">
+                                    <i class="bi bi-file-text"></i>
+                                    @reason.Key
+                                </button>
+                            }
+                        </div>
+
+                        <textarea 
+                            class="form-textarea" 
+                            rows="4"
+                            placeholder="Enter reason for day-off or select from predefined reasons above..."
+                            @bind="ViewModel.DayOffReason"
+                            @bind:event="oninput"></textarea>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="form-actions">
+                        <button 
+                            class="btn-reset"
+                            @onclick="ViewModel.ResetDayOff">
+                            <i class="bi bi-arrow-counterclockwise"></i>
+                            Reset
+                        </button>
+                        <button 
+                            class="btn-submit"
+                            @onclick="PreviewDayOffMC"
+                            disabled="@(!ViewModel.CanSubmitDayOff())">
+                            <i class="bi bi-file-earmark-text"></i>
+                            Generate Certificate
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <!-- Time-Off Slip Tab -->
+            <div class="form-panel">
+                <div class="form-content">
+                    <!-- Patient Name -->
+                    <div class="form-group">
+                        <label class="form-label">Patient Name <span class="required">*</span></label>
+                        <input 
+                            type="text" 
+                            class="form-input" 
+                            placeholder="Enter patient full name"
+                            @bind="ViewModel.PatientName"
+                            @bind:event="oninput" />
+                    </div>
+
+                    <!-- Start Date -->
+                    <div class="form-group">
+                        <label class="form-label">Start Date</label>
+                        <div class="date-input-wrapper">
+                            <i class="bi bi-calendar3 date-icon"></i>
+                            <input 
+                                type="date" 
+                                class="form-input date-input" 
+                                @bind="ViewModel.TimeOffStartDate" />
+                        </div>
+                    </div>
+
+                    <!-- Start & End Time -->
+                    <div class="datetime-row">
+                        <div class="form-group">
+                            <label class="form-label">Start Time</label>
+                            <div class="custom-time-picker">
+                                <button type="button" class="time-display-btn" @onclick="() => ToggleTimePicker(true)">
+                                    <i class="bi bi-clock"></i>
+                                    <span>@FormatTime(ViewModel.TimeOffStartTime)</span>
+                                    <i class="bi bi-chevron-down"></i>
+                                </button>
+                                
+                                @if (_showStartTimePicker)
+                                {
+                                    <div class="time-picker-dropdown">
+                                        <div class="time-picker-header">
+                                            <span>Select Start Time</span>
+                                            <button type="button" class="btn-close-picker" @onclick="() => _showStartTimePicker = false">
+                                                <i class="bi bi-x-lg"></i>
+                                            </button>
+                                        </div>
+                                        <div class="time-picker-body">
+                                            <div class="time-column">
+                                                <label class="column-label">Hour</label>
+                                                <div class="time-options">
+                                                    @for (int h = 1; h <= 12; h++)
+                                                    {
+                                                        var hour = h;
+                                                        var isSelected = GetHour12(ViewModel.TimeOffStartTime) == hour;
+                                                        <button type="button" 
+                                                                class="time-option @(isSelected ? "selected" : "")"
+                                                                @onclick="() => SetStartHour(hour)">
+                                                            @hour.ToString("00")
+                                                        </button>
+                                                    }
+                                                </div>
+                                            </div>
+                                            <div class="time-column">
+                                                <label class="column-label">Minute</label>
+                                                <div class="time-options">
+                                                    @foreach (var min in new[] { 0, 15, 30, 45 })
+                                                    {
+                                                        var minute = min;
+                                                        var isSelected = ViewModel.TimeOffStartTime.Minute == minute;
+                                                        <button type="button" 
+                                                                class="time-option @(isSelected ? "selected" : "")"
+                                                                @onclick="() => SetStartMinute(minute)">
+                                                            @minute.ToString("00")
+                                                        </button>
+                                                    }
+                                                </div>
+                                            </div>
+                                            <div class="time-column">
+                                                <label class="column-label">Period</label>
+                                                <div class="time-options">
+                                                    <button type="button" 
+                                                            class="time-option period-option @(ViewModel.TimeOffStartTime.Hour < 12 ? "selected" : "")"
+                                                            @onclick="() => SetStartPeriod(true)">
+                                                        AM
+                                                    </button>
+                                                    <button type="button" 
+                                                            class="time-option period-option @(ViewModel.TimeOffStartTime.Hour >= 12 ? "selected" : "")"
+                                                            @onclick="() => SetStartPeriod(false)">
+                                                        PM
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">End Time</label>
+                            <div class="custom-time-picker">
+                                <button type="button" class="time-display-btn" @onclick="() => ToggleTimePicker(false)">
+                                    <i class="bi bi-clock"></i>
+                                    <span>@FormatTime(ViewModel.TimeOffEndTime)</span>
+                                    <i class="bi bi-chevron-down"></i>
+                                </button>
+                                
+                                @if (_showEndTimePicker)
+                                {
+                                    <div class="time-picker-dropdown">
+                                        <div class="time-picker-header">
+                                            <span>Select End Time</span>
+                                            <button type="button" class="btn-close-picker" @onclick="() => _showEndTimePicker = false">
+                                                <i class="bi bi-x-lg"></i>
+                                            </button>
+                                        </div>
+                                        <div class="time-picker-body">
+                                            <div class="time-column">
+                                                <label class="column-label">Hour</label>
+                                                <div class="time-options">
+                                                    @for (int h = 1; h <= 12; h++)
+                                                    {
+                                                        var hour = h;
+                                                        var isSelected = GetHour12(ViewModel.TimeOffEndTime) == hour;
+                                                        <button type="button" 
+                                                                class="time-option @(isSelected ? "selected" : "")"
+                                                                @onclick="() => SetEndHour(hour)">
+                                                            @hour.ToString("00")
+                                                        </button>
+                                                    }
+                                                </div>
+                                            </div>
+                                            <div class="time-column">
+                                                <label class="column-label">Minute</label>
+                                                <div class="time-options">
+                                                    @foreach (var min in new[] { 0, 15, 30, 45 })
+                                                    {
+                                                        var minute = min;
+                                                        var isSelected = ViewModel.TimeOffEndTime.Minute == minute;
+                                                        <button type="button" 
+                                                                class="time-option @(isSelected ? "selected" : "")"
+                                                                @onclick="() => SetEndMinute(minute)">
+                                                            @minute.ToString("00")
+                                                        </button>
+                                                    }
+                                                </div>
+                                            </div>
+                                            <div class="time-column">
+                                                <label class="column-label">Period</label>
+                                                <div class="time-options">
+                                                    <button type="button" 
+                                                            class="time-option period-option @(ViewModel.TimeOffEndTime.Hour < 12 ? "selected" : "")"
+                                                            @onclick="() => SetEndPeriod(true)">
+                                                        AM
+                                                    </button>
+                                                    <button type="button" 
+                                                            class="time-option period-option @(ViewModel.TimeOffEndTime.Hour >= 12 ? "selected" : "")"
+                                                            @onclick="() => SetEndPeriod(false)">
+                                                        PM
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Duration Display -->
+                    <div class="duration-card">
+                        <div class="duration-content">
+                            <div class="duration-info">
+                                <span class="duration-label">Duration:</span>
+                                <span class="duration-value">@ViewModel.DurationHours @(ViewModel.DurationHours == 1 ? "Hour" : "Hours")</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Reason -->
+                    <div class="form-group">
+                        <div class="reason-heading">
+                            <label class="form-label">Reason <span class="required">*</span></label>
+                            <a href="/reason-manager" class="btn-manage-reasons" title="Manage Custom Reasons">
+                                <i class="bi bi-gear"></i>
+                                <span>Manage reasons</span>
+                            </a>
+                        </div>
+                        
+                        <!-- Predefined Reasons Buttons -->
+                        <div class="reason-buttons">
+                            @foreach (var reason in _customReasons)
+                            {
+                                <button 
+                                    type="button"
+                                    class="btn-reason"
+                                    @onclick="() => ViewModel.SetTimeOffPredefinedReason(reason.Value)">
+                                    <i class="bi bi-file-text"></i>
+                                    @reason.Key
+                                </button>
+                            }
+                        </div>
+
+                        <textarea 
+                            class="form-textarea" 
+                            rows="4"
+                            placeholder="Enter reason for time-off or select from predefined reasons above..."
+                            @bind="ViewModel.TimeOffReason"
+                            @bind:event="oninput"></textarea>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="form-actions">
+                        <button 
+                            class="btn-reset"
+                            @onclick="ViewModel.ResetTimeOff">
+                            <i class="bi bi-arrow-counterclockwise"></i>
+                            Reset
+                        </button>
+                        <button 
+                            class="btn-submit"
+                            @onclick="PreviewTimeOffMC"
+                            disabled="@(!ViewModel.CanSubmitTimeOff())">
+                            <i class="bi bi-file-earmark-text"></i>
+                            Generate Certificate
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Preview Modal -->
+@if (_showPreviewModal)
+{
+    <div class="modal-overlay" @onclick="ClosePreviewModal">
+        <div class="modal-container" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h2 class="modal-title">
+                    <i class="bi bi-file-earmark-medical"></i>
+                    Medical Certificate Preview
+                </h2>
+                <button class="btn-close-modal" @onclick="ClosePreviewModal">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <!-- Doctor Details Section -->
+                <div class="doctor-details-section">
+                    <h3 class="section-title">
+                        <i class="bi bi-person-badge"></i>
+                        Doctor Information
+                    </h3>
+                    <div class="doctor-form">
+                        <div class="form-group">
+                            <label class="form-label">Doctor Name <span class="required">*</span></label>
+                            <input 
+                                type="text" 
+                                class="form-input" 
+                                placeholder="Dr. John Smith"
+                                @bind="_doctorName"
+                                @bind:event="oninput" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Registration Number</label>
+                            <div class="auto-generated-field">
+                                <input 
+                                    type="text" 
+                                    class="form-input" 
+                                    value="@_doctorRegNumber"
+                                    readonly />
+                                <span class="auto-badge">
+                                    <i class="bi bi-stars"></i>
+                                    Auto
+                                </span>
+                            </div>
+                            <small class="form-hint">Auto-generated registration number</small>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Digital Signature <span class="required">*</span></label>
+                            @if (string.IsNullOrWhiteSpace(_signatureDataUrl))
+                            {
+                                <button type="button" class="btn-open-signature" @onclick="OpenSignatureModal">
+                                    <i class="bi bi-pen"></i>
+                                    <span>Click to Sign</span>
+                                </button>
+                                <small class="form-hint">Click to open signature pad</small>
+                            }
+                            else
+                            {
+                                <div class="signature-preview-container">
+                                    <img src="@_signatureDataUrl" class="signature-preview-image" alt="Your Signature" />
+                                    <button type="button" class="btn-change-signature" @onclick="OpenSignatureModal">
+                                        <i class="bi bi-pen"></i>
+                                        Change Signature
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Certificate Preview -->
+                <div class="certificate-preview-section">
+                    <h3 class="section-title">
+                        <i class="bi bi-eye"></i>
+                        Certificate Preview
+                    </h3>
+                    <div class="certificate-preview-wrapper">
+                        <div class="mc-document preview-mode">
+                            <div class="mc-header">
+                                <h1 class="mc-title">MEDICAL CERTIFICATE</h1>
+                                <p class="mc-clinic-name">Beauty Aesthetics Clinic</p>
+                                <p class="mc-clinic-address">123 Medical Drive, Healthcare Center</p>
+                                <p class="mc-clinic-contact">Tel: (555) 123-4567 | Email: clinic@beautyaesthetics.com</p>
+                            </div>
+
+                            <div class="mc-body">
+                                <div class="mc-cert-number">
+                                    <strong>Certificate No:</strong> @_previewCertNumber
+                                </div>
+                                <div class="mc-date-issued">
+                                    <strong>Date Issued:</strong> @_previewDateIssued
+                                </div>
+
+                                <div class="mc-content">
+                                    <p class="mc-intro">This is to certify that:</p>
+
+                                    <div class="mc-info-section">
+                                        <div class="mc-info-row">
+                                            <span class="mc-info-label">Patient Name:</span>
+                                            <span class="mc-info-value">@(string.IsNullOrWhiteSpace(ViewModel.PatientName) ? "[Patient Name]" : ViewModel.PatientName)</span>
+                                        </div>
+
+                                        <div class="mc-info-row">
+                                            <span class="mc-info-label">Medical Status:</span>
+                                            <span class="mc-info-value">@_previewBodyText</span>
+                                        </div>
+
+                                        <div class="mc-info-row">
+                                            <span class="mc-info-label">Period:</span>
+                                            <span class="mc-info-value">@_previewPeriod</span>
+                                        </div>
+
+                                        <div class="mc-info-row">
+                                            <span class="mc-info-label">Duration:</span>
+                                            <span class="mc-info-value">@_previewDuration</span>
+                                        </div>
+
+                                        <div class="mc-info-row">
+                                            <span class="mc-info-label">Reason:</span>
+                                            <span class="mc-info-value">@_previewReason</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mc-footer">
+                                    <div class="mc-signature">
+                                        @if (!string.IsNullOrWhiteSpace(_signatureDataUrl))
+                                        {
+                                            <img src="@_signatureDataUrl" class="signature-image" alt="Doctor's Signature" />
+                                        }
+                                        else
+                                        {
+                                            <div class="signature-line"></div>
+                                        }
+                                        <p class="signature-label">@(string.IsNullOrWhiteSpace(_doctorName) ? "Dr. [Doctor Name]" : _doctorName)</p>
+                                        <p class="signature-title">Medical Practitioner</p>
+                                        <p class="signature-reg">Registration No: @_doctorRegNumber</p>
+                                    </div>
+                                    
+                                    <div class="mc-stamp">
+                                        <div class="stamp-box">
+                                            <p>OFFICIAL</p>
+                                            <p>CLINIC STAMP</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mc-disclaimer">
+                                <p>This medical certificate is issued based on medical examination and professional judgment. 
+                                It is valid only for the period stated above. Any alteration will render this certificate invalid.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn-secondary" @onclick="ClosePreviewModal">
+                    <i class="bi bi-x-circle"></i>
+                    Cancel
+                </button>
+                <button 
+                    class="btn-primary" 
+                    @onclick="PrintCertificate"
+                    disabled="@(!CanPrintCertificate())">
+                    <i class="bi bi-printer-fill"></i>
+                    Print / Save as PDF
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Signature Modal Popup -->
+@if (_showSignatureModal)
+{
+    <div class="signature-modal-overlay">
+        <div class="signature-modal-container" @onclick:stopPropagation="true">
+            <div class="signature-modal-header">
+                <h3 class="signature-modal-title">
+                    <i class="bi bi-pen"></i>
+                    Draw Your Signature
+                </h3>
+            </div>
+
+            <div class="signature-modal-body">
+                <p class="signature-instruction">
+                    <i class="bi bi-info-circle"></i>
+                    Draw your signature below using your mouse or finger
+                </p>
+                <div class="signature-canvas-wrapper">
+                    <canvas 
+                        id="signatureCanvas" 
+                        width="800" 
+                        height="300"
+                        @ref="_signatureCanvas"
+                        @onmousedown="StartDrawing"
+                        @onmousemove="Draw"
+                        @onmouseup="StopDrawing"
+                        @onmouseleave="StopDrawing"
+                        @ontouchstart="StartDrawingTouch"
+                        @ontouchmove="DrawTouch"
+                        @ontouchend="StopDrawing">
+                    </canvas>
+                </div>
+            </div>
+
+            <div class="signature-modal-footer">
+                <button type="button" class="btn-signature-clear" @onclick="ClearSignature">
+                    <i class="bi bi-arrow-counterclockwise"></i>
+                    Clear
+                </button>
+                <div class="signature-modal-actions">
+                    <button type="button" class="btn-signature-cancel" @onclick="CloseSignatureModal">
+                        <i class="bi bi-x-circle"></i>
+                        Cancel
+                    </button>
+                    <button type="button" class="btn-signature-save" @onclick="SaveSignature">
+                        <i class="bi bi-check-circle"></i>
+                        Save Signature
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Hidden Print Template -->
+<div id="mc-print-template" class="print-only">
+    <div class="mc-document">
+        <div class="mc-header">
+            <h1 class="mc-title">MEDICAL CERTIFICATE</h1>
+            <p class="mc-clinic-name">Beauty Aesthetics Clinic</p>
+            <p class="mc-clinic-address">123 Medical Drive, Healthcare Center</p>
+            <p class="mc-clinic-contact">Tel: (555) 123-4567 | Email: clinic@beautyaesthetics.com</p>
+        </div>
+
+        <div class="mc-body">
+            <div class="mc-cert-number">
+                <strong>Certificate No:</strong> <span id="print-cert-number"></span>
+            </div>
+            <div class="mc-date-issued">
+                <strong>Date Issued:</strong> <span id="print-date-issued"></span>
+            </div>
+
+            <div class="mc-content">
+                <p class="mc-intro">This is to certify that:</p>
+
+                <div class="mc-info-section">
+                    <div class="mc-info-row">
+                        <span class="mc-info-label">Patient Name:</span>
+                        <span class="mc-info-value" id="print-patient-name"></span>
+                    </div>
+
+                    <div class="mc-info-row">
+                        <span class="mc-info-label">Medical Status:</span>
+                        <span class="mc-info-value" id="print-body-text"></span>
+                    </div>
+
+                    <div class="mc-info-row">
+                        <span class="mc-info-label">Period:</span>
+                        <span class="mc-info-value" id="print-period"></span>
+                    </div>
+
+                    <div class="mc-info-row">
+                        <span class="mc-info-label">Duration:</span>
+                        <span class="mc-info-value" id="print-duration"></span>
+                    </div>
+
+                    <div class="mc-info-row">
+                        <span class="mc-info-label">Reason:</span>
+                        <span class="mc-info-value" id="print-reason"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mc-footer">
+                <div class="mc-signature">
+                    <img id="print-signature-image" class="signature-image" style="display: none;" alt="Doctor's Signature" />
+                    <div id="print-signature-line" class="signature-line"></div>
+                    <p class="signature-label" id="print-doctor-name"></p>
+                    <p class="signature-title">Medical Practitioner</p>
+                    <p class="signature-reg" id="print-doctor-reg"></p>
+                </div>
+                
+                <div class="mc-stamp">
+                    <div class="stamp-box">
+                        <p>OFFICIAL</p>
+                        <p>CLINIC STAMP</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mc-disclaimer">
+            <p>This medical certificate is issued based on medical examination and professional judgment. 
+            It is valid only for the period stated above. Any alteration will render this certificate invalid.</p>
+        </div>
+    </div>
+</div>
+
+@code {
+    private CaseNoteMedicalCertificationViewModel ViewModel { get; set; } = new();
+    private System.Threading.Timer? _messageTimer;
+    private bool _showStartTimePicker = false;
+    private bool _showEndTimePicker = false;
+    private List<CustomReasonItem> _customReasons = new();
+    
+    // Preview Modal State
+    private bool _showPreviewModal = false;
+    private string _certificateType = ""; // "day-off" or "time-off"
+    private string _doctorName = "";
+    private string _doctorRegNumber = "";
+    private string _signatureDataUrl = "";
+    
+    // Preview Data
+    private string _previewCertNumber = "";
+    private string _previewDateIssued = "";
+    private string _previewBodyText = "";
+    private string _previewPeriod = "";
+    private string _previewDuration = "";
+    private string _previewReason = "";
+    
+    // Signature Modal State
+    private bool _showSignatureModal = false;
+    private string _tempSignatureDataUrl = "";
+    private bool _canvasInitialized = false;
+    
+    // Signature Canvas
+    private ElementReference _signatureCanvas;
+    private bool _isDrawing = false;
+    private double _lastX = 0;
+    private double _lastY = 0;
+
+    private void ToggleTimePicker(bool isStart)
+    {
+        if (isStart)
+        {
+            _showStartTimePicker = !_showStartTimePicker;
+            _showEndTimePicker = false;
+        }
+        else
+        {
+            _showEndTimePicker = !_showEndTimePicker;
+            _showStartTimePicker = false;
+        }
+    }
+
+    private string FormatTime(TimeOnly time)
+    {
+        return time.ToString("hh:mm tt");
+    }
+
+    private int GetHour12(TimeOnly time)
+    {
+        int hour = time.Hour % 12;
+        return hour == 0 ? 12 : hour;
+    }
+
+    private void SetStartHour(int hour)
+    {
+        bool isPM = ViewModel.TimeOffStartTime.Hour >= 12;
+        int hour24 = hour == 12 ? (isPM ? 12 : 0) : (isPM ? hour + 12 : hour);
+        ViewModel.TimeOffStartTime = new TimeOnly(hour24, ViewModel.TimeOffStartTime.Minute);
+    }
+
+    private void SetStartMinute(int minute)
+    {
+        ViewModel.TimeOffStartTime = new TimeOnly(ViewModel.TimeOffStartTime.Hour, minute);
+    }
+
+    private void SetStartPeriod(bool isAM)
+    {
+        int currentHour = ViewModel.TimeOffStartTime.Hour;
+        int hour12 = currentHour % 12;
+        int newHour = isAM ? hour12 : (hour12 + 12);
+        if (hour12 == 0 && isAM) newHour = 0;
+        if (hour12 == 0 && !isAM) newHour = 12;
+        ViewModel.TimeOffStartTime = new TimeOnly(newHour, ViewModel.TimeOffStartTime.Minute);
+    }
+
+    private void SetEndHour(int hour)
+    {
+        bool isPM = ViewModel.TimeOffEndTime.Hour >= 12;
+        int hour24 = hour == 12 ? (isPM ? 12 : 0) : (isPM ? hour + 12 : hour);
+        ViewModel.TimeOffEndTime = new TimeOnly(hour24, ViewModel.TimeOffEndTime.Minute);
+    }
+
+    private void SetEndMinute(int minute)
+    {
+        ViewModel.TimeOffEndTime = new TimeOnly(ViewModel.TimeOffEndTime.Hour, minute);
+    }
+
+    private void SetEndPeriod(bool isAM)
+    {
+        int currentHour = ViewModel.TimeOffEndTime.Hour;
+        int hour12 = currentHour % 12;
+        int newHour = isAM ? hour12 : (hour12 + 12);
+        if (hour12 == 0 && isAM) newHour = 0;
+        if (hour12 == 0 && !isAM) newHour = 12;
+        ViewModel.TimeOffEndTime = new TimeOnly(newHour, ViewModel.TimeOffEndTime.Minute);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        ViewModel.PropertyChanged += (sender, args) => 
+        {
+            StateHasChanged();
+            
+            // Auto-dismiss success messages after 5 seconds
+            if (args.PropertyName == nameof(ViewModel.StatusMessage) && 
+                !string.IsNullOrEmpty(ViewModel.StatusMessage) && 
+                ViewModel.IsSuccess)
+            {
+                _messageTimer?.Dispose();
+                _messageTimer = new System.Threading.Timer(_ =>
+                {
+                    InvokeAsync(() =>
+                    {
+                        ViewModel.StatusMessage = string.Empty;
+                        StateHasChanged();
+                    });
+                }, null, 5000, Timeout.Infinite);
+            }
+        };
+
+        // Load custom reasons
+        await LoadCustomReasons();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Reload reasons after first render to ensure JS is ready
+            await LoadCustomReasons();
+            StateHasChanged();
+        }
+
+        if (_showSignatureModal && !_canvasInitialized)
+        {
+            await Task.Delay(100);
+            await InitializeSignatureCanvas();
+            _canvasInitialized = true;
+        }
+    }
+
+    private async Task LoadCustomReasons()
+    {
+        try
+        {
+            var reasonsArray = await JS.InvokeAsync<CustomReasonItem[]>("getAllReasons");
+            _customReasons = reasonsArray?.ToList() ?? new List<CustomReasonItem>();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading custom reasons: {ex.Message}");
+            _customReasons = new List<CustomReasonItem>();
+        }
+    }
+
+    private void DismissMessage()
+    {
+        ViewModel.StatusMessage = string.Empty;
+        _messageTimer?.Dispose();
+    }
+
+    private void ClosePreviewModal()
+    {
+        _showPreviewModal = false;
+    }
+
+
+    private async Task InitializeSignatureCanvas()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("initializeSignatureCanvas");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error initializing signature canvas: {ex.Message}");
+        }
+    }
+
+    private void OpenSignatureModal()
+    {
+        _showSignatureModal = true;
+        _tempSignatureDataUrl = "";
+        _canvasInitialized = false;
+    }
+
+    private void CloseSignatureModal()
+    {
+        _showSignatureModal = false;
+        _tempSignatureDataUrl = "";
+        _canvasInitialized = false;
+    }
+
+    private async Task SaveSignature()
+    {
+        _tempSignatureDataUrl = await JS.InvokeAsync<string>("getSignatureDataUrl");
+        
+        if (!string.IsNullOrWhiteSpace(_tempSignatureDataUrl))
+        {
+            _signatureDataUrl = _tempSignatureDataUrl;
+            _showSignatureModal = false;
+            _canvasInitialized = false;
+            _tempSignatureDataUrl = "";
+        }
+    }
+
+    private void StartDrawing(MouseEventArgs e)
+    {
+        _isDrawing = true;
+        _lastX = e.OffsetX;
+        _lastY = e.OffsetY;
+    }
+
+    private async Task Draw(MouseEventArgs e)
+    {
+        if (_isDrawing)
+        {
+            await JS.InvokeVoidAsync("drawSignature", e.OffsetX, e.OffsetY, _lastX, _lastY);
+            _lastX = e.OffsetX;
+            _lastY = e.OffsetY;
+        }
+    }
+
+    private async Task StartDrawingTouch(TouchEventArgs e)
+    {
+        if (e.Touches.Length > 0)
+        {
+            _isDrawing = true;
+            var touch = e.Touches[0];
+            var rect = await JS.InvokeAsync<BoundingClientRect>("getCanvasRect");
+            _lastX = touch.ClientX - rect.Left;
+            _lastY = touch.ClientY - rect.Top;
+        }
+    }
+
+    private async Task DrawTouch(TouchEventArgs e)
+    {
+        if (_isDrawing && e.Touches.Length > 0)
+        {
+            var touch = e.Touches[0];
+            var rect = await JS.InvokeAsync<BoundingClientRect>("getCanvasRect");
+            var x = touch.ClientX - rect.Left;
+            var y = touch.ClientY - rect.Top;
+            
+            await JS.InvokeVoidAsync("drawSignature", x, y, _lastX, _lastY);
+            _lastX = x;
+            _lastY = y;
+        }
+    }
+
+    private void StopDrawing()
+    {
+        _isDrawing = false;
+    }
+
+    private async Task ClearSignature()
+    {
+        await JS.InvokeVoidAsync("clearSignatureCanvas");
+        _tempSignatureDataUrl = "";
+    }
+
+    private async Task CheckSignatureStatus()
+    {
+        _tempSignatureDataUrl = await JS.InvokeAsync<string>("getSignatureDataUrl");
+    }
+
+    private string GenerateDoctorRegNumber()
+    {
+        var random = new Random();
+        var prefix = "MC";
+        var number = random.Next(10000, 99999);
+        var suffix = (char)random.Next('A', 'Z' + 1);
+        return $"{prefix}{number}{suffix}";
+    }
+
+    private bool CanPrintCertificate()
+    {
+        return !string.IsNullOrWhiteSpace(_doctorName) && 
+               !string.IsNullOrWhiteSpace(ViewModel.PatientName) &&
+               !string.IsNullOrWhiteSpace(_signatureDataUrl);
+    }
+
+    private class BoundingClientRect
+    {
+        public double Left { get; set; }
+        public double Top { get; set; }
+        public double Right { get; set; }
+        public double Bottom { get; set; }
+        public double Width { get; set; }
+        public double Height { get; set; }
+    }
+
+    private async Task PreviewDayOffMC()
+    {
+        if (!ViewModel.CanSubmitDayOff())
+        {
+            ViewModel.StatusMessage = ViewModel.DayOffValidationError;
+            ViewModel.IsSuccess = false;
+            return;
+        }
+
+        // Generate certificate number and registration number
+        _previewCertNumber = $"DC-{DateTime.Now:yyyyMMdd}-{new Random().Next(1000, 9999)}";
+        _doctorRegNumber = GenerateDoctorRegNumber();
+        _previewDateIssued = DateTime.Now.ToString("MMMM dd, yyyy");
+        _previewBodyText = "was examined and found to be unfit for work/school.";
+        _previewPeriod = $"{ViewModel.DayOffStartDate:MMM dd, yyyy} to {ViewModel.DayOffEndDate:MMM dd, yyyy}";
+        _previewDuration = $"{ViewModel.DurationDays} {(ViewModel.DurationDays == 1 ? "Day" : "Days")}{(ViewModel.IncludeHalfDay ? " + 0.5 Day" : "")}";
+        _previewReason = ViewModel.DayOffReason;
+        
+        _certificateType = "day-off";
+        _showPreviewModal = true;
+        
+        // Initialize signature canvas after modal is shown
+        await Task.Delay(100);
+        await InitializeSignatureCanvas();
+    }
+
+    private async Task PreviewTimeOffMC()
+    {
+        if (!ViewModel.CanSubmitTimeOff())
+        {
+            ViewModel.StatusMessage = ViewModel.TimeOffValidationError;
+            ViewModel.IsSuccess = false;
+            return;
+        }
+
+        // Generate certificate number and registration number
+        _previewCertNumber = $"TC-{DateTime.Now:yyyyMMdd}-{new Random().Next(1000, 9999)}";
+        _doctorRegNumber = GenerateDoctorRegNumber();
+        _previewDateIssued = DateTime.Now.ToString("MMMM dd, yyyy");
+        _previewBodyText = "was examined and requires time off from work/school during the following period.";
+        _previewPeriod = $"{ViewModel.TimeOffStartDate:MMM dd, yyyy} from {FormatTime(ViewModel.TimeOffStartTime)} to {FormatTime(ViewModel.TimeOffEndTime)}";
+        _previewDuration = $"{ViewModel.DurationHours} {(ViewModel.DurationHours == 1 ? "Hour" : "Hours")}";
+        _previewReason = ViewModel.TimeOffReason;
+        
+        _certificateType = "time-off";
+        _showPreviewModal = true;
+        
+        // Initialize signature canvas after modal is shown
+        await Task.Delay(100);
+        await InitializeSignatureCanvas();
+    }
+
+    private async Task PrintCertificate()
+    {
+        if (!CanPrintCertificate())
+        {
+            return;
+        }
+
+        // Update print template via JavaScript
+        await JS.InvokeVoidAsync("populateMCTemplate", 
+            _previewCertNumber, 
+            ViewModel.PatientName, 
+            _previewDateIssued, 
+            _previewBodyText, 
+            _previewPeriod, 
+            _previewDuration, 
+            _previewReason,
+            _doctorName,
+            _doctorRegNumber,
+            _signatureDataUrl);
+
+        // Close modal
+        _showPreviewModal = false;
+
+        // Trigger print dialog
+        await JS.InvokeVoidAsync("printMedicalCertificate");
+
+        // Show success message
+        ViewModel.StatusMessage = $"✓ Medical Certificate {_previewCertNumber} prepared for printing!";
+        ViewModel.IsSuccess = true;
+        
+        // Reset form
+        if (_certificateType == "day-off")
+        {
+            ViewModel.ResetDayOff();
+        }
+        else
+        {
+            ViewModel.ResetTimeOff();
+        }
+        
+        // Clear doctor details for next certificate
+        _doctorName = "";
+        _doctorRegNumber = "";
+        _signatureDataUrl = "";
+        await ClearSignature();
+    }
+
+    private async Task PrintDayOffMC()
+    {
+        if (!ViewModel.CanSubmitDayOff())
+        {
+            ViewModel.StatusMessage = ViewModel.DayOffValidationError;
+            ViewModel.IsSuccess = false;
+            return;
+        }
+
+        // Generate certificate number
+        var certificateNumber = $"DC-{DateTime.Now:yyyyMMdd}-{new Random().Next(1000, 9999)}";
+        
+        // Prepare print data
+        var patientName = "Patient Name"; // TODO: Get from actual patient data
+        var dateIssued = DateTime.Now.ToString("MMMM dd, yyyy");
+        var bodyText = "was examined and found to be unfit for work/school.";
+        var period = $"{ViewModel.DayOffStartDate:MMM dd, yyyy} to {ViewModel.DayOffEndDate:MMM dd, yyyy}";
+        var duration = $"{ViewModel.DurationDays} {(ViewModel.DurationDays == 1 ? "Day" : "Days")}{(ViewModel.IncludeHalfDay ? " + 0.5 Day" : "")}";
+        var reason = ViewModel.DayOffReason;
+
+        // Update print template via JavaScript
+        await JS.InvokeVoidAsync("populateMCTemplate", 
+            certificateNumber, 
+            patientName, 
+            dateIssued, 
+            bodyText, 
+            period, 
+            duration, 
+            reason);
+
+        // Trigger print dialog
+        await JS.InvokeVoidAsync("printMedicalCertificate");
+
+        // Show success message
+        ViewModel.StatusMessage = $"✓ Medical Certificate {certificateNumber} prepared for printing!";
+        ViewModel.IsSuccess = true;
+        
+        // Reset form
+        ViewModel.ResetDayOff();
+    }
+
+    private async Task PrintTimeOffMC()
+    {
+        if (!ViewModel.CanSubmitTimeOff())
+        {
+            ViewModel.StatusMessage = ViewModel.TimeOffValidationError;
+            ViewModel.IsSuccess = false;
+            return;
+        }
+
+        // Generate certificate number
+        var certificateNumber = $"TC-{DateTime.Now:yyyyMMdd}-{new Random().Next(1000, 9999)}";
+        
+        // Prepare print data
+        var patientName = "Patient Name"; // TODO: Get from actual patient data
+        var dateIssued = DateTime.Now.ToString("MMMM dd, yyyy");
+        var bodyText = "was examined and requires time off from work/school during the following period.";
+        var period = $"{ViewModel.TimeOffStartDate:MMM dd, yyyy} from {FormatTime(ViewModel.TimeOffStartTime)} to {FormatTime(ViewModel.TimeOffEndTime)}";
+        var duration = $"{ViewModel.DurationHours} {(ViewModel.DurationHours == 1 ? "Hour" : "Hours")}";
+        var reason = ViewModel.TimeOffReason;
+
+        // Update print template via JavaScript
+        await JS.InvokeVoidAsync("populateMCTemplate", 
+            certificateNumber, 
+            patientName, 
+            dateIssued, 
+            bodyText, 
+            period, 
+            duration, 
+            reason);
+
+        // Trigger print dialog
+        await JS.InvokeVoidAsync("printMedicalCertificate");
+
+        // Show success message
+        ViewModel.StatusMessage = $"✓ Medical Certificate {certificateNumber} prepared for printing!";
+        ViewModel.IsSuccess = true;
+        
+        // Reset form
+        ViewModel.ResetTimeOff();
+    }
+
+    public void Dispose()
+    {
+        _messageTimer?.Dispose();
+    }
+
+    // Custom Reason Item for JS interop
+    private class CustomReasonItem
+    {
+        public string Key { get; set; } = string.Empty;
+        public string Value { get; set; } = string.Empty;
+    }
+}
+

@@ -1,0 +1,487 @@
+@inherits SenangRetails.Shared.Pages.BasePage
+@using SenangRetails.Shared.Services
+@using SenangRetails.Shared.Services.InventoryService
+@using SenangRetails.Shared.Models.DTOs
+@using EBI.DM
+@inject IInventoryService InventoryService
+@inject AppState AppState
+@inject LocalImageCacheService LocalImageCache
+@inject NavigationManager Navigation
+
+@if (isLoading)
+{
+    <div class="view-body" style="display: flex; align-items: center; justify-content: center; height: 100%;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (isProductDetailsOpen && selectedItem != null)
+{
+    /* ============================================================
+    VIEW 2: PRODUCT DETAILS (OVERLAY)
+    ============================================================ */
+    <div class="view-body" style="background-color: var(--color-background); height: 100%;">
+        <div class="header">
+            <button class="header-back-btn" @onclick="CloseProductDetails">
+                <i class="bi bi-chevron-left"></i>
+                <span>Back</span>
+            </button>
+            <div class="header-title">Details</div>
+            <div></div>
+        </div>
+        <div style="flex: 1; overflow-y: auto; padding-bottom: 20px;">
+            <div style="margin-bottom: 15px;" class="addProductCard">
+                <img class="table-item-image" src="@GetImageUrl(selectedItem)" alt="@selectedItem.Name" />
+                <div class="table-card-content-row stock-movement-product-name">
+                    <span>@selectedItem.Name</span>
+                    <span>@selectedItem.SalesPrice.ToString("N2")</span>
+                </div>
+                <div class="table-card-content-row text-align-right">
+                    <span>@selectedItem.ExistingQuantity.ToString("N0")</span>
+                    <span>@selectedItem.Unit</span>
+                </div>
+            </div>
+            <div class="transaction-header-title" style="margin-bottom: 15px;">
+                <div class="transaction-header-tab">
+                    <span @onclick='() => isProductDetailSummaryTab = true'
+                          class="transaction-tab-option text-align-center @(isProductDetailSummaryTab ? "active-tab" : "")">
+                        Stock Summary
+                    </span>
+                    <span @onclick='() => isProductDetailSummaryTab = false'
+                          class="transaction-tab-option text-align-center @(!isProductDetailSummaryTab ? "active-tab" : "")">
+                        Stock Transaction
+                    </span>
+                </div>
+            </div>
+            @if (isProductDetailSummaryTab)
+            {
+                /* --- SUMMARY TAB --- */
+                <div class="quick-summary-card">
+                    <div class="card">
+                        <span class="card-title">Stock In</span>
+                        <span class="card-value">+@selectedItem.ExistingQuantity.ToString("N0")</span>
+                    </div>
+                    <div class="card">
+                        <span class="card-title">Stock Out</span>
+                        <span class="card-value">-0</span>
+                    </div>
+                </div>
+                <div class="details-form-container" style="background: transparent; padding: 0;">
+                    <div class="form-group" style="background: white; padding: 10px; border-radius: 8px; margin-bottom: 10px;">
+                        <label>Default Cost (Editable)</label>
+                        <div class="input-wrapper">
+                            <span>RM</span>
+                            <input type="number" value="@selectedItem.PurchasePrice.ToString("F2")" class="custom-input" readonly />
+                        </div>
+                    </div>
+                    <div class="quick-summary-card">
+                        <div class="card" style="background: white; border-radius: 12px;">
+                            <span class="card-title">Inventory Selling Price</span>
+                            <span class="card-value" style="font-weight: bold;">@((selectedItem.ExistingQuantity * selectedItem.SalesPrice).ToString("N2"))</span>
+                        </div>
+                        <div class="card" style="background: white; border-radius: 12px;">
+                            <span class="card-title">Inventory Cost</span>
+                            <span class="card-value" style="font-weight: bold;">@((selectedItem.ExistingQuantity * selectedItem.PurchasePrice).ToString("N2"))</span>
+                        </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                /* --- TRANSACTION TAB --- */
+                <div class="stock-balance-table custom-shadow-sm">
+                    <!-- Header row -->
+                    <div class="balance-tx-row border-bottom">
+                        <span>Date</span>
+                        <span>Quantity</span>
+                        <span class="text-align-right">Cost</span>
+                        <span class="text-align-right">Expiry</span>
+                    </div>
+
+                    <!-- Row 1: Stock In -->
+                    <div class="balance-tx-row">
+                        <div class="balance-tx-cell-stack">
+                            <span class="balance-tx-primary">@DateTime.Today.ToString("dd/MM/yy")</span>
+                            <span class="balance-tx-secondary">12:00 PM</span>
+                        </div>
+                        <div class="balance-tx-cell-stack">
+                            <span class="balance-tx-primary" style="color: #198754;">+@selectedItem.ExistingQuantity.ToString("N0") @selectedItem.Unit</span>
+                            <span class="balance-tx-secondary">Stock In</span>
+                        </div>
+                        <span class="balance-tx-right">@selectedItem.PurchasePrice.ToString("N2")</span>
+                        <span class="balance-tx-right muted">—</span>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+else
+{
+    /* ============================================================
+    VIEW 1: BALANCE LIST (DEFAULT)
+    ============================================================ */
+    <div class="view-body">
+        <div class="header">
+            <div class="left-section">
+                <!-- Mobile Menu Button -->
+                <button class="mobile-menu-btn" @onclick="ToggleNav">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+                <!-- Back Button -->
+                <div class="back-button" @onclick="GoBack">
+                    <i class="bi bi-chevron-left"></i>
+                    <span>Back</span>
+                </div>
+            </div>
+            <div class="header-title">Stock Balance</div>
+            <div class="top-right-button">
+                <div @onclick="OpenStockIn" class="top-right-relative">
+                    <button class="stock-action-btn">
+                        <i class="bi bi-plus-lg"></i>
+                        Add
+                    </button>
+                    @if (openStockInIsOpen)
+                    {
+                        <div @onclick="CloseStockIn" @onclick:stopPropagation="true" class="all-modal-backdrop"></div>
+                        <div class="left-order-option-wrapper text-align-left">
+                            <span @onclick='() => NavigateTo("stockin")' @onclick:stopPropagation="true"><i class="bi bi-bag-plus"></i> Stock In</span>
+                            <span @onclick='() => NavigateTo("stockout")' @onclick:stopPropagation="true"><i class="bi bi-calendar-minus"></i> Stock Out</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="tool-bar">
+            <div class="search-bar">
+                <i class="bi bi-search"></i>
+                <input class="search-stock-balance" type="text" placeholder="Search..." @bind-value="searchQuery" @bind-value:event="oninput" />
+            </div>
+            @*
+            <div @onclick="OpenDateRange" class="date-range-button">
+                <span><i class="bi bi-calendar3"></i> @selectedDateRange</span>
+                @if (dateRangeIsOpen)
+                {
+                    <div @onclick="CloseDateRange" @onclick:stopPropagation="true" class="all-modal-backdrop-no-color"></div>
+                    <div class="dropdown-menu-simple">
+                        <span @onclick='() => SelectDateRange("Today")' @onclick:stopPropagation="true">Today</span>
+                        <span @onclick='() => SelectDateRange("Last 7 Days")' @onclick:stopPropagation="true">Last 7 Days</span>
+                        <span @onclick='() => SelectDateRange("This Month")' @onclick:stopPropagation="true">This Month</span>
+                        <span @onclick='() => SelectDateRange("Last Month")' @onclick:stopPropagation="true">Last Month</span>
+                        <span @onclick='() => SelectDateRange("Custom")' @onclick:stopPropagation="true">Custom</span>
+                    </div>
+                }
+            </div>
+            *@
+            @*
+            <div @onclick="OpenFilter" class="filter-button">
+                <span><i class="bi bi-funnel"></i> Filter</span>
+                @if (filterIsOpen)
+                {
+                    <div @onclick="CloseFilter" @onclick:stopPropagation="true" class="all-modal-backdrop-no-color"></div>
+                    <div class="filter-dropdown-simple">
+                        <label @onclick:stopPropagation="true">
+                            <input type="checkbox" @bind="filterShowDisplayOnly" /> Display Only
+                        </label>
+                        <label @onclick:stopPropagation="true">
+                            <input type="checkbox" @bind="filterOnlyMovement" /> Active Movement
+                        </label>
+                    </div>
+                }
+            </div>
+            *@
+            <div @onclick="OpenOrder" class="order-button">
+                <span><i class="bi bi-sort-down"></i> Sort: @selectedSort</span>
+                @if (orderIsOpen)
+                {
+                    <div @onclick="CloseOrder" @onclick:stopPropagation="true" class="all-modal-backdrop-no-color"></div>
+                    <div class="dropdown-menu-simple">
+                        <span @onclick='() => SelectSort("Default")' @onclick:stopPropagation="true">Default</span>
+                        <span @onclick='() => SelectSort("Name")' @onclick:stopPropagation="true">Name</span>
+                        <span @onclick='() => SelectSort("Low Balance")' @onclick:stopPropagation="true">Low Balance</span>
+                        <span @onclick='() => SelectSort("High Balance")' @onclick:stopPropagation="true">High Balance</span>
+                        <span @onclick='() => SelectSort("Low Cost")' @onclick:stopPropagation="true">Low Cost</span>
+                        <span @onclick='() => SelectSort("High Cost")' @onclick:stopPropagation="true">High Cost</span>
+                    </div>
+                }
+            </div>
+            @*
+            <div class="order-button">
+                <span><i class="bi bi-file-earmark-arrow-down"></i> Export</span>
+            </div>
+            *@
+        </div>
+        <div class="category-filter-bar">
+            <button class="category-pill @(selectedCategory == "All" ? "active" : "")" @onclick='() => SelectCategory("All")'>
+                All
+            </button>
+            @foreach (var cat in categories)
+            {
+                <button class="category-pill @(selectedCategory == cat ? "active" : "")" @onclick='() => SelectCategory(cat)'>
+                    @cat
+                </button>
+            }
+        </div>
+        <div class="stock-movement-table custom-shadow-sm">
+            <div class="stock-movement-table-row border-bottom">
+                <span>Product</span>
+                <span>Item Group</span>
+                <span class="text-align-center">Balance</span>
+                <span class="text-align-right">Cost</span>
+            </div>
+            
+            @foreach (var item in DisplayItems)
+            {
+                <div class="stock-movement-table-row cursor-pointer" @onclick="() => OpenProductDetails(item)">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <img class="table-item-image" src="@GetImageUrl(item)" alt="@item.Name" />
+                        <span style="font-weight: 700; color: #1A1A1A;">@item.Name</span>
+                    </div>
+                    <span>@item.Section</span>
+                    <span class="text-align-center" style="font-weight: 600;">@item.ExistingQuantity.ToString("N0") @item.Unit</span>
+                    <span class="text-align-right" style="font-weight: 600;">@item.PurchasePrice.ToString("N2")</span>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public EventCallback OnToggleNav { get; set; }
+    [Parameter] public EventCallback<string> OnNavSelected { get; set; }
+
+    public class BalanceItemDisplay
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string Section { get; set; } = "Section 1";
+        public decimal ExistingQuantity { get; set; }
+        public string Unit { get; set; } = "Unit";
+        public decimal PurchasePrice { get; set; }
+        public decimal SalesPrice { get; set; }
+        public string? ImagePath { get; set; }
+        public string? ImageFileName { get; set; }
+    }
+
+    private List<BalanceItemDisplay> balanceItems = new();
+    private BalanceItemDisplay? selectedItem;
+
+    private bool isProductDetailsOpen = false;
+    private bool isProductDetailSummaryTab = true; // true = Summary, false = Transaction
+
+    private bool openStockInIsOpen = false;
+    private bool dateRangeIsOpen = false;
+    private bool filterIsOpen = false;
+    private bool orderIsOpen = false;
+    private bool isLoading = true;
+
+    private string selectedSort = "Default";
+    private string selectedDateRange = "This Month";
+    private bool filterShowDisplayOnly = false;
+    private bool filterOnlyMovement = false;
+
+    private string searchQuery = "";
+    private string selectedCategory = "All";
+    private List<string> categories = new();
+
+    private IEnumerable<BalanceItemDisplay> DisplayItems
+    {
+        get
+        {
+            var query = balanceItems.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(searchQuery))
+            {
+                query = query.Where(i => i.Name.Contains(searchQuery, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (selectedCategory != "All")
+            {
+                query = query.Where(i => i.Section == selectedCategory);
+            }
+
+            query = selectedSort switch
+            {
+                "Name" => query.OrderBy(i => i.Name),
+                "Low Balance" => query.OrderBy(i => i.ExistingQuantity),
+                "High Balance" => query.OrderByDescending(i => i.ExistingQuantity),
+                "Low Cost" => query.OrderBy(i => i.PurchasePrice),
+                "High Cost" => query.OrderByDescending(i => i.PurchasePrice),
+                _ => query
+            };
+
+            return query.ToList();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        isLoading = true;
+        try
+        {
+            var branchId = AppState.SelectedBranchID;
+            
+            // 1. Load all master items
+            var allItemsList = await InventoryService.LoadItemsAsync(branchId) ?? new List<InventoryDM>();
+            
+            // Filter to only actual products (e.g. InventoryTypeID == 1)
+            var productItems = allItemsList.Where(i => i.InventoryTypeID == 1).ToList();
+
+            if (productItems.Any())
+            {
+                // 2. Fetch stock balances
+                var req = new StockBalanceRequest
+                {
+                    BranchID = branchId,
+                    InventoryIDs = string.Join(",", productItems.Select(i => i.MasterAccountID)),
+                    FinancialDate = DateTime.Today,
+                    EndDate = DateTime.Today,
+                    RedemptionEndDate = DateTime.Today,
+                    NewExpiryDate = DateTime.Today
+                };
+
+                var balances = await InventoryService.GetStockBalanceByBranchAndByItemAsync(req) 
+                              ?? new Dictionary<string, StockBalanceItem>();
+
+                // 3. Map them into the display list
+                balanceItems.Clear();
+                foreach (var pi in productItems)
+                {
+                    decimal existingQty = 0;
+                    if (balances.TryGetValue(pi.MasterAccountID ?? string.Empty, out var balItem))
+                    {
+                        existingQty = balItem.ExistingQuantity;
+                    }
+
+                    balanceItems.Add(new BalanceItemDisplay
+                    {
+                        Id = pi.MasterAccountID ?? string.Empty,
+                        Name = pi.AccountName ?? string.Empty,
+                        Section = pi.ItemGroupName ?? "Section 1",
+                        ExistingQuantity = existingQty,
+                        Unit = pi.UnitOfMeasureName ?? pi.UnitOfMeasureID ?? "Unit",
+                        PurchasePrice = pi.PurchasePrice,
+                        SalesPrice = pi.SalesPrice,
+                        ImagePath = pi.ImagePath,
+                        ImageFileName = pi.ImageFileName
+                    });
+                }
+
+                // Populate dynamic categories list from items sections
+                categories = balanceItems.Select(i => i.Section).Distinct().Where(s => !string.IsNullOrEmpty(s)).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[InventoryBalance] Error loading data: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private string GetImageUrl(BalanceItemDisplay item)
+    {
+        var cached = LocalImageCache.GetImage(item.Id);
+        if (!string.IsNullOrEmpty(cached)) return cached;
+        if (!string.IsNullOrEmpty(item.ImagePath))
+        {
+            return item.ImagePath;
+        }
+        return "https://placehold.co/400";
+    }
+
+    private void SelectCategory(string cat)
+    {
+        selectedCategory = cat;
+    }
+
+    private void ToggleNav()
+    {
+        OnToggleNav.InvokeAsync();
+    }
+
+    private void OpenProductDetails(BalanceItemDisplay item)
+    {
+        selectedItem = item;
+        isProductDetailsOpen = true;
+        isProductDetailSummaryTab = true;
+    }
+
+    private void CloseProductDetails()
+    {
+        isProductDetailsOpen = false;
+        selectedItem = null;
+    }
+
+    private void OpenStockIn()
+    {
+        openStockInIsOpen = true;
+    }
+
+    private void CloseStockIn()
+    {
+        openStockInIsOpen = false;
+    }
+
+    private void OpenDateRange()
+    {
+        dateRangeIsOpen = true;
+    }
+
+    private void CloseDateRange()
+    {
+        dateRangeIsOpen = false;
+    }
+
+    private void SelectDateRange(string val)
+    {
+        selectedDateRange = val;
+        dateRangeIsOpen = false;
+    }
+
+    private void OpenFilter()
+    {
+        filterIsOpen = true;
+    }
+
+    private void CloseFilter()
+    {
+        filterIsOpen = false;
+    }
+
+    private void OpenOrder()
+    {
+        orderIsOpen = true;
+    }
+
+    private void CloseOrder()
+    {
+        orderIsOpen = false;
+    }
+
+    private void SelectSort(string val)
+    {
+        selectedSort = val;
+        orderIsOpen = false;
+    }
+
+    private void NavigateTo(string target)
+    {
+        openStockInIsOpen = false;
+        isProductDetailsOpen = false; // Close details if navigating away
+        OnNavSelected.InvokeAsync(target);
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/home");
+    }
+}

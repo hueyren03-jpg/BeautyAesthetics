@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <ResourcePreloader />
+    <link rel="stylesheet" href="_content/SenangRetails.Shared/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="_content/SenangRetails.Shared/app.css" />
+    <link rel="stylesheet" href="SenangRetails.Web.styles.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+    <link href="_content/Blazor.Bootstrap/blazor.bootstrap.css" rel="stylesheet" />
+    <ImportMap />
+    <link rel="icon" type="image/png" href="_content/SenangRetails.Shared/favicon.png" />
+    <script src="_content/SenangRetails.Shared/js/theme-loader.js"></script>
+    <HeadOutlet @rendermode="InteractiveServer" />
+</head>
+
+<body>
+    <Routes @rendermode="InteractiveServer" />
+    <ReconnectModal />
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script src="_content/SenangRetails.Shared/js/modal-utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
+    <!-- Add chart.js reference if chart components are used in your application. -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js" integrity="sha512-ZwR1/gSZM3ai6vCdI+LVF1zSq/5HznD3ZSTk7kajkaj4D292NLuduDCO1c/NT8Id+jE58KYLKT7hXnbtryGmMg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <!-- Add chartjs-plugin-datalabels.min.js reference if chart components with data label feature is used in your application. -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js" integrity="sha512-JPcRR8yFa8mmCsfrw4TNte1ZvF1e3+1SdGMslZvmrzDYxS69J7J49vkFL8u6u8PlPJK+H3voElBtUCzaXj+6ig==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <!-- Add sortable.js reference if SortableList component is used in your application. -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <script src="_content/Blazor.Bootstrap/blazor.bootstrap.js"></script>
+    <script src="_content/ZXingBlazor/BarcodeReader.js"></script>
+    <script>
+        window.downloadFile = function(dataUrl, filename) {
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        };
+    </script>
+    <script>
+        window.downloadFileFromBase64 = (filename, base64String) => {
+        try {
+        const byteCharacters = atob(base64String.replace(/\s/g, ''));
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], {type: 'application/pdf'});
+        
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        
+        // Cleanup
+        setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+        }, 100);
+        } catch (e) {
+        console.error("Blob Download Error:", e);
+        }
+        };
+    </script>
+    <script>
+        window.scrollToCategory = function (sectionId, containerId) {
+        const container = document.getElementById(containerId);
+        const section = document.getElementById(sectionId);
+        if (container && section) {
+        container.scrollTo({ top: section.offsetTop - container.offsetTop - 8, behavior: 'smooth' });
+        }
+        };
+
+        window.initScrollSpy = function (dotnetRef, containerId, categories) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        container.addEventListener('scroll', function () {
+        let current = categories[0];
+        for (const cat of categories) {
+        const id = 'cat-' + cat.replace(/ /g, '-');
+        const el = document.getElementById(id);
+        if (el && el.offsetTop - container.offsetTop - 40 <= container.scrollTop) {
+        current = cat;
+        }
+        }
+        dotnetRef.invokeMethodAsync('UpdateActiveCategory', current);
+        });
+        };
+        window.scrollTabIntoView = function (tabId) {
+        const tab = document.getElementById(tabId);
+        if (tab) tab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        };
+    </script>
+</body>
+
+</html>
+

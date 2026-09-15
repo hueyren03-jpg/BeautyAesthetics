@@ -1,0 +1,123 @@
+@page "/usercontrol"
+@page "/usercontrol/{DefaultRole}"
+@inherits SenangRetails.Shared.Pages.BasePage
+
+<div class="uc-page-container @(isLeftPanelExpanded && !isLeftPanelHidden ? "sidebar-open" : "")">
+
+    @if (isLeftPanelExpanded && !isLeftPanelHidden)
+    {
+        <div class="uc-left-backdrop" @onclick="HideLeftPanel"></div>
+    }
+
+    @if (!isLeftPanelHidden)
+    {
+        <div class="uc-left-panel @(isLeftPanelExpanded ? "expanded" : "collapsed")">
+            <div class="uc-left-panel-header">
+                <div class="uc-left-back" @onclick="GoBack">
+                    <i class="fa-solid fa-chevron-left"></i>
+                    <span>Back</span>
+                </div>
+                <button class="uc-hamburger-btn" @onclick="HideLeftPanel">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+            </div>
+            <div class="uc-left-title">User Control</div>
+            <div class="uc-left-tabs">
+                @if (isLoadingGroups)
+                {
+                    <div class="uc-tabs-loading" style="padding: 15px; text-align: center; color: #999; font-size: 13px;">
+                        <div class="spinner-border spinner-border-sm" role="status" style="margin-right: 8px;"></div>
+                        <span>Loading user groups...</span>
+                    </div>
+                }
+                else if (securityGroups == null || !securityGroups.Any())
+                {
+                    <div class="uc-tabs-empty" style="padding: 15px; text-align: center; color: #999; font-size: 13px;">
+                        No user groups found.
+                    </div>
+                }
+                else
+                {
+                    @foreach (var group in securityGroups)
+                    {
+                        var groupName = group.UserGroupName ?? string.Empty;
+                        <button class="uc-left-tab @(selectedRole == groupName ? "active" : "")"
+                                @onclick="() => OnTabClick(groupName)">
+                            <i class="fa-solid fa-user-gear"></i>
+                            <span>@groupName</span>
+                        </button>
+                    }
+                }
+            </div>
+        </div>
+    }
+
+    <div class="uc-right-panel">
+        <div class="uc-right-header">
+            <div class="uc-right-header-title-bar">
+                @if (isLeftPanelHidden || !isLeftPanelExpanded)
+                {
+                    <button class="uc-hamburger-btn-right" @onclick="ShowLeftPanel">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                }
+                <!-- Back button added here - same pattern as UserControlDetail -->
+                <div class="back-button" @onclick="GoBack">
+                    <i class="bi bi-chevron-left"></i>
+                    <span>Back</span>
+                </div>
+                <div class="uc-right-header-info">
+                    <h2 class="uc-right-title">User Control</h2>
+                    <p class="uc-right-subtitle">Manage your staff access on key features</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Selected Role/Tab Display -->
+        @if (!string.IsNullOrEmpty(selectedRole))
+        {
+            <div class="uc-selected-role-container">
+                <div class="uc-selected-role-badge">
+                    <i class="fa-solid fa-tag"></i>
+                    <span>Selected Role:</span>
+                    <strong>@selectedRole</strong>
+                </div>
+            </div>
+        }
+
+        <div class="uc-search-container">
+            <i class="fa-solid fa-magnifying-glass uc-search-icon"></i>
+            <input type="text" class="uc-search-input" placeholder="Search feature groups..."
+                   @bind="searchQuery" @bind:event="oninput" />
+        </div>
+
+        <div class="uc-feature-list">
+            @if (isLoadingFeatures)
+            {
+                <div class="uc-features-loading" style="text-align: center; padding: 50px 20px; color: #888;">
+                    <div class="spinner-border text-primary" role="status" style="width: 2.5rem; height: 2.5rem; margin-bottom: 12px;"></div>
+                    <p style="font-weight: 500; font-size: 14px;">Loading active feature groups...</p>
+                </div>
+            }
+            else if (!dynamicFeatures.Any())
+            {
+                <div class="uc-features-empty" style="text-align: center; padding: 40px; color: #999; background: white; border-radius: 8px; margin: 20px; border: 1px solid #f0f0f0;">
+                    <i class="fa-solid fa-folder-open" style="font-size: 32px; color: #ddd; margin-bottom: 10px; display: block;"></i>
+                    <span>No structural categories defined for this group block.</span>
+                </div>
+            }
+            else
+            {
+                @foreach (var feature in GetFilteredFeatures())
+                {
+                    <button class="uc-feature-row" @onclick="() => NavigateToDetail(feature)">
+                        <div class="uc-feature-left">
+                            <span class="uc-feature-name">@feature.Name</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right uc-feature-arrow"></i>
+                    </button>
+                }
+            }
+        </div>
+    </div>
+</div>

@@ -1,0 +1,495 @@
+@page "/employeeform"
+@page "/employeeform/{EmployeeCode}"
+@using Beauty_Aesthetics_WebPos.Components.Models
+@using Beauty_Aesthetics_WebPos.ViewModels
+@using Beauty_Aesthetics_WebPos.Components.Layout
+@layout MainLayout
+@inherits EmployeeFormBase
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L
+<link href="_content/Beauty_Aesthetics_Hybrid.Shared/EmployeeForm.css" rel="stylesheet" />
+
+<div class="employee-form-wrapper">
+    <!-- Header Bar -->
+    <div class="header-bar">
+        <div class="header-left">
+            <h2>@(ViewModel.IsEditMode ? L["EditEmployee"] : L["AddEmployee"])</h2>
+        </div>
+        <div class="header-actions">
+            <button type="button" class="btn-save" @onclick="SaveAsync" disabled="@ViewModel.IsSaving">
+                <img src="images/save_icon.png" alt="Save" class="btn-icon"/>
+                @(ViewModel.IsSaving ? "Saving..." : L["Save"])
+            </button>
+            <a class="page-close-button"
+               href="/employee"
+               target="_self"
+               data-enhance-nav="false"
+               title="Close"
+               aria-label="Close employee form">
+                <span aria-hidden="true">&#215;</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tab-navigation">
+        <button class="tab-item @(ViewModel.ActiveTab == "General Info" ? "active" : "")"
+                @onclick="@(() => ViewModel.ChangeTab("General Info"))">
+            <i class="bi bi-person-vcard"></i><span>@L["GeneralInfo"]</span>
+        </button>
+
+        <button class="tab-item @(ViewModel.ActiveTab == "Branch Control" ? "active" : "")"
+                @onclick="@(() => ViewModel.ChangeTab("Branch Control"))">
+            <i class="bi bi-building"></i><span>@L["BranchControl"]</span>
+        </button>
+
+        <button class="tab-item @(ViewModel.ActiveTab == "Service Record" ? "active" : "")"
+                @onclick="@(() => ViewModel.ChangeTab("Service Record"))">
+            <i class="bi bi-graph-up-arrow"></i><span>@L["ServiceRecord"]</span>
+        </button>
+
+        <button class="tab-item @(ViewModel.ActiveTab == "Staff Purchase" ? "active" : "")"
+                @onclick="@(() => ViewModel.ChangeTab("Staff Purchase"))">
+            <i class="bi bi-bag"></i><span>@L["StaffPurchase"]</span>
+        </button>
+
+        <button class="tab-item @(ViewModel.ActiveTab == "Monthly Target" ? "active" : "")"
+                @onclick="@(() => ViewModel.ChangeTab("Monthly Target"))">
+            <i class="bi bi-bullseye"></i><span>@L["MonthlyTarget"]</span>
+        </button>
+
+        <button class="tab-item @(ViewModel.ActiveTab == "Remarks" ? "active" : "")"
+                @onclick="@(() => ViewModel.ChangeTab("Remarks"))">
+            <i class="bi bi-chat-left-text"></i><span>@L["Remarks"]</span>
+        </button>
+    </div>
+
+    
+    <!-- Form Container -->
+
+
+    <!--General Info-->
+    @if (ViewModel.ActiveTab == "General Info")
+    {
+        <div class="form-container fade-in">
+            <EditForm Model="@ViewModel.Employee" OnValidSubmit="@SaveAsync">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="section-title">@L["GeneralInfo"]</div>
+
+                <div class="form-grid">
+                    <!-- Row 1: Code & Status -->
+                    <div class="form-row">
+                        <div class="field-group">
+                            <label>@L["Code"]</label>
+                            <InputText @bind-Value="ViewModel.Employee.Code" placeholder="e.g. E00001" class="custom-input" />
+                        </div>
+                        <div class="field-group">
+                            <label>@L["Status"]</label>
+                            <InputSelect @bind-Value="ViewModel.Employee.Status" class="custom-input">
+                                <option value="Active">@L["Active"]</option>
+                                <option value="Inactive">@L["Inactive"]</option>
+                            </InputSelect>
+                        </div>
+                    </div>
+
+                    <!-- Row 2: Name & Sales Person Code -->
+                    <div class="form-row">
+                        <div class="field-group">
+                            <label>@L["Name"]</label>
+                            <InputText @bind-Value="ViewModel.Employee.Name" placeholder="e.g. ALI" class="custom-input" />
+                        </div>
+                        <div class="field-group">
+                            <label>@L["SalesPersonCode"]</label>
+                            <InputText @bind-Value="ViewModel.Employee.SalesPersonCode" placeholder="e.g. E00001" class="custom-input" />
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="field-group">
+                            <label>Branch</label>
+                            <InputSelect @bind-Value="ViewModel.Employee.BranchId" class="custom-input">
+                                <option value="">Select branch</option>
+                                @foreach (var branch in ViewModel.BranchList)
+                                {
+                                    <option value="@branch.BranchId">@branch.BranchName</option>
+                                }
+                            </InputSelect>
+                        </div>
+                        <div class="field-group">
+                            <label>NRIC</label>
+                            <InputText @bind-Value="ViewModel.Employee.Nric" class="custom-input" />
+                        </div>
+                    </div>
+                    <!-- Row 3: Cashier & Service Staff -->
+                    <div class="form-row">
+                        <div class="field-group checkbox-field">
+                            <label>@L["IsCashier"]</label>
+                            <InputCheckbox @bind-Value="ViewModel.Employee.IsCashier" />
+                        </div>
+                        <div class="field-group checkbox-field">
+                            <label>@L["IsServiceStaff"]</label>
+                            <InputCheckbox @bind-Value="ViewModel.Employee.IsServiceStaff" />
+                        </div>
+                    </div>
+
+                    <!-- Row 4: Employee Level & Job Title -->
+                    <div class="form-row">
+                        <div class="field-group">
+                            <label>@L["EmployeeLevel"]</label>
+                            <InputSelect @bind-Value="ViewModel.Employee.EmployeeLevel" class="custom-input">
+                                <option value="">@L["SelectLevel"]</option>
+                                @foreach (var level in ViewModel.EmployeeLevels)
+                                {
+                                    <option value="@level">@level</option>
+                                }
+                            </InputSelect>
+                        </div>
+                        <div class="field-group">
+                            <label>@L["JobTitle"]</label>
+                            <InputText @bind-Value="ViewModel.Employee.JobTitle" placeholder="e.g. Admin" class="custom-input" />
+                        </div>
+                    </div>
+                </div>
+                <!-- Collapsible Extra Fields -->
+                <!-- Collapsible Extra Fields & Button Container -->
+                <div class="expandable-container">
+                    @if (ViewModel.IsExpanded)
+                    {
+                        <div class="form-grid fade-in">
+                        <!-- Row 5: Mobile & Gender -->
+                            <div class="form-row">
+                                <div class="field-group">
+                                <label>@L["MobilePhone"]</label>
+                                <InputText @bind-Value="ViewModel.Employee.MobilePhone" class="custom-input" />
+                            </div>
+                            <div class="field-group">
+                                <label>@L["Gender"]</label>
+                                <InputSelect @bind-Value="ViewModel.Employee.Gender" class="custom-input">
+                                    <option value="">@L["SelectGender"]</option>
+                                    @foreach (var gender in ViewModel.Genders)
+                                    {
+                                        <option value="@gender">@gender</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                        </div>
+
+                        <!-- Row 6: DOB & Max Discount -->
+                        <div class="form-row">
+                            <div class="field-group">
+                                <label>@L["DateOfBirth"]</label>
+                                <InputDate @bind-Value="ViewModel.Employee.DateOfBirth" class="custom-input" />
+                            </div>
+                            <div class="field-group">
+                                <label>@L["MaxDiscountLimit"]</label>
+                                <div class="input-with-unit">
+                                    <InputNumber @bind-Value="ViewModel.Employee.MaxDiscountLimit" class="custom-input" />
+                                    <span class="unit">%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Row 7–10 Same as Before -->
+                        <div class="form-row">
+                            <div class="field-group">
+                                <label>@L["WorkingShift"]</label>
+                                <InputSelect @bind-Value="ViewModel.Employee.WorkingShift" class="custom-input">
+                                    <option value="">@L["SelectShift"]</option>
+                                    @foreach (var shift in ViewModel.WorkingShifts)
+                                    {
+                                        <option value="@shift">@shift</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="field-group">
+                                <label>@L["BasicPay"]</label>
+                                <div class="input-with-unit">
+                                    <span class="unit">RM</span>
+                                    <InputNumber @bind-Value="ViewModel.Employee.BasicPay" class="custom-input" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="field-group">
+                                <label>@L["DateHired"]</label>
+                                <InputDate @bind-Value="ViewModel.Employee.DateHired" class="custom-input" />
+                            </div>
+                            <div class="field-group">
+                                <label>@L["DateResigned"]</label>
+                                <InputDate @bind-Value="ViewModel.Employee.DateResigned" class="custom-input" />
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="field-group">
+                                <label>@L["AutoAllocationGroup"]</label>
+                                <InputSelect @bind-Value="ViewModel.Employee.AutoAllocationGroup" class="custom-input">
+                                    <option value="">@L["None"]</option>
+                                    @foreach (var group in ViewModel.AutoAllocationGroups)
+                                    {
+                                        <option value="@group">@group</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="field-group">
+                                <label>@L["CommissionScheme"]</label>
+                                <InputSelect @bind-Value="ViewModel.Employee.CommissionScheme" class="custom-input">
+                                    <option value="">@L["SelectScheme"]</option>
+                                    @foreach (var scheme in ViewModel.CommissionSchemes)
+                                    {
+                                        <option value="@scheme">@scheme</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                        </div>
+
+                        <div class="form-row full-width">
+                            <div class="field-group">
+                                <label>Employee Photo</label>
+                                <InputFile OnChange="HandleEmployeeImageSelected" accept="image/png,image/jpeg,image/webp" class="custom-input" />
+                                @if (!string.IsNullOrWhiteSpace(ViewModel.Employee.ImagePath))
+                                {
+                                    <small class="form-text">Image uploaded and ready to save.</small>
+                                }
+                            </div>
+                        </div>
+                        </div>
+                    }
+                    <div class="view-more-wrapper @(ViewModel.IsExpanded ? "bottom" : "center")">
+                        <button type="button" class="btn-view-more" @onclick="ViewModel.ToggleExpand">
+                            <i class="bi @(ViewModel.IsExpanded ? "bi-chevron-up" : "bi-chevron-down")"></i>
+                            <span>@(ViewModel.IsExpanded ? L["ViewLess"] : L["ViewMore"])</span>
+                        </button>
+                    </div>
+                </div>
+
+            </EditForm>
+        </div>
+        }
+
+    <AppErrorPopup Title="Unable to save employee" Message="@ViewModel.ErrorMessage" />
+
+    @if (ViewModel.ActiveTab == "Branch Control")
+    {
+        <div class="branch-control-section fade-in">
+            <div class="branch-header">
+                <div class="section-title2">@L["BranchControl"]</div>
+                <div class="branch-actions">
+                    <button type="button" class="btn-branch-action remove-all" @onclick="ViewModel.RemoveAllBranches">@L["RemoveAll"]</button>
+                    <button type="button" class="btn-branch-action select-all" @onclick="ViewModel.SelectAllBranches">@L["SelectAll"]</button>
+                </div>
+            </div>
+
+            <table class="branch-table">
+                <thead>
+                    <tr>
+                        <th>@L["Branch"]</th>
+                        <th>@L["Available"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var branch in ViewModel.BranchList)
+                    {
+                        <tr>
+                            <td>@branch.BranchName</td>
+                            <td>
+                                <InputCheckbox @bind-Value="branch.Available" />
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (ViewModel.ActiveTab == "Service Record")
+    {
+        <!-- 🔹 Service Record Section -->
+        <div class="service-record-section fade-in">
+            <div class="service-record-header">
+                <div class="section-title2">@L["ServiceRecord"]</div>
+                <div class="service-actions">
+                    <button type="button" class="btn-branch-action remove-all" @onclick="ViewModel.RemoveServiceRecord">@L["Remove"]</button>
+                    <button type="button" class="btn-branch-action select-all" @onclick="ViewModel.AddServiceRecord">@L["Add"]</button>
+                </div>
+            </div>
+
+            <div class="service-record-box">
+                <div class="table-responsive">
+                <table class="service-record-table">
+                    <thead>
+                        <tr>
+                            <th>@L["Branch"]</th>
+                            <th>@L["EffectiveDate"]</th>
+                            <th>@L["DailyBasicRM"]</th>
+                            <th>@L["CommMethod"]</th>
+                            <th>@L["CommAmount"]</th>
+                            <th>@L["UpdatedBy"]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var record in ViewModel.ServiceRecords)
+                        {
+                            <tr>
+                                <td>
+                                    <InputText @bind-Value="record.BranchId" class="custom-input small" placeholder="Branch" />
+                                </td>
+                                <td>
+                                    <InputDate @bind-Value="record.EffectiveDate" class="custom-input small" />
+                                </td>
+                                <td>
+                                    <InputNumber @bind-Value="record.DailyBasic" class="custom-input small" />
+                                </td>
+                                <td>
+                                    <InputSelect @bind-Value="record.CommMethod" class="custom-input small">
+                                        <option value="">@L["Select"]</option>
+                                        <option value="Amount">@L["Amount"]</option>
+                                        <option value="Hour">@L["Hour"]</option>
+                                        <option value="Percentage">@L["Percentage"]</option>
+                                    </InputSelect>
+                                </td>
+                                <td>
+                                    <InputNumber @bind-Value="record.CommAmount" class="custom-input small" />
+                                </td>
+                                <td>
+                                    <InputText @bind-Value="record.UpdatedBy" class="custom-input small" readonly />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (ViewModel.ActiveTab == "Staff Purchase")
+    {
+        <div class="staff-purchase-wrapper fade-in">
+            <div class="staff-purchase-box">
+                <!-- Purchase Limit Section -->
+                <div class="section-subtitle">@L["PurchaseLimit"]</div>
+
+                <div class="form-grid">
+                    <div class="form-row">
+                        <div class="field-group">
+                            <label>@L["MaxAmount"]</label>
+                            <div class="input-with-unit">
+                                <InputNumber @bind-Value="ViewModel.Employee.MaxPurchaseAmount" class="custom-input" />
+                            </div>
+                        </div>
+
+                        <div class="field-group">
+                            <label>@L["AvailableOnDayOfMonth"]</label>
+                            <div class="input-with-unit">
+                            <InputNumber @bind-Value="ViewModel.Employee.AvailableDayOfMonth" class="custom-input" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="field-group">
+                            <label>@L["MaxBillCount"]</label>
+                            <div class="input-with-unit">
+                                <InputNumber @bind-Value="ViewModel.Employee.MaxBillCount" class="custom-input" />
+                            </div>
+                        </div>
+
+                        <div class="field-group">
+                            <label>@L["ItemType"]</label>
+                            <InputSelect @bind-Value="ViewModel.Employee.ItemType" class="custom-input">
+                                <option value="">@L["SelectType"]</option>
+                                <option value="Product">@L["Product"]</option>
+                                <option value="Service">@L["Service"]</option>
+                                <option value="Package">@L["Package"]</option>
+                                <option value="Credit">@L["Credit"]</option>
+                                <option value="Bundle">@L["Bundle"]</option>
+                            </InputSelect>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="field-group">
+                            <label>@L["MaxQtyOnEachItem"]</label>
+                            <div class="input-with-unit">
+                            <InputNumber @bind-Value="ViewModel.Employee.MaxQtyPerItem" class="custom-input" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Complementary Credit Section -->
+                <div class="section-subtitle" style="margin-top:2rem;">@L["ComplementaryCredit"]</div>
+                <div class="form-grid">
+                    <div class="form-row">
+                        <div class="field-group">
+                            <label>@L["Amount"]</label>
+                            <div class="input-with-unit">
+                                <InputNumber @bind-Value="ViewModel.Employee.ComplementaryCreditAmount" class="custom-input" />
+                            </div>
+                        </div>
+
+                        <div class="field-group">
+                            <label>@L["Interval"]</label>
+                            <InputSelect @bind-Value="ViewModel.Employee.ComplementaryCreditInterval" class="custom-input">
+                                <option value="">@L["SelectInterval"]</option>
+                                <option value="Daily">@L["Daily"]</option>
+                                <option value="Monthly">@L["Monthly"]</option>
+
+                            </InputSelect>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (ViewModel.ActiveTab == "Monthly Target")
+    {
+        <div class="monthly-target-wrapper fade-in">
+            <div class="content-box">
+                <div class="section-title">@L["MonthlyTarget"]</div>
+
+                <div class="form-grid">
+                    <div class="form-row">
+                        <label>@L["Product"]</label>
+                        <InputNumber @bind-Value="ViewModel.Employee.MonthlyTargetProduct" class="custom-input" placeholder="e.g. 1000.00" />
+                    </div>
+
+                    <div class="form-row">
+                        <label>@L["Service"]</label>
+                        <InputNumber @bind-Value="ViewModel.Employee.MonthlyTargetService" class="custom-input" placeholder="e.g. 1000.00" />
+                    </div>
+
+                    <div class="form-row">
+                        <label>@L["Package"]</label>
+                        <InputNumber @bind-Value="ViewModel.Employee.MonthlyTargetPackage" class="custom-input" placeholder="e.g. 1000.00" />
+                    </div>
+
+                    <div class="form-row">
+                        <label>@L["TopUp"]</label>
+                        <InputNumber @bind-Value="ViewModel.Employee.MonthlyTargetTopUp" class="custom-input" placeholder="e.g. 1000.00" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Remarks -->
+    @if (ViewModel.ActiveTab == "Remarks")
+    {
+        <div class="remark-wrapper fade-in">
+            <div class="content-box">
+                <div class="section-title">@L["Remarks"]</div>
+                <div class="form-grid">
+                    <div class="form-row">
+                        <label>@L["Remark"]</label>
+                        <InputTextArea @bind-Value="ViewModel.Employee.Remark" class="custom-input" rows="4" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>

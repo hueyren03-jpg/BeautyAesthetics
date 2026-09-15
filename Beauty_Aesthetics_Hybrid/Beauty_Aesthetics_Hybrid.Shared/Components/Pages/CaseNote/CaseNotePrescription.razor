@@ -1,0 +1,1853 @@
+@page "/case-note-prescription"
+@using Beauty_Aesthetics_WebPos.Components.Layout
+@layout EmptyLayout
+@using Beauty_Aesthetics_WebPos.Components.ViewModels
+@using static Beauty_Aesthetics_WebPos.Components.ViewModels.CaseNotePrescriptionViewModel
+@using Microsoft.JSInterop
+@using Microsoft.AspNetCore.Components.Web
+@inject IJSRuntime JS
+
+<PageTitle>Prescription</PageTitle>
+
+<div class="prescription-container">
+    <header class="prescription-mobile-header">
+        <a href="/case-notes" aria-label="Back to Case Notes"><i class="bi bi-arrow-left"></i></a>
+        <h1>Prescription</h1>
+        <a href="/prescription-builder" aria-label="Manage Prescriptions"><i class="bi bi-clipboard-check"></i></a>
+    </header>
+    <nav class="prescription-mobile-tabs" aria-label="Prescription sections">
+        <button type="button" class="@(_mobilePanel == "catalog" ? "active" : "")" @onclick='() => _mobilePanel = "catalog"'>
+            <i class="bi bi-search"></i><span>Catalog</span>
+        </button>
+        <button type="button" class="@(_mobilePanel == "selected" ? "active" : "")" @onclick='() => _mobilePanel = "selected"'>
+            <i class="bi bi-clipboard2-pulse"></i><span>Prescription</span>
+            @if (ViewModel.SelectedDrugs.Any()) { <b>@ViewModel.SelectedDrugs.Count</b> }
+        </button>
+    </nav>
+
+    <div class="prescription-content mobile-panel-@_mobilePanel">
+        <!-- Left Panel - Drug Search & List -->
+        <div class="drug-list-panel">
+            <!-- Search Bar -->
+            <div class="search-section">
+                <div class="search-box-large">
+                    <i class="bi bi-search search-icon"></i>
+                    <input 
+                        type="text" 
+                        class="search-input-large" 
+                        @bind="ViewModel.SearchTerm" 
+                        @bind:event="oninput" 
+                        placeholder="Search treatments or products..." />
+                    @if (!string.IsNullOrWhiteSpace(ViewModel.SearchTerm))
+                    {
+                        <button class="search-clear-btn" @onclick="() => ViewModel.SearchTerm = string.Empty">
+                            <i class="bi bi-x-circle-fill"></i>
+                        </button>
+                    }
+                </div>
+                
+                <!-- Category Filter -->
+                <div class="category-filter-section">
+                    <label class="filter-label">Category:</label>
+                    <div class="custom-dropdown-wrapper">
+                        <div class="custom-dropdown-trigger @(_isCategoryDropdownOpen ? "open" : "")" @onclick="ToggleCategoryDropdown">
+                            <span>@(string.IsNullOrEmpty(ViewModel.SelectedCategory) ? "All Categories" : ViewModel.SelectedCategory)</span>
+                            <i class="bi bi-chevron-down dropdown-arrow"></i>
+                        </div>
+                        @if (_isCategoryDropdownOpen)
+                        {
+                            <div class="custom-dropdown-menu">
+                                <div class="dropdown-item @(string.IsNullOrEmpty(ViewModel.SelectedCategory) ? "selected" : "")" 
+                                     @onclick="@(() => SelectCategory(""))">
+                                    All Categories
+                                </div>
+                                @if (ViewModel.AvailableCategories != null)
+                                {
+                                    @foreach (var category in ViewModel.AvailableCategories)
+                                    {
+                                        <div class="dropdown-item @(ViewModel.SelectedCategory == category ? "selected" : "")" 
+                                             @onclick="@(() => SelectCategory(category))">
+                                            @category
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+                    </div>
+                    
+                    <!-- Text Size Control -->
+                    <div class="text-size-control">
+                        <label class="filter-label">Text Size:</label>
+                        <div class="text-size-buttons">
+                            <button class="btn-text-size" 
+                                    @onclick="DecreaseTextSize"
+                                    disabled="@(_textSizeLevel <= 0)"
+                                    title="Decrease text size">
+                                <i class="bi bi-type"></i>
+                                <i class="bi bi-dash-lg"></i>
+                            </button>
+                            <span class="text-size-indicator">@GetTextSizeLabel()</span>
+                            <button class="btn-text-size" 
+                                    @onclick="IncreaseTextSize"
+                                    disabled="@(_textSizeLevel >= 2)"
+                                    title="Increase text size">
+                                <i class="bi bi-type"></i>
+                                <i class="bi bi-plus-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Manage Prescriptions Button -->
+                    <a href="/prescription-builder" class="btn-manage-prescriptions" title="Manage Prescriptions">
+                        <i class="bi bi-clipboard-check"></i>
+                        <span>Manage Prescriptions</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Treatment / Product List Table -->
+            <div class="drug-table-wrapper">
+                @* Debug: @ViewModel.FilteredDrugs.Count() drugs found *@
+                <table class="drug-table @GetTextSizeClass()">
+                    <thead>
+                        <tr>
+                            <th class="col-drug">Treatments / Products</th>
+                            <th class="col-indication">Indication</th>
+                            <th class="col-restriction">Restriction</th>
+                            <th class="col-dosage">Dosage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var drug in GetPaginatedDrugs())
+                        {
+                            <tr class="drug-row @(ViewModel.SelectedDrugToAdd?.Id == drug.Id ? "selected" : "")" 
+                                @onclick="@(() => HandleDrugClick(drug))">
+                                <td class="col-drug">
+                                    <div class="drug-info-cell">
+                                        @if (ViewModel.SelectedDrugToAdd?.Id == drug.Id)
+                                        {
+                                            <i class="bi bi-circle-fill selected-dot"></i>
+                                        }
+                                        <div class="drug-details">
+                                            <div class="drug-name-row">@drug.Name</div>
+                                            <div class="drug-meta-row">
+                                                <span class="meta-label">Drug Code:</span>
+                                                <span class="meta-value">@drug.DrugCode</span>
+                                            </div>
+                                            @if (!string.IsNullOrEmpty(drug.Category))
+                                            {
+                                                <div class="drug-meta-row">
+                                                    <span class="meta-label">Category:</span>
+                                                    <span class="meta-value">@drug.Category</span>
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="col-indication">
+                                    <div class="cell-content">@drug.Indication</div>
+                                </td>
+                                <td class="col-restriction">
+                                    <div class="cell-content">@drug.Restrictions</div>
+                                </td>
+                                <td class="col-dosage">
+                                    <div class="cell-content">@drug.Dosage</div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                
+                <!-- Pagination Controls -->
+                @if (GetTotalPages() > 1)
+                {
+                    <div class="pagination-container">
+                        <div class="pagination-info">
+                            <span>Showing @((_currentPage - 1) * _itemsPerPage + 1) - @(Math.Min(_currentPage * _itemsPerPage, ViewModel.FilteredDrugs.Count())) of @ViewModel.FilteredDrugs.Count() treatments/products</span>
+                        </div>
+                        <div class="pagination-controls">
+                            <button class="btn-pagination" 
+                                    @onclick="GoToPreviousPage" 
+                                    disabled="@(_currentPage == 1)"
+                                    title="Previous Page">
+                                <i class="bi bi-chevron-left"></i>
+                                <span>Previous</span>
+                            </button>
+                            <div class="page-numbers">
+                                @for (int i = 1; i <= GetTotalPages(); i++)
+                                {
+                                    var pageNum = i;
+                                    @if (i == 1 || i == GetTotalPages() || (i >= _currentPage - 1 && i <= _currentPage + 1))
+                                    {
+                                        <button class="btn-page-number @(i == _currentPage ? "active" : "")" 
+                                                @onclick="() => GoToPage(pageNum)">
+                                            @i
+                                        </button>
+                                    }
+                                    else if (i == _currentPage - 2 || i == _currentPage + 2)
+                                    {
+                                        <span class="page-ellipsis">...</span>
+                                    }
+                                }
+                            </div>
+                            <button class="btn-pagination" 
+                                    @onclick="GoToNextPage" 
+                                    disabled="@(_currentPage >= GetTotalPages())"
+                                    title="Next Page">
+                                <span>Next</span>
+                                <i class="bi bi-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Resizer -->
+        <div class="panel-resizer">
+            <div class="resizer-handle"></div>
+        </div>
+
+        <!-- Right Panel - Prescription Details -->
+        <div class="selected-drugs-panel">
+            <div class="right-panel-content">
+                @if (ViewModel.SelectedDrugToAdd != null)
+                {
+                    <div class="add-drug-form">
+                        <div class="selected-drug-header">
+                            <i class="bi bi-circle-fill header-dot"></i>
+                            <div class="header-info">
+                                <h4>@ViewModel.SelectedDrugToAdd.Name</h4>
+                                <p>Drug Code: @ViewModel.SelectedDrugToAdd.DrugCode</p>
+                            </div>
+                            <button class="btn-cancel-selection" 
+                                    @onclick="CancelDrugSelection"
+                                    title="Cancel">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+
+                        <div class="form-container">
+                            <div class="form-row">
+                                <label class="form-label">Dosage</label>
+                                <input 
+                                    type="number" 
+                                    class="form-control" 
+                                    @bind="ViewModel.NewDrugQuantity" 
+                                    step="0.01" 
+                                    min="0" 
+                                    placeholder="1.00" />
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-label-row">
+                                    <label class="form-label">Frequency</label>
+                                    <button class="btn-toggle-input" 
+                                            @onclick="() => { _manualFrequency = !_manualFrequency; StateHasChanged(); }"
+                                            title="@(_manualFrequency ? "Switch to dropdown" : "Switch to manual entry")"
+                                            type="button">
+                                        <i class="bi @(_manualFrequency ? "bi-list-check" : "bi-pencil-square")"></i>
+                                    </button>
+                                </div>
+                                @if (_manualFrequency)
+                                {
+                                    <input 
+                                        type="text" 
+                                        class="form-control" 
+                                        @bind="ViewModel.NewDrugFrequency" 
+                                        placeholder="Enter frequency manually" />
+                                }
+                                else
+                                {
+                                    <select class="form-control" @bind="ViewModel.NewDrugFrequency">
+                                        <option value="">- SELECT FREQUENCY -</option>
+                                        @foreach (var freq in ViewModel.FrequencyOptions)
+                                        {
+                                            <option value="@freq">@freq</option>
+                                        }
+                                    </select>
+                                }
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-label-row">
+                                    <label class="form-label">Duration</label>
+                                    <button class="btn-toggle-input" 
+                                            @onclick="() => { _manualDuration = !_manualDuration; StateHasChanged(); }"
+                                            title="@(_manualDuration ? "Switch to dropdown" : "Switch to manual entry")"
+                                            type="button">
+                                        <i class="bi @(_manualDuration ? "bi-list-check" : "bi-pencil-square")"></i>
+                                    </button>
+                                </div>
+                                @if (_manualDuration)
+                                {
+                                    <input 
+                                        type="text" 
+                                        class="form-control" 
+                                        @bind="ViewModel.NewDrugDuration" 
+                                        placeholder="Enter duration manually" />
+                                }
+                                else
+                                {
+                                    <select class="form-control" @bind="ViewModel.NewDrugDuration">
+                                        <option value="">- SELECT -</option>
+                                        @foreach (var duration in ViewModel.DurationOptions)
+                                        {
+                                            <option value="@duration">@duration</option>
+                                        }
+                                    </select>
+                                }
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-label-row">
+                                    <label class="form-label">Reason</label>
+                                    <button class="btn-toggle-input" 
+                                            @onclick="() => { _manualReason = !_manualReason; StateHasChanged(); }"
+                                            title="@(_manualReason ? "Switch to dropdown" : "Switch to manual entry")"
+                                            type="button">
+                                        <i class="bi @(_manualReason ? "bi-list-check" : "bi-pencil-square")"></i>
+                                    </button>
+                                </div>
+                                @if (_manualReason)
+                                {
+                                    <input 
+                                        type="text" 
+                                        class="form-control" 
+                                        @bind="ViewModel.NewDrugReason" 
+                                        placeholder="Enter reason manually" />
+                                }
+                                else
+                                {
+                                    <select class="form-control" @bind="ViewModel.NewDrugReason">
+                                        <option value="">- SELECT REASON -</option>
+                                        @foreach (var reason in ViewModel.ReasonOptions)
+                                        {
+                                            <option value="@reason">@reason</option>
+                                        }
+                                    </select>
+                                }
+                            </div>
+
+                            <div class="form-row">
+                                <label class="form-label">Notes</label>
+                                <textarea 
+                                    class="form-control form-textarea" 
+                                    @bind="ViewModel.NewDrugNotes" 
+                                    rows="3" 
+                                    placeholder="Add notes"></textarea>
+                            </div>
+                        </div>
+
+                        <button 
+                            class="btn-confirm" 
+                            @onclick="HandleAddDrug"
+                            disabled="@(string.IsNullOrEmpty(ViewModel.NewDrugFrequency) || string.IsNullOrEmpty(ViewModel.NewDrugDuration) || string.IsNullOrEmpty(ViewModel.NewDrugReason))">
+                            <i class="bi bi-check-circle-fill"></i>
+                            Confirm & Add
+                        </button>
+                    </div>
+                }
+                else if (!ViewModel.SelectedDrugs.Any())
+                {
+                    <div class="empty-state-right">
+                        <i class="bi bi-arrow-left-circle"></i>
+                        <h3>Select a Treatment or Product</h3>
+                        <p>Click on any treatment or product from the left to specify usage details</p>
+                    </div>
+                }
+
+                @if (ViewModel.SelectedDrugs.Any())
+                {
+                    <div class="selected-drugs-list">
+                    @foreach (var selected in ViewModel.SelectedDrugs)
+                    {
+                        <div class="prescription-item">
+                            <div class="item-header">
+                                <div class="item-number">@selected.Id</div>
+                                <div class="item-info">
+                                    <h4>@selected.Drug.Name</h4>
+                                    <span class="item-code">@selected.Drug.DrugCode</span>
+                                </div>
+                                <button class="btn-remove-small" @onclick="() => ViewModel.RemoveSelectedDrug(selected)" title="Remove">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+                            <div class="item-details">
+                                <div class="detail-row">
+                                    <i class="bi bi-capsule"></i>
+                                    <span class="detail-label">Qty:</span>
+                                    <span class="detail-value">@selected.Quantity</span>
+                                </div>
+                                <div class="detail-row">
+                                    <i class="bi bi-arrow-repeat"></i>
+                                    <span class="detail-label">Frequency:</span>
+                                    <span class="detail-value">@selected.Frequency</span>
+                                </div>
+                                <div class="detail-row">
+                                    <i class="bi bi-calendar-range"></i>
+                                    <span class="detail-label">Duration:</span>
+                                    <span class="detail-value">@selected.Duration</span>
+                                </div>
+                                <div class="detail-row full">
+                                    <i class="bi bi-file-medical"></i>
+                                    <span class="detail-label">Reason:</span>
+                                    <span class="detail-value">@selected.Reason</span>
+                                </div>
+                                @if (!string.IsNullOrEmpty(selected.Notes))
+                                {
+                                    <div class="detail-row full">
+                                        <i class="bi bi-sticky"></i>
+                                        <span class="detail-label">Notes:</span>
+                                        <span class="detail-value">@selected.Notes</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                    </div>
+                }
+            </div>
+
+            <!-- Footer Actions in Right Panel -->
+            <div class="right-panel-footer">
+                @if (!string.IsNullOrEmpty(_statusMessage))
+                {
+                    <div class="status-message @(_isSuccess ? "status-success" : "status-error")">
+                        <i class="bi @(_isSuccess ? "bi-check-circle-fill" : "bi-exclamation-circle-fill")"></i>
+                        <span>@_statusMessage</span>
+                    </div>
+                }
+                <a href="/case-notes" class="btn-close-footer">
+                    <i class="bi bi-x-lg"></i>
+                </a>
+                <button class="btn-submit" 
+                        @onclick="HandleSubmit"
+                        disabled="@(!ViewModel.SelectedDrugs.Any())">
+                    <i class="bi bi-send-fill"></i>
+                    Submit Prescription
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Prescription Modal -->
+@if (_showEditPrescriptionModal && _editingPrescription != null)
+{
+    <div class="modal-overlay" @onclick="CloseEditPrescriptionModal">
+        <div class="modal-content-edit-prescription" @onclick:stopPropagation="true">
+            <div class="modal-header-prescription">
+                <h3>
+                    <i class="bi bi-pencil-square"></i>
+                    Edit Prescription: @_editingPrescription.PrescriptionNumber
+                </h3>
+                <button class="btn-close-modal" @onclick="CloseEditPrescriptionModal" title="Close">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            
+            <div class="modal-body-edit-prescription">
+                <div class="edit-prescription-form">
+                    <div class="form-row">
+                        <label class="form-label">Prescription Number</label>
+                        <input type="text" 
+                               class="form-control" 
+                               @bind="_editingPrescriptionNumber" 
+                               readonly />
+                    </div>
+                    
+                    <div class="form-row">
+                        <label class="form-label">Date</label>
+                        <input type="datetime-local" 
+                               class="form-control" 
+                               value="@_editingPrescriptionDate.ToString("yyyy-MM-ddTHH:mm")"
+                               @onchange="@((ChangeEventArgs e) => {
+                                   if (DateTime.TryParse(e.Value?.ToString(), out var date))
+                                   {
+                                       _editingPrescriptionDate = date;
+                                   }
+                               })" />
+                    </div>
+                    
+                    <div class="form-row">
+                        <label class="form-label">Type</label>
+                        <select class="form-control" @bind="_editingPrescriptionType">
+                            <option value="Standard">Standard</option>
+                            <option value="Emergency">Emergency</option>
+                            <option value="Repeat">Repeat</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-row">
+                        <label class="form-label">Status</label>
+                        <select class="form-control" @bind="_editingPrescriptionStatus">
+                            <option value="Submitted">Submitted</option>
+                            <option value="Dispensed">Dispensed</option>
+                            <option value="Cancelled">Cancelled</option>
+                            <option value="Completed">Completed</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-row">
+                        <label class="form-label">Drugs (@_editingPrescription.Drugs.Count)</label>
+                        <div class="edit-drugs-list">
+                            @foreach (var drug in _editingPrescription.Drugs)
+                            {
+                                <div class="edit-drug-item">
+                                    <div class="edit-drug-info">
+                                        <i class="bi bi-capsule"></i>
+                                        <div>
+                                            <div class="edit-drug-name">@drug.Drug.Name</div>
+                                            <div class="edit-drug-details">
+                                                Qty: @drug.Quantity | @drug.Frequency | @drug.Duration
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button class="btn-remove-drug-edit" 
+                                            @onclick="() => RemoveDrugFromEdit(drug)"
+                                            title="Remove">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer-prescription">
+                <button class="btn-cancel-edit" @onclick="CloseEditPrescriptionModal">
+                    <i class="bi bi-x-circle"></i>
+                    Cancel
+                </button>
+                <button class="btn-save-edit" @onclick="SaveEditedPrescription">
+                    <i class="bi bi-check-circle"></i>
+                    Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Add Prescription Modal -->
+@if (_showAddPrescriptionModal)
+{
+    <div class="modal-overlay" @onclick="CloseAddPrescriptionModal">
+        <div class="modal-content-add-prescription" @onclick:stopPropagation="true">
+            <div class="modal-header-prescription">
+                <h3>
+                    <i class="bi bi-plus-circle"></i>
+                    Add New Prescription
+                </h3>
+                <button class="btn-close-modal" @onclick="CloseAddPrescriptionModal" title="Close">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            
+            <div class="modal-body-add-prescription">
+                <div class="add-prescription-form">
+                    <!-- Prescription Basic Information Section -->
+                    <div class="prescription-info-section">
+                        <h4 class="section-title">
+                            <i class="bi bi-info-circle"></i>
+                            Prescription Information
+                        </h4>
+                        <div class="prescription-info-grid">
+                            <div class="prescription-info-field">
+                                <label class="form-label">Prescription Number</label>
+                                <input type="text" 
+                                       class="form-control" 
+                                       @bind="_newPrescriptionNumber" 
+                                       placeholder="Auto-generated if empty" />
+                                <small class="form-hint">Leave empty to auto-generate (RX-YYYYMMDD-XXX)</small>
+                            </div>
+                            
+                            <div class="prescription-info-field">
+                                <label class="form-label">Date</label>
+                                <input type="datetime-local" 
+                                       class="form-control" 
+                                       value="@_newPrescriptionDate.ToString("yyyy-MM-ddTHH:mm")"
+                                       @onchange="@((ChangeEventArgs e) => {
+                                           if (DateTime.TryParse(e.Value?.ToString(), out var date))
+                                           {
+                                               _newPrescriptionDate = date;
+                                           }
+                                       })" />
+                            </div>
+                            
+                            <div class="prescription-info-field">
+                                <label class="form-label">Type</label>
+                                <select class="form-control" @bind="_newPrescriptionType">
+                                    <option value="Standard">Standard</option>
+                                    <option value="Emergency">Emergency</option>
+                                    <option value="Repeat">Repeat</option>
+                                </select>
+                            </div>
+                            
+                            <div class="prescription-info-field">
+                                <label class="form-label">Status</label>
+                                <select class="form-control" @bind="_newPrescriptionStatus">
+                                    <option value="Submitted">Submitted</option>
+                                    <option value="Dispensed">Dispensed</option>
+                                    <option value="Cancelled">Cancelled</option>
+                                    <option value="Completed">Completed</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Add Drugs Section -->
+                    <div class="add-drugs-section">
+                        <h4 class="section-title">
+                            <i class="bi bi-capsule"></i>
+                            Add Drugs
+                        </h4>
+                        <div class="add-drug-options">
+                            <div class="drug-add-tabs">
+                                <button class="drug-tab-btn @(_useSearchDrug ? "active" : "")" 
+                                        @onclick="() => { _useSearchDrug = true; StateHasChanged(); }">
+                                    <i class="bi bi-search"></i>
+                                    Search Existing Drug
+                                </button>
+                                <button class="drug-tab-btn @(!_useSearchDrug ? "active" : "")" 
+                                        @onclick="() => { _useSearchDrug = false; StateHasChanged(); }">
+                                    <i class="bi bi-plus-circle"></i>
+                                    Create New Drug
+                                </button>
+                            </div>
+                            
+                            @if (_useSearchDrug)
+                            {
+                                <div class="add-drug-search-section">
+                                    <div class="drug-search-box">
+                                        <i class="bi bi-search"></i>
+                                        <input type="text" 
+                                               class="drug-search-input" 
+                                               @bind="_drugSearchForAdd" 
+                                               @bind:event="oninput"
+                                               placeholder="Search drugs to add..." />
+                                        @if (!string.IsNullOrWhiteSpace(_drugSearchForAdd))
+                                        {
+                                            <button class="search-clear-btn-small" @onclick="() => _drugSearchForAdd = string.Empty">
+                                                <i class="bi bi-x-circle-fill"></i>
+                                            </button>
+                                        }
+                                    </div>
+                                    
+                                    @if (!string.IsNullOrWhiteSpace(_drugSearchForAdd))
+                                    {
+                                        <div class="drug-search-results">
+                                            @foreach (var drug in ViewModel.Drugs.Where(d => 
+                                                d.Name.Contains(_drugSearchForAdd, StringComparison.OrdinalIgnoreCase) ||
+                                                d.DrugCode.Contains(_drugSearchForAdd, StringComparison.OrdinalIgnoreCase)).Take(5))
+                                            {
+                                                <button class="drug-search-result-item" @onclick="() => AddDrugToNewPrescription(drug)">
+                                                    <i class="bi bi-capsule"></i>
+                                                    <div class="drug-result-info">
+                                                        <div class="drug-result-name">@drug.Name</div>
+                                                        <div class="drug-result-code">@drug.DrugCode</div>
+                                                    </div>
+                                                    <i class="bi bi-plus-circle"></i>
+                                                </button>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="create-drug-form">
+                                    <div class="create-drug-grid">
+                                        <div class="create-drug-field">
+                                            <label>Drug Name *</label>
+                                            <input type="text" 
+                                                   class="form-control" 
+                                                   @bind="_newCustomDrugName" 
+                                                   placeholder="Enter drug name" />
+                                        </div>
+                                        <div class="create-drug-field">
+                                            <label>Drug Code *</label>
+                                            <input type="text" 
+                                                   class="form-control" 
+                                                   @bind="_newCustomDrugCode" 
+                                                   placeholder="Enter drug code" />
+                                        </div>
+                                        <div class="create-drug-field">
+                                            <label>Category</label>
+                                            <div class="custom-dropdown-wrapper form-dropdown">
+                                                <div class="custom-dropdown-trigger @(_isCustomDrugCategoryDropdownOpen ? "open" : "")" @onclick="ToggleCustomDrugCategoryDropdown">
+                                                    <span>@(string.IsNullOrEmpty(_newCustomDrugCategory) ? "- Select Category -" : _newCustomDrugCategory)</span>
+                                                    <i class="bi bi-chevron-down dropdown-arrow"></i>
+                                                </div>
+                                                @if (_isCustomDrugCategoryDropdownOpen)
+                                                {
+                                                    <div class="custom-dropdown-menu">
+                                                        <div class="dropdown-item @(string.IsNullOrEmpty(_newCustomDrugCategory) ? "selected" : "")" 
+                                                             @onclick="@(() => SelectCustomDrugCategory(""))">
+                                                            - Select Category -
+                                                        </div>
+                                                        @if (ViewModel.AvailableCategories != null)
+                                                        {
+                                                            @foreach (var category in ViewModel.AvailableCategories)
+                                                            {
+                                                                <div class="dropdown-item @(_newCustomDrugCategory == category ? "selected" : "")" 
+                                                                     @onclick="@(() => SelectCustomDrugCategory(category))">
+                                                                    @category
+                                                                </div>
+                                                            }
+                                                        }
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                        <div class="create-drug-field full-width">
+                                            <label>Indication</label>
+                                            <textarea class="form-control" 
+                                                      @bind="_newCustomDrugIndication" 
+                                                      rows="2"
+                                                      placeholder="Enter indication"></textarea>
+                                        </div>
+                                        <div class="create-drug-field full-width">
+                                            <label>Restriction</label>
+                                            <textarea class="form-control" 
+                                                      @bind="_newCustomDrugRestriction" 
+                                                      rows="2"
+                                                      placeholder="Enter restrictions"></textarea>
+                                        </div>
+                                        <div class="create-drug-field">
+                                            <label>Dosage</label>
+                                            <input type="text" 
+                                                   class="form-control" 
+                                                   @bind="_newCustomDrugDosage" 
+                                                   placeholder="e.g., 1 tablet twice daily" />
+                                        </div>
+                                    </div>
+                                    <button class="btn-add-custom-drug" 
+                                            @onclick="AddCustomDrugToNewPrescription"
+                                            disabled="@(string.IsNullOrWhiteSpace(_newCustomDrugName) || string.IsNullOrWhiteSpace(_newCustomDrugCode))">
+                                        <i class="bi bi-plus-circle"></i>
+                                        Add Custom Drug
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                    
+                    <!-- Selected Drugs Section -->
+                    <div class="selected-drugs-section">
+                        <h4 class="section-title">
+                            <i class="bi bi-list-check"></i>
+                            Selected Drugs (@_newPrescriptionDrugs.Count)
+                        </h4>
+                        @if (!_newPrescriptionDrugs.Any())
+                        {
+                            <div class="no-drugs-message">
+                                <i class="bi bi-info-circle"></i>
+                                <span>No drugs added yet. Search and add drugs above.</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="new-prescription-drugs-list">
+                                @foreach (var drugItem in _newPrescriptionDrugs)
+                                {
+                                    <div class="new-prescription-drug-item">
+                                        <div class="new-drug-header">
+                                            <div class="new-drug-info">
+                                                <i class="bi bi-capsule"></i>
+                                                <div>
+                                                    <div class="new-drug-name">@(drugItem.Drug != null ? drugItem.Drug.Name : drugItem.DrugName)</div>
+                                                    <div class="new-drug-meta">
+                                                        <span class="drug-meta-item">Drug Code: @(drugItem.Drug != null ? drugItem.Drug.DrugCode : drugItem.DrugCode)</span>
+                                                        @if (!string.IsNullOrEmpty(drugItem.Category) || (drugItem.Drug != null && !string.IsNullOrEmpty(drugItem.Drug.Category)))
+                                                        {
+                                                            <span class="drug-meta-item">Category: @(drugItem.Drug != null ? drugItem.Drug.Category : drugItem.Category)</span>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <button class="btn-remove-new-drug" @onclick="() => RemoveDrugFromNewPrescription(drugItem)" title="Remove">
+                                                <i class="bi bi-x-lg"></i>
+                                            </button>
+                                        </div>
+                                        
+                                        @if (drugItem.IsCustom || drugItem.Drug == null)
+                                        {
+                                            <div class="drug-details-section">
+                                                <div class="drug-details-grid">
+                                                    <div class="drug-detail-item">
+                                                        <label>Indication</label>
+                                                        <div class="drug-detail-value">@(string.IsNullOrEmpty(drugItem.Indication) ? "N/A" : drugItem.Indication)</div>
+                                                    </div>
+                                                    <div class="drug-detail-item">
+                                                        <label>Restriction</label>
+                                                        <div class="drug-detail-value">@(string.IsNullOrEmpty(drugItem.Restriction) ? "N/A" : drugItem.Restriction)</div>
+                                                    </div>
+                                                    <div class="drug-detail-item">
+                                                        <label>Dosage</label>
+                                                        <div class="drug-detail-value">@(string.IsNullOrEmpty(drugItem.Dosage) ? "N/A" : drugItem.Dosage)</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="drug-details-section">
+                                                <div class="drug-details-grid">
+                                                    <div class="drug-detail-item">
+                                                        <label>Indication</label>
+                                                        <div class="drug-detail-value">@drugItem.Drug.Indication</div>
+                                                    </div>
+                                                    <div class="drug-detail-item">
+                                                        <label>Restriction</label>
+                                                        <div class="drug-detail-value">@drugItem.Drug.Restrictions</div>
+                                                    </div>
+                                                    <div class="drug-detail-item">
+                                                        <label>Dosage</label>
+                                                        <div class="drug-detail-value">@drugItem.Drug.Dosage</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
+                                        <div class="new-drug-form-fields">
+                                            <div class="new-drug-field">
+                                                <label>Quantity</label>
+                                                <input type="number" 
+                                                       class="form-control-small" 
+                                                       @bind="drugItem.Quantity" 
+                                                       step="0.01" 
+                                                       min="0" />
+                                            </div>
+                                            <div class="new-drug-field">
+                                                <div class="form-label-row">
+                                                    <label>Frequency</label>
+                                                    <button class="btn-toggle-input" 
+                                                            @onclick="() => { drugItem.ManualFrequency = !drugItem.ManualFrequency; StateHasChanged(); }"
+                                                            title="@(drugItem.ManualFrequency ? "Switch to dropdown" : "Switch to manual entry")"
+                                                            type="button">
+                                                        <i class="bi @(drugItem.ManualFrequency ? "bi-list-check" : "bi-pencil-square")"></i>
+                                                    </button>
+                                                </div>
+                                                @if (drugItem.ManualFrequency)
+                                                {
+                                                    <input 
+                                                        type="text" 
+                                                        class="form-control-small" 
+                                                        @bind="drugItem.Frequency" 
+                                                        placeholder="Enter frequency manually" />
+                                                }
+                                                else
+                                                {
+                                                    <select class="form-control-small" @bind="drugItem.Frequency">
+                                                        <option value="">- Select -</option>
+                                                        @foreach (var freq in ViewModel.FrequencyOptions)
+                                                        {
+                                                            <option value="@freq">@freq</option>
+                                                        }
+                                                    </select>
+                                                }
+                                            </div>
+                                            <div class="new-drug-field">
+                                                <div class="form-label-row">
+                                                    <label>Duration</label>
+                                                    <button class="btn-toggle-input" 
+                                                            @onclick="() => { drugItem.ManualDuration = !drugItem.ManualDuration; StateHasChanged(); }"
+                                                            title="@(drugItem.ManualDuration ? "Switch to dropdown" : "Switch to manual entry")"
+                                                            type="button">
+                                                        <i class="bi @(drugItem.ManualDuration ? "bi-list-check" : "bi-pencil-square")"></i>
+                                                    </button>
+                                                </div>
+                                                @if (drugItem.ManualDuration)
+                                                {
+                                                    <input 
+                                                        type="text" 
+                                                        class="form-control-small" 
+                                                        @bind="drugItem.Duration" 
+                                                        placeholder="Enter duration manually" />
+                                                }
+                                                else
+                                                {
+                                                    <select class="form-control-small" @bind="drugItem.Duration">
+                                                        <option value="">- Select -</option>
+                                                        @foreach (var duration in ViewModel.DurationOptions)
+                                                        {
+                                                            <option value="@duration">@duration</option>
+                                                        }
+                                                    </select>
+                                                }
+                                            </div>
+                                            <div class="new-drug-field">
+                                                <div class="form-label-row">
+                                                    <label>Reason</label>
+                                                    <button class="btn-toggle-input" 
+                                                            @onclick="() => { drugItem.ManualReason = !drugItem.ManualReason; StateHasChanged(); }"
+                                                            title="@(drugItem.ManualReason ? "Switch to dropdown" : "Switch to manual entry")"
+                                                            type="button">
+                                                        <i class="bi @(drugItem.ManualReason ? "bi-list-check" : "bi-pencil-square")"></i>
+                                                    </button>
+                                                </div>
+                                                @if (drugItem.ManualReason)
+                                                {
+                                                    <input 
+                                                        type="text" 
+                                                        class="form-control-small" 
+                                                        @bind="drugItem.Reason" 
+                                                        placeholder="Enter reason manually" />
+                                                }
+                                                else
+                                                {
+                                                    <select class="form-control-small" @bind="drugItem.Reason">
+                                                        <option value="">- Select -</option>
+                                                        @foreach (var reason in ViewModel.ReasonOptions)
+                                                        {
+                                                            <option value="@reason">@reason</option>
+                                                        }
+                                                    </select>
+                                                }
+                                            </div>
+                                            <div class="new-drug-field full-width">
+                                                <label>Notes</label>
+                                                <input type="text" 
+                                                       class="form-control-small" 
+                                                       @bind="drugItem.Notes" 
+                                                       placeholder="Optional notes" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer-prescription">
+                <button class="btn-cancel-edit" @onclick="CloseAddPrescriptionModal">
+                    <i class="bi bi-x-circle"></i>
+                    Cancel
+                </button>
+                <button class="btn-save-edit" @onclick="SaveNewPrescription" disabled="@(!_newPrescriptionDrugs.Any())">
+                    <i class="bi bi-check-circle"></i>
+                    Create Prescription
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Signature Modal -->
+@if (_showSignatureModal)
+{
+    <div class="signature-modal-overlay">
+        <div class="signature-modal-container" @onclick:stopPropagation="true">
+            <div class="signature-modal-header">
+                <h3 class="signature-modal-title">
+                    <i class="bi bi-pen"></i>
+                    Doctor's Signature Required
+                </h3>
+            </div>
+
+            <div class="signature-modal-body">
+                <p class="signature-instruction">
+                    <i class="bi bi-info-circle"></i>
+                    Please sign below to complete the prescription. Signature is required.
+                </p>
+                <div class="signature-canvas-wrapper">
+                    <canvas 
+                        id="signatureCanvas" 
+                        width="800" 
+                        height="300"
+                        @ref="_signatureCanvas"
+                        @onmousedown="StartDrawing"
+                        @onmousemove="Draw"
+                        @onmouseup="StopDrawing"
+                        @onmouseleave="StopDrawing"
+                        @ontouchstart="StartDrawingTouch"
+                        @ontouchmove="DrawTouch"
+                        @ontouchend="StopDrawing">
+                    </canvas>
+                </div>
+            </div>
+
+            <div class="signature-modal-footer">
+                <button class="btn-signature-clear" @onclick="ClearSignature">
+                    <i class="bi bi-arrow-counterclockwise"></i>
+                    <span>Clear</span>
+                </button>
+                <button class="btn-signature-save" @onclick="SaveSignature" disabled="@(string.IsNullOrWhiteSpace(_tempSignatureDataUrl))">
+                    <i class="bi bi-check-circle"></i>
+                    <span>Save & Continue</span>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Print Confirmation Modal -->
+@if (_showPrintConfirmationModal && _lastSubmittedPrescription != null)
+{
+    <div class="modal-overlay">
+        <div class="modal-container print-confirmation-modal" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <i class="bi bi-printer"></i>
+                <h3>Prescription Submitted Successfully</h3>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 16px;">
+                    Prescription <strong>@_lastSubmittedPrescription.PrescriptionNumber</strong> has been submitted successfully!
+                </p>
+                <p style="margin-bottom: 0; color: #64748b;">
+                    Would you like to print the prescription now?
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" @onclick="ClosePrintConfirmationModal">
+                    <i class="bi bi-x-circle"></i>
+                    <span>Cancel</span>
+                </button>
+                <button class="btn-modal-print" @onclick="PrintPrescriptionAndClose">
+                    <i class="bi bi-printer"></i>
+                    <span>Print</span>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<AppErrorPopup Title="Prescription is incomplete"
+               Message="@(_showValidationError ? "Please fill in all required fields." : null)"
+               OnDismiss="@(() => _showValidationError = false)" />
+
+@code {
+    private CaseNotePrescriptionViewModel ViewModel { get; set; } = new();
+    private string _mobilePanel = "catalog";
+
+    
+    // Mutable class for editing drugs in new prescription
+    private class EditableDrugItem
+    {
+        public int Id { get; set; }
+        public Drug? Drug { get; set; } // Nullable for custom drugs
+        public string DrugName { get; set; } = string.Empty; // For custom drugs
+        public string DrugCode { get; set; } = string.Empty;
+        public string Category { get; set; } = string.Empty;
+        public string Indication { get; set; } = string.Empty;
+        public string Restriction { get; set; } = string.Empty;
+        public string Dosage { get; set; } = string.Empty;
+        public decimal Quantity { get; set; } = 1.00m;
+        public string Frequency { get; set; } = string.Empty;
+        public string Duration { get; set; } = string.Empty;
+        public string Reason { get; set; } = string.Empty;
+        public string Notes { get; set; } = string.Empty;
+        public bool IsCustom { get; set; } = false; // True if manually created
+        
+        // Manual input mode toggles
+        public bool ManualFrequency { get; set; } = false;
+        public bool ManualDuration { get; set; } = false;
+        public bool ManualReason { get; set; } = false;
+        
+        public Drug GetDrug()
+        {
+            if (Drug != null) return Drug;
+            // Create a temporary drug for custom entries
+            return new Drug(0, DrugName, DrugCode, Category, Indication, Restriction, Dosage);
+        }
+        
+        public SelectedDrug ToSelectedDrug() => new SelectedDrug(Id, GetDrug(), Quantity, Frequency, Duration, Reason, Notes);
+    }
+
+    protected override void OnInitialized()
+    {
+        Console.WriteLine($"OnInitialized - Drug count: {ViewModel.Drugs.Count}");
+        Console.WriteLine($"OnInitialized - Filtered drugs count: {ViewModel.FilteredDrugs.Count()}");
+        
+        ViewModel.PropertyChanged += (sender, args) => 
+        {
+            Console.WriteLine($"Property changed: {args.PropertyName}");
+            
+            // Reset to first page when search or filter changes
+            if (args.PropertyName == nameof(ViewModel.SearchTerm) || 
+                args.PropertyName == nameof(ViewModel.SelectedCategory) ||
+                args.PropertyName == nameof(ViewModel.FilteredDrugs))
+            {
+                _currentPage = 1;
+            }
+            
+            InvokeAsync(StateHasChanged);
+        };
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Initialize the resizer after the component has rendered
+            await JS.InvokeVoidAsync("eval", @"
+                (function() {
+                    const resizer = document.querySelector('.panel-resizer');
+                    const leftPanel = document.querySelector('.drug-list-panel');
+                    const rightPanel = document.querySelector('.selected-drugs-panel');
+                    const container = document.querySelector('.prescription-content');
+
+                    if (!resizer || !leftPanel || !rightPanel || !container) return;
+
+                    let isResizing = false;
+
+                    resizer.addEventListener('mousedown', function(e) {
+                        e.preventDefault();
+                        isResizing = true;
+                        document.body.style.cursor = 'col-resize';
+                        document.body.style.userSelect = 'none';
+                    });
+
+                    document.addEventListener('mousemove', function(e) {
+                        if (!isResizing) return;
+
+                        const containerRect = container.getBoundingClientRect();
+                        const containerWidth = containerRect.width;
+                        const mouseX = e.clientX - containerRect.left;
+
+                        let leftPercentage = (mouseX / containerWidth) * 100;
+                        leftPercentage = Math.max(35, Math.min(80, leftPercentage));
+
+                        leftPanel.style.width = leftPercentage + '%';
+                        rightPanel.style.flex = '1';
+                    });
+
+                    document.addEventListener('mouseup', function() {
+                        if (isResizing) {
+                            isResizing = false;
+                            document.body.style.cursor = '';
+                            document.body.style.userSelect = '';
+                        }
+                    });
+                })();
+            ");
+        }
+        
+        // Initialize signature canvas when signature modal is shown
+        if (_showSignatureModal && !_canvasInitialized)
+        {
+            await Task.Delay(100); // Small delay to ensure canvas is rendered
+            await InitializeSignatureCanvas();
+            StateHasChanged();
+        }
+    }
+
+    private void HandleDrugClick(Drug drug)
+    {
+        Console.WriteLine($"Drug clicked: {drug.Name}");
+        ViewModel.SelectDrugToAdd(drug);
+        _mobilePanel = "selected";
+        _showValidationError = false; // Reset validation error
+        
+        // Reset to first page when search/filter changes
+        _currentPage = 1;
+        
+        StateHasChanged();
+    }
+
+    private string _statusMessage = string.Empty;
+    private bool _isSuccess = false;
+    private bool _showValidationError = false;
+    private int _textSizeLevel = 1; // 0 = Small, 1 = Normal, 2 = Large
+    private Prescription? _lastSubmittedPrescription = null;
+    private bool _showPrintConfirmationModal = false;
+    private bool _showSignatureModal = false;
+    private string _signatureDataUrl = string.Empty;
+    private string _tempSignatureDataUrl = string.Empty;
+    private bool _canvasInitialized = false;
+    private ElementReference _signatureCanvas;
+    private bool _isDrawing = false;
+    private double _lastX = 0;
+    private double _lastY = 0;
+    
+    // Pagination
+    private int _currentPage = 1;
+    private const int _itemsPerPage = 10;
+    
+    // Manual input mode toggles
+    private bool _manualFrequency = false;
+    private bool _manualDuration = false;
+    private bool _manualReason = false;
+    
+    // Edit Prescription Modal
+    private bool _showEditPrescriptionModal = false;
+    private bool _showAddPrescriptionModal = false;
+    private Prescription? _editingPrescription = null;
+    private string _editingPrescriptionNumber = string.Empty;
+    private DateTime _editingPrescriptionDate = DateTime.Now;
+    private string _editingPrescriptionType = "Standard";
+    private string _editingPrescriptionStatus = "Submitted";
+    
+    // Add Prescription Modal
+    private string _newPrescriptionNumber = string.Empty;
+    private DateTime _newPrescriptionDate = DateTime.Now;
+    private string _newPrescriptionType = "Standard";
+    private string _newPrescriptionStatus = "Submitted";
+    private string _drugSearchForAdd = string.Empty;
+    private bool _useSearchDrug = true; // Toggle between search and create
+    private List<EditableDrugItem> _newPrescriptionDrugs = new();
+    
+    // Custom drug fields
+    private string _newCustomDrugName = string.Empty;
+    private string _newCustomDrugCode = string.Empty;
+    private string _newCustomDrugCategory = string.Empty;
+    private string _newCustomDrugIndication = string.Empty;
+    private string _newCustomDrugRestriction = string.Empty;
+    private string _newCustomDrugDosage = string.Empty;
+
+    private void HandleAddDrug()
+    {
+        // Validate required fields
+        if (string.IsNullOrEmpty(ViewModel.NewDrugFrequency) || 
+            string.IsNullOrEmpty(ViewModel.NewDrugDuration) || 
+            string.IsNullOrEmpty(ViewModel.NewDrugReason))
+        {
+            _showValidationError = true;
+            StateHasChanged();
+            return;
+        }
+
+        _showValidationError = false;
+        ViewModel.AddSelectedDrug();
+        _mobilePanel = "selected";
+        StateHasChanged();
+    }
+
+    private async Task HandleSubmit()
+    {
+        var prescriptionNumber = ViewModel.SubmitPrescription();
+        
+        if (prescriptionNumber.StartsWith("Error"))
+        {
+            _statusMessage = prescriptionNumber;
+            _isSuccess = false;
+            _lastSubmittedPrescription = null;
+            _showPrintConfirmationModal = false;
+            _showSignatureModal = false;
+        }
+        else
+        {
+            // Get the last submitted prescription
+            _lastSubmittedPrescription = ViewModel.Prescriptions
+                .FirstOrDefault(p => p.PrescriptionNumber == prescriptionNumber);
+            
+            _statusMessage = $"Prescription {prescriptionNumber} submitted successfully!";
+            _isSuccess = true;
+            
+            // Show signature modal first
+            _showSignatureModal = true;
+            _signatureDataUrl = string.Empty;
+            _canvasInitialized = false;
+            
+            // Clear message after 3 seconds
+            await Task.Delay(3000);
+            _statusMessage = string.Empty;
+        }
+        
+        StateHasChanged();
+    }
+    
+    private void ClosePrintConfirmationModal()
+    {
+        _showPrintConfirmationModal = false;
+        StateHasChanged();
+    }
+    
+    private async Task PrintPrescriptionAndClose()
+    {
+        if (_lastSubmittedPrescription != null)
+        {
+            await PrintPrescription();
+        }
+        _showPrintConfirmationModal = false;
+        StateHasChanged();
+    }
+    
+    // Signature Modal Functions
+    private async Task InitializeSignatureCanvas()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("initializeSignatureCanvas");
+            _canvasInitialized = true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error initializing signature canvas: {ex.Message}");
+        }
+    }
+    
+    private async Task SaveSignature()
+    {
+        _tempSignatureDataUrl = await JS.InvokeAsync<string>("getSignatureDataUrl");
+        
+        if (!string.IsNullOrWhiteSpace(_tempSignatureDataUrl))
+        {
+            _signatureDataUrl = _tempSignatureDataUrl;
+            _showSignatureModal = false;
+            _canvasInitialized = false;
+            _tempSignatureDataUrl = string.Empty;
+            
+            // Show print confirmation modal after signature is saved
+            _showPrintConfirmationModal = true;
+        }
+        // If no signature, don't proceed - signature is required
+        
+        StateHasChanged();
+    }
+    
+    private async Task ClearSignature()
+    {
+        await JS.InvokeVoidAsync("clearSignatureCanvas");
+        _tempSignatureDataUrl = string.Empty;
+        StateHasChanged();
+    }
+    
+    private async Task StartDrawing(Microsoft.AspNetCore.Components.Web.MouseEventArgs e)
+    {
+        _isDrawing = true;
+        var coords = await JS.InvokeAsync<CanvasCoordinates>("getCanvasCoordinates", e.ClientX, e.ClientY);
+        _lastX = coords.X;
+        _lastY = coords.Y;
+    }
+    
+    private async Task Draw(Microsoft.AspNetCore.Components.Web.MouseEventArgs e)
+    {
+        if (_isDrawing)
+        {
+            var coords = await JS.InvokeAsync<CanvasCoordinates>("getCanvasCoordinates", e.ClientX, e.ClientY);
+            await JS.InvokeVoidAsync("drawSignature", coords.X, coords.Y, _lastX, _lastY);
+            _lastX = coords.X;
+            _lastY = coords.Y;
+            
+            // Check signature after drawing
+            await Task.Delay(100);
+            _tempSignatureDataUrl = await JS.InvokeAsync<string>("getSignatureDataUrl");
+            StateHasChanged();
+        }
+    }
+    
+    private async Task StopDrawing()
+    {
+        _isDrawing = false;
+        // Final check for signature when drawing stops
+        await Task.Delay(100);
+        _tempSignatureDataUrl = await JS.InvokeAsync<string>("getSignatureDataUrl");
+        StateHasChanged();
+    }
+    
+    private async Task StartDrawingTouch(Microsoft.AspNetCore.Components.Web.TouchEventArgs e)
+    {
+        if (e.Touches.Length > 0)
+        {
+            _isDrawing = true;
+            var touch = e.Touches[0];
+            var coords = await JS.InvokeAsync<CanvasCoordinates>("getCanvasCoordinates", touch.ClientX, touch.ClientY);
+            _lastX = coords.X;
+            _lastY = coords.Y;
+        }
+    }
+    
+    private async Task DrawTouch(Microsoft.AspNetCore.Components.Web.TouchEventArgs e)
+    {
+        if (_isDrawing && e.Touches.Length > 0)
+        {
+            var touch = e.Touches[0];
+            var coords = await JS.InvokeAsync<CanvasCoordinates>("getCanvasCoordinates", touch.ClientX, touch.ClientY);
+            await JS.InvokeVoidAsync("drawSignature", coords.X, coords.Y, _lastX, _lastY);
+            _lastX = coords.X;
+            _lastY = coords.Y;
+            
+            // Check signature after drawing
+            await Task.Delay(100);
+            _tempSignatureDataUrl = await JS.InvokeAsync<string>("getSignatureDataUrl");
+            StateHasChanged();
+        }
+    }
+    
+    private class BoundingClientRect
+    {
+        public double Left { get; set; }
+        public double Top { get; set; }
+    }
+    
+    private class CanvasCoordinates
+    {
+        public double X { get; set; }
+        public double Y { get; set; }
+    }
+
+    private void CancelDrugSelection()
+    {
+        ViewModel.SelectedDrugToAdd = null;
+        _showValidationError = false;
+        _manualFrequency = false;
+        _manualDuration = false;
+        _manualReason = false;
+        if (!ViewModel.SelectedDrugs.Any())
+        {
+            _mobilePanel = "catalog";
+        }
+        StateHasChanged();
+    }
+
+    private void IncreaseTextSize()
+    {
+        if (_textSizeLevel < 2)
+        {
+            _textSizeLevel++;
+            StateHasChanged();
+        }
+    }
+
+    private void DecreaseTextSize()
+    {
+        if (_textSizeLevel > 0)
+        {
+            _textSizeLevel--;
+            StateHasChanged();
+        }
+    }
+
+    private string GetTextSizeClass()
+    {
+        return _textSizeLevel switch
+        {
+            0 => "text-size-small",
+            2 => "text-size-large",
+            _ => "text-size-normal"
+        };
+    }
+
+    private string GetTextSizeLabel()
+    {
+        return _textSizeLevel switch
+        {
+            0 => "Small",
+            2 => "Large",
+            _ => "Normal"
+        };
+    }
+    
+    // Pagination Methods
+    private IEnumerable<Drug> GetPaginatedDrugs()
+    {
+        var filtered = ViewModel.FilteredDrugs.ToList();
+        var startIndex = (_currentPage - 1) * _itemsPerPage;
+        return filtered.Skip(startIndex).Take(_itemsPerPage);
+    }
+    
+    private int GetTotalPages()
+    {
+        var totalDrugs = ViewModel.FilteredDrugs.Count();
+        return (int)Math.Ceiling((double)totalDrugs / _itemsPerPage);
+    }
+    
+    private void GoToNextPage()
+    {
+        if (_currentPage < GetTotalPages())
+        {
+            _currentPage++;
+            StateHasChanged();
+        }
+    }
+    
+    private void GoToPage(int page)
+    {
+        if (page >= 1 && page <= GetTotalPages())
+        {
+            _currentPage = page;
+            StateHasChanged();
+        }
+    }
+    
+    private void GoToPreviousPage()
+    {
+        if (_currentPage > 1)
+        {
+            _currentPage--;
+            StateHasChanged();
+        }
+    }
+    
+    
+    private void EditPrescription(Prescription prescription)
+    {
+        _editingPrescription = prescription;
+        _editingPrescriptionNumber = prescription.PrescriptionNumber;
+        _editingPrescriptionDate = prescription.Date;
+        _editingPrescriptionType = prescription.Type;
+        _editingPrescriptionStatus = prescription.Status;
+        _showEditPrescriptionModal = true;
+        StateHasChanged();
+    }
+    
+    private void CloseEditPrescriptionModal()
+    {
+        _showEditPrescriptionModal = false;
+        _editingPrescription = null;
+        StateHasChanged();
+    }
+    
+    private void SaveEditedPrescription()
+    {
+        if (_editingPrescription == null) return;
+        
+        ViewModel.UpdatePrescription(
+            _editingPrescription.Id,
+            _editingPrescriptionDate,
+            _editingPrescriptionType,
+            _editingPrescriptionStatus,
+            _editingPrescription.Drugs
+        );
+        
+        _statusMessage = $"Prescription {_editingPrescriptionNumber} updated successfully!";
+        _isSuccess = true;
+        
+        CloseEditPrescriptionModal();
+        
+        // Clear message after 3 seconds
+        Task.Delay(3000).ContinueWith(_ =>
+        {
+            _statusMessage = string.Empty;
+            InvokeAsync(StateHasChanged);
+        });
+        
+        StateHasChanged();
+    }
+    
+    private void DeletePrescription(Prescription prescription)
+    {
+        ViewModel.RemovePrescription(prescription.Id);
+        _statusMessage = $"Prescription {prescription.PrescriptionNumber} deleted successfully!";
+        _isSuccess = true;
+        
+        // Clear message after 3 seconds
+        Task.Delay(3000).ContinueWith(_ =>
+        {
+            _statusMessage = string.Empty;
+            InvokeAsync(StateHasChanged);
+        });
+        
+        StateHasChanged();
+    }
+    
+    private void RemoveDrugFromEdit(SelectedDrug drug)
+    {
+        if (_editingPrescription == null) return;
+        
+        var updatedDrugs = _editingPrescription.Drugs.Where(d => d.Id != drug.Id).ToList();
+        
+        // Re-number remaining drugs
+        for (int i = 0; i < updatedDrugs.Count; i++)
+        {
+            var updatedDrug = updatedDrugs[i] with { Id = i + 1 };
+            updatedDrugs[i] = updatedDrug;
+        }
+        
+        _editingPrescription = _editingPrescription with { Drugs = updatedDrugs };
+        StateHasChanged();
+    }
+    
+    // Add Prescription Methods
+    private void OpenAddPrescriptionModal()
+    {
+        _newPrescriptionNumber = string.Empty;
+        _newPrescriptionDate = DateTime.Now;
+        _newPrescriptionType = "Standard";
+        _newPrescriptionStatus = "Submitted";
+        _drugSearchForAdd = string.Empty;
+        _newPrescriptionDrugs = new();
+        _showAddPrescriptionModal = true;
+        StateHasChanged();
+    }
+    
+    private void CloseAddPrescriptionModal()
+    {
+        _showAddPrescriptionModal = false;
+        _newPrescriptionDrugs = new();
+        _drugSearchForAdd = string.Empty;
+        _useSearchDrug = true;
+        _newCustomDrugName = string.Empty;
+        _newCustomDrugCode = string.Empty;
+        _newCustomDrugCategory = string.Empty;
+        _newCustomDrugIndication = string.Empty;
+        _newCustomDrugRestriction = string.Empty;
+        _newCustomDrugDosage = string.Empty;
+        StateHasChanged();
+    }
+    
+    private void AddDrugToNewPrescription(Drug drug)
+    {
+        // Check if drug already added
+        if (_newPrescriptionDrugs.Any(d => d.Drug?.Id == drug.Id))
+        {
+            return; // Already added
+        }
+        
+        var editableDrug = new EditableDrugItem
+        {
+            Id = _newPrescriptionDrugs.Count + 1,
+            Drug = drug,
+            DrugName = drug.Name,
+            DrugCode = drug.DrugCode,
+            Category = drug.Category,
+            Indication = drug.Indication,
+            Restriction = drug.Restrictions,
+            Dosage = drug.Dosage,
+            Quantity = 1.00m,
+            Frequency = string.Empty,
+            Duration = string.Empty,
+            Reason = string.Empty,
+            Notes = string.Empty,
+            IsCustom = false
+        };
+        
+        _newPrescriptionDrugs.Add(editableDrug);
+        _drugSearchForAdd = string.Empty; // Clear search
+        StateHasChanged();
+    }
+    
+    private void AddCustomDrugToNewPrescription()
+    {
+        if (string.IsNullOrWhiteSpace(_newCustomDrugName) || string.IsNullOrWhiteSpace(_newCustomDrugCode))
+        {
+            return;
+        }
+        
+        var editableDrug = new EditableDrugItem
+        {
+            Id = _newPrescriptionDrugs.Count + 1,
+            Drug = null,
+            DrugName = _newCustomDrugName,
+            DrugCode = _newCustomDrugCode,
+            Category = _newCustomDrugCategory,
+            Indication = _newCustomDrugIndication,
+            Restriction = _newCustomDrugRestriction,
+            Dosage = _newCustomDrugDosage,
+            Quantity = 1.00m,
+            Frequency = string.Empty,
+            Duration = string.Empty,
+            Reason = string.Empty,
+            Notes = string.Empty,
+            IsCustom = true
+        };
+        
+        _newPrescriptionDrugs.Add(editableDrug);
+        
+        // Clear custom drug fields
+        _newCustomDrugName = string.Empty;
+        _newCustomDrugCode = string.Empty;
+        _newCustomDrugCategory = string.Empty;
+        _newCustomDrugIndication = string.Empty;
+        _newCustomDrugRestriction = string.Empty;
+        _newCustomDrugDosage = string.Empty;
+        
+        StateHasChanged();
+    }
+    
+    private void RemoveDrugFromNewPrescription(EditableDrugItem drug)
+    {
+        _newPrescriptionDrugs.Remove(drug);
+        
+        // Re-number remaining drugs
+        for (int i = 0; i < _newPrescriptionDrugs.Count; i++)
+        {
+            _newPrescriptionDrugs[i].Id = i + 1;
+        }
+        
+        StateHasChanged();
+    }
+    
+    private void SaveNewPrescription()
+    {
+        if (!_newPrescriptionDrugs.Any())
+        {
+            return;
+        }
+        
+        // Generate prescription number if empty
+        var prescriptionNumber = string.IsNullOrWhiteSpace(_newPrescriptionNumber)
+            ? $"RX-{DateTime.Now:yyyyMMdd}-{ViewModel.Prescriptions.Count + 1:000}"
+            : _newPrescriptionNumber;
+        
+        // Convert EditableDrugItem to SelectedDrug
+        var selectedDrugs = _newPrescriptionDrugs.Select(d => d.ToSelectedDrug()).ToList();
+        
+        ViewModel.CreatePrescription(
+            prescriptionNumber,
+            _newPrescriptionDate,
+            _newPrescriptionType,
+            _newPrescriptionStatus,
+            selectedDrugs
+        );
+        
+        _statusMessage = $"Prescription {prescriptionNumber} created successfully!";
+        _isSuccess = true;
+        
+        CloseAddPrescriptionModal();
+        
+        // Clear message after 3 seconds
+        Task.Delay(3000).ContinueWith(_ =>
+        {
+            _statusMessage = string.Empty;
+            InvokeAsync(StateHasChanged);
+        });
+        
+        StateHasChanged();
+    }
+    
+    // Print and PDF Generation
+    private async Task PrintPrescription()
+    {
+        if (_lastSubmittedPrescription == null) return;
+        
+        var prescriptionHtml = GeneratePrescriptionHTML(_lastSubmittedPrescription);
+        
+        await JS.InvokeVoidAsync("printPrescription", prescriptionHtml, _lastSubmittedPrescription.PrescriptionNumber);
+    }
+    
+    private async Task GeneratePDFPrescription()
+    {
+        if (_lastSubmittedPrescription == null) return;
+        
+        var prescriptionHtml = GeneratePrescriptionHTML(_lastSubmittedPrescription);
+        var fileName = $"{_lastSubmittedPrescription.PrescriptionNumber}_Prescription.pdf";
+        
+        await JS.InvokeVoidAsync("generatePrescriptionPDF", prescriptionHtml, fileName);
+    }
+    
+    private string GeneratePrescriptionHTML(Prescription prescription)
+    {
+        var html = new System.Text.StringBuilder();
+        
+        // Helper function to escape HTML
+        string EscapeHtml(string? text) => System.Net.WebUtility.HtmlEncode(text ?? string.Empty);
+        
+        html.AppendLine("<!DOCTYPE html>");
+        html.AppendLine("<html>");
+        html.AppendLine("<head>");
+        html.AppendLine("<meta charset='UTF-8'>");
+        html.AppendLine("<title>Prescription - " + EscapeHtml(prescription.PrescriptionNumber) + "</title>");
+        html.AppendLine("<style>");
+        html.AppendLine("@media print {");
+        html.AppendLine("  @page { size: A4; margin: 20mm; }");
+        html.AppendLine("  body { margin: 0; padding: 0; }");
+        html.AppendLine("}");
+        html.AppendLine("body { font-family: 'Times New Roman', Times, serif; padding: 20px; color: #000; }");
+        html.AppendLine(".prescription-header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 15px; margin-bottom: 20px; }");
+        html.AppendLine(".prescription-header h1 { margin: 0 0 5px 0; font-size: 24px; font-weight: bold; }");
+        html.AppendLine(".prescription-header h2 { margin: 0; font-size: 18px; font-weight: normal; }");
+        html.AppendLine(".prescription-info { margin-bottom: 20px; }");
+        html.AppendLine(".prescription-info table { width: 100%; border-collapse: collapse; }");
+        html.AppendLine(".prescription-info td { padding: 5px 0; }");
+        html.AppendLine(".prescription-info td.label { font-weight: bold; width: 150px; }");
+        html.AppendLine(".drugs-section { margin-top: 30px; }");
+        html.AppendLine(".drug-table { width: 100%; border-collapse: collapse; margin-top: 20px; }");
+        html.AppendLine(".drug-table th { background: #f1f5f9; padding: 12px; text-align: left; border: 1px solid #ddd; font-weight: bold; }");
+        html.AppendLine(".drug-table td { padding: 10px 12px; border: 1px solid #ddd; }");
+        html.AppendLine(".drug-table tr:nth-child(even) { background: #f9fafb; }");
+        html.AppendLine("</style>");
+        html.AppendLine("</head>");
+        html.AppendLine("<body>");
+        
+        // Header
+        html.AppendLine("<div class='prescription-header'>");
+        html.AppendLine("<h1>PRESCRIPTION</h1>");
+        html.AppendLine("<h2>Beauty Aesthetics Clinic</h2>");
+        html.AppendLine("</div>");
+        
+        // Prescription Information
+        html.AppendLine("<div class='prescription-info'>");
+        html.AppendLine("<table>");
+        html.AppendLine("<tr><td class='label'>Prescription Number:</td><td>" + EscapeHtml(prescription.PrescriptionNumber) + "</td></tr>");
+        html.AppendLine("<tr><td class='label'>Date:</td><td>" + EscapeHtml(prescription.Date.ToString("MMMM dd, yyyy 'at' hh:mm tt")) + "</td></tr>");
+        html.AppendLine("</table>");
+        html.AppendLine("</div>");
+        
+        // Drugs Section - Simplified Table
+        html.AppendLine("<div class='drugs-section'>");
+        html.AppendLine("<h3 style='margin-bottom: 15px;'>Prescribed Medications</h3>");
+        html.AppendLine("<table class='drug-table'>");
+        html.AppendLine("<thead>");
+        html.AppendLine("<tr>");
+        html.AppendLine("<th>Name</th>");
+        html.AppendLine("<th>Drug Code</th>");
+        html.AppendLine("<th>Dosage</th>");
+        html.AppendLine("<th>Frequency</th>");
+        html.AppendLine("<th>Duration</th>");
+        html.AppendLine("<th>Reason</th>");
+        html.AppendLine("</tr>");
+        html.AppendLine("</thead>");
+        html.AppendLine("<tbody>");
+        
+        foreach (var drug in prescription.Drugs)
+        {
+            html.AppendLine("<tr>");
+            html.AppendLine("<td>" + EscapeHtml(drug.Drug.Name) + "</td>");
+            html.AppendLine("<td>" + EscapeHtml(drug.Drug.DrugCode) + "</td>");
+            html.AppendLine("<td>" + EscapeHtml(drug.Drug.Dosage ?? "-") + "</td>");
+            html.AppendLine("<td>" + EscapeHtml(drug.Frequency) + "</td>");
+            html.AppendLine("<td>" + EscapeHtml(drug.Duration) + "</td>");
+            html.AppendLine("<td>" + EscapeHtml(drug.Reason) + "</td>");
+            html.AppendLine("</tr>");
+        }
+        
+        html.AppendLine("</tbody>");
+        html.AppendLine("</table>");
+        html.AppendLine("</div>");
+        
+        // Footer with Signature
+        html.AppendLine("<div style='margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd;'>");
+        if (!string.IsNullOrEmpty(_signatureDataUrl))
+        {
+            html.AppendLine("<div style='margin-top: 20px;'>");
+            html.AppendLine("<img src='" + EscapeHtml(_signatureDataUrl) + "' style='max-width: 200px; max-height: 80px; margin-bottom: 10px;' alt='Doctor Signature' />");
+            html.AppendLine("</div>");
+        }
+        else
+        {
+            html.AppendLine("<div style='border-top: 1px solid #000; width: 200px; margin-top: 50px;'></div>");
+        }
+        html.AppendLine("<div style='margin-top: 5px; font-size: 12px;'>Physician Signature</div>");
+        html.AppendLine("</div>");
+        
+        html.AppendLine("</body>");
+        html.AppendLine("</html>");
+        
+        return html.ToString();
+    }
+    // Custom Dropdown Logic
+    private bool _isCategoryDropdownOpen = false;
+
+    private void ToggleCategoryDropdown()
+    {
+        _isCategoryDropdownOpen = !_isCategoryDropdownOpen;
+        StateHasChanged();
+    }
+
+    private void SelectCategory(string category)
+    {
+        ViewModel.SelectedCategory = category;
+        _isCategoryDropdownOpen = false;
+        StateHasChanged();
+    }
+    private bool _isCustomDrugCategoryDropdownOpen = false;
+
+    private void ToggleCustomDrugCategoryDropdown()
+    {
+        _isCustomDrugCategoryDropdownOpen = !_isCustomDrugCategoryDropdownOpen;
+        StateHasChanged();
+    }
+
+    private void SelectCustomDrugCategory(string category)
+    {
+        _newCustomDrugCategory = category;
+        _isCustomDrugCategoryDropdownOpen = false;
+        StateHasChanged();
+    }
+}
+

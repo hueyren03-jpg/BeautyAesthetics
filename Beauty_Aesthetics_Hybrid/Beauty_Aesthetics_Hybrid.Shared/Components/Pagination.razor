@@ -1,0 +1,74 @@
+@* Pagination Component *@
+<div class="pagination">
+    <div class="pagination__controls">
+        <button class="pagination__btn"
+                disabled="@(CurrentPage == 1)"
+                @onclick="GoToFirstPage"
+                title="First Page">
+            <i class="bi bi-chevron-double-left"></i>
+        </button>
+        <button class="pagination__btn"
+                disabled="@(CurrentPage == 1)"
+                @onclick="GoToPreviousPage"
+                title="Previous Page">
+            <i class="bi bi-chevron-left"></i>
+        </button>
+        <span class="pagination__page-info">
+            @CurrentPage of @TotalPages
+        </span>
+        <button class="pagination__btn"
+                disabled="@(CurrentPage == TotalPages)"
+                @onclick="GoToNextPage"
+                title="Next Page">
+            <i class="bi bi-chevron-right"></i>
+        </button>
+        <button class="pagination__btn"
+                disabled="@(CurrentPage == TotalPages)"
+                @onclick="GoToLastPage"
+                title="Last Page">
+            <i class="bi bi-chevron-double-right"></i>
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter] public int CurrentPage { get; set; } = 1;
+    [Parameter] public int ItemsPerPage { get; set; } = 10;
+    [Parameter] public int TotalItems { get; set; }
+    [Parameter] public EventCallback<int> OnPageChanged { get; set; }
+
+    private int TotalPages => (int)Math.Ceiling((double)TotalItems / ItemsPerPage);
+
+    private async Task GoToFirstPage()
+    {
+        if (CurrentPage > 1)
+        {
+            await OnPageChanged.InvokeAsync(1);
+        }
+    }
+
+    private async Task GoToPreviousPage()
+    {
+        if (CurrentPage > 1)
+        {
+            await OnPageChanged.InvokeAsync(CurrentPage - 1);
+        }
+    }
+
+    private async Task GoToNextPage()
+    {
+        if (CurrentPage < TotalPages)
+        {
+            await OnPageChanged.InvokeAsync(CurrentPage + 1);
+        }
+    }
+
+    private async Task GoToLastPage()
+    {
+        if (CurrentPage < TotalPages)
+        {
+            await OnPageChanged.InvokeAsync(TotalPages);
+        }
+    }
+}
+

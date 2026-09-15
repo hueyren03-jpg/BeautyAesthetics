@@ -1,0 +1,707 @@
+@* @inject IJSRuntime JSRuntime
+@page "/AccountSettings"
+
+<div class="SettingContent">
+    <div id="SingleInputSelect" class="SingleInputSelect">
+        <div class="InputSelect">
+            <span>Default Debtor Control Account</span>
+            <input @bind="DefaultDebtorControlAccount" type="text" />
+        </div>
+        <div class="DropdownIcon">
+            <i @onclick=ToggleDebtorControlAccount class="fa-solid fa-caret-down DropdownIcon"></i>
+        </div>
+        @if (DebtorControlAccountIsOpen)
+        {
+            <div class="DropdownContainer @(OpenUpwards ? "open-up" : "")">
+                <div class="DropdownSelectTable">
+                    <div class="dropdownTableRow">
+                        <div class="column1">
+                            <span>GL Description</span>
+                        </div>
+                        <div class="column2">
+                            <span>GL Code</span>
+                        </div>
+                    </div>
+                    @foreach (var item in DebtorControlAccountItems)
+                    {
+                        <div @onclick="() => SelectDebtorControlAccount(item)" class="dropdownTableRow">
+                            <div class="column1">
+                                <span>@item.GLDescription</span>
+                            </div>
+                            <div class="column2">
+                                <span>@item.GLCode</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private string DefaultDebtorControlAccount = "Accounts Receivable";
+
+    //to check if there is enough space below the dropdown to open downwards
+    private bool OpenUpwards { get; set; } = false;
+
+    private bool DebtorControlAccountIsOpen { get; set; } = false;
+
+    private class GLAccount
+    {
+        public string GLDescription { get; set; }
+        public string GLCode { get; set; }
+    }
+
+    private List<GLAccount> DebtorControlAccountItems = new()
+    {
+        new GLAccount { GLDescription = "Accounts Receivable", GLCode = "14-1-0003" },
+        new GLAccount { GLDescription = "Accounts Receivable", GLCode = "14-1-0003" }
+    };
+
+    private async Task ToggleDebtorControlAccount()
+    {
+        if (!DebtorControlAccountIsOpen)
+        {
+            // Before opening, ask JS if we should go UP or DOWN
+            OpenUpwards = await JSRuntime.InvokeAsync<bool>(
+                "dropdownPositioner.shouldOpenUpwards",
+                "SingleInputSelect"
+            );
+            DebtorControlAccountIsOpen = true;
+        }
+        else
+        {
+            DebtorControlAccountIsOpen = false;
+        }
+    }
+
+    private void SelectDebtorControlAccount(GLAccount item)
+    {
+        DefaultDebtorControlAccount = item.GLDescription;
+        DebtorControlAccountIsOpen = false;
+    }
+} *@
+
+@page "/AccountSettings"
+@inject IJSRuntime JSRuntime
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L
+
+<div class="SettingContent">
+    <div>
+        <button class="btn-back" @onclick="Back">@L["Back"]</button>
+    </div>
+    <div class="Card">
+        <div class="CardContent">
+            <div class="SingleInput">
+                <div class="InputButton">
+                    <span>@L["UseAutoPosting"]</span>
+                    <label class="switch">
+                        <input type="checkbox" checked />
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="Card">
+        <div class="CardHeader">
+            <h4>@L["ControlAccounts"]</h4>
+        </div>
+        <div class="CardContent">
+            <div class="SingleInput">
+                <div id="DebtorControlAccountSelect" class="SingleInputSelect">
+                    <div class="InputSelect">
+                        <span>@L["DefaultDebtorControlAccount"]</span>
+                        <input @bind="DefaultDebtorControlAccount" type="text" />
+                    </div>
+                    <div class="DropdownIcon">
+                        <i @onclick="ToggleDebtorControlAccount" class="fa-solid fa-caret-down DropdownIcon"></i>
+                    </div>
+                    @if (DebtorControlAccountIsOpen)
+                    {
+                        <div class="DropdownContainer @(DebtorControlAccountOpenUpwards ? "open-up" : "")">
+                            <div class="DropdownSelectTable">
+                                <div class="dropdownTableRow">
+                                    <div class="column1">
+                                        <span>@L["GLDescription"]</span>
+                                    </div>
+                                    <div class="column2">
+                                        <span>@L["GLCode"]</span>
+                                    </div>
+                                </div>
+                                @foreach (var item in DebtorControlAccountItems)
+                                {
+                                    <div @onclick="() => SelectDebtorControlAccount(item)" class="dropdownTableRow">
+                                        <div class="column1">
+                                            <span>@item.GLDescription</span>
+                                        </div>
+                                        <div class="column2">
+                                            <span>@item.GLCode</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="SingleInput">
+                <div id="CreditorControlAccountSelect" class="SingleInputSelect">
+                    <div class="InputSelect">
+                        <span>@L["DefaultCreditorControlAccount"]</span>
+                        <input @bind="DefaultCreditorControlAccount" type="text" />
+                    </div>
+                    <div class="DropdownIcon">
+                        <i @onclick="ToggleCreditorControlAccount" class="fa-solid fa-caret-down DropdownIcon"></i>
+                    </div>
+                    @if (CreditorControlAccountIsOpen)
+                    {
+                        <div class="DropdownContainer @(CreditorControlAccountOpenUpwards ? "open-up" : "")">
+                            <div class="DropdownSelectTable">
+                                <div class="dropdownTableRow">
+                                    <div class="column1">
+                                        <span>@L["GLDescription"]</span>
+                                    </div>
+                                    <div class="column2">
+                                        <span>@L["GLCode"]</span>
+                                    </div>
+                                </div>
+                                @foreach (var item in CreditorControlAccountItems)
+                                {
+                                    <div @onclick="() => SelectCreditorControlAccount(item)" class="dropdownTableRow">
+                                        <div class="column1">
+                                            <span>@item.GLDescription</span>
+                                        </div>
+                                        <div class="column2">
+                                            <span>@item.GLCode</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="Card">
+        <div class="CardHeader">
+            <h4>@L["Sales"]</h4>
+        </div>
+        <div class="CardContent">
+            <div class="SingleInput">
+                <div id="SalesAccountSelect" class="SingleInputSelect">
+                    <div class="InputSelect">
+                        <span>@L["SalesAccount"]</span>
+                        <input @bind="SalesAccount" type="text" />
+                    </div>
+                    <div class="DropdownIcon">
+                        <i @onclick="ToggleSalesAccount" class="fa-solid fa-caret-down DropdownIcon"></i>
+                    </div>
+                    @if (SalesAccountIsOpen)
+                    {
+                        <div class="DropdownContainer @(SalesAccountOpenUpwards ? "open-up" : "")">
+                            <div class="DropdownSelectTable">
+                                <div class="dropdownTableRow">
+                                    <div class="column1">
+                                        <span>@L["GLDescription"]</span>
+                                    </div>
+                                    <div class="column2">
+                                        <span>@L["GLCode"]</span>
+                                    </div>
+                                </div>
+                                @foreach (var item in SalesAccountItems)
+                                {
+                                    <div @onclick="() => SelectSalesAccount(item)" class="dropdownTableRow">
+                                        <div class="column1">
+                                            <span>@item.GLDescription</span>
+                                        </div>
+                                        <div class="column2">
+                                            <span>@item.GLCode</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="SingleInput">
+                <div id="CashSalesAccountSelect" class="SingleInputSelect">
+                    <div class="InputSelect">
+                        <span>@L["CashSalesAccount"]</span>
+                        <input @bind="CashSalesAccount" type="text" />
+                    </div>
+                    <div class="DropdownIcon">
+                        <i @onclick="ToggleCashSalesAccount" class="fa-solid fa-caret-down DropdownIcon"></i>
+                    </div>
+                    @if (CashSalesAccountIsOpen)
+                    {
+                        <div class="DropdownContainer @(CashSalesAccountOpenUpwards ? "open-up" : "")">
+                            <div class="DropdownSelectTable">
+                                <div class="dropdownTableRow">
+                                    <div class="column1">
+                                        <span>@L["GLDescription"]</span>
+                                    </div>
+                                    <div class="column2">
+                                        <span>@L["GLCode"]</span>
+                                    </div>
+                                </div>
+                                @foreach (var item in CashSalesAccountItems)
+                                {
+                                    <div @onclick="() => SelectCashSalesAccount(item)" class="dropdownTableRow">
+                                        <div class="column1">
+                                            <span>@item.GLDescription</span>
+                                        </div>
+                                        <div class="column2">
+                                            <span>@item.GLCode</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="SingleInput">
+                <div id="SalesReturnAccountSelect" class="SingleInputSelect">
+                    <div class="InputSelect">
+                        <span>@L["SalesReturnAccount"]</span>
+                        <input @bind="SalesReturnAccount" type="text" />
+                    </div>
+                    <div class="DropdownIcon">
+                        <i @onclick="ToggleSalesReturnAccount" class="fa-solid fa-caret-down DropdownIcon"></i>
+                    </div>
+                    @if (SalesReturnAccountIsOpen)
+                    {
+                        <div class="DropdownContainer @(SalesReturnAccountOpenUpwards ? "open-up" : "")">
+                            <div class="DropdownSelectTable">
+                                <div class="dropdownTableRow">
+                                    <div class="column1">
+                                        <span>@L["GLDescription"]</span>
+                                    </div>
+                                    <div class="column2">
+                                        <span>@L["GLCode"]</span>
+                                    </div>
+                                </div>
+                                @foreach (var item in SalesReturnAccountItems)
+                                {
+                                    <div @onclick="() => SelectSalesReturnAccount(item)" class="dropdownTableRow">
+                                        <div class="column1">
+                                            <span>@item.GLDescription</span>
+                                        </div>
+                                        <div class="column2">
+                                            <span>@item.GLCode</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="SingleInput">
+                <div id="SalesDepositAccountSelect" class="SingleInputSelect">
+                    <div class="InputSelect">
+                        <span>@L["SalesDepositAccount"]</span>
+                        <input @bind="SalesDepositAccount" type="text" />
+                    </div>
+                    <div class="DropdownIcon">
+                        <i @onclick="ToggleSalesDepositAccount" class="fa-solid fa-caret-down DropdownIcon"></i>
+                    </div>
+                    @if (SalesDepositAccountIsOpen)
+                    {
+                        <div class="DropdownContainer @(SalesDepositAccountOpenUpwards ? "open-up" : "")">
+                            <div class="DropdownSelectTable">
+                                <div class="dropdownTableRow">
+                                    <div class="column1">
+                                        <span>@L["GLDescription"]</span>
+                                    </div>
+                                    <div class="column2">
+                                        <span>@L["GLCode"]</span>
+                                    </div>
+                                </div>
+                                @foreach (var item in SalesDepositAccountItems)
+                                {
+                                    <div @onclick="() => SelectSalesDepositAccount(item)" class="dropdownTableRow">
+                                        <div class="column1">
+                                            <span>@item.GLDescription</span>
+                                        </div>
+                                        <div class="column2">
+                                            <span>@item.GLCode</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="Card">
+        <div class="CardHeader">
+            <h4>@L["Purchases"]</h4>
+        </div>
+        <div class="CardContent">
+            <div class="SingleInput">
+                <div id="PurchaseAccountSelect" class="SingleInputSelect">
+                    <div class="InputSelect">
+                        <span>@L["PurchaseAccount"]</span>
+                        <input @bind="PurchaseAccount" type="text" />
+                    </div>
+                    <div class="DropdownIcon">
+                        <i @onclick="TogglePurchaseAccount" class="fa-solid fa-caret-down DropdownIcon"></i>
+                    </div>
+                    @if (PurchaseAccountIsOpen)
+                    {
+                        <div class="DropdownContainer @(PurchaseAccountOpenUpwards ? "open-up" : "")">
+                            <div class="DropdownSelectTable">
+                                <div class="dropdownTableRow">
+                                    <div class="column1">
+                                        <span>@L["GLDescription"]</span>
+                                    </div>
+                                    <div class="column2">
+                                        <span>@L["GLCode"]</span>
+                                    </div>
+                                </div>
+                                @foreach (var item in PurchaseAccountItems)
+                                {
+                                    <div @onclick="() => SelectPurchaseAccount(item)" class="dropdownTableRow">
+                                        <div class="column1">
+                                            <span>@item.GLDescription</span>
+                                        </div>
+                                        <div class="column2">
+                                            <span>@item.GLCode</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="SingleInput">
+                <div id="CashPurchaseAccountSelect" class="SingleInputSelect">
+                    <div class="InputSelect">
+                        <span>@L["CashPurchaseAccount"]</span>
+                        <input @bind="CashPurchaseAccount" type="text" />
+                    </div>
+                    <div class="DropdownIcon">
+                        <i @onclick="ToggleCashPurchaseAccount" class="fa-solid fa-caret-down DropdownIcon"></i>
+                    </div>
+                    @if (CashPurchaseAccountIsOpen)
+                    {
+                        <div class="DropdownContainer @(CashPurchaseAccountOpenUpwards ? "open-up" : "")">
+                            <div class="DropdownSelectTable">
+                                <div class="dropdownTableRow">
+                                    <div class="column1">
+                                        <span>@L["GLDescription"]</span>
+                                    </div>
+                                    <div class="column2">
+                                        <span>@L["GLCode"]</span>
+                                    </div>
+                                </div>
+                                @foreach (var item in CashPurchaseAccountItems)
+                                {
+                                    <div @onclick="() => SelectCashPurchaseAccount(item)" class="dropdownTableRow">
+                                        <div class="column1">
+                                            <span>@item.GLDescription</span>
+                                        </div>
+                                        <div class="column2">
+                                            <span>@item.GLCode</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="SingleInput">
+                <div id="PurchaseReturnAccountSelect" class="SingleInputSelect">
+                    <div class="InputSelect">
+                        <span>@L["PurchaseReturnAccount"]</span>
+                        <input @bind="PurchaseReturnAccount" type="text" />
+                    </div>
+                    <div class="DropdownIcon">
+                        <i @onclick="TogglePurchaseReturnAccount" class="fa-solid fa-caret-down DropdownIcon"></i>
+                    </div>
+                    @if (PurchaseReturnAccountIsOpen)
+                    {
+                        <div class="DropdownContainer @(PurchaseReturnAccountOpenUpwards ? "open-up" : "")">
+                            <div class="DropdownSelectTable">
+                                <div class="dropdownTableRow">
+                                    <div class="column1">
+                                        <span>@L["GLDescription"]</span>
+                                    </div>
+                                    <div class="column2">
+                                        <span>@L["GLCode"]</span>
+                                    </div>
+                                </div>
+                                @foreach (var item in PurchaseReturnAccountItems)
+                                {
+                                    <div @onclick="() => SelectPurchaseReturnAccount(item)" class="dropdownTableRow">
+                                        <div class="column1">
+                                            <span>@item.GLDescription</span>
+                                        </div>
+                                        <div class="column2">
+                                            <span>@item.GLCode</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="Card">
+        <div class="CardHeader">
+            <h4>@L["Stock"]</h4>
+        </div>
+        <div class="CardContent">
+            <div class="SingleInput">
+                <div id="OpeningStockAccountSelect" class="SingleInputSelect">
+                    <div class="InputSelect">
+                        <span>@L["OpeningStockAccount"]</span>
+                        <input @bind="OpeningStockAccount" type="text" />
+                    </div>
+                    <div class="DropdownIcon">
+                        <i @onclick="ToggleOpeningStockAccount" class="fa-solid fa-caret-down DropdownIcon"></i>
+                    </div>
+                    @if (OpeningStockAccountIsOpen)
+                    {
+                        <div class="DropdownContainer @(OpeningStockAccountOpenUpwards ? "open-up" : "")">
+                            <div class="DropdownSelectTable">
+                                <div class="dropdownTableRow">
+                                    <div class="column1">
+                                        <span>@L["GLDescription"]</span>
+                                    </div>
+                                    <div class="column2">
+                                        <span>@L["GLCode"]</span>
+                                    </div>
+                                </div>
+                                @foreach (var item in OpeningStockAccountItems)
+                                {
+                                    <div @onclick="() => SelectOpeningStockAccount(item)" class="dropdownTableRow">
+                                        <div class="column1">
+                                            <span>@item.GLDescription</span>
+                                        </div>
+                                        <div class="column2">
+                                            <span>@item.GLCode</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="SingleInput">
+                <div id="ClosingStockAccountSelect" class="SingleInputSelect">
+                    <div class="InputSelect">
+                        <span>@L["ClosingStockAccount"]</span>
+                        <input @bind="ClosingStockAccount" type="text" />
+                    </div>
+                    <div class="DropdownIcon">
+                        <i @onclick="ToggleClosingStockAccount" class="fa-solid fa-caret-down DropdownIcon"></i>
+                    </div>
+                    @if (ClosingStockAccountIsOpen)
+                    {
+                        <div class="DropdownContainer @(ClosingStockAccountOpenUpwards ? "open-up" : "")">
+                            <div class="DropdownSelectTable">
+                                <div class="dropdownTableRow">
+                                    <div class="column1">
+                                        <span>@L["GLDescription"]</span>
+                                    </div>
+                                    <div class="column2">
+                                        <span>@L["GLCode"]</span>
+                                    </div>
+                                </div>
+                                @foreach (var item in ClosingStockAccountItems)
+                                {
+                                    <div @onclick="() => SelectClosingStockAccount(item)" class="dropdownTableRow">
+                                        <div class="column1">
+                                            <span>@item.GLDescription</span>
+                                        </div>
+                                        <div class="column2">
+                                            <span>@item.GLCode</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="SingleInput">
+                <div id="StockBalanceAccountSelect" class="SingleInputSelect">
+                    <div class="InputSelect">
+                        <span>@L["StockBalanceAccount"]</span>
+                        <input @bind="StockBalanceAccount" type="text" />
+                    </div>
+                    <div class="DropdownIcon">
+                        <i @onclick="ToggleStockBalanceAccount" class="fa-solid fa-caret-down DropdownIcon"></i>
+                    </div>
+                    @if (StockBalanceAccountIsOpen)
+                    {
+                        <div class="DropdownContainer @(StockBalanceAccountOpenUpwards ? "open-up" : "")">
+                            <div class="DropdownSelectTable">
+                                <div class="dropdownTableRow">
+                                    <div class="column1">
+                                        <span>@L["GLDescription"]</span>
+                                    </div>
+                                    <div class="column2">
+                                        <span>@L["GLCode"]</span>
+                                    </div>
+                                </div>
+                                @foreach (var item in StockBalanceAccountItems)
+                                {
+                                    <div @onclick="() => SelectStockBalanceAccount(item)" class="dropdownTableRow">
+                                        <div class="column1">
+                                            <span>@item.GLDescription</span>
+                                        </div>
+                                        <div class="column2">
+                                            <span>@item.GLCode</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="Card">
+        <div class="CardHeader">
+            <h4>@L["Others"]</h4>
+        </div>
+        <div class="CardContent">
+            <div class="SingleInput">
+                <div id="ForexAccountSelect" class="SingleInputSelect">
+                    <div class="InputSelect">
+                        <span>@L["ForexAccountLabel"]</span>
+                        <input @bind="ForexAccount" type="text" />
+                    </div>
+                    <div class="DropdownIcon">
+                        <i @onclick="ToggleForexAccount" class="fa-solid fa-caret-down DropdownIcon"></i>
+                    </div>
+                    @if (ForexAccountIsOpen)
+                    {
+                        <div class="DropdownContainer @(ForexAccountOpenUpwards ? "open-up" : "")">
+                            <div class="DropdownSelectTable">
+                                <div class="dropdownTableRow">
+                                    <div class="column1">
+                                        <span>@L["GLDescription"]</span>
+                                    </div>
+                                    <div class="column2">
+                                        <span>@L["GLCode"]</span>
+                                    </div>
+                                </div>
+                                @foreach (var item in ForexAccountItems)
+                                {
+                                    <div @onclick="() => SelectForexAccount(item)" class="dropdownTableRow">
+                                        <div class="column1">
+                                            <span>@item.GLDescription</span>
+                                        </div>
+                                        <div class="column2">
+                                            <span>@item.GLCode</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="SingleInput">
+                <div id="BankChargesAccountSelect" class="SingleInputSelect">
+                    <div class="InputSelect">
+                        <span>@L["BankChargesAccount"]</span>
+                        <input @bind="BankChargesAccount" type="text" />
+                    </div>
+                    <div class="DropdownIcon">
+                        <i @onclick="ToggleBankChargesAccount" class="fa-solid fa-caret-down DropdownIcon"></i>
+                    </div>
+                    @if (BankChargesAccountIsOpen)
+                    {
+                        <div class="DropdownContainer @(BankChargesAccountOpenUpwards ? "open-up" : "")">
+                            <div class="DropdownSelectTable">
+                                <div class="dropdownTableRow">
+                                    <div class="column1">
+                                        <span>@L["GLDescription"]</span>
+                                    </div>
+                                    <div class="column2">
+                                        <span>@L["GLCode"]</span>
+                                    </div>
+                                </div>
+                                @foreach (var item in BankChargesAccountItems)
+                                {
+                                    <div @onclick="() => SelectBankChargesAccount(item)" class="dropdownTableRow">
+                                        <div class="column1">
+                                            <span>@item.GLDescription</span>
+                                        </div>
+                                        <div class="column2">
+                                            <span>@item.GLCode</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="SingleInput">
+                <div id="ContraAccountSelect" class="SingleInputSelect">
+                    <div class="InputSelect">
+                        <span>@L["ContraAccount"]</span>
+                        <input @bind="ContraAccount" type="text" />
+                    </div>
+                    <div class="DropdownIcon">
+                        <i @onclick="ToggleContraAccount" class="fa-solid fa-caret-down DropdownIcon"></i>
+                    </div>
+                    @if (ContraAccountIsOpen)
+                    {
+                        <div class="DropdownContainer @(ContraAccountOpenUpwards ? "open-up" : "")">
+                            <div class="DropdownSelectTable">
+                                <div class="dropdownTableRow">
+                                    <div class="column1">
+                                        <span>@L["GLDescription"]</span>
+                                    </div>
+                                    <div class="column2">
+                                        <span>@L["GLCode"]</span>
+                                    </div>
+                                </div>
+                                @foreach (var item in ContraAccountItems)
+                                {
+                                    <div @onclick="() => SelectContraAccount(item)" class="dropdownTableRow">
+                                        <div class="column1">
+                                            <span>@item.GLDescription</span>
+                                        </div>
+                                        <div class="column2">
+                                            <span>@item.GLCode</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    
+}
+

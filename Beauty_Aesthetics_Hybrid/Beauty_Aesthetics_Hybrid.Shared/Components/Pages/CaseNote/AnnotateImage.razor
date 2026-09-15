@@ -1,0 +1,2641 @@
+@page "/annotate-image"
+@using Beauty_Aesthetics_WebPos.Components.Layout
+@layout EmptyLayout
+@using Microsoft.JSInterop
+@using Microsoft.AspNetCore.Components.Forms
+@inject IJSRuntime JS
+@inject NavigationManager NavigationManager
+@implements IAsyncDisposable
+<PageTitle>Annotation Images</PageTitle>
+
+<div class="annotate-container" 
+     tabindex="0" 
+     @onkeydown="HandleKeyDown">
+    <!-- Left Sidebar - Image Library -->
+    <aside class="annotate-sidebar">
+        <div class="sidebar-header">
+            <h2 class="sidebar-title">Annotation Images</h2>
+            <button type="button" class="btn-icon" @onclick="HandleAddNewImage" title="Add New Image">
+                <i class="bi bi-plus-lg icon"></i>
+            </button>
+        </div>
+        
+        @if (_configuringSide != null)
+        {
+            <div class="selection-mode-banner">
+                <i class="bi bi-hand-index"></i>
+                <span>Select image for <strong>@(_configuringSide == "before" ? "Before" : "After")</strong></span>
+                <button type="button" class="btn-cancel-selection" @onclick="CancelImageSelection" title="Cancel">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        }
+        
+        <div class="search-container">
+            <div class="search-box">
+                <i class="bi bi-search search-icon"></i>
+                <input 
+                    type="text" 
+                    class="search-input" 
+                    placeholder="Search images..." 
+                    @bind="ViewModel.SearchTerm" 
+                    @bind:event="oninput" />
+            </div>
+        </div>
+        
+        <div class="image-list">
+            @foreach (var image in ViewModel.FilteredImages)
+            {
+                <button 
+                    type="button" 
+                    class="image-card @(ViewModel.SelectedImage == image ? "image-card-active" : string.Empty)" 
+                    @onclick="() => HandleSelectImage(image)">
+                    <div class="image-thumbnail">
+                        <img src="@image.ThumbnailUrl" alt="@image.Name" />
+                    </div>
+                    <div class="image-info">
+                        <div class="image-name">@image.Name</div>
+                        <div class="image-category">@image.Category</div>
+                    </div>
+                </button>
+            }
+            @if (!ViewModel.FilteredImages.Any())
+            {
+                <div class="empty-state">
+                    <i class="bi bi-image empty-icon"></i>
+                    <p>No images found</p>
+                </div>
+            }
+        </div>
+    </aside>
+
+    <!-- Resizer -->
+    <div class="panel-resizer" title="Drag to resize"></div>
+
+    <!-- Main Content - Canvas Area -->
+    <main class="annotate-main">
+        <!-- Top Toolbar -->
+        <header class="annotate-toolbar">
+            <div class="toolbar-left">
+                <!-- Select Tool (Unselect) -->
+                <button 
+                    type="button" 
+                    class="tool-btn @(string.IsNullOrEmpty(ViewModel.ActiveTool) ? "tool-btn-active" : string.Empty)" 
+                    @onclick="UnselectTool"
+                    title="Select (Deselect all tools)">
+                    <i class="bi bi-cursor"></i>
+                </button>
+                
+                <div class="toolbar-divider"></div>
+                
+                <!-- Drawing Tools -->
+                <button 
+                    type="button" 
+                    class="tool-btn @(ViewModel.ActiveTool == "pencil" ? "tool-btn-active" : string.Empty)" 
+                    @onclick='() => SelectToolAsync("pencil")'
+                    title="Pen">
+                    <i class="bi bi-pen"></i>
+                </button>
+                <button 
+                    type="button" 
+                    class="tool-btn @(ViewModel.ActiveTool == "brush" ? "tool-btn-active" : string.Empty)" 
+                    @onclick='() => SelectToolAsync("brush")'
+                    title="Brush">
+                    <i class="bi bi-brush"></i>
+                </button>
+                <button 
+                    type="button" 
+                    class="tool-btn @(ViewModel.ActiveTool == "text" ? "tool-btn-active" : string.Empty)" 
+                    @onclick='() => SelectToolAsync("text")'
+                    title="Text">
+                    <i class="bi bi-fonts"></i>
+                </button>
+                <button 
+                    type="button" 
+                    class="tool-btn @(ViewModel.ActiveTool == "eraser" ? "tool-btn-active" : string.Empty)" 
+                    @onclick='() => SelectToolAsync("eraser")'
+                    title="Eraser">
+                    <i class="bi bi-eraser"></i>
+                </button>
+                
+                <div class="toolbar-divider"></div>
+                
+                <!-- Text Formatting -->
+                <button 
+                    type="button" 
+                    class="tool-btn @(ViewModel.IsBold ? "tool-btn-active" : string.Empty)" 
+                    @onclick="ToggleBoldAsync"
+                    title="Bold">
+                    <i class="bi bi-type-bold"></i>
+                </button>
+                <button 
+                    type="button" 
+                    class="tool-btn @(ViewModel.IsItalic ? "tool-btn-active" : string.Empty)" 
+                    @onclick="ToggleItalicAsync"
+                    title="Italic">
+                    <i class="bi bi-type-italic"></i>
+                </button>
+                <button 
+                    type="button" 
+                    class="tool-btn @(ViewModel.IsUnderline ? "tool-btn-active" : string.Empty)" 
+                    @onclick="ToggleUnderlineAsync"
+                    title="Underline">
+                    <i class="bi bi-type-underline"></i>
+                </button>
+                
+                <div class="toolbar-divider"></div>
+                
+                <!-- Color Picker with Palette -->
+                <div class="color-picker-container" @onclick:stopPropagation="true">
+                    <button type="button" 
+                            class="color-current-btn" 
+                            @onclick="ToggleColorPalette"
+                            @onclick:stopPropagation="true"
+                            title="Text Color">
+                        <i class="bi bi-palette"></i>
+                        <div class="color-current-indicator" style="background: @ViewModel.SelectedColor"></div>
+                    </button>
+                    
+                    @if (_showColorPalette)
+                    {
+                        <div class="color-palette-dropdown" @onclick:stopPropagation="true">
+                            <!-- Color Grid -->
+                            <div class="color-palette-grid">
+                                @foreach (var row in _colorPalette)
+                                {
+                                    <div class="color-row">
+                                        @foreach (var color in row)
+                                        {
+                                            <button type="button"
+                                                    class="color-swatch @(ViewModel.SelectedColor?.ToLower() == color.ToLower() ? "color-swatch-active" : "")"
+                                                    style="background: @color"
+                                                    @onclick="() => SelectPaletteColor(color)"
+                                                    title="@color">
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            
+                            <!-- Custom Colors Section -->
+                            <div class="custom-colors-section">
+                                <div class="custom-colors-header">
+                                    <span>CUSTOM</span>
+                                    <button type="button" 
+                                            class="btn-add-custom"
+                                            @onclick="OpenCustomColorPicker"
+                                            title="Add custom color">
+                                        <i class="bi bi-plus-circle"></i>
+                                    </button>
+                                </div>
+                                <div class="custom-colors-row">
+                                    @if (_customColors.Any())
+                                    {
+                                        @foreach (var color in _customColors)
+                                        {
+                                            <button type="button"
+                                                    class="color-swatch @(ViewModel.SelectedColor?.ToLower() == color.ToLower() ? "color-swatch-active" : "")"
+                                                    style="background: @color"
+                                                    @onclick="() => SelectPaletteColor(color)"
+                                                    title="@color">
+                                            </button>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="no-custom-colors">No custom colors yet</span>
+                                    }
+                                </div>
+                            </div>
+                            
+                            <!-- Hidden color input -->
+                            <input type="color" 
+                                   @ref="_customColorInput"
+                                   class="hidden-color-input"
+                                   value="@ViewModel.SelectedColor"
+                                   @onchange="OnCustomColorSelected" />
+                        </div>
+                    }
+                </div>
+                
+                <!-- Desktop Controls (Inline Sliders) -->
+                <div class="desktop-controls">
+                    <!-- Thickness Slider -->
+                    <div class="slider-control">
+                        <label class="control-label">Thickness:</label>
+                        <input 
+                            type="range" 
+                            class="range-slider" 
+                            @bind="ViewModel.LineThickness" 
+                            @bind:event="oninput"
+                            min="1" 
+                            max="20" 
+                            title="Line Thickness" />
+                        <span class="control-value">@ViewModel.LineThickness</span>
+                        <div class="thickness-preview" title="@GetThicknessTooltip()">
+                            <div class="thickness-indicator" 
+                                 style="width: @GetThicknessPreviewSize()px; height: @GetThicknessPreviewSize()px; background: @GetThicknessPreviewColor();">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Font Size Slider -->
+                    <div class="slider-control">
+                        <label class="control-label">Font Size:</label>
+                        <input 
+                            type="range" 
+                            class="range-slider" 
+                            @bind="ViewModel.FontSize" 
+                            @bind:event="oninput"
+                            min="8" 
+                            max="48" 
+                            title="Font Size" />
+                        <span class="control-value">@ViewModel.FontSize</span>
+                    </div>
+                </div>
+
+                <!-- Mobile/Tablet Controls (Dropdowns) -->
+                <div class="mobile-controls">
+                    <!-- Thickness Dropdown -->
+                    <div class="dropdown-container" @onclick:stopPropagation="true">
+                        <button type="button" 
+                                class="tool-btn @(_showThicknessDropdown ? "tool-btn-active" : "")" 
+                                @onclick="ToggleThicknessDropdown"
+                                title="Line Thickness">
+                            <i class="bi bi-border-width"></i>
+                        </button>
+                        
+                        @if (_showThicknessDropdown)
+                        {
+                            <div class="toolbar-dropdown">
+                                <div class="dropdown-header">Thickness</div>
+                                <div class="slider-wrapper">
+                                    <input type="range" 
+                                           class="range-slider" 
+                                           @bind="ViewModel.LineThickness" 
+                                           @bind:event="oninput"
+                                           min="1" 
+                                           max="20" />
+                                    <div class="thickness-preview-large">
+                                        <div class="thickness-dot" 
+                                             style="width: @(ViewModel.LineThickness)px; height: @(ViewModel.LineThickness)px; background: @ViewModel.SelectedColor">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Font Size Dropdown -->
+                    <div class="dropdown-container" @onclick:stopPropagation="true">
+                        <button type="button" 
+                                class="tool-btn @(_showFontSizeDropdown ? "tool-btn-active" : "")" 
+                                @onclick="ToggleFontSizeDropdown"
+                                title="Font Size">
+                            <i class="bi bi-type"></i>
+                        </button>
+                        
+                        @if (_showFontSizeDropdown)
+                        {
+                            <div class="toolbar-dropdown">
+                                <div class="dropdown-header">Font Size</div>
+                                <div class="slider-wrapper">
+                                    <input type="range" 
+                                           class="range-slider" 
+                                           @bind="ViewModel.FontSize" 
+                                           @bind:event="oninput"
+                                           min="8" 
+                                           max="48" />
+                                    <span class="value-display">@ViewModel.FontSize px</span>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+            
+            <div class="toolbar-right">
+                <!-- Undo/Redo/Reset -->
+                <button 
+                    type="button" 
+                    class="tool-btn" 
+                    @onclick="HandleUndo"
+                    title="Undo (Ctrl+Z)">
+                    <i class="bi bi-arrow-counterclockwise"></i>
+                </button>
+                <button 
+                    type="button" 
+                    class="tool-btn" 
+                    @onclick="HandleRedo"
+                    title="Redo (Ctrl+Y)">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+                <button 
+                    type="button" 
+                    class="tool-btn tool-btn-text" 
+                    @onclick="HandleReset"
+                    title="Reset Canvas">
+                    Reset
+                </button>
+            </div>
+        </header>
+
+        <!-- Canvas Area -->
+        <div class="canvas-container" @onclick="CloseColorPalette">
+            @if (ViewModel.SelectedImage is not null || 
+                 ViewModel.CanvasBackground == "before-after" || 
+                 ViewModel.CanvasBackground == "notepad" || 
+                 ViewModel.CanvasBackground == "blank")
+            {
+                <div class="canvas-wrapper">
+                    <!-- Background Toggle -->
+                    <div class="background-controls">
+                        <button 
+                            type="button" 
+                            class="bg-btn @(ViewModel.CanvasBackground == "image" ? "bg-btn-active" : string.Empty)" 
+                            @onclick='() => SetBackgroundAsync("image")'>
+                            Image
+                        </button>
+                        <button 
+                            type="button" 
+                            class="bg-btn @(ViewModel.CanvasBackground == "notepad" ? "bg-btn-active" : string.Empty)" 
+                            @onclick='() => SetBackgroundAsync("notepad")'>
+                            <i class="bi bi-journal-text"></i> Notepad
+                        </button>
+                        <button 
+                            type="button" 
+                            class="bg-btn @(ViewModel.CanvasBackground == "blank" ? "bg-btn-active" : string.Empty)" 
+                            @onclick='() => SetBackgroundAsync("blank")'>
+                            <i class="bi bi-file-earmark"></i> Blank Page
+                        </button>
+                        <button 
+                            type="button" 
+                            class="bg-btn @(ViewModel.CanvasBackground == "before-after" ? "bg-btn-active" : string.Empty)" 
+                            @onclick='() => SetBackgroundAsync("before-after")'>
+                            <i class="bi bi-images"></i> Before/After
+                        </button>
+                    </div>
+
+                    <!-- Canvas -->
+                    @if (ViewModel.CanvasBackground == "before-after")
+                    {
+                        <!-- Before/After Image Selection Controls (Outside Canvas) -->
+                        <div class="before-after-controls">
+                            <div class="before-after-control-section">
+                                <h4>Before Image</h4>
+                                @if (ViewModel.BeforeImage != null)
+                                {
+                                    <div class="selected-image-info">
+                                        <i class="bi bi-check-circle-fill"></i>
+                                        <span>@ViewModel.BeforeImage.Name</span>
+                                        <button type="button" class="btn-change-image" @onclick="() => ShowChangeImageOptions(true)" title="Change image">
+                                            <i class="bi bi-arrow-repeat"></i>
+                                        </button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="image-selection-buttons">
+                                        <button type="button" class="btn-select-image" @onclick="SelectBeforeFromLibrary">
+                                            <i class="bi bi-folder"></i> From Library
+                                        </button>
+                                        <button type="button" class="btn-select-image" @onclick="UploadBeforeImage">
+                                            <i class="bi bi-upload"></i> Upload
+                                        </button>
+                                    </div>
+                                }
+                            </div>
+                            <div class="before-after-control-section">
+                                <h4>After Image</h4>
+                                @if (ViewModel.AfterImage != null)
+                                {
+                                    <div class="selected-image-info">
+                                        <i class="bi bi-check-circle-fill"></i>
+                                        <span>@ViewModel.AfterImage.Name</span>
+                                        <button type="button" class="btn-change-image" @onclick="() => ShowChangeImageOptions(false)" title="Change image">
+                                            <i class="bi bi-arrow-repeat"></i>
+                                        </button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="image-selection-buttons">
+                                        <button type="button" class="btn-select-image" @onclick="SelectAfterFromLibrary">
+                                            <i class="bi bi-folder"></i> From Library
+                                        </button>
+                                        <button type="button" class="btn-select-image" @onclick="UploadAfterImage">
+                                            <i class="bi bi-upload"></i> Upload
+                                        </button>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                        
+                        <!-- Before/After Mode Canvas -->
+                        <div class="canvas canvas-bg-before-after" id="canvasWrapper">
+                            @if (!_canvasInitialized)
+                            {
+                                <div class="canvas-loading">
+                                    <div class="loading-spinner"></div>
+                                    <p>Loading canvas...</p>
+                                </div>
+                            }
+                            <div class="before-after-container">
+                                <div class="before-section">
+                                    @if (ViewModel.BeforeImage != null)
+                                    {
+                                        <img 
+                                            src="@ViewModel.BeforeImage.ImageUrl" 
+                                            alt="@ViewModel.BeforeImage.Name" 
+                                            class="canvas-image" 
+                                            id="beforeImage" />
+                                    }
+                                    else
+                                    {
+                                        <div class="image-placeholder">
+                                            <div class="placeholder-content">
+                                                <i class="bi bi-image"></i>
+                                                <p>Before Image</p>
+                                                <p class="placeholder-hint">Select image using controls above</p>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                                <div class="after-section">
+                                    @if (ViewModel.AfterImage != null)
+                                    {
+                                        <img 
+                                            src="@ViewModel.AfterImage.ImageUrl" 
+                                            alt="@ViewModel.AfterImage.Name" 
+                                            class="canvas-image" 
+                                            id="afterImage" />
+                                    }
+                                    else
+                                    {
+                                        <div class="image-placeholder">
+                                            <div class="placeholder-content">
+                                                <i class="bi bi-image"></i>
+                                                <p>After Image</p>
+                                                <p class="placeholder-hint">Select image using controls above</p>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                            <!-- HTML5 Canvas for Drawing (Fabric.js handles all annotations) -->
+                            <canvas id="drawingCanvas" class="drawing-canvas"></canvas>
+                        </div>
+                    }
+                    else if (ViewModel.SelectedImage is not null)
+                    {
+                        <!-- Standard Single Image Mode -->
+                        <div class="canvas @($"canvas-bg-{ViewModel.CanvasBackground}")" 
+                             id="canvasWrapper">
+                            @if (!_canvasInitialized)
+                            {
+                                <div class="canvas-loading">
+                                    <div class="loading-spinner"></div>
+                                    <p>Loading canvas...</p>
+                                </div>
+                            }
+                            @if (ViewModel.CanvasBackground == "image")
+                            {
+                                <img 
+                                    src="@ViewModel.SelectedImage.ImageUrl" 
+                                    alt="@ViewModel.SelectedImage.Name" 
+                                    class="canvas-image" 
+                                    id="backgroundImage" />
+                            }
+                            
+                            <!-- HTML5 Canvas for Drawing (Fabric.js handles all annotations) -->
+                            <canvas id="drawingCanvas" class="drawing-canvas"></canvas>
+                        </div>
+                    }
+                    else if (ViewModel.CanvasBackground == "notepad" || ViewModel.CanvasBackground == "blank")
+                    {
+                        <!-- Notepad/Blank Page Mode (No image required) -->
+                        <div class="canvas @($"canvas-bg-{ViewModel.CanvasBackground}")" 
+                             id="canvasWrapper">
+                            @if (!_canvasInitialized)
+                            {
+                                <div class="canvas-loading">
+                                    <div class="loading-spinner"></div>
+                                    <p>Loading canvas...</p>
+                                </div>
+                            }
+                            
+                            <!-- HTML5 Canvas for Drawing (Fabric.js handles all annotations) -->
+                            <canvas id="drawingCanvas" class="drawing-canvas"></canvas>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="canvas-empty">
+                    <i class="bi bi-palette empty-icon-large"></i>
+                    <h3>Select an Image to Start Annotating</h3>
+                    <p>Choose an annotation image from the library on the left</p>
+                </div>
+            }
+        </div>
+
+        <!-- Bottom Action Bar -->
+        <footer class="action-bar">
+            <div class="action-info">
+                @if (ViewModel.CanvasBackground == "before-after")
+                {
+                    @if (ViewModel.BeforeImage is not null || ViewModel.AfterImage is not null)
+                    {
+                        <span class="info-text">
+                            @if (ViewModel.BeforeImage is not null && ViewModel.AfterImage is not null)
+                            {
+                                <text><strong>Before/After Comparison</strong> - @ViewModel.BeforeImage.Name &amp; @ViewModel.AfterImage.Name</text>
+                            }
+                            else if (ViewModel.BeforeImage is not null)
+                            {
+                                <text><strong>Before/After</strong> - Before: @ViewModel.BeforeImage.Name</text>
+                            }
+                            else if (ViewModel.AfterImage is not null)
+                            {
+                                <text><strong>Before/After</strong> - After: @ViewModel.AfterImage.Name</text>
+                            }
+                        </span>
+                    }
+                }
+                else if (ViewModel.SelectedImage is not null)
+                {
+                    <span class="info-text">
+                        <strong>@ViewModel.SelectedImage.Name</strong> - @ViewModel.SelectedImage.Category
+                    </span>
+                }
+            </div>
+            <div class="action-buttons">
+                <button 
+                    type="button"
+                    class="btn-cancel-icon" 
+                    @onclick="NavigateBack"
+                    title="Back to home"
+                    aria-label="Back to home">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+                <button 
+                    type="button" 
+                    class="btn-insert-icon" 
+                    @onclick="InsertAnnotation" 
+                    disabled="@(ViewModel.CanvasBackground == "before-after" ? (ViewModel.BeforeImage is null && ViewModel.AfterImage is null) : ViewModel.SelectedImage is null)"
+                    title="Insert into case notes"
+                    aria-label="Insert into case notes">
+                    <i class="bi bi-check-lg"></i>
+                </button>
+            </div>
+        </footer>
+
+        @if (!string.IsNullOrWhiteSpace(ViewModel.StatusMessage))
+        {
+            <div class="status-message @ViewModel.StatusMessageType">
+                @ViewModel.StatusMessage
+            </div>
+        }
+    </main>
+</div>
+
+<!-- Unsaved Changes Warning Modal -->
+@if (_showUnsavedChangesModal)
+{
+    <div class="modal-overlay" @onclick:stopPropagation="true">
+        <div class="modal-container unsaved-changes-modal" @onclick:stopPropagation="true">
+            <div class="modal-header modal-header-warning">
+                <i class="bi bi-exclamation-circle-fill"></i>
+                <h3>Unsaved Annotations</h3>
+            </div>
+            <div class="modal-body">
+                <p>You have unsaved annotations on this image.</p>
+                <p class="modal-warning">If you leave now, your annotations will be lost.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-discard" @onclick="DiscardChanges">
+                    <i class="bi bi-x-circle"></i>
+                    <span>Discard Annotations</span>
+                </button>
+                <button class="btn-modal-continue" @onclick="ContinueEditing">
+                    <i class="bi bi-pencil-square"></i>
+                    <span>Continue Editing</span>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Add Image Modal -->
+@if (_showAddImageModal)
+{
+    <div class="modal-overlay" @onclick="() => CloseAddImageModal()">
+        <div class="modal-container add-image-modal" @onclick:stopPropagation="true">
+            @if (!_showCameraCapture)
+            {
+                <!-- Option Selection View -->
+                <div class="modal-header">
+                    <i class="bi bi-plus-circle-fill"></i>
+                    <h3>Add New Image</h3>
+                </div>
+                <div class="modal-body">
+                    <p>Choose how you want to add a new image:</p>
+                    <div class="add-image-options">
+                        <button class="option-card" @onclick="ShowUploadOption">
+                            <i class="bi bi-upload"></i>
+                            <span class="option-title">Upload from PC</span>
+                            <span class="option-desc">Select an image file from your computer</span>
+                        </button>
+                        <button class="option-card" @onclick="ShowCameraOption">
+                            <i class="bi bi-camera-fill"></i>
+                            <span class="option-title">Take Picture</span>
+                            <span class="option-desc">Use your device camera to capture an image</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-modal-cancel" @onclick="() => CloseAddImageModal()">
+                        <i class="bi bi-x-lg"></i>
+                        Cancel
+                    </button>
+                </div>
+            }
+            else
+            {
+                <!-- Camera Capture View -->
+                <div class="modal-header camera-header">
+                    <i class="bi bi-camera-fill"></i>
+                    <h3>Take Picture</h3>
+                </div>
+                <div class="modal-body camera-body">
+                    @if (string.IsNullOrEmpty(_capturedImageDataUrl))
+                    {
+                        <!-- Live Camera Feed -->
+                        <div class="camera-container">
+                            <video id="cameraVideo" autoplay playsinline class="camera-video"></video>
+                            <canvas id="cameraCanvas" class="camera-canvas" style="display: none;"></canvas>
+                        </div>
+                        <div class="camera-controls">
+                            <button class="btn-camera-control" @onclick="FlipHorizontal" title="Flip Horizontal">
+                                <i class="bi bi-arrow-left-right"></i>
+                                <span>Flip H</span>
+                            </button>
+                            <button class="btn-camera-control" @onclick="FlipVertical" title="Flip Vertical">
+                                <i class="bi bi-arrow-down-up"></i>
+                                <span>Flip V</span>
+                            </button>
+                            <button class="btn-camera-capture" @onclick="CaptureImage" title="Capture">
+                                <i class="bi bi-camera-fill"></i>
+                                <span>Capture</span>
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                        <!-- Captured Image Preview -->
+                        <div class="capture-preview-container">
+                            <img src="@_capturedImageDataUrl" alt="Captured" class="capture-preview" />
+                        </div>
+                        <div class="capture-actions">
+                            <button class="btn-capture-reset" @onclick="ResetCapture">
+                                <i class="bi bi-arrow-counterclockwise"></i>
+                                <span>Retake</span>
+                            </button>
+                            <button class="btn-capture-confirm" @onclick="ConfirmCameraImage">
+                                <i class="bi bi-check-lg"></i>
+                                <span>Use This Image</span>
+                            </button>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-modal-cancel" @onclick="() => CloseAddImageModal()">
+                        <i class="bi bi-x-lg"></i>
+                        Cancel
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<!-- Hidden file input for image upload -->
+<InputFile id="imageFileInput" OnChange="HandleImageUpload" accept="image/*" style="display: none;" />
+
+<!-- Change Image Options Modal -->
+@if (_showChangeImageModal)
+{
+    <div class="modal-overlay" @onclick="CloseChangeImageModal">
+        <div class="modal-container change-image-modal" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <i class="bi bi-arrow-repeat"></i>
+                <h3>Change @(_changingBeforeImage ? "Before" : "After") Image</h3>
+            </div>
+            <div class="modal-body">
+                <p>Choose how you want to change the image:</p>
+                <div class="change-image-options">
+                    <button class="option-card" @onclick="ChangeImageFromLibrary">
+                        <i class="bi bi-folder"></i>
+                        <span class="option-title">From Library</span>
+                        <span class="option-desc">Select from existing images</span>
+                    </button>
+                    <button class="option-card" @onclick="ChangeImageFromPC">
+                        <i class="bi bi-upload"></i>
+                        <span class="option-title">Upload from PC</span>
+                        <span class="option-desc">Select a file from your computer</span>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" @onclick="CloseChangeImageModal">
+                    <i class="bi bi-x-lg"></i>
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@using Beauty_Aesthetics_WebPos.Components.ViewModels
+
+@code {
+    private AnnotateImageViewModel ViewModel { get; set; } = new();
+    private bool _canvasInitialized = false;
+    private AnnotateImageViewModel.AnnotationImage? _previousSelectedImage = null;
+    private AnnotateImageViewModel.AnnotationImage? _storedSelectedImage = null; // Store image when switching to before-after
+    
+    // Debouncing timers for slider inputs
+    private System.Threading.Timer? _colorDebounceTimer;
+    private System.Threading.Timer? _thicknessDebounceTimer;
+    private System.Threading.Timer? _fontSizeDebounceTimer;
+    private const int DebounceDelayMs = 50; // 50ms debounce delay
+    
+    // Unsaved changes tracking
+    private bool _hasUnsavedChanges = false;
+    private bool _showUnsavedChangesModal = false;
+    private string? _pendingNavigation = null;
+    private AnnotateImageViewModel.AnnotationImage? _pendingImageSelection = null;
+    private bool _pendingAddNewImage = false;
+    
+    // Add Image Modal State
+    private bool _showAddImageModal = false;
+    private bool _showCameraCapture = false;
+    private bool _isCameraActive = false;
+    private string? _capturedImageDataUrl = null;
+    private bool _flipHorizontal = false;
+    private bool _flipVertical = false;
+    private string? _previousCapturedImageDataUrl = null; // Track state change
+    
+    // Dropdown states
+    private bool _showThicknessDropdown = false;
+    private bool _showFontSizeDropdown = false;
+
+    
+    // Before/After image selection state
+    private string? _configuringSide = null; // "before" or "after"
+
+    // Tool selection methods
+    private void UnselectTool()
+    {
+        ViewModel.ActiveTool = null;
+        
+        // Also deselect all text boxes
+        foreach (var annotation in ViewModel.Annotations)
+        {
+            annotation.IsSelected = false;
+        }
+        
+        StateHasChanged();
+    }
+
+    // Keyboard event handler
+    private async void HandleKeyDown(KeyboardEventArgs e)
+    {
+        // ESC - Close color palette or unselect tool
+        if (e.Key == "Escape")
+        {
+            if (_showColorPalette)
+            {
+                _showColorPalette = false;
+                StateHasChanged();
+            }
+            else
+            {
+                UnselectTool();
+            }
+        }
+        // Ctrl+Z - Undo
+        else if (e.CtrlKey && e.Key == "z")
+        {
+            await HandleUndo();
+        }
+        // Ctrl+Y - Redo
+        else if (e.CtrlKey && e.Key == "y")
+        {
+            await HandleRedo();
+        }
+    }
+
+    // Quick color setter
+    private async void SetColor(string color)
+    {
+        ViewModel.SelectedColor = color;
+        await UpdateJavaScriptStateAsync();
+    }
+
+    // Get thickness preview size based on current tool
+    private int GetThicknessPreviewSize()
+    {
+        var baseThickness = ViewModel.LineThickness;
+        
+        // Apply multipliers based on active tool (same as fabric-annotate.js)
+        return ViewModel.ActiveTool switch
+        {
+            "brush" => baseThickness * 2,  // Brush is 2x thicker
+            "eraser" => baseThickness * 3,  // Eraser is 3x thicker
+            _ => baseThickness  // Pencil and default
+        };
+    }
+
+    // Get thickness preview color based on current tool
+    private string GetThicknessPreviewColor()
+    {
+        // Eraser shows white to match eraser cursor
+        if (ViewModel.ActiveTool == "eraser")
+        {
+            return "#ffffff";
+        }
+        
+        // All other tools use the selected color
+        return ViewModel.SelectedColor ?? "#000000";
+    }
+
+    // Get tooltip text for thickness preview
+    private string GetThicknessTooltip()
+    {
+        var size = GetThicknessPreviewSize();
+        var toolName = ViewModel.ActiveTool switch
+        {
+            "pencil" => "Pencil",
+            "brush" => "Brush",
+            "eraser" => "Eraser",
+            _ => "Drawing"
+        };
+        
+        return $"{toolName} thickness: {size}px";
+    }
+
+    // Set background and reinitialize canvas if needed
+    private async void SetBackgroundAsync(string background)
+    {
+        var previousBackground = ViewModel.CanvasBackground;
+        ViewModel.SetBackground(background);
+        
+        // Handle state cleanup when switching modes
+        if (background == "before-after")
+        {
+            // Switching to before-after mode - store and clear single selected image
+            if (ViewModel.SelectedImage != null)
+            {
+                _storedSelectedImage = ViewModel.SelectedImage;
+                ViewModel.SelectedImage = null;
+            }
+        }
+        else
+        {
+            // Switching away from before-after mode - clear before/after images and restore stored image if available
+            if (previousBackground == "before-after")
+            {
+                ViewModel.ClearBeforeAfterImages();
+                // Restore the stored image if we had one before switching to before-after
+                if (_storedSelectedImage != null)
+                {
+                    ViewModel.SelectedImage = _storedSelectedImage;
+                    _storedSelectedImage = null;
+                }
+            }
+        }
+        
+        // If canvas is initialized, we need to dispose and reinitialize when switching modes
+        if (_canvasInitialized && previousBackground != background)
+        {
+            // Dispose current canvas
+            await DisposeCanvasAsync();
+            
+            // For before-after mode, always reinitialize (even without images) so canvas is ready
+            // For notepad/blank modes, always initialize (they don't need images)
+            // For image mode, reinitialize only if there's a selected image
+            bool shouldInitialize = false;
+            if (background == "before-after" || background == "notepad" || background == "blank")
+            {
+                // Always initialize for these modes so the canvas structure is ready
+                shouldInitialize = true;
+            }
+            else
+            {
+                shouldInitialize = ViewModel.SelectedImage != null;
+            }
+            
+            if (shouldInitialize)
+            {
+                // Small delay to ensure DOM is updated
+                await Task.Delay(150);
+                await InitializeCanvasAsync();
+            }
+        }
+        else if (_canvasInitialized)
+        {
+            try
+            {
+                // Update canvas background via JavaScript if needed
+                await JS.InvokeVoidAsync("eval", $@"
+                    const canvas = document.getElementById('drawingCanvas');
+                    if (canvas) {{
+                        console.log('Background changed to: {background}');
+                    }}
+                ");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating background: {ex.Message}");
+            }
+        }
+        
+        StateHasChanged();
+    }
+
+    // Toggle color palette dropdown
+    private void ToggleColorPalette()
+    {
+        _showColorPalette = !_showColorPalette;
+        if (_showColorPalette)
+        {
+            _showThicknessDropdown = false;
+            _showFontSizeDropdown = false;
+        }
+        StateHasChanged();
+    }
+
+    // Close color palette (called when clicking outside)
+    private void CloseColorPalette()
+    {
+        if (_showColorPalette)
+        {
+            _showColorPalette = false;
+            _showThicknessDropdown = false;
+            _showFontSizeDropdown = false;
+            StateHasChanged();
+        }
+    }
+
+    // Select color from palette
+    private async void SelectPaletteColor(string color)
+    {
+        ViewModel.SelectedColor = color;
+        await UpdateJavaScriptStateAsync();
+        _showColorPalette = false; // Close palette after selection
+        StateHasChanged(); // Force UI update
+    }
+
+    // Open custom color picker
+    private async void OpenCustomColorPicker()
+    {
+        // Trigger the hidden color input
+        await JS.InvokeVoidAsync("eval", $"document.querySelector('.hidden-color-input').click()");
+    }
+
+    // Handle custom color selection
+    private async void OnCustomColorSelected(ChangeEventArgs e)
+    {
+        if (e.Value != null)
+        {
+            var color = e.Value.ToString()!.ToLower();
+            
+            // Add to custom colors if not already there
+            if (!_customColors.Contains(color))
+            {
+                _customColors.Insert(0, color); // Add to beginning
+                
+                // Keep only last 10 custom colors
+                if (_customColors.Count > 10)
+                {
+                    _customColors = _customColors.Take(10).ToList();
+                }
+                
+                // Save to localStorage
+                await SaveCustomColorsAsync();
+            }
+            
+            // Apply the color
+            ViewModel.SelectedColor = color;
+            await UpdateJavaScriptStateAsync();
+            _showColorPalette = false;
+            StateHasChanged(); // Force UI update
+        }
+    }
+    // Toggle Thickness Dropdown
+    private void ToggleThicknessDropdown()
+    {
+        _showThicknessDropdown = !_showThicknessDropdown;
+        if (_showThicknessDropdown)
+        {
+            _showColorPalette = false;
+            _showFontSizeDropdown = false;
+        }
+        StateHasChanged();
+    }
+
+    // Toggle Font Size Dropdown
+    private void ToggleFontSizeDropdown()
+    {
+        _showFontSizeDropdown = !_showFontSizeDropdown;
+        if (_showFontSizeDropdown)
+        {
+            _showColorPalette = false;
+            _showThicknessDropdown = false;
+        }
+        StateHasChanged();
+    }
+
+    // Load custom colors from localStorage
+    private async Task LoadCustomColorsAsync()
+    {
+        try
+        {
+            var json = await JS.InvokeAsync<string>("localStorage.getItem", "annotate-custom-colors");
+            if (!string.IsNullOrEmpty(json))
+            {
+                _customColors = System.Text.Json.JsonSerializer.Deserialize<List<string>>(json) ?? new();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading custom colors: {ex.Message}");
+            _customColors = new();
+        }
+    }
+
+    // Save custom colors to localStorage
+    private async Task SaveCustomColorsAsync()
+    {
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(_customColors);
+            await JS.InvokeVoidAsync("localStorage.setItem", "annotate-custom-colors", json);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error saving custom colors: {ex.Message}");
+        }
+    }
+
+    // Text formatting toggles with JS update
+    private async void ToggleBoldAsync()
+    {
+        ViewModel.ToggleBold();
+        try
+        {
+            await JS.InvokeVoidAsync("setAnnotationBold", ViewModel.IsBold);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error updating bold: {ex.Message}");
+        }
+    }
+
+    private async void ToggleItalicAsync()
+    {
+        ViewModel.ToggleItalic();
+        try
+        {
+            await JS.InvokeVoidAsync("setAnnotationItalic", ViewModel.IsItalic);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error updating italic: {ex.Message}");
+        }
+    }
+
+    private async void ToggleUnderlineAsync()
+    {
+        ViewModel.ToggleUnderline();
+        try
+        {
+            await JS.InvokeVoidAsync("setAnnotationUnderline", ViewModel.IsUnderline);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error updating underline: {ex.Message}");
+        }
+    }
+
+    // Zoom controls
+    private async void ZoomIn()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("zoomIn");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error zooming in: {ex.Message}");
+        }
+    }
+
+    private async void ZoomOut()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("zoomOut");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error zooming out: {ex.Message}");
+        }
+    }
+
+    private async void ResetZoom()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("resetZoom");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error resetting zoom: {ex.Message}");
+        }
+    }
+
+    // Update button states based on current text formatting
+    [JSInvokable]
+    public void UpdateTextFormattingState(bool isBold, bool isItalic, bool isUnderline)
+    {
+        ViewModel.IsBold = isBold;
+        ViewModel.IsItalic = isItalic;
+        ViewModel.IsUnderline = isUnderline;
+        StateHasChanged();
+        Console.WriteLine($"✓ Button states updated - Bold: {isBold}, Italic: {isItalic}, Underline: {isUnderline}");
+    }
+    
+    // Track canvas content changes
+    [JSInvokable]
+    public void OnCanvasContentChanged()
+    {
+        if (!_canvasInitialized) return;
+        
+        _hasUnsavedChanges = true;
+        Console.WriteLine("✓ Canvas content changed - unsaved changes tracked");
+    }
+    
+    // Insert annotation and reset unsaved changes flag
+    private async Task InsertAnnotation()
+    {
+        try
+        {
+            Console.WriteLine("Starting annotation insertion...");
+            
+            // Export canvas as base64
+            var base64Image = await JS.InvokeAsync<string>("exportAnnotatedCanvas");
+            
+            if (string.IsNullOrEmpty(base64Image))
+            {
+                ViewModel.SetError("Failed to export image");
+                Console.WriteLine("✗ Failed to export canvas");
+                return;
+            }
+            
+            var sizeKB = base64Image.Length / 1024;
+            Console.WriteLine($"✓ Canvas exported, size: {sizeKB:F0} KB");
+            
+            // Store in localStorage for CaseNotePage to retrieve
+            // Note: localStorage is client-side, so no SignalR message size limits apply
+            await JS.InvokeVoidAsync("localStorage.setItem", "pendingAnnotationImage", base64Image);
+            Console.WriteLine("✓ Image stored in localStorage");
+            
+            // Clear unsaved changes flag
+            _hasUnsavedChanges = false;
+            
+            // Small delay to ensure localStorage write completes
+            await Task.Delay(50);
+            
+            // Navigate to CaseNotePage
+            NavigationManager.NavigateTo("/case-notes", forceLoad: false);
+            
+            Console.WriteLine("✓ Image exported and navigating to Case Notes");
+        }
+        catch (JSException jsEx)
+        {
+            Console.WriteLine($"✗ JavaScript error inserting annotation: {jsEx.Message}");
+            Console.Error.WriteLine($"[ERROR] JS error during annotation insertion: {jsEx.Message}");
+            ViewModel.SetError("Failed to insert annotation. The image may be too large.");
+            StateHasChanged();
+        }
+        catch (InvalidOperationException ioEx)
+        {
+            Console.WriteLine($"✗ Connection error: {ioEx.Message}");
+            Console.Error.WriteLine($"[ERROR] Connection error during annotation insertion: {ioEx.Message}");
+            
+            // Try to store in localStorage anyway before showing error
+            try
+            {
+                await JS.InvokeVoidAsync("localStorage.setItem", "pendingAnnotationImage", "error");
+                ViewModel.SetError("Connection interrupted. Please refresh and try again.");
+            }
+            catch
+            {
+                ViewModel.SetError("Connection lost. Please refresh the page.");
+            }
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"✗ Error inserting annotation: {ex.Message}");
+            Console.Error.WriteLine($"[ERROR] Annotation insertion failed: {ex.GetType().Name} - {ex.Message}");
+            ViewModel.SetError("Failed to insert annotation. Please try again.");
+            StateHasChanged();
+        }
+    }
+    
+    // Handle image selection with unsaved changes check
+    private void HandleSelectImage(AnnotateImageViewModel.AnnotationImage image)
+    {
+        // If in before-after mode and configuring a side, set that side's image
+        if (ViewModel.CanvasBackground == "before-after" && _configuringSide != null)
+        {
+            if (_configuringSide == "before")
+            {
+                ViewModel.SetBeforeImage(image);
+            }
+            else if (_configuringSide == "after")
+            {
+                ViewModel.SetAfterImage(image);
+            }
+            _configuringSide = null;
+            StateHasChanged();
+            return;
+        }
+        
+        // Don't show warning if selecting the same image
+        if (ViewModel.SelectedImage == image)
+        {
+            return;
+        }
+        
+        // Check for unsaved changes
+        if (_hasUnsavedChanges)
+        {
+            _pendingImageSelection = image;
+            _showUnsavedChangesModal = true;
+            StateHasChanged();
+            return;
+        }
+        
+        // Select image directly if no unsaved changes
+        ViewModel.SelectImage(image);
+        StateHasChanged();
+    }
+    
+    // Handle add new image with unsaved changes check
+    private void HandleAddNewImage()
+    {
+        // Check for unsaved changes
+        if (_hasUnsavedChanges)
+        {
+            _pendingAddNewImage = true;
+            _showUnsavedChangesModal = true;
+            StateHasChanged();
+            return;
+        }
+        
+        // Show add image modal
+        _showAddImageModal = true;
+        StateHasChanged();
+    }
+    
+    private async Task CloseAddImageModal()
+    {
+        await StopCamera();
+        _showAddImageModal = false;
+        _showCameraCapture = false;
+        _capturedImageDataUrl = null;
+        _flipHorizontal = false;
+        _flipVertical = false;
+        StateHasChanged();
+    }
+    
+    private async Task ShowUploadOption()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("eval", "document.getElementById('imageFileInput')?.click()");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error triggering file input: {ex.Message}");
+            ViewModel.SetError("Failed to open file dialog");
+        }
+    }
+    
+    private void ShowCameraOption()
+    {
+        _showCameraCapture = true;
+        StateHasChanged();
+        // Camera will be started in OnAfterRenderAsync when DOM is ready
+    }
+    
+    private async Task StartCamera()
+    {
+        try
+        {
+            // Wait a bit for DOM to be ready
+            await Task.Delay(200);
+            
+            // Check if camera functions exist and load script if needed
+            var hasStartCamera = await JS.InvokeAsync<bool>("eval", "typeof startCamera !== 'undefined'");
+            if (!hasStartCamera)
+            {
+                // Load script if not loaded
+                await JS.InvokeVoidAsync("eval", @"
+                    if (!window.cameraScriptLoaded) {
+                        return new Promise((resolve) => {
+                            const script = document.createElement('script');
+                            script.src = '_content/Beauty_Aesthetics_Hybrid.Shared/js/camera-capture.js';
+                            script.onload = () => { 
+                                window.cameraScriptLoaded = true; 
+                                resolve(true);
+                            };
+                            script.onerror = () => { 
+                                console.error('Failed to load camera script');
+                                resolve(false);
+                            };
+                            document.body.appendChild(script);
+                        });
+                    } else {
+                        return true;
+                    }
+                ");
+                
+                // Wait a bit more and verify
+                await Task.Delay(300);
+                hasStartCamera = await JS.InvokeAsync<bool>("eval", "typeof startCamera !== 'undefined'");
+                if (!hasStartCamera)
+                {
+                    throw new Exception("Camera script failed to load");
+                }
+            }
+            
+            await JS.InvokeVoidAsync("startCamera");
+            _isCameraActive = true;
+            Console.WriteLine("Camera started successfully");
+        }
+        catch (JSException jsEx)
+        {
+            Console.WriteLine($"JavaScript error starting camera: {jsEx.Message}");
+            ViewModel.SetError("Failed to access camera. Please ensure camera permissions are granted and try again.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error starting camera: {ex.Message}");
+            ViewModel.SetError($"Failed to access camera: {ex.Message}");
+        }
+    }
+    
+    private async Task StopCamera()
+    {
+        try
+        {
+            if (_isCameraActive)
+            {
+                var hasStopCamera = await JS.InvokeAsync<bool>("eval", "typeof stopCamera !== 'undefined'");
+                if (hasStopCamera)
+                {
+                    await JS.InvokeVoidAsync("stopCamera");
+                }
+                _isCameraActive = false;
+                Console.WriteLine("Camera stopped");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error stopping camera: {ex.Message}");
+            _isCameraActive = false;
+        }
+    }
+    
+    private async Task FlipHorizontal()
+    {
+        _flipHorizontal = !_flipHorizontal;
+        await JS.InvokeVoidAsync("flipCamera", "horizontal");
+        StateHasChanged();
+    }
+    
+    private async Task FlipVertical()
+    {
+        _flipVertical = !_flipVertical;
+        await JS.InvokeVoidAsync("flipCamera", "vertical");
+        StateHasChanged();
+    }
+    
+    private async Task CaptureImage()
+    {
+        try
+        {
+            _capturedImageDataUrl = await JS.InvokeAsync<string>("captureImage");
+            _previousCapturedImageDataUrl = _capturedImageDataUrl; // Track that we have a captured image
+            Console.WriteLine($"Image captured, size: {(_capturedImageDataUrl?.Length ?? 0) / 1024} KB");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error capturing image: {ex.Message}");
+            ViewModel.SetError("Failed to capture image. Please try again.");
+        }
+    }
+    
+    private async Task ResetCapture()
+    {
+        // Store previous state to trigger OnAfterRender video restoration
+        _previousCapturedImageDataUrl = _capturedImageDataUrl;
+        
+        // Clear captured image first
+        _capturedImageDataUrl = null;
+        _flipHorizontal = false;
+        _flipVertical = false;
+        
+        // Force state update to switch UI back to video view
+        StateHasChanged();
+        
+        // Wait longer for Blazor to re-render the video element
+        await Task.Delay(350);
+        
+        // Reset camera to restore video feed
+        try
+        {
+            // First verify and restore video stream
+            var videoRestored = await JS.InvokeAsync<bool>("eval", @"
+                (function() {
+                    const video = document.getElementById('cameraVideo');
+                    if (!video) {
+                        return false;
+                    }
+                    
+                    // Make absolutely sure video is visible
+                    video.style.display = 'block';
+                    video.style.visibility = 'visible';
+                    video.style.opacity = '1';
+                    video.style.width = '100%';
+                    video.style.height = '100%';
+                    
+                    // Check if video has a stream
+                    if (!video.srcObject) {
+                        return false;
+                    }
+                    
+                    const stream = video.srcObject;
+                    const tracks = stream.getTracks();
+                    const hasActiveTrack = tracks.some(track => track.readyState === 'live' && track.enabled);
+                    
+                    if (!hasActiveTrack) {
+                        return false;
+                    }
+                    
+                    // Try to play the video
+                    if (video.paused) {
+                        const playPromise = video.play();
+                        if (playPromise) {
+                            playPromise.catch(err => {
+                                console.warn('Play error:', err);
+                            });
+                        }
+                    }
+                    
+                    // Check if video has dimensions (means it's receiving data)
+                    if (video.videoWidth > 0 && video.videoHeight > 0) {
+                        return true;
+                    }
+                    
+                    // Wait a bit more for video to have dimensions
+                    // Return a promise that will be awaited properly
+                    return new Promise((resolve) => {
+                        let attempts = 0;
+                        const checkDimensions = () => {
+                            if (video.videoWidth > 0 && video.videoHeight > 0) {
+                                resolve(true);
+                            } else if (attempts < 20) {
+                                attempts++;
+                                setTimeout(checkDimensions, 50);
+                            } else {
+                                resolve(false);
+                            }
+                        };
+                        checkDimensions();
+                    });
+                })();
+            ");
+            
+            // If video wasn't restored, restart camera completely
+            if (!videoRestored)
+            {
+                Console.WriteLine("Video not restored, restarting camera...");
+                if (_isCameraActive)
+                {
+                    // Stop current camera first
+                    await StopCamera();
+                    await Task.Delay(200);
+                }
+                // Restart camera
+                await StartCamera();
+            }
+            else
+            {
+                // Call resetCamera to reset flip states
+                await JS.InvokeVoidAsync("resetCamera");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error resetting camera: {ex.Message}");
+            // If reset fails, try to restart camera
+            if (_isCameraActive)
+            {
+                await StopCamera();
+                await Task.Delay(200);
+                await StartCamera();
+            }
+        }
+    }
+    
+    private async Task ConfirmCameraImage()
+    {
+        if (string.IsNullOrEmpty(_capturedImageDataUrl))
+        {
+            ViewModel.SetError("No image captured");
+            return;
+        }
+        
+        // Generate a unique name for the captured image
+        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        var imageName = $"Camera_{timestamp}";
+        
+        // If in before-after mode and configuring a side, set that side's image
+        if (ViewModel.CanvasBackground == "before-after" && _configuringSide != null)
+        {
+            var newImage = new AnnotateImageViewModel.AnnotationImage(imageName, "Captured", _capturedImageDataUrl, _capturedImageDataUrl);
+            
+            if (_configuringSide == "before")
+            {
+                ViewModel.SetBeforeImage(newImage);
+            }
+            else if (_configuringSide == "after")
+            {
+                ViewModel.SetAfterImage(newImage);
+            }
+            
+            _configuringSide = null;
+            await CloseAddImageModal();
+            StateHasChanged();
+            return;
+        }
+        
+        // Add image to the list (standard mode)
+        ViewModel.AddImage(imageName, "Captured", _capturedImageDataUrl, _capturedImageDataUrl);
+        
+        // Close modal and select the new image
+        await CloseAddImageModal();
+        var newImage2 = ViewModel.Images.First();
+        ViewModel.SelectImage(newImage2);
+        StateHasChanged();
+    }
+    
+    private async Task HandleImageUpload(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            var file = e.File;
+            if (file == null) return;
+            
+            // Validate file type
+            if (!file.ContentType.StartsWith("image/"))
+            {
+                ViewModel.SetError("Please select an image file");
+                return;
+            }
+            
+            // Limit file size to 5MB
+            const int maxFileSize = 5 * 1024 * 1024;
+            if (file.Size > maxFileSize)
+            {
+                ViewModel.SetError("Image size must be less than 5MB");
+                return;
+            }
+            
+            // Read the file as base64
+            using var stream = file.OpenReadStream(maxFileSize);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+            var base64 = Convert.ToBase64String(bytes);
+            var dataUrl = $"data:{file.ContentType};base64,{base64}";
+            
+            // If in before-after mode and configuring a side, set that side's image
+            if (ViewModel.CanvasBackground == "before-after" && _configuringSide != null)
+            {
+                var imageName = Path.GetFileNameWithoutExtension(file.Name);
+                var newImage = new AnnotateImageViewModel.AnnotationImage(imageName, "Uploaded", dataUrl, dataUrl);
+                
+                if (_configuringSide == "before")
+                {
+                    ViewModel.SetBeforeImage(newImage);
+                }
+                else if (_configuringSide == "after")
+                {
+                    ViewModel.SetAfterImage(newImage);
+                }
+                
+                _configuringSide = null;
+                StateHasChanged();
+                Console.WriteLine($"Image uploaded to {_configuringSide} side: {imageName}, size: {file.Size / 1024} KB");
+                return;
+            }
+            
+            // Add image to the list (standard mode)
+            var imageName2 = Path.GetFileNameWithoutExtension(file.Name);
+            ViewModel.AddImage(imageName2, "Uploaded", dataUrl, dataUrl);
+            
+            // Close modal and select the new image
+            await CloseAddImageModal();
+            var newImage2 = ViewModel.Images.First();
+            ViewModel.SelectImage(newImage2);
+            StateHasChanged();
+            
+            Console.WriteLine($"Image uploaded: {imageName2}, size: {file.Size / 1024} KB");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error uploading image: {ex.Message}");
+            ViewModel.SetError($"Failed to upload image: {ex.Message}");
+        }
+    }
+    
+    // Show image selection for before/after side
+    private void ShowImageSelectionForSide(string side)
+    {
+        _configuringSide = side;
+        // The user will click an image from the sidebar, which will be handled by HandleSelectImage
+        StateHasChanged();
+    }
+    
+    // Wrapper methods for before/after image selection (to avoid Razor quote issues)
+    private void SelectBeforeFromLibrary()
+    {
+        ShowImageSelectionForSide("before");
+    }
+    
+    private void SelectAfterFromLibrary()
+    {
+        ShowImageSelectionForSide("after");
+    }
+    
+    // Show upload dialog for before/after side
+    private async Task ShowUploadForSide(string side)
+    {
+        _configuringSide = side;
+        try
+        {
+            await JS.InvokeVoidAsync("eval", "document.getElementById('imageFileInput')?.click()");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error triggering file input: {ex.Message}");
+            ViewModel.SetError("Failed to open file dialog");
+            _configuringSide = null;
+        }
+    }
+    
+    // Wrapper methods for before/after image upload (to avoid Razor quote issues)
+    private async Task UploadBeforeImage()
+    {
+        await ShowUploadForSide("before");
+    }
+    
+    private async Task UploadAfterImage()
+    {
+        await ShowUploadForSide("after");
+    }
+    
+    // Change image modal state
+    private bool _showChangeImageModal = false;
+    private bool _changingBeforeImage = false;
+    
+    // Show change image options modal
+    private void ShowChangeImageOptions(bool isBeforeImage)
+    {
+        _changingBeforeImage = isBeforeImage;
+        _showChangeImageModal = true;
+        StateHasChanged();
+    }
+    
+    // Close change image modal
+    private void CloseChangeImageModal()
+    {
+        _showChangeImageModal = false;
+        StateHasChanged();
+    }
+    
+    // Change image from library
+    private void ChangeImageFromLibrary()
+    {
+        _showChangeImageModal = false;
+        if (_changingBeforeImage)
+        {
+            SelectBeforeFromLibrary();
+        }
+        else
+        {
+            SelectAfterFromLibrary();
+        }
+    }
+    
+    // Change image from PC
+    private async Task ChangeImageFromPC()
+    {
+        _showChangeImageModal = false;
+        if (_changingBeforeImage)
+        {
+            await UploadBeforeImage();
+        }
+        else
+        {
+            await UploadAfterImage();
+        }
+    }
+    
+    // Cancel image selection
+    private void CancelImageSelection()
+    {
+        _configuringSide = null;
+        StateHasChanged();
+    }
+    
+    // Navigation handling with unsaved changes check
+    private void NavigateBack()
+    {
+        if (_hasUnsavedChanges)
+        {
+            _pendingNavigation = "/";
+            _showUnsavedChangesModal = true;
+            StateHasChanged();
+            return;
+        }
+        
+        // Navigate directly if no unsaved changes
+        NavigationManager.NavigateTo("/case-notes");
+    }
+    
+    private void ContinueEditing()
+    {
+        _showUnsavedChangesModal = false;
+        _pendingNavigation = null;
+        _pendingImageSelection = null;
+        _pendingAddNewImage = false;
+        StateHasChanged();
+    }
+    
+    private void DiscardChanges()
+    {
+        _showUnsavedChangesModal = false;
+        _hasUnsavedChanges = false;
+        
+        // Handle navigation
+        if (_pendingNavigation != null)
+        {
+            var targetUrl = _pendingNavigation;
+            _pendingNavigation = null;
+            NavigationManager.NavigateTo(targetUrl);
+        }
+        // Handle image selection
+        else if (_pendingImageSelection != null)
+        {
+            var targetImage = _pendingImageSelection;
+            _pendingImageSelection = null;
+            ViewModel.SelectImage(targetImage);
+            StateHasChanged();
+        }
+        // Handle add new image
+        else if (_pendingAddNewImage)
+        {
+            _pendingAddNewImage = false;
+            // Show add image modal
+            _showAddImageModal = true;
+            StateHasChanged();
+        }
+    }
+
+    // Note: Text boxes are now fully handled by Fabric.js for better performance
+    // The Blazor text box code has been removed to avoid duplication
+
+    private DotNetObjectReference<AnnotateImage>? _dotNetRef;
+    private bool _showColorPalette = false;
+    private ElementReference _customColorInput;
+    private List<string> _customColors = new();
+    
+    // Google Docs-style color palette (10 columns x 7 rows)
+    private readonly List<List<string>> _colorPalette = new()
+    {
+        // Row 1 - Blacks and Grays
+        new() { "#000000", "#434343", "#666666", "#999999", "#b7b7b7", "#cccccc", "#d9d9d9", "#efefef", "#f3f3f3", "#ffffff" },
+        
+        // Row 2 - Reds
+        new() { "#980000", "#ff0000", "#ff9900", "#ffff00", "#00ff00", "#00ffff", "#4a86e8", "#0000ff", "#9900ff", "#ff00ff" },
+        
+        // Row 3 - Light variants
+        new() { "#e6b8af", "#f4cccc", "#fce5cd", "#fff2cc", "#d9ead3", "#d0e0e3", "#c9daf8", "#cfe2f3", "#d9d2e9", "#ead1dc" },
+        
+        // Row 4 - Medium variants
+        new() { "#dd7e6b", "#ea9999", "#f9cb9c", "#ffe599", "#b6d7a8", "#a2c4c9", "#a4c2f4", "#9fc5e8", "#b4a7d6", "#d5a6bd" },
+        
+        // Row 5 - Darker variants
+        new() { "#cc4125", "#e06666", "#f6b26b", "#ffd966", "#93c47d", "#76a5af", "#6d9eeb", "#6fa8dc", "#8e7cc3", "#c27ba0" },
+        
+        // Row 6 - Deep variants
+        new() { "#a61c00", "#cc0000", "#e69138", "#f1c232", "#6aa84f", "#45818e", "#3c78d8", "#3d85c6", "#674ea7", "#a64d79" },
+        
+        // Row 7 - Darkest variants
+        new() { "#85200c", "#990000", "#b45f06", "#bf9000", "#38761d", "#134f5c", "#1155cc", "#0b5394", "#351c75", "#741b47" }
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Load custom colors from localStorage
+        await LoadCustomColorsAsync();
+    }
+
+    protected override void OnInitialized()
+    {
+        // Subscribe to property changes to trigger UI updates
+        ViewModel.PropertyChanged += async (sender, args) => 
+        {
+            // Handle debounced updates for sliders
+            if (args.PropertyName == nameof(ViewModel.SelectedColor))
+            {
+                await DebouncedColorUpdateAsync();
+            }
+            else if (args.PropertyName == nameof(ViewModel.LineThickness))
+            {
+                await DebouncedThicknessUpdateAsync();
+            }
+            else if (args.PropertyName == nameof(ViewModel.FontSize))
+            {
+                await DebouncedFontSizeUpdateAsync();
+            }
+            else
+            {
+                // For non-slider properties, update immediately
+                await UpdateJavaScriptStateAsync();
+            }
+            
+            StateHasChanged();
+        };
+    }
+
+    private async Task<bool> IsCanvasReadyAsync()
+    {
+        try
+        {
+            return await JS.InvokeAsync<bool>("isCanvasReady");
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    // Debounced color update
+    private Task DebouncedColorUpdateAsync()
+    {
+        // Cancel previous timer if exists
+        _colorDebounceTimer?.Dispose();
+        
+        // Create new timer that fires after debounce delay
+        _colorDebounceTimer = new System.Threading.Timer(_ =>
+        {
+            InvokeAsync(async () =>
+            {
+                try
+                {
+                    Console.WriteLine($"Updating color to: {ViewModel.SelectedColor}");
+                    var isReady = await JS.InvokeAsync<bool>("isCanvasReady");
+                    if (isReady)
+                    {
+                        await JS.InvokeVoidAsync("setAnnotationColor", ViewModel.SelectedColor);
+                        Console.WriteLine("Color updated successfully");
+                    }
+                    else
+                    {
+                        Console.WriteLine("Canvas not ready for color update");
+                    }
+                }
+                catch (JSException jsEx)
+                {
+                    Console.WriteLine($"JavaScript error updating color: {jsEx.Message}");
+                    Console.Error.WriteLine($"[ERROR] Color update failed - JSException: {jsEx.Message}");
+                    // Graceful degradation - color is stored in ViewModel
+                }
+                catch (InvalidOperationException invOpEx)
+                {
+                    Console.WriteLine($"Color update function not available: {invOpEx.Message}");
+                    Console.Error.WriteLine($"[ERROR] Color update failed - Function not available: {invOpEx.Message}");
+                    // Graceful degradation
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Unexpected error updating color: {ex.GetType().Name} - {ex.Message}");
+                    Console.Error.WriteLine($"[ERROR] Color update failed - Unexpected error: {ex.GetType().Name} - {ex.Message}");
+                }
+                finally
+                {
+                    _colorDebounceTimer?.Dispose();
+                }
+            });
+        }, null, DebounceDelayMs, Timeout.Infinite);
+        
+        return Task.CompletedTask;
+    }
+
+    // Debounced thickness update
+    private Task DebouncedThicknessUpdateAsync()
+    {
+        // Cancel previous timer if exists
+        _thicknessDebounceTimer?.Dispose();
+        
+        // Create new timer that fires after debounce delay
+        _thicknessDebounceTimer = new System.Threading.Timer(_ =>
+        {
+            InvokeAsync(async () =>
+            {
+                try
+                {
+                    Console.WriteLine($"Updating thickness to: {ViewModel.LineThickness}");
+                    var isReady = await JS.InvokeAsync<bool>("isCanvasReady");
+                    if (isReady)
+                    {
+                        await JS.InvokeVoidAsync("setAnnotationThickness", ViewModel.LineThickness);
+                        Console.WriteLine("Thickness updated successfully");
+                    }
+                    else
+                    {
+                        Console.WriteLine("Canvas not ready for thickness update");
+                    }
+                }
+                catch (JSException jsEx)
+                {
+                    Console.WriteLine($"JavaScript error updating thickness: {jsEx.Message}");
+                    Console.Error.WriteLine($"[ERROR] Thickness update failed - JSException: {jsEx.Message}");
+                    // Graceful degradation - thickness is stored in ViewModel
+                }
+                catch (InvalidOperationException invOpEx)
+                {
+                    Console.WriteLine($"Thickness update function not available: {invOpEx.Message}");
+                    Console.Error.WriteLine($"[ERROR] Thickness update failed - Function not available: {invOpEx.Message}");
+                    // Graceful degradation
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Unexpected error updating thickness: {ex.GetType().Name} - {ex.Message}");
+                    Console.Error.WriteLine($"[ERROR] Thickness update failed - Unexpected error: {ex.GetType().Name} - {ex.Message}");
+                }
+                finally
+                {
+                    _thicknessDebounceTimer?.Dispose();
+                }
+            });
+        }, null, DebounceDelayMs, Timeout.Infinite);
+        
+        return Task.CompletedTask;
+    }
+
+    // Debounced font size update
+    private Task DebouncedFontSizeUpdateAsync()
+    {
+        // Cancel previous timer if exists
+        _fontSizeDebounceTimer?.Dispose();
+        
+        // Create new timer that fires after debounce delay
+        _fontSizeDebounceTimer = new System.Threading.Timer(_ =>
+        {
+            InvokeAsync(async () =>
+            {
+                try
+                {
+                    Console.WriteLine($"Updating font size to: {ViewModel.FontSize}");
+                    var isReady = await JS.InvokeAsync<bool>("isCanvasReady");
+                    if (isReady)
+                    {
+                        await JS.InvokeVoidAsync("setAnnotationFontSize", ViewModel.FontSize);
+                        Console.WriteLine("Font size updated successfully");
+                    }
+                    else
+                    {
+                        Console.WriteLine("Canvas not ready for font size update");
+                    }
+                }
+                catch (JSException jsEx)
+                {
+                    Console.WriteLine($"JavaScript error updating font size: {jsEx.Message}");
+                    Console.Error.WriteLine($"[ERROR] Font size update failed - JSException: {jsEx.Message}");
+                    // Graceful degradation - font size is stored in ViewModel
+                }
+                catch (InvalidOperationException invOpEx)
+                {
+                    Console.WriteLine($"Font size update function not available: {invOpEx.Message}");
+                    Console.Error.WriteLine($"[ERROR] Font size update failed - Function not available: {invOpEx.Message}");
+                    // Graceful degradation
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Unexpected error updating font size: {ex.GetType().Name} - {ex.Message}");
+                    Console.Error.WriteLine($"[ERROR] Font size update failed - Unexpected error: {ex.GetType().Name} - {ex.Message}");
+                }
+                finally
+                {
+                    _fontSizeDebounceTimer?.Dispose();
+                }
+            });
+        }, null, DebounceDelayMs, Timeout.Infinite);
+        
+        return Task.CompletedTask;
+    }
+
+    private async Task SelectToolAsync(string toolId)
+    {
+        await ViewModel.SelectToolAsync(
+            toolId,
+            IsCanvasReadyAsync,
+            async (tool) => 
+            {
+                try
+                {
+                    await JS.InvokeVoidAsync("setAnnotationTool", tool);
+                    Console.WriteLine($"Tool '{tool}' activated successfully");
+                    ViewModel.ClearError();
+                }
+                catch (JSException jsEx)
+                {
+                    Console.WriteLine($"JavaScript error updating tool: {jsEx.Message}");
+                    Console.Error.WriteLine($"[ERROR] Tool selection failed - JSException: {jsEx.Message}");
+                    
+                    // Graceful degradation - tool state is updated in ViewModel even if JS fails
+                    ViewModel.SetError($"Failed to activate {tool} tool. Drawing may not work properly.");
+                }
+                catch (InvalidOperationException invOpEx)
+                {
+                    Console.WriteLine($"Tool update function not available: {invOpEx.Message}");
+                    Console.Error.WriteLine($"[ERROR] Tool selection failed - Function not available: {invOpEx.Message}");
+                    
+                    // Graceful degradation
+                    ViewModel.SetError("Drawing tools are temporarily unavailable. Please refresh the page.");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Unexpected error updating tool: {ex.GetType().Name} - {ex.Message}");
+                    Console.Error.WriteLine($"[ERROR] Tool selection failed - Unexpected error: {ex.GetType().Name} - {ex.Message}");
+                    
+                    // Graceful degradation
+                    ViewModel.SetError("An error occurred while selecting the tool. Please try again.");
+                }
+            }
+        );
+        StateHasChanged();
+    }
+
+    private async Task UpdateJavaScriptStateAsync()
+    {
+        const int maxRetries = 3;
+        const int retryDelayMs = 100;
+        
+        Console.WriteLine("Starting JavaScript state synchronization...");
+        
+        for (int attempt = 0; attempt < maxRetries; attempt++)
+        {
+            try
+            {
+                Console.WriteLine($"State sync attempt {attempt + 1}/{maxRetries}");
+                
+                // Check if canvas is ready before invoking JS functions
+                var isReady = await JS.InvokeAsync<bool>("isCanvasReady");
+                
+                if (!isReady)
+                {
+                    // Canvas not ready, wait and retry
+                    Console.WriteLine($"Canvas not ready on attempt {attempt + 1}, waiting...");
+                    
+                    if (attempt < maxRetries - 1)
+                    {
+                        await Task.Delay(retryDelayMs * (attempt + 1)); // Exponential backoff
+                        continue;
+                    }
+                    else
+                    {
+                        // Max retries reached, canvas still not ready
+                        Console.WriteLine("Canvas not ready after maximum retries");
+                        Console.Error.WriteLine("[ERROR] State synchronization failed - Canvas not ready after retries");
+                        
+                        // Graceful degradation - don't show error to user, just log
+                        return;
+                    }
+                }
+                
+                Console.WriteLine("Canvas ready, updating state...");
+                
+                // Canvas is ready, update all state synchronously
+                await JS.InvokeVoidAsync("setAnnotationTool", ViewModel.ActiveTool);
+                await JS.InvokeVoidAsync("setAnnotationColor", ViewModel.SelectedColor);
+                await JS.InvokeVoidAsync("setAnnotationThickness", ViewModel.LineThickness);
+                await JS.InvokeVoidAsync("setAnnotationFontSize", ViewModel.FontSize);
+                await JS.InvokeVoidAsync("setAnnotationBold", ViewModel.IsBold);
+                await JS.InvokeVoidAsync("setAnnotationItalic", ViewModel.IsItalic);
+                await JS.InvokeVoidAsync("setAnnotationUnderline", ViewModel.IsUnderline);
+                
+                Console.WriteLine("JavaScript state synchronized successfully");
+                
+                // Success, exit retry loop
+                return;
+            }
+            catch (JSException jsEx)
+            {
+                // JavaScript error occurred
+                Console.WriteLine($"JavaScript error during state update (attempt {attempt + 1}/{maxRetries}): {jsEx.Message}");
+                Console.Error.WriteLine($"[ERROR] State sync attempt {attempt + 1} failed - JSException: {jsEx.Message}");
+                
+                if (attempt < maxRetries - 1)
+                {
+                    await Task.Delay(retryDelayMs * (attempt + 1)); // Exponential backoff
+                }
+                else
+                {
+                    // Max retries reached, log final error
+                    Console.WriteLine($"Failed to update JavaScript state after {maxRetries} attempts: {jsEx.Message}");
+                    Console.Error.WriteLine($"[ERROR] State synchronization failed after {maxRetries} attempts - JSException: {jsEx.Message}");
+                    
+                    // Graceful degradation - state is maintained in ViewModel
+                    // Don't show error to user as this is non-critical
+                }
+            }
+            catch (InvalidOperationException invOpEx)
+            {
+                // JavaScript runtime not available or function not found
+                Console.WriteLine($"JavaScript function not available (attempt {attempt + 1}/{maxRetries}): {invOpEx.Message}");
+                Console.Error.WriteLine($"[ERROR] State sync attempt {attempt + 1} failed - Function not available: {invOpEx.Message}");
+                
+                if (attempt < maxRetries - 1)
+                {
+                    await Task.Delay(retryDelayMs * (attempt + 1)); // Exponential backoff
+                }
+                else
+                {
+                    // Max retries reached
+                    Console.WriteLine($"JavaScript functions not available after {maxRetries} attempts");
+                    Console.Error.WriteLine($"[ERROR] State synchronization failed - Functions not available after {maxRetries} attempts");
+                    
+                    // Graceful degradation
+                }
+            }
+            catch (Exception ex)
+            {
+                // Unexpected error
+                Console.WriteLine($"Unexpected error during state update: {ex.GetType().Name} - {ex.Message}");
+                Console.Error.WriteLine($"[ERROR] State synchronization failed - Unexpected error: {ex.GetType().Name} - {ex.Message}");
+                
+                // Don't retry on unexpected errors
+                return;
+            }
+        }
+    }
+
+    private async Task HandleUndo()
+    {
+        try
+        {
+            Console.WriteLine("Executing undo operation...");
+            await JS.InvokeVoidAsync("annotationUndo");
+            Console.WriteLine("Undo operation completed successfully");
+            ViewModel.ClearError();
+        }
+        catch (JSException jsEx)
+        {
+            Console.WriteLine($"JavaScript error during undo: {jsEx.Message}");
+            Console.Error.WriteLine($"[ERROR] Undo operation failed - JSException: {jsEx.Message}");
+            
+            // User-facing error message
+            ViewModel.SetError("Failed to undo. The drawing canvas may not be ready.");
+        }
+        catch (InvalidOperationException invOpEx)
+        {
+            Console.WriteLine($"Undo function not available: {invOpEx.Message}");
+            Console.Error.WriteLine($"[ERROR] Undo operation failed - Function not available: {invOpEx.Message}");
+            
+            // Graceful degradation
+            ViewModel.SetError("Undo is temporarily unavailable. Please try again.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Unexpected error during undo: {ex.GetType().Name} - {ex.Message}");
+            Console.Error.WriteLine($"[ERROR] Undo operation failed - Unexpected error: {ex.GetType().Name} - {ex.Message}");
+        }
+    }
+
+    private async Task HandleRedo()
+    {
+        try
+        {
+            Console.WriteLine("Executing redo operation...");
+            await JS.InvokeVoidAsync("annotationRedo");
+            Console.WriteLine("Redo operation completed successfully");
+            ViewModel.ClearError();
+        }
+        catch (JSException jsEx)
+        {
+            Console.WriteLine($"JavaScript error during redo: {jsEx.Message}");
+            Console.Error.WriteLine($"[ERROR] Redo operation failed - JSException: {jsEx.Message}");
+            
+            // User-facing error message
+            ViewModel.SetError("Failed to redo. The drawing canvas may not be ready.");
+        }
+        catch (InvalidOperationException invOpEx)
+        {
+            Console.WriteLine($"Redo function not available: {invOpEx.Message}");
+            Console.Error.WriteLine($"[ERROR] Redo operation failed - Function not available: {invOpEx.Message}");
+            
+            // Graceful degradation
+            ViewModel.SetError("Redo is temporarily unavailable. Please try again.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Unexpected error during redo: {ex.GetType().Name} - {ex.Message}");
+            Console.Error.WriteLine($"[ERROR] Redo operation failed - Unexpected error: {ex.GetType().Name} - {ex.Message}");
+        }
+    }
+
+    private async Task HandleReset()
+    {
+        try
+        {
+            Console.WriteLine("Executing reset operation...");
+            await JS.InvokeVoidAsync("annotationReset");
+            ViewModel.ResetCanvas();
+            _hasUnsavedChanges = false; // Reset unsaved changes flag
+            Console.WriteLine("Reset operation completed successfully");
+            ViewModel.ClearError();
+        }
+        catch (JSException jsEx)
+        {
+            Console.WriteLine($"JavaScript error during reset: {jsEx.Message}");
+            Console.Error.WriteLine($"[ERROR] Reset operation failed - JSException: {jsEx.Message}");
+            
+            // User-facing error message
+            ViewModel.SetError("Failed to reset canvas. Please refresh the page.");
+        }
+        catch (InvalidOperationException invOpEx)
+        {
+            Console.WriteLine($"Reset function not available: {invOpEx.Message}");
+            Console.Error.WriteLine($"[ERROR] Reset operation failed - Function not available: {invOpEx.Message}");
+            
+            // Graceful degradation - still reset ViewModel
+            ViewModel.ResetCanvas();
+            _hasUnsavedChanges = false; // Reset unsaved changes flag
+            ViewModel.SetError("Canvas reset partially completed. Please refresh the page for full reset.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Unexpected error during reset: {ex.GetType().Name} - {ex.Message}");
+            Console.Error.WriteLine($"[ERROR] Reset operation failed - Unexpected error: {ex.GetType().Name} - {ex.Message}");
+            
+            // Graceful degradation
+            ViewModel.ResetCanvas();
+            _hasUnsavedChanges = false; // Reset unsaved changes flag
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Load camera capture script
+            await JS.InvokeVoidAsync("eval", @"
+                if (!document.querySelector('script[src=""_content/Beauty_Aesthetics_Hybrid.Shared/js/camera-capture.js""]')) {
+                    const script = document.createElement('script');
+                    script.src = '_content/Beauty_Aesthetics_Hybrid.Shared/js/camera-capture.js';
+                    script.async = true;
+                    document.body.appendChild(script);
+                }
+            ");
+            
+            // Create reference to this component for JavaScript callbacks
+            _dotNetRef = DotNetObjectReference.Create(this);
+            
+            // Set up listener for text formatting changes from JavaScript
+            await JS.InvokeVoidAsync("setupTextFormattingListener", _dotNetRef);
+            
+            // Initialize the resizer functionality (Fabric.js is in external file)
+            await InitializeResizerAsync();
+        }
+        
+        // Initialize camera when camera view is shown
+        if (_showCameraCapture && _showAddImageModal && !_isCameraActive)
+        {
+            await Task.Delay(300); // Wait for DOM elements to be rendered
+            await StartCamera();
+        }
+        
+        // Ensure video plays when UI switches back from captured image to live feed (after Retake)
+        if (_showCameraCapture && _showAddImageModal && _isCameraActive && 
+            string.IsNullOrEmpty(_capturedImageDataUrl) && 
+            !string.IsNullOrEmpty(_previousCapturedImageDataUrl))
+        {
+            // Wait a bit for video element to be in DOM after Blazor renders
+            await Task.Delay(250);
+            
+            // Ensure video is visible and playing
+            try
+            {
+                var videoReady = await JS.InvokeAsync<bool>("eval", @"
+                    (function() {
+                        const video = document.getElementById('cameraVideo');
+                        if (!video || !video.srcObject) {
+                            return false;
+                        }
+                        
+                        // Make absolutely sure video is visible
+                        video.style.display = 'block';
+                        video.style.visibility = 'visible';
+                        video.style.opacity = '1';
+                        video.style.width = '100%';
+                        video.style.height = '100%';
+                        
+                        // Check if stream is active
+                        const stream = video.srcObject;
+                        const tracks = stream.getTracks();
+                        const hasActiveTrack = tracks.some(track => track.readyState === 'live' && track.enabled);
+                        
+                        if (!hasActiveTrack) {
+                            return false;
+                        }
+                        
+                        // Play if paused
+                        if (video.paused && video.readyState >= 2) {
+                            video.play().catch(err => console.warn('Play error in OnAfterRender:', err));
+                        }
+                        
+                        return true;
+                    })();
+                ");
+                
+                if (!videoReady)
+                {
+                    // Video not ready, try to restart camera
+                    Console.WriteLine("Video not ready after retake, restarting camera...");
+                    if (_isCameraActive)
+                    {
+                        await StopCamera();
+                        await Task.Delay(200);
+                        await StartCamera();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error ensuring video plays in OnAfterRender: {ex.Message}");
+            }
+        }
+        
+        // Handle canvas initialization for before-after mode
+        if (ViewModel.CanvasBackground == "before-after")
+        {
+            // Initialize canvas in before-after mode even without images (so structure is ready)
+            // The canvas can be used for drawing even before images are loaded
+            if (!_canvasInitialized)
+            {
+                // Small delay to ensure DOM elements are rendered
+                await Task.Delay(100);
+                await InitializeCanvasAsync();
+            }
+        }
+        // Handle canvas initialization when image is selected (standard mode)
+        else if (ViewModel.SelectedImage != null)
+        {
+            // Check if image changed (new selection or first selection)
+            if (_previousSelectedImage != ViewModel.SelectedImage)
+            {
+                // Dispose previous canvas if it exists
+                if (_canvasInitialized)
+                {
+                    await DisposeCanvasAsync();
+                }
+                
+                // Initialize canvas for new image
+                await InitializeCanvasAsync();
+                
+                // Track the current image
+                _previousSelectedImage = ViewModel.SelectedImage;
+            }
+        }
+        else if (_previousSelectedImage != null)
+        {
+            // Image was deselected, dispose canvas
+            if (_canvasInitialized)
+            {
+                await DisposeCanvasAsync();
+            }
+            _previousSelectedImage = null;
+        }
+    }
+
+    private async Task InitializeResizerAsync()
+    {
+        await JS.InvokeVoidAsync("eval", @"
+            (function() {
+                function initializeResizer() {
+                    const resizer = document.querySelector('.panel-resizer');
+                    const leftPanel = document.querySelector('.annotate-sidebar');
+                    const container = document.querySelector('.annotate-container');
+
+                    if (!resizer || !leftPanel || !container) {
+                        setTimeout(initializeResizer, 100);
+                        return;
+                    }
+
+                    let isResizing = false;
+
+                    resizer.addEventListener('mousedown', function(e) {
+                        e.preventDefault();
+                        isResizing = true;
+                        document.body.style.cursor = 'col-resize';
+                        document.body.style.userSelect = 'none';
+                    });
+
+                    document.addEventListener('mousemove', function(e) {
+                        if (!isResizing) return;
+
+                        const containerRect = container.getBoundingClientRect();
+                        const mouseX = e.clientX - containerRect.left;
+                        let leftWidth = Math.max(250, Math.min(500, mouseX));
+                        leftPanel.style.width = leftWidth + 'px';
+                        
+                        // Trigger canvas resize when sidebar is resized
+                        if (typeof window.resizeFabricCanvas === 'function') {
+                            window.resizeFabricCanvas();
+                        }
+                    });
+
+                    document.addEventListener('mouseup', function() {
+                        if (isResizing) {
+                            isResizing = false;
+                            document.body.style.cursor = '';
+                            document.body.style.userSelect = '';
+                            
+                            // Final resize trigger when mouse is released
+                            if (typeof window.resizeFabricCanvas === 'function') {
+                                window.resizeFabricCanvas();
+                            }
+                        }
+                    });
+                }
+
+                // Initialize resizer
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', initializeResizer);
+                } else {
+                    initializeResizer();
+                }
+            })();
+        ");
+    }
+
+    private async Task InitializeCanvasAsync()
+    {
+        try
+        {
+            Console.WriteLine("Initializing canvas for selected image...");
+            ViewModel.ClearError();
+            
+            // Call JavaScript initialization function
+            var result = await JS.InvokeAsync<object>("initializeFabricCanvas");
+            
+            // Mark canvas as initialized
+            _canvasInitialized = true;
+            
+            Console.WriteLine("Canvas initialized successfully");
+            
+            // Set up listener for canvas content changes to track unsaved changes
+            if (_dotNetRef != null)
+            {
+                await JS.InvokeVoidAsync("setupCanvasChangeListener", _dotNetRef);
+                Console.WriteLine("Canvas change listener set up successfully");
+            }
+            
+            // Trigger re-render to hide loading spinner
+            StateHasChanged();
+            
+            // Update JavaScript state with current ViewModel settings
+            await UpdateJavaScriptStateAsync();
+        }
+        catch (JSException jsEx)
+        {
+            Console.WriteLine($"JavaScript error during canvas initialization: {jsEx.Message}");
+            Console.Error.WriteLine($"[ERROR] Canvas initialization failed - JSException: {jsEx.Message}");
+            _canvasInitialized = false;
+            
+            // User-facing error message
+            ViewModel.SetError("Failed to initialize drawing canvas. Please refresh the page and try again.");
+            
+            // Trigger re-render to show error
+            StateHasChanged();
+        }
+        catch (InvalidOperationException invOpEx)
+        {
+            Console.WriteLine($"Canvas initialization function not available: {invOpEx.Message}");
+            Console.Error.WriteLine($"[ERROR] Canvas initialization failed - Function not available: {invOpEx.Message}");
+            _canvasInitialized = false;
+            
+            // User-facing error message
+            ViewModel.SetError("Drawing tools are not available. Please ensure JavaScript is enabled and refresh the page.");
+            
+            // Trigger re-render to show error
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Unexpected error during canvas initialization: {ex.Message}");
+            Console.Error.WriteLine($"[ERROR] Canvas initialization failed - Unexpected error: {ex.GetType().Name} - {ex.Message}");
+            _canvasInitialized = false;
+            
+            // User-facing error message
+            ViewModel.SetError("An unexpected error occurred while initializing the drawing canvas. Please try again.");
+            
+            // Trigger re-render to show error
+            StateHasChanged();
+        }
+    }
+
+    private async Task DisposeCanvasAsync()
+    {
+        try
+        {
+            Console.WriteLine("Disposing canvas...");
+            
+            // Call JavaScript disposal function
+            await JS.InvokeVoidAsync("disposeFabricCanvas");
+            
+            // Mark canvas as not initialized
+            _canvasInitialized = false;
+            
+            Console.WriteLine("Canvas disposed successfully");
+            
+            // Trigger re-render
+            StateHasChanged();
+        }
+        catch (JSException jsEx)
+        {
+            Console.WriteLine($"JavaScript error during canvas disposal: {jsEx.Message}");
+            _canvasInitialized = false;
+            StateHasChanged();
+        }
+        catch (InvalidOperationException invOpEx)
+        {
+            Console.WriteLine($"Canvas disposal function not available: {invOpEx.Message}");
+            _canvasInitialized = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Unexpected error during canvas disposal: {ex.Message}");
+            _canvasInitialized = false;
+            StateHasChanged();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Stop camera if active
+        if (_isCameraActive)
+        {
+            await StopCamera();
+        }
+        
+        // Dispose DotNetObjectReference
+        _dotNetRef?.Dispose();
+        
+        // Dispose debounce timers
+        _colorDebounceTimer?.Dispose();
+        _thicknessDebounceTimer?.Dispose();
+        _fontSizeDebounceTimer?.Dispose();
+        
+        // Dispose canvas when component is disposed
+        if (_canvasInitialized)
+        {
+            await DisposeCanvasAsync();
+        }
+    }
+}
+

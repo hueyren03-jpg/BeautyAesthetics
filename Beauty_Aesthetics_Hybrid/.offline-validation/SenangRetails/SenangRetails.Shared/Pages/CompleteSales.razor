@@ -1,0 +1,90 @@
+@page "/complete-sales"
+@using SenangRetails.Shared.Models.DTOs
+@using SenangRetails.Shared.Services.BluetoothPrinterService
+@using SenangRetails.Shared.Services.CashSalesService
+@using SenangRetails.Shared.Services.ReceiptPrinterService
+@using SenangRetails.Shared.Services.WhatsappService
+@using static SenangRetails.Shared.Pages.Orders
+@inject AppState AppState
+@inject NavigationManager Nav
+@inject ICashSalesService SalesService
+@inject WhatsAppService WhatsApp
+@inject IBluetoothPrinterService PrinterSvc
+@inject IReceiptPrinterService ReceiptPrinterSvc
+@inject LanguageService LangSvc
+@inject IJSRuntime JS
+
+<div class="success-page-container">
+    <div class="success-card">
+        <div class="success-icon-wrap">
+            <i class="bi bi-check2"></i>
+        </div>
+        @if (salesRecord?.objDoc_CashSales?.DocumentTypeID == 52 || AppState.LastCompletedOrder?.objDoc_CashSales?.DocumentTypeID == 52)
+        {
+            <h2 class="success-title">Redeem Successful!</h2>
+        }
+        else
+        {
+            <h2 class="success-title">Payment Successful!</h2>
+        }
+        <p class="transaction-id">Transaction ID: @(salesRecord?.objDoc_CashSales?.DisplayCode ?? (!string.IsNullOrEmpty(AppState.LastReceiptNo) ? AppState.LastReceiptNo : AppState.LastSaleDocumentId) ?? "—")</p>
+        <div class="actions-stack">
+            <div class="payment-summary-card filled">
+                <span class="psc-label">Amount Paid</span>
+                <span class="psc-amount">RM @AppState.LastPaidAmount.ToString("F2")</span>
+            </div>
+            <div class="payment-summary-card outlined">
+                <span class="psc-label">Change</span>
+                <span class="psc-amount change-amount">
+                    RM @((salesRecord?.lstReceiptLines?.FirstOrDefault(x => x.POSReceiptChangeAmount < 0) is { } changeLine
+                                            ? Math.Abs(changeLine.POSReceiptChangeAmount)
+                                            : Math.Max(0, AppState.LastPaidAmount - (salesRecord?.objDoc_CashSales?.TotalAfterTax ?? 0m))).ToString("F2"))
+                </span>
+            </div>
+            <button class="payment-action-btn" @onclick="PrintReceipt" disabled="@isPrinting">
+                @(isPrinting ? "Printing..." : LangSvc.GetText("OrdersPrintReceipt"))
+            </button>
+
+            <button class="payment-action-btn"
+                    @onclick="RequestEInvoicePrint"
+                    disabled="@(isPrintingEInvoice || isPrinting)">
+                @if (isPrintingEInvoice)
+                {
+                    @* <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> *@
+                    <span>Printing...</span>
+                }
+                else
+                {
+                    @LangSvc.GetText("OrdersEInvoicePrint")
+                }
+            </button>
+
+            <div class="whatsapp-box">
+                <div class="input-group">
+                    <i class="bi bi-whatsapp"></i>
+                    <input type="tel" @bind="whatsappNumber" placeholder="6012xxxxxxxx" @bind:event="oninput" />
+                </div>
+                <button class="send-wa-btn" @onclick="ProcessWhatsApp" disabled="@(!IsValidPhoneNumber || isProcessingWA)">
+                    @LangSvc.GetText("OrdersEInvoiceWhatsapp")
+                </button>
+            </div>
+
+            <button class="payment-action-btn"
+                    @onclick="DownloadPDFReceipt"
+                    disabled="@isDownloading">
+                @if (isDownloading)
+                {
+                    <span>Downloading...</span>
+                }
+                else
+                {
+                    @LangSvc.GetText("OrdersDownloadPDF")
+                }
+            </button>
+
+            <button class="payment-action-btn close-btn" @onclick="Finish">
+                @LangSvc.GetText("OrdersClose")
+            </button>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,343 @@
+@using Beauty_Aesthetics_WebPos.Components.Layout
+@layout MainLayout
+@page "/ReportMenu"
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L
+
+<div class="ReportMenuWrapper">
+
+    <!-- ═══════ SIDEBAR ═══════ -->
+    <div class="ReportSideBarWrapper">
+        <div class="ReportSidebarHeaderWrapper">
+            <i class="fa-solid fa-file-invoice ReportSidebarIcon"></i>
+            <h4 class="ReportSidebarHeader">@L["Report"]</h4>
+            <i @onclick="ToggleCategoryBarOpen"
+               class="fa-solid fa-caret-down ReportDropDownIcon @(isCategoryBarOpen ? "rotated" : "")"></i>
+        </div>
+
+        <div class="ReportCategoryWrapper @(isCategoryBarOpen ? "sidebar-open" : "sidebar-closed")">
+
+            <!-- Home / Favourites -->
+            <div class="ReportCategoryItem @(SelectedCategory == null ? "active" : "")"
+                 @onclick='() => SelectCategory(null)'>
+                <i class="fa-solid fa-house ReportCategoryItemIcon"></i>
+                <span class="ReportCategoryItemName">Home</span>
+            </div>
+
+            <div class="ReportCategoryItem @(SelectedCategory == "Sales" ? "active" : "")"
+                 @onclick='() => SelectCategory("Sales")'>
+                <i class="fa-solid fa-tags ReportCategoryItemIcon"></i>
+                <span class="ReportCategoryItemName">@L["Sales"]</span>
+            </div>
+
+            <div class="ReportCategoryItem @(SelectedCategory == "POS" ? "active" : "")"
+                 @onclick='() => SelectCategory("POS")'>
+                <i class="fa-solid fa-cash-register ReportCategoryItemIcon"></i>
+                <span class="ReportCategoryItemName">@L["POS"]</span>
+            </div>
+
+            <div class="ReportCategoryItem @(SelectedCategory == "Stock" ? "active" : "")"
+                 @onclick='() => SelectCategory("Stock")'>
+                <i class="fa-solid fa-boxes-stacked ReportCategoryItemIcon"></i>
+                <span class="ReportCategoryItemName">@L["Stock"]</span>
+            </div>
+
+            <div class="ReportCategoryItem @(SelectedCategory == "Purchases" ? "active" : "")"
+                 @onclick='() => SelectCategory("Purchases")'>
+                <i class="fa-solid fa-cart-shopping ReportCategoryItemIcon"></i>
+                <span class="ReportCategoryItemName">@L["Purchases"]</span>
+            </div>
+
+            <div class="ReportCategoryItem @(SelectedCategory == "Tax" ? "active" : "")"
+                 @onclick='() => SelectCategory("Tax")'>
+                <i class="fa-solid fa-file-invoice-dollar ReportCategoryItemIcon"></i>
+                <span class="ReportCategoryItemName">@L["Tax"]</span>
+            </div>
+
+            <div class="ReportCategoryItem @(SelectedCategory == "Staff" ? "active" : "")"
+                 @onclick='() => SelectCategory("Staff")'>
+                <i class="fa-solid fa-users ReportCategoryItemIcon"></i>
+                <span class="ReportCategoryItemName">@L["Staff"]</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════ MAIN CONTENT ═══════ -->
+    <div class="ReportSelectionWrapper">
+
+        @if (SelectedCategory == null)
+        {
+            <!-- ── FAVOURITES HOME ── -->
+            <div class="favourites-home">
+                <div class="fav-home-header">
+                    <div class="fav-home-title-row">
+                        <i class="fa-solid fa-heart fav-home-star-icon"></i>
+                        <div>
+                            <h3 class="fav-home-title">My Favourites</h3>
+                            <p class="fav-home-subtitle">Your pinned reports — one tap away</p>
+                        </div>
+                    </div>
+                </div>
+
+                @if (FavouriteReports.Count == 0)
+                {
+                    <div class="fav-empty-state">
+                        <div class="fav-empty-icon-wrap">
+                            <i class="fa-regular fa-heart fav-empty-icon"></i>
+                        </div>
+                        <p class="fav-empty-title">No favourites yet</p>
+                        <p class="fav-empty-hint">
+                            Tap the <span class="fav-empty-fab-hint">＋</span> button at the bottom‑right
+                            to browse all reports and pin your most‑used ones here.
+                        </p>
+                    </div>
+                }
+                else
+                {
+                    <div class="fav-grid">
+                        @foreach (var report in FavouriteReports)
+                        {
+                            <div class="fav-card" @onclick="() => OpenReportParameter(report)">
+                                <button class="fav-remove-btn"
+                                        title="Remove"
+                                        @onclick:stopPropagation="true"
+                                        @onclick="() => RemoveFromFavourites(report)">
+                                    <i class="fa-solid fa-xmark"></i>
+                                </button>
+                                <div class="fav-card-icon">
+                                    <i class="@report.IconClass"></i>
+                                </div>
+                                <span class="fav-card-name">@report.Title</span>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <!-- ── CATEGORY REPORT BROWSER ── -->
+            <div class="SearchInputWrapper">
+                <input class="SearchInput"
+                       type="text"
+                       placeholder="@($"{L["Search"]} {L[SelectedCategory]}...")"
+                       @bind="SearchTerm"
+                       @oninput="OnSearchInput" />
+            </div>
+
+            <div class="ReportSelectItemWrapper">
+                @if (DisplayedReports.Count > 0)
+                {
+                    @foreach (var report in DisplayedReports)
+                    {
+                        <div class="ReportItemWrapper">
+                            <div class="ReportItemClickArea" @onclick="() => OpenReportParameter(report)">
+                                <div class="ReportItemIcon">
+                                    <i class="@report.IconClass"></i>
+                                </div>
+                                <div class="ReportItemDetails">
+                                    <h4 class="ReportItemDetailName">@report.Title</h4>
+                                </div>
+                                <i class="fa-solid fa-caret-right ReportItemRightIcon"></i>
+                            </div>
+                            <button class="fav-star-btn @(IsFavourite(report) ? "starred" : "")"
+                                    title="@(IsFavourite(report) ? "Remove from Favourites" : "Add to Favourites")"
+                                    @onclick="() => ToggleFavourite(report)">
+                                <i class="@(IsFavourite(report) ? "fa-solid fa-heart" : "fa-regular fa-heart")"></i>
+                            </button>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="NoReportsFound">
+                        <p>@L["NoReportsFoundForCategory"]</p>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<!-- ═══════ SPEED DIAL BACKDROP (transparent click-catcher) ═══════ -->
+@if (isSpeedDialOpen)
+{
+    <div class="speed-dial-backdrop" @onclick="CloseSpeedDial"></div>
+}
+
+<!-- ═══════ SPEED DIAL FAB ═══════ -->
+<div class="speed-dial-container">
+    @if (isSpeedDialOpen)
+    {
+        <div class="speed-dial-actions">
+            <div class="speed-dial-action">
+                <span class="speed-dial-label">Add to Favourites</span>
+                <button class="speed-dial-sub-btn" @onclick="OpenAddFavouriteSheet" title="Browse &amp; pin reports">
+                    <i class="fa-regular fa-heart"></i>
+                </button>
+            </div>
+            <div class="speed-dial-action">
+                <span class="speed-dial-label">Browse Reports</span>
+                <button class="speed-dial-sub-btn" @onclick="OpenCategorySidebar" title="Open categories">
+                    <i class="fa-solid fa-list"></i>
+                </button>
+            </div>
+        </div>
+    }
+    <button class="speed-dial-main-btn @(isSpeedDialOpen ? "open" : "")"
+            @onclick="ToggleSpeedDial"
+            title="Quick Actions">
+        <i class="fa-solid fa-plus speed-dial-plus-icon"></i>
+    </button>
+</div>
+
+<!-- ═══════ ADD FAVOURITE SHEET ═══════ -->
+@if (isAddFavouriteSheetOpen)
+{
+    <div class="add-fav-backdrop" @onclick="CloseAddFavouriteSheet"></div>
+    <div class="add-fav-sheet">
+        <div class="add-fav-header">
+            <i class="fa-regular fa-heart" style="color:#ef4444; font-size:18px; margin-right:10px; flex-shrink:0;"></i>
+            <span class="add-fav-title">Browse &amp; Pin Reports</span>
+            <button class="add-fav-close" @onclick="CloseAddFavouriteSheet">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+        <div class="add-fav-search-wrap">
+            <i class="fa-solid fa-magnifying-glass add-fav-search-icon"></i>
+            <input type="text"
+                   class="add-fav-search-input"
+                   placeholder="Search reports..."
+                   @bind="FavSheetSearchTerm"
+                   @oninput="OnFavSheetSearch" />
+        </div>
+        <div class="add-fav-body">
+            @foreach (var cat in GetFilteredSheetCategories())
+            {
+                var catReports = GetFilteredSheetReports(cat);
+                if (catReports.Count > 0)
+                {
+                    <div class="add-fav-category">
+                        <div class="add-fav-cat-header" @onclick="() => ToggleSheetCategory(cat)">
+                            <span>@cat</span>
+                            <i class="fa-solid @(IsSheetCategoryOpen(cat) ? "fa-chevron-up" : "fa-chevron-down") add-fav-chevron"></i>
+                        </div>
+                        @if (IsSheetCategoryOpen(cat))
+                        {
+                            @foreach (var report in catReports)
+                            {
+                                <div class="add-fav-item @(IsFavourite(report) ? "is-fav" : "")"
+                                     @onclick="() => ToggleFavourite(report)">
+                                    <div class="add-fav-item-info">
+                                        <i class="@report.IconClass add-fav-item-icon"></i>
+                                        <span class="add-fav-item-name">@report.Title</span>
+                                    </div>
+                                    <i class="@(IsFavourite(report) ? "fa-solid fa-heart fav-star-active" : "fa-regular fa-heart fav-star-inactive")"></i>
+                                </div>
+                            }
+                        }
+                    </div>
+                }
+            }
+        </div>
+    </div>
+}
+
+<!-- ═══════ REPORT PARAMETER MODAL ═══════ -->
+@if (isSelectedReportParameterOpen)
+{
+    <div class="ParameterModal" @onclick="CloseReportParameter">
+        <div class="ParameterModalWrapper" @onclick:stopPropagation="true">
+            <div class="ParameterModalContentWrapper">
+                <div class="ParameterModalHeader">
+                    <h4 class="ParameterHeaderTitle">@L["ReportParameter"]</h4>
+                    @if (SelectedReport != null)
+                    {
+                        <div class="FavoriteButton" @onclick="() => ToggleFavourite(SelectedReport)">
+                            <i class="fa-solid fa-heart HeartIcon"
+                               style="color: @(IsFavourite(SelectedReport) ? "#ef4444" : "rgba(255,255,255,0.5)")"></i>
+                            <span>@(IsFavourite(SelectedReport) ? "Favourited ✓" : @L["AddToFavorite"])</span>
+                        </div>
+                    }
+                    <div @onclick="CloseReportParameter" class="ParameterModalClose">
+                        <i class="bi bi-x-lg"></i>
+                    </div>
+                </div>
+                <div class="BranchDateParameterWrapper">
+                    <div class="ParameterSelectionWrapper">
+                        <div class="BranchSelectionWrapper">
+                            <h4>@L["BranchSelection"]</h4>
+                            <div class="TableHeaderWrapper">
+                                <span class="InputLabel">@L["SelectBranches"]</span>
+                                <div @onclick="ToggleBranchParameter" class="BranchFilterButton">
+                                    <span>@L["SearchByBranchGroup"]</span>
+                                </div>
+                            </div>
+                            <div class="BranchTable">
+                                <div class="BranchItemWrapper">
+                                    <input type="checkbox" class="BranchItemCheckbox" />
+                                    <span class="BranchItemID">HQ</span>
+                                    <span class="BranchItemName">Branch Name</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ParameterDateSelectionWrapper">
+                        <div class="DateSelectionWrapper">
+                            <h4>@L["DateTimeRange"]</h4>
+                            <div class="FromSelectionWrapper">
+                                <span class="InputLabel">@L["FromDateAndTime"]</span>
+                                <div class="DateTimeInputWrapper">
+                                    <input class="DateInput" type="date" />
+                                    <input class="TimeInput" type="time" />
+                                </div>
+                                <span class="InputLabel">@L["ToDateAndTime"]</span>
+                                <div class="DateTimeInputWrapper">
+                                    <input class="DateInput" type="date" />
+                                    <input class="TimeInput" type="time" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="GenerateReportButtonWrapper">
+                    <button @onclick="NavigateToMonthlyReport" class="GenerateReportButton">
+                        <i class="bi bi-file-earmark-plus"></i> @L["GenerateReport"]
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ═══════ BRANCH GROUP MODAL ═══════ -->
+@if (isSelectedGroupParameterOpen)
+{
+    <div class="ParameterModal" @onclick="ToggleBranchParameter">
+        <div class="ParameterModalWrapper" @onclick:stopPropagation="true">
+            <div class="ParameterModalContentWrapper">
+                <div class="ParameterModalHeader">
+                    <h4 class="ParameterHeaderTitle">@L["BranchGroup"]</h4>
+                    <div @onclick="ToggleBranchParameter" class="ParameterModalClose">
+                        <i class="bi bi-x-lg"></i>
+                    </div>
+                </div>
+                <div class="BranchDateParameterWrapper">
+                    <div class="GroupSelectionWrapper">
+                        <div class="BranchSelectionWrapper">
+                            <h4>@L["BranchGroupSelection"]</h4>
+                            <div class="TableHeaderWrapper">
+                                <span class="InputLabel">@L["SelectGroups"]</span>
+                            </div>
+                            <div class="BranchTable">
+                                <div class="BranchItemWrapper">
+                                    <span class="BranchItemID">HQ</span>
+                                    <span class="BranchItemName">Branch Name</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}

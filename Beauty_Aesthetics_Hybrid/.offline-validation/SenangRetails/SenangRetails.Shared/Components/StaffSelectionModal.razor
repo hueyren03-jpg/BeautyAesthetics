@@ -1,0 +1,170 @@
+@using SenangRetails.Shared.Models
+
+@if (IsVisible)
+{
+    <div class="staff-selection-modal-overlay" @onclick="CloseModal">
+        <div class="staff-selection-modal" @onclick:stopPropagation="true">
+            <!-- Header -->
+            <div class="staff-selection-modal-header">
+                <button class="staff-selection-close-btn" @onclick="CloseModal">
+                    <i class="bi bi-x"></i>
+                </button>
+                <h2 class="staff-selection-modal-title">@Title</h2>
+                <div class="header-spacer"></div>
+            </div>
+
+            <!-- Body -->
+            <div class="staff-selection-modal-body">
+                <div class="staff-selection-section">
+                    <div class="section-title">@SectionTitle</div>
+                    
+                    <!-- Search Bar -->
+                    <div class="staff-search-container">
+                        <div class="staff-search-bar">
+                            <i class="bi bi-search"></i>
+                            <input type="text" 
+                                   placeholder="Search" 
+                                   @bind="searchQuery" 
+                                   @bind:event="oninput" />
+                        </div>
+                    </div>
+
+                    <!-- Gender Filter Buttons -->
+                    <div class="staff-gender-filters">
+                        <button class="gender-filter-btn @(selectedGenderFilter == "All" ? "active" : "")" 
+                                @onclick="@(() => SelectGenderFilter("All"))">
+                            All
+                        </button>
+                        <button class="gender-filter-btn @(selectedGenderFilter == "Male" ? "active" : "")" 
+                                @onclick="@(() => SelectGenderFilter("Male"))">
+                            Male
+                        </button>
+                        <button class="gender-filter-btn @(selectedGenderFilter == "Female" ? "active" : "")" 
+                                @onclick="@(() => SelectGenderFilter("Female"))">
+                            Female
+                        </button>
+                    </div>
+
+                    <!-- Staff Grid -->
+                    <div class="staff-grid">
+                        @foreach (var staff in FilteredStaffList())
+                        {
+                            <div class="staff-grid-card @(SelectedStaff?.Id == staff.Id ? "selected" : "")"
+                                 @onclick="() => SelectStaff(staff)">
+                                <div class="staff-avatar-wrapper">
+                                    <i class="bi bi-person-fill"></i>
+                                </div>
+                                <div class="staff-gender-icon">
+                                    @if (staff.Gender == "Male")
+                                    {
+                                        <i class="bi bi-gender-male"></i>
+                                    }
+                                    else if (staff.Gender == "Female")
+                                    {
+                                        <i class="bi bi-gender-female"></i>
+                                    }
+                                </div>
+                                <div class="staff-name">@staff.Name</div>
+                                <div class="staff-phone">@staff.PhoneNo</div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="staff-selection-modal-footer">
+                <button class="staff-selection-cancel-btn" @onclick="CloseModal">Cancel</button>
+                <button class="staff-selection-continue-btn" 
+                        @onclick="OnContinue"
+                        disabled="@(SelectedStaff is null)">
+                    Continue
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+    [Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
+    [Parameter] public List<StaffAttendance> StaffList { get; set; } = new();
+    [Parameter] public StaffAttendance? SelectedStaff { get; set; }
+    [Parameter] public EventCallback<StaffAttendance?> SelectedStaffChanged { get; set; }
+    [Parameter] public EventCallback<StaffAttendance?> OnStaffSelected { get; set; }
+    [Parameter] public string Title { get; set; } = "Select Staff";
+    [Parameter] public string SectionTitle { get; set; } = "Select Staff";
+    [Parameter] public bool ShowFooter { get; set; } = true;
+
+    private string searchQuery = string.Empty;
+    private string selectedGenderFilter = "All";
+
+    private void CloseModal()
+    {
+        IsVisible = false;
+        IsVisibleChanged.InvokeAsync(false);
+    }
+
+    private void SelectGenderFilter(string gender)
+    {
+        selectedGenderFilter = gender;
+        StateHasChanged();
+    }
+
+    private async Task SelectStaff(StaffAttendance staff)
+    {
+        // Single selection - toggle selection
+        if (SelectedStaff?.Id == staff.Id)
+        {
+            SelectedStaff = null; // Deselect if clicking same staff
+        }
+        else
+        {
+            SelectedStaff = staff; // Select new staff
+        }
+        
+        await SelectedStaffChanged.InvokeAsync(SelectedStaff);
+        StateHasChanged();
+    }
+
+    private IEnumerable<StaffAttendance> FilteredStaffList()
+    {
+        var filtered = StaffList.AsEnumerable();
+
+        // Filter by search query
+        if (!string.IsNullOrWhiteSpace(searchQuery))
+        {
+            filtered = filtered.Where(s => 
+                s.Name.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                s.PhoneNo.Contains(searchQuery, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // Filter by gender
+        if (selectedGenderFilter != "All")
+        {
+            filtered = filtered.Where(s => 
+                s.Gender.Equals(selectedGenderFilter, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return filtered;
+    }
+
+    private async Task OnContinue()
+    {
+        if (SelectedStaff != null)
+        {
+            await OnStaffSelected.InvokeAsync(SelectedStaff);
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!IsVisible)
+        {
+            // Reset filters when modal is closed
+            searchQuery = string.Empty;
+            selectedGenderFilter = "All";
+        }
+    }
+}
+

@@ -1,0 +1,52 @@
+@using SenangRetails.Shared.Models
+
+<div class="date-range-dropdown-wrapper @(isOpen ? "open" : "")">
+    <button class="date-range-dropdown-button" @onclick="ToggleDropdown">
+        <i class="bi bi-calendar-range date-range-icon"></i>
+        <span class="date-range-text">@SelectedValue</span>
+        <i class="bi bi-chevron-down date-range-arrow"></i>
+    </button>
+    @if (isOpen)
+    {
+        <div class="download-dropdown-backdrop" @onclick="CloseDropdown"></div>
+        <div class="date-range-dropdown-menu" @onclick:stopPropagation="true">
+            @foreach (var option in Options)
+            {
+                <div class="date-range-dropdown-menu-item @(SelectedValue == option.Label ? "active" : "")"
+                     @onclick="@(() => SelectOption(option.Label))">
+                    <i class="bi @option.Icon date-range-dropdown-menu-item-icon"></i>
+                    <span class="date-range-dropdown-menu-item-text">@option.Label</span>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private bool isOpen = false;
+
+    [Parameter] public string SelectedValue { get; set; } = string.Empty;
+    [Parameter] public List<DateRangeOption> Options { get; set; } = new();
+    [Parameter] public EventCallback<string> OnChange { get; set; }
+
+    private void ToggleDropdown()
+    {
+        isOpen = !isOpen;
+    }
+
+    private void CloseDropdown()
+    {
+        isOpen = false;
+    }
+
+    private async Task SelectOption(string label)
+    {
+        if (SelectedValue != label)
+        {
+            await OnChange.InvokeAsync(label);
+        }
+        isOpen = false;
+    }
+}
+
+

@@ -1,0 +1,398 @@
+@namespace SenangRetails.Shared.Components.Reports
+@inherits SenangRetails.Shared.Pages.BasePage
+@using Microsoft.AspNetCore.Components
+@using BlazorBootstrap
+@using Microsoft.JSInterop
+@using SenangRetails.Shared.Models
+@using System.Text
+
+<div class="stock-balance-cost-report-container">
+    <div class="stock-balance-cost-report-list-container">
+        <!-- Date Filter Section -->
+        <div class="report-date-filter">
+            <div class="date-filter-controls">
+                <!-- Quick Date Range Buttons -->
+                <div class="quick-date-buttons">
+                    <button class="quick-date-btn @(selectedDateRange == "Today" ? "active" : "")" @onclick='() => SetDateRange("Today")'>
+                        @LangSvc.GetText("Today")
+                    </button>
+                    <button class="quick-date-btn @(selectedDateRange == "Week" ? "active" : "")" @onclick='() => SetDateRange("Week")'>
+                        @LangSvc.GetText("This Week")
+                    </button>
+                    <button class="quick-date-btn @(selectedDateRange == "Month" ? "active" : "")" @onclick='() => SetDateRange("Month")'>
+                        @LangSvc.GetText("This Month")
+                    </button>
+                    <button class="quick-date-btn @(selectedDateRange == "Year" ? "active" : "")" @onclick='() => SetDateRange("Year")'>
+                        @LangSvc.GetText("This Year")
+                    </button>
+                </div>
+
+                <!-- Date Picker & Branch Selection -->
+                <div class="date-picker-group">
+                    @if (CanSelectBranch())
+                    {
+                        <div class="date-picker-item">
+                            <label class="date-picker-label">@LangSvc.GetText("Branch ID")</label>
+                            <button class="branch-select-btn" @onclick="OpenBranchSelectionModal">
+                                <span>@(selectedBranchDisplay ?? LangSvc.GetText("Select Branch"))</span>
+                                <i class="bi bi-chevron-down"></i>
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                       
+                    }
+                    <div class="date-picker-item">
+                        <label class="date-picker-label">@LangSvc.GetText("End Date")</label>
+                        <MobileDatePicker @bind-Value="selectedDate"
+                                          DateFormat="dd/MM/yyyy"
+                                          Placeholder="Select Date" />
+                    </div>
+                    <button class="refresh-btn" @onclick="RefreshDataAsync" title="Refresh">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+
+                <!-- Export Dropdown Button -->
+                <div class="export-dropdown">
+                    <button class="export-btn" @onclick="ToggleExportDropdown" @onclick:preventDefault="true">
+                        <i class="bi bi-download"></i>
+                        <span class="action-btn-text">@LangSvc.GetText("Export")</span>
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+                    @if (showExportDropdown)
+                    {
+                        <div class="export-dropdown-menu">
+                            <button class="export-dropdown-item" @onclick="ExportToCSV">
+                                <i class="bi bi-file-spreadsheet"></i>
+                                @LangSvc.GetText("Export CSV")
+                            </button>
+                            <button class="export-dropdown-item" @onclick="ExportToPDF">
+                                <i class="bi bi-file-pdf"></i>
+                                @LangSvc.GetText("Export PDF")
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- KPI Summary Cards -->
+        <div class="kpi-cards">
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-box"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">@totalItems.ToString("N0")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("Total Items")</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-calculator"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">@totalBalanceQty.ToString("N0")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("Total Balance Qty")</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-cash-stack"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">@totalBalanceValue.ToString("N2")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("Total Balance Value")</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-tag"></i>
+                </div>
+                <div class="kpi-content">
+                    @if (isLoading)
+                    {
+                        <div class="kpi-value">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Small" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="kpi-value">@totalSalesPriceBalanceValue.ToString("N2")</div>
+                    }
+                    <div class="kpi-label">@LangSvc.GetText("Total Sales Price Balance Value")</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stock Balance Table with Filter Inputs -->
+        <div class="stock-balance-table-wrapper">
+            <div class="stock-balance-table">
+                <div class="stock-balance-table-header">
+                    <div class="stock-balance-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Branch ID")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder="Filter..."
+                               @bind-value="branchIDFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="stock-balance-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Item Name")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder="Filter..."
+                               @bind-value="accountNameFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="stock-balance-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Item Group")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder="Filter..."
+                               @bind-value="itemGroupFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="stock-balance-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Display Code")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder="Filter..."
+                               @bind-value="displayCodeFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="stock-balance-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("UOM")</span>
+                        <input type="text"
+                               class="filter-input"
+                               placeholder="Filter..."
+                               @bind-value="uomFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="stock-balance-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Balance Qty")</span>
+                        <input type="text"
+                               class="filter-input numeric-filter"
+                               placeholder="Filter..."
+                               @bind-value="balanceQtyFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="stock-balance-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Unit Cost")</span>
+                        <input type="text"
+                               class="filter-input numeric-filter"
+                               placeholder="Filter..."
+                               @bind-value="unitCostFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="stock-balance-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Balance Value")</span>
+                        <input type="text"
+                               class="filter-input numeric-filter"
+                               placeholder="Filter..."
+                               @bind-value="balanceValueFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                    <div class="stock-balance-table-header-cell filter-header">
+                        <span>@LangSvc.GetText("Sales Price Balance Value")</span>
+                        <input type="text"
+                               class="filter-input numeric-filter"
+                               placeholder="Filter..."
+                               @bind-value="salesPriceBalanceValueFilter"
+                               @bind-value:event="oninput"
+                               @onkeyup="ApplyFilters" />
+                    </div>
+                </div>
+                <div class="filter-badge-container">
+                    @if (HasActiveFilters())
+                    {
+                        <button class="clear-filters-btn" @onclick="ClearFilters">
+                            <i class="bi bi-x-circle"></i> Clear All Filters
+                        </button>
+                    }
+                </div>
+                <div class="stock-balance-table-body">
+                    @if (isLoading)
+                    {
+                        <div class="text-center py-5">
+                            <Spinner Color="SpinnerColor.Primary" Size="SpinnerSize.Medium" />
+                            <p>Loading data...</p>
+                        </div>
+                    }
+                    else if (!string.IsNullOrEmpty(exportMessage))
+                    {
+                        <div class="alert alert-@alertType">@exportMessage</div>
+                    }
+                    else if (filteredStockData.Any())
+                    {
+                        @foreach (var item in filteredStockData)
+                        {
+                            <div class="stock-balance-table-row">
+                                <!-- Branch ID -->
+                                <div class="stock-balance-table-cell" data-label="@LangSvc.GetText("Branch ID")">
+                                    <span class="branch-id-text">@item.BranchID</span>
+                                </div>
+                                <div class="stock-balance-table-cell" data-label="@LangSvc.GetText("Item Name")">
+                                    <div class="item-info-cell">
+                                        <div class="item-icon">
+                                            <i class="bi bi-box-seam"></i>
+                                        </div>
+                                        <div class="item-details">
+                                            <span class="item-name">@item.AccountName</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="stock-balance-table-cell" data-label="@LangSvc.GetText("Item Group")">
+                                    @item.ItemGroupName
+                                </div>
+                                <div class="stock-balance-table-cell" data-label="@LangSvc.GetText("Display Code")">
+                                    @item.DisplayCode
+                                </div>
+                                <div class="stock-balance-table-cell" data-label="@LangSvc.GetText("UOM")">
+                                    @item.UOMName
+                                </div>
+                                <div class="stock-balance-table-cell" data-label="@LangSvc.GetText("Balance Qty")">
+                                    @item.BalanceQty.ToString("N2")
+                                </div>
+                                <div class="stock-balance-table-cell" data-label="@LangSvc.GetText("Unit Cost")">
+                                    @item.UnitCost.ToString("N2")
+                                </div>
+                                <div class="stock-balance-table-cell" data-label="@LangSvc.GetText("Balance Value")">
+                                   @item.BalanceValue.ToString("N2")
+                                </div>
+                                <div class="stock-balance-table-cell" data-label="@LangSvc.GetText("Sales Price Balance Value")">
+                                    @item.SalesPriceBalanceValue.ToString("N2")
+                                </div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="text-center py-3 text-muted">No data available</div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Branch Selection Modal -->
+    @if (showBranchModal)
+    {
+        <div class="modal-overlay" @onclick="CloseBranchModal">
+            <div class="modal-content" @onclick:stopPropagation="true" style="height: 650px; max-width: 590px;">
+                <div class="modal-header">
+                    <div class="appt-title">@LangSvc.GetText("Select Branch")</div>
+                </div>
+
+                <div class="search-bar">
+                    <i class="bi bi-search search-icon"></i>
+                    <input type="text"
+                           class="search-input"
+                           placeholder="Search Branch..."
+                           @bind="BranchSearchTerm"
+                           @bind:event="oninput" />
+                    @if (!string.IsNullOrEmpty(BranchSearchTerm))
+                    {
+                        <button class="search-clear" @onclick='() => BranchSearchTerm = ""'>
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    }
+                </div>
+
+                <!-- Select All Option -->
+                <div class="select-all-container">
+                    <div class="staff-list-item @(selectAllBranches ? "selected" : "")"
+                         @onclick="ToggleSelectAllBranches">
+                        <span class="staff-list-item-name">
+                            <i class="bi bi-check-all"></i> @LangSvc.GetText("Select All Branches")
+                        </span>
+                        @if (selectAllBranches)
+                        {
+                            <i class="bi bi-check2 selected-check-icon"></i>
+                        }
+                    </div>
+                    <div class="selection-count">
+                        @(stagedBranchIDs.Count) of @(masterBranchList.Count) selected
+                    </div>
+                </div>
+
+                <div class="branch-list-container">
+                    @if (filteredBranchList.Any())
+                    {
+                        @foreach (var branchName in filteredBranchList)
+                        {
+                            bool isSelected = IsBranchSelected(branchName);
+                            <div class="staff-list-item @(isSelected ? "selected" : "")"
+                                 @onclick="() => ToggleBranchSelection(branchName)">
+                                <span class="staff-list-item-name">
+                                    <i class="bi bi-building"></i> @branchName
+                                </span>
+                                @if (isSelected)
+                                {
+                                    <i class="bi bi-check2 selected-check-icon"></i>
+                                }
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="empty-state">
+                            <p>@LangSvc.GetText("No branches found.")</p>
+                        </div>
+                    }
+                </div>
+
+                <div class="modal-footer">
+                    <button class="appt-btn-secondary" style="flex: 1;" @onclick="CloseBranchModal">
+                        @LangSvc.GetText("Cancel")
+                    </button>
+                    <button class="appt-btn-primary" style="flex: 1;"
+                            disabled="@(stagedBranchIDs.Count == 0 && !selectAllBranches)"
+                            @onclick="ConfirmBranchSelection">
+                        @LangSvc.GetText("Apply")
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>

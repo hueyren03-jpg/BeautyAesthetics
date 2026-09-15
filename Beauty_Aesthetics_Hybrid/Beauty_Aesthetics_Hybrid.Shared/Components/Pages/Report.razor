@@ -1,0 +1,146 @@
+@page "/Report"
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L
+
+<div class="ReportWrapper">
+    <div class="ReportContentWrapper">
+        <div class="ReportParameterWrapper">
+            <div class="ReportOptions">
+                <i class="fa-solid fa-print ReportOptionIcon"></i>
+                <span>@L["Print"]</span>
+            </div>
+            <div class="ReportOptions">
+                <i class="fa-solid fa-download ReportOptionIcon"></i>
+                <span>@L["Download"]</span>
+            </div>
+            <div @onclick="OpenSetupModal" class="ReportOptions">
+                <img src="icons/paper.png" class="ReportImageIcon" />
+                <span>@L["PageSetup"]</span>
+            </div>
+            <div class="ReportOptions">
+                <img src="icons/scale.png" class="ReportImageIcon" />
+                <span>@L["Scale"]</span>
+            </div>
+            <div class="ReportOptions">
+                <img src="icons/controller.png" class="ReportImageIcon" />
+                <span>@L["Parameters"]</span>
+            </div>
+            <div class="ReportOptions">
+                <img src="icons/watermark.png" class="ReportImageIcon" />
+                <span>@L["Watermark"]</span>
+            </div>
+            <div class="ReportOptions">
+                <i class="fa-solid fa-file-export ReportOptionIcon"></i>
+                <span>@L["Export"]</span>
+            </div>
+            <div class="ReportOptions">
+                <i class="fa-solid fa-envelope ReportOptionIcon"></i>
+                <span>@($"{L["Send"]}...")</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="ReportSelectionContainer">
+
+        <div class="ReportSearchHeader">
+            <div class="SearchInputWrapper">
+                <input @bind="SearchTerm" @bind:event="oninput" type="text" placeholder="@($"{L["Search"]} {L["Report"]}")" class="ReportSearchInput" />
+                <i class="fa-solid fa-magnifying-glass SearchIcon"></i>
+            </div>
+        </div>
+
+        <div class="ReportCategoriesWrapper">
+            @foreach (var category in FilteredCategories)
+            {
+                <div class="CategorySection">
+                    <h3 class="CategoryTitle">@L[GetCategoryTranslationKey(category.Name)]</h3>
+                    <div class="ReportGrid">
+                        @foreach (var report in category.Reports)
+                        {
+                            <div class="ReportCard">
+                                <div class="ReportIconContainer">
+                                    <i class="fa-solid fa-clipboard-list ReportCardIcon"></i>
+                                </div>
+                                <span class="ReportName">@L[report.Name]</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (SetupModalIsOpen)
+    {
+        <div class="ParameterModal">
+            <div class="ParameterModalWrapper">
+                <div class="ParameterModalContentWrapper">
+                    <div class="ParameterModalHeader">
+                        <h4 class="ParameterHeaderTitle">@L["PageSetup"]</h4>
+                        <div @onclick=OpenSetupModal class="ParameterModalClose">
+                            <i class="bi bi-x-lg"></i>
+                        </div>
+                    </div>
+                    <div class="OptionsWrapper">
+                        <div class="PDFPreviewWrapper">
+                            <img class="PDFPreview" src="Icons/watermark.png" alt="Alternate Text" />
+                        </div>
+                        <div class="PaperSettingWrapper">
+                            <h3>@L["Paper"]</h3>
+                            <div class="PaperOptions">
+                                <label>@L["Size"]</label>
+                                <select class="DropdownSelect">
+                                    <option value="A4">A4</option>
+                                </select>
+                            </div>
+                            <div class="PaperOptions">
+                                <label>@L["Units"]</label>
+                                <input class="InputText" type="text" />
+                            </div>
+                            <div class="TwoInput">
+                                <div class="PaperOptions">
+                                    <label>@L["Width"]</label>
+                                    <input class="InputText" type="text" />
+                                </div>
+                                <div class="PaperOptions">
+                                    <label>@L["Height"]</label>
+                                    <input class="InputText" type="text" />
+                                </div>
+                            </div>
+                            <div class="TwoInput">
+                                <div class="ImageButton">
+                                    <img class="OrientationIcon" src="Icons/fit.png" />
+                                    <p>@L["Vertical"]</p>
+                                </div>
+                                <div class="ImageButton">
+                                    <img class="OrientationIcon OrientationIconHorizontal" src="Icons/fit.png" />
+                                    <p>@L["Horizontal"]</p>
+                                </div>
+                            </div>
+                            <h3>@L["PageMargin"]</h3>
+                            <div class="TwoInput">
+                                <div class="PaperOptions">
+                                    <label>@L["Width"]</label>
+                                    <input class="InputText" type="text" />
+                                </div>
+                                <div class="PaperOptions">
+                                    <label>@L["Right"]</label>
+                                    <input class="InputText" type="text" />
+                                </div>
+                            </div>
+                            <div class="TwoInput">
+                                <div class="PaperOptions">
+                                    <label>@L["Height"]</label>
+                                    <input class="InputText" type="text" />
+                                </div>
+                                <div class="PaperOptions">
+                                    <label>@L["Bottom"]</label>
+                                    <input class="InputText" type="text" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>

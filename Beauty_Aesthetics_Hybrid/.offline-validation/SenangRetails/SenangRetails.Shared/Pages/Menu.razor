@@ -1,0 +1,101 @@
+@page "/menu"
+@inherits SenangRetails.Shared.Pages.BasePage
+@using SenangRetails.Shared.Model
+@using SenangRetails.Shared.Pages
+
+<div class="menu-container @(IsSidebarOpen && !IsLeftPanelHidden ? "sidebar-open" : "")">
+
+    <!-- MOBILE SIDEBAR OVERLAY -->
+    @if (IsSidebarOpen && !IsLeftPanelHidden)
+    {
+        <div class="sidebar-overlay" @onclick="ToggleSidebar"></div>
+    }
+
+    <!-- LEFT SIDEBAR -->
+    @if (!IsLeftPanelHidden)
+    {
+        <div class="sidebar-custom @(IsSidebarOpen ? "open" : "")">
+
+            <div class="sidebar-panel-header">
+                <button class="sidebar-back-btn" @onclick="GoToProfile">
+                    <i class="fa-solid fa-chevron-left"></i>
+                    <span>@LangSvc.GetText("MenuBack")</span>
+                </button>
+                <button class="menu-hamburger-btn" @onclick="HideLeftPanel">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+            </div>
+
+            <div class="sidebar-title-row">
+                <span class="sidebar-page-title">@LangSvc.GetText("Menu")</span>
+            </div>
+
+            <div class="category-item @(SelectedView == "Product" ? "active" : "")" @onclick='() => SelectView("Product")'>
+                <i class="fa-solid fa-box-open nav-icon-fa"></i>
+                <span>@LangSvc.GetText("MenuProduct")</span>
+            </div>
+
+            <div class="category-item @(SelectedView == "Service" ? "active" : "")" @onclick='() => SelectView("Service")'>
+                <i class="fa-solid fa-scissors nav-icon-fa"></i>
+                <span>@LangSvc.GetText("MenuService")</span>
+            </div>
+
+            <div class="category-item @(SelectedView == "Package" ? "active" : "")" @onclick='() => SelectView("Package")'>
+                <i class="fa-solid fa-cube nav-icon-fa"></i>
+                <span>@LangSvc.GetText("MenuPackage")</span>
+            </div>
+
+            <div class="category-item @(SelectedView == "TopUp" ? "active" : "")" @onclick='() => SelectView("TopUp")'>
+                <i class="fa-solid fa-credit-card nav-icon-fa"></i>
+                <span>@LangSvc.GetText("MenuTopUp")</span>
+            </div>
+
+            <div class="category-item @(SelectedView == "Section" ? "active" : "")" @onclick='() => SelectView("Section")'>
+                <i class="fa-solid fa-layer-group nav-icon-fa"></i>
+                <span>@LangSvc.GetText("MenuItemGroup")</span>
+            </div>
+
+        </div>
+    }
+
+    <!-- RIGHT CONTENT -->
+    <div class="main-content">
+        @if (SelectedView == "Product")
+        {
+            <Product @key="SelectedView" ViewType="Product" OnToggleSidebar="ToggleSidebar" ShowRestoreButton="IsLeftPanelHidden" />
+        }
+        else if (SelectedView == "Service")
+        {
+            <Product @key="SelectedView" ViewType="Service" OnToggleSidebar="ToggleSidebar" ShowRestoreButton="IsLeftPanelHidden" />
+        }
+        else if (SelectedView == "Package")
+        {
+            <Product @key="SelectedView" ViewType="Package" OnToggleSidebar="ToggleSidebar" ShowRestoreButton="IsLeftPanelHidden" />
+        }
+        else if (SelectedView == "TopUp")
+        {
+            <Product @key="SelectedView" ViewType="TopUp" OnToggleSidebar="ToggleSidebar" ShowRestoreButton="IsLeftPanelHidden" />
+        }
+        else if (SelectedView == "Section")
+        {
+            <Product @key="SelectedView" ViewType="Product" OnToggleSidebar="ToggleSidebar" StartInSectionMode="true" ShowRestoreButton="IsLeftPanelHidden" />
+        }
+        else
+        {
+            <div class="top-bar">
+                <div class="top-bar-left">
+                    <button class="mobile-menu-btn" @onclick="ToggleSidebar">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <div class="page-title">
+                        <h2>@SelectedView</h2>
+                        <span>@LangSvc.GetText("MenuComingSoon")</span>
+                    </div>
+                </div>
+            </div>
+            <div class="content-area">
+                <div class="empty-state">@LangSvc.GetText("MenuUnderConstruction")</div>
+            </div>
+        }
+    </div>
+</div>

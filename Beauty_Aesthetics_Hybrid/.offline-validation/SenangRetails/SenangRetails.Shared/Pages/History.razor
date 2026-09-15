@@ -1,0 +1,300 @@
+@page "/history"
+@inherits SenangRetails.Shared.Pages.BasePage
+@using SenangRetails.Shared.Enums
+@using SenangRetails.Shared.Components.History
+@using SenangRetails.Shared.Components.Common
+@inject NavigationManager Nav
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/open-iconic/1.1.1/font/css/open-iconic-bootstrap.min.css" />
+
+
+<div class="history-layout">
+
+    <div class="top-navbar mobile-only" @onclick="ToggleSidebar">
+        <div class="sidebar-toggle-btn">
+            <i class="fas @(isSidebarExpanded ? "fa-times" : "fa-bars")"></i>
+        </div>
+        <div class="navbar-title">History</div>
+
+    </div>
+
+    <aside class="history-sidebar @(isSidebarExpanded ? "expanded" : "collapsed")">
+
+        <div class="sidebar-toggle-btn desktop-only" @onclick="ToggleSidebar">
+            <i class="fas @(isSidebarExpanded ? "fa-times" : "fa-bars")"></i>
+        </div>
+        <div class="section-row">
+            <button class="back-btn" @onclick="GoBack">
+                ←
+            </button>
+        </div>
+
+
+        <!-- Date Filter -->
+        <div class="date-filter">
+            <span class="nav-btn">◀</span>
+            <span class="date-text" @onclick="() => IsBackdateSaleEditing = true">@Label_FilterDateRange</span>
+            <span class="nav-btn">▶</span>
+
+            @if (IsBackdateSaleEditing)
+            {
+                <div class="calendar-overlay" @onclick="() => IsBackdateSaleEditing = false">
+                    <div class="backdate-full-view" @onclick:stopPropagation>
+                        <div class="calendar-nav-header">
+                            <button class="back-link" @onclick="() => IsBackdateSaleEditing = false">
+                                <i class="fas fa-chevron-left"></i>
+                            </button>
+                            <span class="nav-title">Select Date</span>
+                        </div>
+
+                        <div class="month-control-bar">
+                            <span class="month-label">@DisplayMonth.ToString("MMMM yyyy")</span>
+                            <div class="arrows">
+                                <i class="fas fa-chevron-left arrow-icon" @onclick='() => DisplayMonth = DisplayMonth.AddMonths(-1)'></i>
+
+                                @if (DisplayMonth.Year < DateTime.Today.Year || DisplayMonth.Month < DateTime.Today.Month)
+                                {
+                                    <i class="fas fa-chevron-right arrow-icon" @onclick='() => DisplayMonth = DisplayMonth.AddMonths(1)'></i>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="calendar-container">
+                            <div class="weekdays-row">
+                                <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+                            </div>
+                            <div class="days-grid">
+                                @foreach (var day in GetCalendarDays())
+                                {
+                                    if (day == null)
+                                    {
+                                        <div class="day-item empty"></div>
+                                    }
+                                    else
+                                    {
+                                        bool isFuture = day.Value.Date > DateTime.Today;
+                                        bool isSelected = day.Value.Date == SelectedDate?.Date;
+
+                                        <div class="day-item @(isSelected ? "selected" : "") @(isFuture ? "disabled" : "")"
+                                             @onclick="() => { if (!isFuture) SelectDate(day.Value); }">
+                                            @day.Value.Day
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+
+            <div class="print-container">
+                <div class="print" @onclick="TogglePrintMenu">
+                    <span class="print-btn">
+                        <i class="fas fa-print"></i>
+                    </span>
+                </div>
+
+                @if (isPrintMenuVisible)
+                {
+                    <div class="print-menu-overlay" @onclick="TogglePrintMenu"></div>
+
+                    <div class="print-dropdown-menu">
+                        <button class="menu-item" @onclick="ExportPDF">
+                            <i class="fas fa-file-pdf"></i>
+                            <span>PDF</span>
+                        </button>
+                        <div class="menu-divider"></div>
+                        <button class="menu-item" @onclick="DirectPrint">
+                            <i class="fas fa-print"></i>
+                            <span>Print</span>
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Collection -->
+        <section class="sidebar-section">
+            <div class="section-row">
+                <span class="section-title">Collection</span>
+                <span class="section-value">@Label_CollectionAmount</span>
+            </div>
+
+            <div class="collection-list">
+                @if (CollectionMethods != null)
+                {
+                    @foreach (var item in CollectionMethods)
+                    {
+                        <div class="icon-row @(activeRowId == item.Id ? "active" : "")"
+                             @onclick='() => SelectRow(item.Id)'>
+                            <span><i class="fas fa-money-bill-wave"></i></span>
+                            <span class="label-text">@item.Name</span>
+
+                            <span>@item.LabelAmount</span>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <span>Loading... no list</span>
+                }
+            </div>
+        </section>
+
+        <!-- Work -->
+        <section class="sidebar-section">
+
+            <div class="section-row">
+                <span class="section-title">Work</span>
+            </div>
+
+            <div class="icon-row @(activeRowId == "work-order" ? "active" : "")" @onclick='() => SelectRow("work-order")'>
+                <span><i class="fas fa-file-invoice"></i> </span>
+                <span class="label-text">Order</span>
+
+                <span>@Label_OrderCount</span>
+            </div>
+
+            <div class="icon-row @(activeRowId == "work-item" ? "active" : "")" @onclick='() => SelectRow("work-item")'>
+                <span><i class="fas fa-boxes"></i> </span>
+                <span class="label-text">Item</span>
+
+                <span>@Label_ItemCount</span>
+            </div>
+
+            <div class="icon-row @(activeRowId == "work-customer" ? "active" : "")" @onclick='() => SelectRow("work-customer")'>
+                <span><i class="fas fa-users"></i> </span>
+                <span class="label-text">Customer</span>
+
+                <span>@Label_CustomerCount</span>
+            </div>
+
+            <div class="icon-row @(activeRowId == "work-staff" ? "active" : "")" @onclick='() => SelectRow("work-staff")'>
+                <span><i class="fas fa-user-tie"></i></span>
+                <span class="label-text">Staff</span>
+
+                <span>@Label_StaffCount</span>
+            </div>
+        </section>
+
+        <!-- Outstanding -->
+        <section class="sidebar-section">
+
+            <div class="section-row">
+                <span class="section-title">Outstanding</span>
+                <span class="section-value">@Label_TotalOutstandingAmount</span>
+            </div>
+
+            <div class="icon-row danger @(activeRowId == "out-total" ? "active" : "")" @onclick='() => SelectRow("out-total")'>
+                <span><i class="fas fa-hand-holding-usd"></i></span>
+                <span class="label-text">Total Outstanding</span>
+                <span>@Label_TotalOutstandingAmount</span>
+            </div>
+
+            <div class="icon-row info @(activeRowId == "out-coll" ? "active" : "")" @onclick='() => SelectRow("out-coll")'>
+                <span><i class="fas fa-file-signature"></i></span>
+                <span class="label-text">Outstanding Collection</span>
+                <span>@Label_OutstandingCollectionAmount</span>
+            </div>
+        </section>
+
+        <!-- Sign Up -->
+        <section class="sidebar-section">
+
+            <div class="section-row">
+                <span class="section-title">Sign Up</span>
+            </div>
+
+            <div class="icon-row warning @(activeRowId == "signup-credit" ? "active" : "")" @onclick='() => SelectRow("signup-credit")'>
+                <span><i class="fas fa-coins"></i> </span>
+                <span class="label-text">Credit</span>
+                <span>@Label_CreditAmount</span>
+            </div>
+            <div class="icon-row warning @(activeRowId == "signup-voucher" ? "active" : "")" @onclick='() => SelectRow("signup-voucher")'>
+                <span><i class="fas fa-ticket-alt"></i> </span>
+                <span class="label-text">Voucher</span>
+                <span>@Label_Voucher</span>
+            </div>
+            <div class="icon-row warning @(activeRowId == "signup-point" ? "active" : "")" @onclick='() => SelectRow("signup-point")'>
+                <span><i class="fas fa-star"></i> </span>
+                <span class="label-text">Point</span>
+                <span>@Label_Point</span>
+            </div>
+        </section>
+
+        <!-- Redeem -->
+        <section class="sidebar-section">
+
+            <div class="section-row">
+                <span class="section-title">Redeem</span>
+            </div>
+
+            <div class="icon-row warning @(activeRowId == "redeem-credit" ? "active" : "")" @onclick='() => SelectRow("redeem-credit")'>
+                <span><i class="fas fa-coins"></i> </span>
+                <span class="label-text">Credit</span>
+                <span>@Label_CreditAmount</span>
+            </div>
+            <div class="icon-row warning @(activeRowId == "redeem-voucher" ? "active" : "")" @onclick='() => SelectRow("redeem-voucher")'>
+                <span><i class="fas fa-ticket-alt"></i> </span>
+                <span class="label-text">Voucher</span>
+                <span>@Label_Voucher</span>
+            </div>
+            <div class="icon-row warning @(activeRowId == "redeem-point" ? "active" : "")" @onclick='() => SelectRow("redeem-point")'>
+                <span><i class="fas fa-star"></i> </span>
+                <span class="label-text">Point</span>
+                <span>@Label_Point</span>
+            </div>
+        </section>
+
+    </aside>
+
+    <main class="history-main">
+
+        @switch (CurrentView)
+        {
+            // -------- Collection --------
+            case HistoryView.CollectionCash:
+            case HistoryView.CollectionDebitCard:
+            case HistoryView.CollectionCreditCard:
+            case HistoryView.CollectionTNG:
+            case HistoryView.CollectionOnline:
+            case HistoryView.CollectionQRPay:
+                <CollectionHistory View="CurrentView" />
+                break;
+
+            // -------- Work --------
+            case HistoryView.WorkOrder:
+            case HistoryView.WorkItem:
+            case HistoryView.WorkCustomer:
+            case HistoryView.WorkStaff:
+                <WorkHistory View="CurrentView" />
+                break;
+
+            // -------- Outstanding --------
+            case HistoryView.OutstandingTotal:
+            case HistoryView.OutstandingCollection:
+                <OutstandingHistory View="CurrentView" />
+                break;
+
+            // -------- Signup / Redeem --------
+            case HistoryView.SignupCredit:
+            case HistoryView.SignupVoucher:
+            case HistoryView.SignupPoint:
+            case HistoryView.RedeemCredit:
+            case HistoryView.RedeemVoucher:
+            case HistoryView.RedeemPoint:
+                <SignupRedeemHistory View="CurrentView" />
+                break;
+
+            default:
+                <div class="empty-state">
+                    Please select a category
+                </div>
+                break;
+        }
+    </main>
+
+</div>

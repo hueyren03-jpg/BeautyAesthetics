@@ -1,0 +1,371 @@
+@page "/reason-manager"
+@using Beauty_Aesthetics_WebPos.Components.Layout
+@layout EmptyLayout
+@using Beauty_Aesthetics_WebPos.Components.ViewModels
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<PageTitle>Reason Manager</PageTitle>
+
+<div class="reason-manager-container">
+    <!-- Header -->
+    <div class="manager-header">
+        <div class="header-content">
+            <h1 class="header-title">
+                <i class="bi bi-card-list"></i>
+                Reason Manager
+            </h1>
+            <a href="/case-note-medical-certification" class="btn-back" aria-label="Back">
+                <i class="bi bi-arrow-left"></i>
+            </a>
+        </div>
+    </div>
+
+    <!-- Status Message -->
+    @if (!string.IsNullOrEmpty(ViewModel.StatusMessage))
+    {
+        <div class="status-banner @(ViewModel.IsSuccess ? "status-success" : "status-error")">
+            <i class="bi @(ViewModel.IsSuccess ? "bi-check-circle-fill" : "bi-exclamation-circle-fill")"></i>
+            <span>@ViewModel.StatusMessage</span>
+            <button class="btn-dismiss" @onclick="ViewModel.ClearStatus">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+    }
+
+    <!-- Main Content -->
+    <div class="manager-content">
+        <!-- Action Bar -->
+        <div class="action-bar">
+            <div class="action-left">
+                <div class="stats-badge">
+                    <i class="bi bi-collection"></i>
+                    <span>@_reasons.Count / 10 Reasons</span>
+                </div>
+            </div>
+            <div class="action-right">
+                @if (!ViewModel.IsAddingNew && _reasons.Count < 10)
+                {
+                    <button class="btn-action btn-add" @onclick="StartAddingNew">
+                        <i class="bi bi-plus-lg"></i>
+                        Add New Reason
+                    </button>
+                }
+                @if (_reasons.Count >= 10)
+                {
+                    <div class="limit-warning">
+                        <i class="bi bi-info-circle"></i>
+                        Maximum limit reached (10 reasons)
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Add New Reason Form -->
+        @if (ViewModel.IsAddingNew)
+        {
+            <div class="add-reason-card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="bi bi-plus-circle"></i>
+                        Add New Reason
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Reason Name <span class="required">*</span></label>
+                            <input 
+                                type="text" 
+                                class="form-input" 
+                                placeholder="e.g., Medical Check-up"
+                                @bind="ViewModel.NewReasonKey"
+                                @bind:event="oninput"
+                                maxlength="100" />
+                            <small class="form-hint">Short, descriptive name for quick selection</small>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Reason Description <span class="required">*</span></label>
+                            <textarea 
+                                class="form-textarea" 
+                                rows="3"
+                                placeholder="e.g., The patient requires time off for medical check-up and follow-up consultation."
+                                @bind="ViewModel.NewReasonValue"
+                                @bind:event="oninput"
+                                maxlength="500"></textarea>
+                            <small class="form-hint">Full description that will appear in the certificate</small>
+                        </div>
+                    </div>
+                    <div class="card-actions">
+                        <button class="btn-cancel" @onclick="ViewModel.CancelAddingNew">
+                            <i class="bi bi-x-lg"></i>
+                            Cancel
+                        </button>
+                        <button 
+                            class="btn-save" 
+                            @onclick="AddReason"
+                            disabled="@(!ViewModel.CanAddReason())">
+                            <i class="bi bi-check-lg"></i>
+                            Add Reason
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- Reasons List -->
+        <div class="reasons-list">
+            @if (_reasons.Count == 0)
+            {
+                <div class="empty-state">
+                    <i class="bi bi-inbox"></i>
+                    <h3>No Reasons Yet</h3>
+                    <p>Start by adding your first custom reason</p>
+                    <button class="btn-action btn-add" @onclick="StartAddingNew">
+                        <i class="bi bi-plus-lg"></i>
+                        Add First Reason
+                    </button>
+                </div>
+            }
+            else
+            {
+                @foreach (var reason in _reasons)
+                {
+                    <div class="reason-card">
+                        @if (ViewModel.EditingReasonKey == reason.Key)
+                        {
+                            <!-- Edit Mode -->
+                            <div class="reason-edit-mode">
+                                <div class="form-group">
+                                    <label class="form-label">Reason Name <span class="required">*</span></label>
+                                    <input 
+                                        type="text" 
+                                        class="form-input" 
+                                        @bind="ViewModel.EditReasonKey"
+                                        @bind:event="oninput"
+                                        maxlength="100" />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Reason Description <span class="required">*</span></label>
+                                    <textarea 
+                                        class="form-textarea" 
+                                        rows="3"
+                                        @bind="ViewModel.EditReasonValue"
+                                        @bind:event="oninput"
+                                        maxlength="500"></textarea>
+                                </div>
+                                <div class="edit-actions">
+                                    <button class="btn-cancel-edit" @onclick="ViewModel.CancelEditing">
+                                        <i class="bi bi-x-lg"></i>
+                                        Cancel
+                                    </button>
+                                    <button 
+                                        class="btn-save-edit" 
+                                        @onclick="() => UpdateReason(reason.Key)"
+                                        disabled="@(!ViewModel.CanUpdateReason())">
+                                        <i class="bi bi-check-lg"></i>
+                                        Save Changes
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <!-- View Mode -->
+                            <div class="reason-content">
+                                <div class="reason-header">
+                                    <h3 class="reason-name">
+                                        <i class="bi bi-file-text"></i>
+                                        @reason.Key
+                                    </h3>
+                                    <div class="reason-actions">
+                                        <button class="btn-icon btn-edit" @onclick="() => ViewModel.StartEditing(reason.Key, reason.Value)" title="Edit">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn-icon btn-delete" @onclick="() => ViewModel.ShowDeleteDialog(reason.Key)" title="Delete">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <p class="reason-description">@reason.Value</p>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+@if (ViewModel.ShowDeleteConfirmation)
+{
+    <div class="modal-overlay" @onclick="ViewModel.CancelDelete">
+        <div class="modal-container" @onclick:stopPropagation="true">
+            <div class="modal-header modal-header-danger">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <h3>Delete Reason?</h3>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete the reason:</p>
+                <div class="delete-preview">
+                    <strong>@ViewModel.ReasonToDelete</strong>
+                </div>
+                <p class="modal-warning">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" @onclick="ViewModel.CancelDelete">
+                    <i class="bi bi-x-circle"></i>
+                    Cancel
+                </button>
+                <button class="btn-modal-delete" @onclick="DeleteReason">
+                    <i class="bi bi-trash-fill"></i>
+                    Delete Reason
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+
+@code {
+    private CaseNoteReasonManagerViewModel ViewModel { get; set; } = new();
+    private List<ReasonItem> _reasons = new();
+    private IJSObjectReference? _moduleRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _moduleRef = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Beauty_Aesthetics_Hybrid.Shared/js/reason-storage.js");
+            await LoadReasons();
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadReasons()
+    {
+        try
+        {
+            var reasonsArray = await JS.InvokeAsync<ReasonItem[]>("getAllReasons");
+            _reasons = reasonsArray?.ToList() ?? new List<ReasonItem>();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading reasons: {ex.Message}");
+            _reasons = new List<ReasonItem>();
+        }
+    }
+
+    private void StartAddingNew()
+    {
+        ViewModel.StartAddingNew();
+        StateHasChanged();
+    }
+
+    private async Task AddReason()
+    {
+        if (!ViewModel.CanAddReason())
+        {
+            ViewModel.SetError(ViewModel.GetAddValidationError());
+            return;
+        }
+
+        try
+        {
+            var result = await JS.InvokeAsync<AddReasonResult>("addReason", ViewModel.NewReasonKey, ViewModel.NewReasonValue);
+            
+            if (result.Success)
+            {
+                ViewModel.SetSuccess($"✓ Reason '{ViewModel.NewReasonKey}' added successfully!");
+                ViewModel.CancelAddingNew();
+                await LoadReasons();
+            }
+            else
+            {
+                ViewModel.SetError(result.Error ?? "Failed to add reason");
+            }
+        }
+        catch (Exception ex)
+        {
+            ViewModel.SetError($"Error: {ex.Message}");
+        }
+    }
+
+    private async Task UpdateReason(string oldKey)
+    {
+        if (!ViewModel.CanUpdateReason())
+        {
+            ViewModel.SetError(ViewModel.GetEditValidationError());
+            return;
+        }
+
+        try
+        {
+            var result = await JS.InvokeAsync<UpdateReasonResult>("updateReason", oldKey, ViewModel.EditReasonKey, ViewModel.EditReasonValue);
+            
+            if (result.Success)
+            {
+                ViewModel.SetSuccess($"✓ Reason updated successfully!");
+                ViewModel.CancelEditing();
+                await LoadReasons();
+            }
+            else
+            {
+                ViewModel.SetError(result.Error ?? "Failed to update reason");
+            }
+        }
+        catch (Exception ex)
+        {
+            ViewModel.SetError($"Error: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteReason()
+    {
+        try
+        {
+            var result = await JS.InvokeAsync<DeleteReasonResult>("deleteReason", ViewModel.ReasonToDelete);
+            
+            if (result.Success)
+            {
+                ViewModel.SetSuccess($"✓ Reason '{ViewModel.ReasonToDelete}' deleted successfully!");
+                ViewModel.CancelDelete();
+                await LoadReasons();
+            }
+            else
+            {
+                ViewModel.SetError(result.Error ?? "Failed to delete reason");
+            }
+        }
+        catch (Exception ex)
+        {
+            ViewModel.SetError($"Error: {ex.Message}");
+        }
+    }
+
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_moduleRef != null)
+        {
+            try
+            {
+                await _moduleRef.DisposeAsync();
+            }
+            catch
+            {
+                // Suppress disposal errors
+            }
+        }
+    }
+
+    // Result classes for JS interop
+    private class AddReasonResult { public bool Success { get; set; } public string? Error { get; set; } }
+    private class UpdateReasonResult { public bool Success { get; set; } public string? Error { get; set; } }
+    private class DeleteReasonResult { public bool Success { get; set; } public string? Error { get; set; } }
+}
+
+
