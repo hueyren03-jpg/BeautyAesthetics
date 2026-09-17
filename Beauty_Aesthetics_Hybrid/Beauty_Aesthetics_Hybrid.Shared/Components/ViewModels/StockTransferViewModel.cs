@@ -3,6 +3,7 @@ namespace Beauty_Aesthetics_WebPos.Components.ViewModels;
 public sealed class StockTransferViewModel
 {
     public string DocumentId { get; set; } = string.Empty;
+    public int DocumentTypeId { get; set; }
     public string DisplayCode { get; set; } = string.Empty;
     public DateTime Date { get; set; } = DateTime.Today;
     public string BranchId { get; set; } = "HQ";
