@@ -262,7 +262,7 @@ public sealed class StockTransferService : IStockTransferService
     {
         if (document.IsVoid)
         {
-            return "Voided";
+            return "Cancelled";
         }
 
         if (document.ExtensionData is not null)
@@ -288,12 +288,14 @@ public sealed class StockTransferService : IStockTransferService
             {
                 if (ReadExtensionBoolean(document.ExtensionData, receivedName))
                 {
-                    return "Received";
+                    return "Completed";
                 }
             }
         }
 
-        return document.IsLocked ? "Completed" : "Pending";
+        // CreateRecord posts the outbound side of the transfer and the backend
+        // generates its GIN. Until a linked GRN is returned, the transfer is in transit.
+        return "In Transit";
     }
 
     private static string? NormalizeTransferStatus(string status)
@@ -302,23 +304,30 @@ public sealed class StockTransferService : IStockTransferService
         if (value.Contains("receive", StringComparison.OrdinalIgnoreCase) ||
             value.Contains("accept", StringComparison.OrdinalIgnoreCase) ||
             value.Contains("complete", StringComparison.OrdinalIgnoreCase) ||
-            value.Contains("closed", StringComparison.OrdinalIgnoreCase) ||
-            value.Contains("posted", StringComparison.OrdinalIgnoreCase))
+            value.Contains("closed", StringComparison.OrdinalIgnoreCase))
         {
-            return "Received";
+            return "Completed";
         }
 
         if (value.Contains("cancel", StringComparison.OrdinalIgnoreCase) ||
             value.Contains("void", StringComparison.OrdinalIgnoreCase))
         {
-            return "Voided";
+            return "Cancelled";
+        }
+
+        if (value.Contains("draft", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Draft";
         }
 
         if (value.Contains("pending", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("transit", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("dispatch", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("posted", StringComparison.OrdinalIgnoreCase) ||
             value.Contains("open", StringComparison.OrdinalIgnoreCase) ||
             value.Contains("new", StringComparison.OrdinalIgnoreCase))
         {
-            return "Pending";
+            return "In Transit";
         }
 
         return null;

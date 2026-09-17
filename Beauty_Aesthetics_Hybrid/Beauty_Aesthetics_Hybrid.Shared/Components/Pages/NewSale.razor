@@ -11,6 +11,7 @@
 @inject IBranchSessionService BranchSession
 @inject ICustomerService CustomerService
 @inject IProductInventoryService ProductInventoryService
+@inject ProductImageService ProductImageService
 @inject IServiceItemService ServiceItemService
 @inject IPackageService PackageService
 @inject NavigationManager NavigationManager
@@ -1036,12 +1037,12 @@
         {
             catalog.AddRange(productResult.Value
                 .Where(x => !string.IsNullOrWhiteSpace(x.MasterAccountId))
-                .Select(x => new CatalogItem(x.MasterAccountId, x.Type, x.Sku, "Product", x.Price, ResolveInventoryImage("Product", x.ImagePath, x.ImageFileName))));
+                .Select(x => new CatalogItem(x.MasterAccountId, x.Type, x.Sku, "Product", x.Price, ProductImageService.ResolveImageUrl(x.MasterAccountId, x.ImagePath, x.ImageFileName))));
         }
 
         catalog.AddRange(services
             .Where(x => !string.IsNullOrWhiteSpace(x.MasterAccountId))
-            .Select(x => new CatalogItem(x.MasterAccountId!, x.ServiceName, x.Sku, "Service", x.Price, ResolveInventoryImage("Service", x.ImagePath, x.ImageFileName))));
+            .Select(x => new CatalogItem(x.MasterAccountId!, x.ServiceName, x.Sku, "Service", x.Price, ProductImageService.ResolveImageUrl(x.MasterAccountId, x.ImagePath, x.ImageFileName))));
 
         if (services.Count > 0)
         {
@@ -1050,7 +1051,7 @@
             {
                 catalog.AddRange(packageResult.Value
                     .Where(x => !string.IsNullOrWhiteSpace(x.MasterAccountId) && !string.Equals(x.Status, "Inactive", StringComparison.OrdinalIgnoreCase))
-                    .Select(x => new CatalogItem(x.MasterAccountId, x.Name, x.Sku, "Package", x.Price, ResolveInventoryImage("Package", x.ImagePath, x.ImageFileName))));
+                    .Select(x => new CatalogItem(x.MasterAccountId, x.Name, x.Sku, "Package", x.Price, ProductImageService.ResolveImageUrl(x.MasterAccountId, x.ImagePath, x.ImageFileName))));
             }
         }
 
@@ -1627,23 +1628,6 @@
 
     private const string EmptyItemImage = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
     private static string ItemImage(string type, string? value) => string.IsNullOrWhiteSpace(value) ? EmptyItemImage : value.Trim();
-
-    private static string ResolveInventoryImage(string type, string? imagePath, string? imageFileName)
-    {
-        var path = imagePath?.Trim();
-        var fileName = imageFileName?.Trim();
-
-        if (!string.IsNullOrWhiteSpace(path) && !string.IsNullOrWhiteSpace(fileName))
-            return $"{path.TrimEnd('/', '\\')}/{fileName.TrimStart('/', '\\')}";
-
-        if (!string.IsNullOrWhiteSpace(path))
-            return path;
-
-        if (!string.IsNullOrWhiteSpace(fileName))
-            return fileName;
-
-        return EmptyItemImage;
-    }
 
     private static string PaymentIcon(string? value)
     {
