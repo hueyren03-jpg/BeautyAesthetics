@@ -7,6 +7,7 @@
 @inject IAuthService AuthService
 @inject Beauty_Aesthetics_WebPos.Components.Services.AppState AppState
 @inject IBranchSessionService BranchSession
+@inject Microsoft.JSInterop.IJSRuntime JSRuntime
 
 <div class="MainLayout">
     @* This is the side bar *@
@@ -79,7 +80,11 @@
              aria-hidden="true"></div>
         <div class="page">
             <div class="HeaderWrapper">
-                <button type="button" class="mobile-nav-toggle" @onclick="ToggleSideBar" title="Open Menu" aria-label="Toggle Menu">
+                <button type="button"
+                        class="mobile-nav-toggle @(isMobileLayout ? "mobile-nav-toggle--visible" : string.Empty)"
+                        @onclick="ToggleSideBar"
+                        title="Open Menu"
+                        aria-label="Toggle Menu">
                     <i class="fa-solid fa-bars"></i>
                 </button>
                 <div class="header">
@@ -132,6 +137,7 @@
     private bool isProfileOpen = false;
     private bool isSidebarOpen = false;
     private bool isMobileLayout = true;
+    private string detectedFormFactor = string.Empty;
 
     protected override void OnInitialized()
     {
@@ -140,17 +146,49 @@
 
         try
         {
-            var factor = FormFactor.GetFormFactor();
-            if (factor == "Desktop" || factor == "Web" || factor == "Tablet")
+            detectedFormFactor = FormFactor.GetFormFactor() ?? string.Empty;
+            var desktopCapable =
+                detectedFormFactor.Equals("Desktop", StringComparison.OrdinalIgnoreCase) ||
+                detectedFormFactor.Equals("Web", StringComparison.OrdinalIgnoreCase);
+
+            isSidebarOpen = desktopCapable;
+            isMobileLayout = !desktopCapable;
+        }
+        catch
+        {
+            detectedFormFactor = string.Empty;
+            isSidebarOpen = false;
+            isMobileLayout = true;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            var viewportWidth = await JSRuntime.InvokeAsync<int>("posResponsive.getViewportWidth");
+            var desktopCapable =
+                detectedFormFactor.Equals("Desktop", StringComparison.OrdinalIgnoreCase) ||
+                detectedFormFactor.Equals("Web", StringComparison.OrdinalIgnoreCase);
+            var useCompactLayout = !desktopCapable || viewportWidth <= 1180;
+
+            if (isMobileLayout != useCompactLayout ||
+                (useCompactLayout && isSidebarOpen) ||
+                (!useCompactLayout && !isSidebarOpen))
             {
-                isSidebarOpen = true;
-                isMobileLayout = false;
+                isMobileLayout = useCompactLayout;
+                isSidebarOpen = !useCompactLayout;
+                await InvokeAsync(StateHasChanged);
             }
         }
         catch
         {
-            isSidebarOpen = false;
-            isMobileLayout = true;
+            // Keep the form-factor fallback when viewport interop is unavailable.
         }
     }
 
