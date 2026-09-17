@@ -12,6 +12,7 @@
 @inject IBranchLookupService BranchLookupService
 @inject ICustomerService CustomerService
 @inject IProductInventoryService ProductInventoryService
+@inject ProductImageService ProductImageService
 @inject IServiceItemService ServiceItemService
 @inject IPackageService PackageService
 @inject NavigationManager NavigationManager
@@ -2365,7 +2366,7 @@
                         "Product",
                         item.Price,
                         item.Type,
-                        CatalogImageForType("Product"))));
+                        ResolveCatalogImage("Product", item.MasterAccountId, item.ImagePath, item.ImageFileName))));
             }
 
             catalog.AddRange(services
@@ -2377,7 +2378,7 @@
                     "Service",
                     item.Price,
                     item.SalesDescription,
-                    CatalogImageForType("Service"))));
+                    ResolveCatalogImage("Service", item.MasterAccountId, item.ImagePath, item.ImageFileName))));
 
             if (services.Count > 0)
             {
@@ -2394,7 +2395,7 @@
                             "Package",
                             item.Price,
                             item.SalesDescription,
-                            CatalogImageForType("Package"))));
+                            ResolveCatalogImage("Package", item.MasterAccountId, item.ImagePath, item.ImageFileName))));
                 }
             }
 
@@ -3084,6 +3085,16 @@
         "package" => "_content/Beauty_Aesthetics_Hybrid.Shared/Images/sales/package-catalog.jpg",
         _ => "_content/Beauty_Aesthetics_Hybrid.Shared/Images/sales/product-catalog.jpg"
     };
+
+    private string ResolveCatalogImage(
+        string type,
+        string? masterAccountId,
+        string? imagePath,
+        string? imageFileName)
+    {
+        var imageUrl = ProductImageService.ResolveImageUrl(masterAccountId, imagePath, imageFileName);
+        return string.IsNullOrWhiteSpace(imageUrl) ? CatalogImageForType(type) : imageUrl;
+    }
 
     private static string CartItemImage(TransactionItem item) =>
         string.IsNullOrWhiteSpace(item.ImageUrl) ? CatalogImageForType(item.Category) : item.ImageUrl;

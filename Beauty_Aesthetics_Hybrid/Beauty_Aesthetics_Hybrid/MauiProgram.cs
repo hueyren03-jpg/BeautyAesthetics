@@ -74,12 +74,15 @@ namespace Beauty_Aesthetics_Hybrid
             builder.Services.AddScoped<ServiceInventoryAC>();
             builder.Services.AddScoped<SupportingTableAC>();
             builder.Services.AddScoped<StockGrnAC>();
+            builder.Services.AddScoped<StockGinAC>();
             builder.Services.AddScoped<StockTransferAC>();
             builder.Services.AddScoped<InventoryPendingAcceptAC>();
             builder.Services.AddScoped<BranchAC>();
             builder.Services.AddScoped<IProductInventoryService, ProductInventoryService>();
+            builder.Services.AddSingleton<ProductImageService>();
             builder.Services.AddScoped<IInventoryOptionService, InventoryOptionService>();
             builder.Services.AddScoped<IStockGrnService, StockGrnService>();
+            builder.Services.AddScoped<IStockGinService, StockGinService>();
             builder.Services.AddScoped<IStockTransferService, StockTransferService>();
             builder.Services.AddScoped<IInventoryPendingAcceptService, InventoryPendingAcceptService>();
             builder.Services.AddScoped<IBranchLookupService, BranchLookupService>();

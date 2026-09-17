@@ -17,8 +17,10 @@
 @using ClosedXML.Excel
 @inject IJSRuntime JSRuntime
 @inject IProductInventoryService ProductInventoryService
+@inject ProductImageService ProductImageService
 @inject IInventoryOptionService InventoryOptionService
 @inject IStockGrnService StockGrnService
+@inject IStockGinService StockGinService
 @inject IStockTransferService StockTransferSvc
 @inject IInventoryPendingAcceptService PendingStockReceiptService
 @inject IBranchLookupService BranchLookupService
@@ -304,6 +306,22 @@
                         </div>
                         <div class="product-modal__body">
                             <form class="product-form" @onsubmit:preventDefault>
+                                <div class="product-form__image-preview">
+                                    <div class="product-form__image-frame">
+                                        @if (HasInventoryImage(EditingInventoryProduct))
+                                        {
+                                            <img src="@ResolveProductImage(EditingInventoryProduct)" alt="@EditProduct.Type" loading="lazy" />
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-image"></i>
+                                        }
+                                    </div>
+                                    <div>
+                                        <strong>Product image</strong>
+                                        <span>Loaded from the product record</span>
+                                    </div>
+                                </div>
                                 <div class="inventory__form-row">
                                     <div class="inventory__form-group">
                                         <label>Product Name</label>
@@ -1390,11 +1408,30 @@
                                     <label>Product</label>
                                     <select @bind="NewPurchaseOrder.Product" required>
                                         <option value="">Select Product</option>
-                                        @foreach (var item in ViewModel.Items)
+                                        @foreach (var item in InventoryItems)
                                         {
                                             <option value="@item.Type">@item.Type</option>
                                         }
                                     </select>
+                                    @if (SelectedPurchaseOrderInventoryProduct is not null)
+                                    {
+                                        <div class="product-selection-preview">
+                                            <div class="gin-product-option__image">
+                                                @if (HasInventoryImage(SelectedPurchaseOrderInventoryProduct))
+                                                {
+                                                    <img src="@ResolveProductImage(SelectedPurchaseOrderInventoryProduct)" alt="" loading="lazy" />
+                                                }
+                                                else
+                                                {
+                                                    <i class="bi bi-box-seam"></i>
+                                                }
+                                            </div>
+                                            <div>
+                                                <strong>@SelectedPurchaseOrderInventoryProduct.Type</strong>
+                                                <span>@SelectedPurchaseOrderInventoryProduct.Sku</span>
+                                            </div>
+                                        </div>
+                                    }
                                 </div>
                             </div>
                             <div class="inventory__form-row">
@@ -1585,6 +1622,13 @@
                 {
                     <div class="inventory__api-message" role="status">Loading stock transfers...</div>
                 }
+                else if (!string.IsNullOrWhiteSpace(StockTransferSuccessMessage))
+                {
+                    <div class="inventory__api-message inventory__api-message--success" role="status">
+                        <i class="bi bi-check-circle"></i>
+                        <span>@StockTransferSuccessMessage</span>
+                    </div>
+                }
 
                 @if (IsTransferHistoryPrintModeActive)
                 {
@@ -1763,17 +1807,38 @@
                                                 <tbody>
                                                     @foreach (var product in FilteredRestockProducts)
                                                     {
-                                                        <tr>
-                                                            <td>
+                                                        var isSelected = NewRestock.SelectedProducts.ContainsKey(product.Sku);
+                                                        <tr class="product-picker-row @(isSelected ? "product-picker-row--selected" : string.Empty)"
+                                                            role="checkbox"
+                                                            aria-label="@($"Select {product.ProductName}")"
+                                                            aria-checked="@isSelected"
+                                                            tabindex="0"
+                                                            @onclick="() => ToggleRestockProductSelection(product)"
+                                                            @onkeydown="args => HandleRestockProductRowKeyDown(args, product)">
+                                                            <td @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
                                                                 <input type="checkbox"
-                                                                       checked="@NewRestock.SelectedProducts.ContainsKey(product.Sku)"
+                                                                       checked="@isSelected"
                                                                        @onchange="() => ToggleRestockProductSelection(product)" />
                                                             </td>
-                                                            <td>@product.ProductName</td>
+                                                            <td>
+                                                                <div class="gin-product-option">
+                                                                    <div class="gin-product-option__image">
+                                                                        @if (HasInventoryImage(product.ImageUrl))
+                                                                        {
+                                                                            <img src="@product.ImageUrl" alt="" loading="lazy" />
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                            <i class="bi bi-box-seam"></i>
+                                                                        }
+                                                                    </div>
+                                                                    <strong>@product.ProductName</strong>
+                                                                </div>
+                                                            </td>
                                                             <td>@product.Sku</td>
                                                             <td>@FormatStockCount(product.StockCount) @product.Uom1</td>
-                                                            <td>
-                                                                @if (NewRestock.SelectedProducts.ContainsKey(product.Sku))
+                                                            <td @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
+                                                                @if (isSelected)
                                                                 {
                                                                     <input type="number"
                                                                            min="1"
@@ -1882,11 +1947,12 @@
                                             <i class="bi bi-search"></i>
                                         </div>
                                         <div class="stock-transfer__product-list">
-                                            <table class="stock-transfer__selection-table">
+                                            <table class="stock-transfer__selection-table product-picker-table">
                                                 <thead>
                                                     <tr>
                                                         <th style="width: 50px;">Select</th>
-                                                        <th>Product Name</th>
+                                                        <th class="product-picker-table__image-heading">Image</th>
+                                                        <th>Product</th>
                                                         <th>SKU</th>
                                                         <th>Available Stock</th>
                                                         <th>Quantity to Transfer</th>
@@ -1895,19 +1961,35 @@
                                                 <tbody>
                                                     @foreach (var product in FilteredTransferProducts)
                                                     {
-                                                        <tr>
-                                                            <td>
+                                                        var isSelected = NewTransfer.SelectedProducts.ContainsKey(product.Sku);
+                                                        var isUnavailable = product.StockCount is null || product.StockCount <= 0;
+                                                        <tr class="product-picker-row @(isSelected ? "product-picker-row--selected" : string.Empty) @(isUnavailable ? "product-picker-row--disabled" : string.Empty)"
+                                                            role="checkbox"
+                                                            aria-label="@($"Select {product.ProductName}")"
+                                                            aria-checked="@isSelected"
+                                                            aria-disabled="@isUnavailable"
+                                                            tabindex="@(isUnavailable ? -1 : 0)"
+                                                            @onclick="() => ToggleProductSelection(product)"
+                                                            @onkeydown="args => HandleTransferProductRowKeyDown(args, product)">
+                                                            <td @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
                                                                 <input type="checkbox"
-                                                                       checked="@NewTransfer.SelectedProducts.ContainsKey(product.Sku)"
-                                                                       disabled="@(product.StockCount is null || product.StockCount <= 0)"
+                                                                       checked="@isSelected"
+                                                                       disabled="@isUnavailable"
                                                                        title="@GetStockSelectionTitle(product)"
                                                                        @onchange="() => ToggleProductSelection(product)" />
                                                             </td>
-                                                            <td>@product.ProductName</td>
+                                                            <td class="product-picker-table__image-cell">
+                                                                <img src="@GetProductPickerImage(product)"
+                                                                     alt="@product.ProductName"
+                                                                     loading="lazy" />
+                                                            </td>
+                                                            <td class="product-picker-table__product-cell">
+                                                                <strong>@product.ProductName</strong>
+                                                            </td>
                                                             <td>@product.Sku</td>
                                                             <td>@FormatStockCount(product.StockCount) @product.Uom1</td>
-                                                            <td>
-                                                                @if (NewTransfer.SelectedProducts.ContainsKey(product.Sku))
+                                                            <td @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
+                                                                @if (isSelected)
                                                                 {
                                                                     <input type="number"
                                                                            min="1"
@@ -2113,6 +2195,41 @@
                                     </div>
                                 </div>
 
+                                @{
+                                    var relatedGin = FindRelatedGin(SelectedTransferHistoryDetails);
+                                    var relatedGrn = FindRelatedGrn(SelectedTransferHistoryDetails);
+                                }
+                                <div class="inventory-view-section">
+                                    <h3 class="inventory-view-section__title"><i class="bi bi-diagram-3"></i> Transfer Workflow</h3>
+                                    <div class="inventory-workflow-links">
+                                        <div class="inventory-workflow-card inventory-workflow-card--complete">
+                                            <span>Stock Transfer</span>
+                                            <strong>@SelectedTransferHistoryItem.ReferenceNo</strong>
+                                            <small>@SelectedTransferHistoryItem.Status</small>
+                                        </div>
+                                        <i class="bi bi-arrow-right inventory-workflow-arrow"></i>
+                                        <div class="inventory-workflow-card @(relatedGin is null ? "inventory-workflow-card--pending" : "inventory-workflow-card--complete")">
+                                            <span>Generated GIN</span>
+                                            <strong>@(relatedGin?.ReturnedStockNo ?? "Processing")</strong>
+                                            <small>@(relatedGin?.Status ?? "Posted after transfer creation")</small>
+                                            @if (relatedGin is not null)
+                                            {
+                                                <button type="button" @onclick="() => OpenRelatedGin(relatedGin)">View GIN</button>
+                                            }
+                                        </div>
+                                        <i class="bi bi-arrow-right inventory-workflow-arrow"></i>
+                                        <div class="inventory-workflow-card @(relatedGrn is null ? "inventory-workflow-card--pending" : "inventory-workflow-card--complete")">
+                                            <span>Receiving GRN</span>
+                                            <strong>@(relatedGrn?.DOCNo ?? "Pending receipt")</strong>
+                                            <small>@(relatedGrn?.Status ?? "Created when destination receives")</small>
+                                            @if (relatedGrn is not null)
+                                            {
+                                                <button type="button" @onclick="() => OpenRelatedGrn(relatedGrn)">View GRN</button>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <div class="inventory-view-section">
                                     <h3 class="inventory-view-section__title"><i class="bi bi-boxes"></i> Transferred Items (@SelectedTransferHistoryProductLines.Count)</h3>
                                     @if (SelectedTransferHistoryProductLines.Any())
@@ -2166,11 +2283,9 @@
                 <div class="inventory__toolbar">
                     <div class="inventory__toolbar-primary inventory__toolbar-primary--left">
                         <div class="stock-transfer__actions">
-                            <button class="tab-btn stock-transfer__action-btn" title="Add GIN" @onclick="ShowAddReturnedStockModal">
-                                <i class="bi bi-plus-lg"></i>
-                            </button>
-                            <button class="btn-delete" title="Delete GIN" @onclick="ToggleReturnedStockDeleteMode">
-                                <i class="bi bi-trash3"></i>
+                            <button class="tab-btn stock-transfer__btn-with-text" title="Issue stock" @onclick="ShowAddReturnedStockModal">
+                                <i class="bi bi-box-arrow-up"></i>
+                                <span>Issue Stock</span>
                             </button>
                             @if (!IsReturnedStockPrintModeActive)
                             {
@@ -2207,28 +2322,7 @@
                     <AdvancedInventoryFilter Columns="@GINFilterColumns" OnApply="@HandleGINFiltersApplied" OnClear="@HandleGINFiltersCleared" ModuleName="GIN" ResultCount="@FilteredReturnedStock.Count()" />
                 </div>
 
-                @if (IsReturnedStockDeleteMode)
-                {
-                    <div class="inventory__delete-bar">
-                        <button type="button" class="selected-delete-banner-close" @onclick="CancelReturnedStockDeleteMode" title="Cancel delete mode">
-                            <i class="bi bi-x-lg"></i>
-                        </button>
-                        <div class="inventory__delete-info">
-                            <span>@SelectedReturnedStocksForDeletion.Count item(s) selected</span>
-                        </div>
-                        <div class="inventory__delete-actions">
-                            <button class="tab-btn" @onclick="CancelReturnedStockDeleteMode">
-                                Cancel
-                            </button>
-                            <button class="tab-btn tab-btn--danger"
-                                    disabled="@(!SelectedReturnedStocksForDeletion.Any())"
-                                    @onclick='() => RequestSelectedDeleteConfirmation("returnedStock", SelectedReturnedStocksForDeletion.Count, "GIN record(s)")'>
-                                Delete Selected
-                            </button>
-                        </div>
-                    </div>
-                }
-                else if (IsReturnedStockPrintModeActive)
+                @if (IsReturnedStockPrintModeActive)
                 {
                     <div class="inventory__delete-bar">
                         <div class="inventory__delete-info">
@@ -2237,290 +2331,220 @@
                     </div>
                 }
 
-                <!-- Add GIN Modal -->
+                <!-- GIN Add/Edit Modal -->
                 @if (ShowAddReturnedStockModalWindow)
                 {
                     <div class="returned-modal-overlay" @onclick="CloseAddReturnedStockModal">
                         <div class="returned-modal" @onclick:stopPropagation="true">
                             <div class="returned-modal__header">
                                 <div class="returned-modal__title">
-                                    <i class="bi bi-arrow-return-left"></i>
-                                    <h2>Add GIN</h2>
+                                    <i class="bi bi-box-arrow-up"></i>
+                                    <div>
+                                        <h2>@(IsGINEditMode ? "Edit Goods Issue" : "Issue Stock")</h2>
+                                        <p>@(IsGINEditMode ? NewReturnedStock.ReturnedStockNo : "GIN number will be generated after saving")</p>
+                                    </div>
                                 </div>
                                 <div class="returned-modal__actions">
-                                    <button type="button" class="returned-modal__btn returned-modal__btn--save" @onclick="HandleAddReturnedStock">
-                                        Submit
+                                    <button type="button"
+                                            class="returned-modal__btn returned-modal__btn--save"
+                                            disabled="@IsGINSaving"
+                                            @onclick="HandleAddReturnedStock">
+                                        @(IsGINSaving ? "Saving..." : IsGINEditMode ? "Save Changes" : "Issue Stock")
                                     </button>
-                                    <button type="button" class="returned-modal__btn returned-modal__btn--cancel" @onclick="CloseAddReturnedStockModal">
+                                    <button type="button"
+                                            class="returned-modal__btn returned-modal__btn--cancel"
+                                            disabled="@IsGINSaving"
+                                            @onclick="CloseAddReturnedStockModal">
                                         Cancel
                                     </button>
                                 </div>
                             </div>
                             <div class="returned-modal__body">
                                 <form class="returned-form" @onsubmit:preventDefault>
-                                    <!-- Return Details Section -->
                                     <div class="stock-transfer__form-section">
-                                        <h3>Return Details</h3>
+                                        <h3>Issue Details</h3>
                                         <div class="inventory__form-row">
                                             <div class="inventory__form-group">
-                                                <label>GIN No</label>
-                                                <input type="text" @bind="NewReturnedStock.ReturnedStockNo" readonly />
+                                                <label for="gin-issue-date">Issue Date</label>
+                                                <input id="gin-issue-date" type="date" @bind="NewReturnedStock.DateIssued" required />
                                             </div>
                                             <div class="inventory__form-group">
-                                                <label>Date Issued</label>
-                                                <input type="date" @bind="NewReturnedStock.DateIssued" required />
+                                                <label>Issuing Branch</label>
+                                                <div class="gin-readonly-field">
+                                                    <i class="bi bi-shop"></i>
+                                                    <span>@ResolveGINBranchName(NewReturnedStock.BranchId)</span>
+                                                </div>
                                             </div>
                                         </div>
                                         <div class="inventory__form-row">
                                             <div class="inventory__form-group">
-                                                <label>Issued By (Branch)</label>
-                                                <select @bind="NewReturnedStock.IssuedBy" required>
-                                                    <option value="">Select Branch</option>
-                                                    <option value="Main Branch">Main Branch</option>
-                                                    <option value="Branch A">Branch A</option>
-                                                    <option value="Branch B">Branch B</option>
-                                                    <option value="Branch C">Branch C</option>
-                                                </select>
-                                            </div>
-                                            <div class="inventory__form-group">
-                                                <label>Issued To (Supplier)</label>
-                                                <select @bind="NewReturnedStock.IssuedTo" required>
-                                                    <option value="">Select Supplier</option>
-                                                    @foreach (var supplier in Suppliers)
+                                                <label for="gin-purpose">Purpose</label>
+                                                <select id="gin-purpose" value="@NewReturnedStock.IssueType" @onchange="HandleGINPurposeChanged" required>
+                                                    <option value="">Select purpose</option>
+                                                    @foreach (var purpose in GINIssueTypes)
                                                     {
-                                                        <option value="@supplier.Name">@supplier.Name</option>
+                                                        <option value="@purpose">@purpose</option>
                                                     }
                                                 </select>
                                             </div>
+                                            @if (string.Equals(NewReturnedStock.IssueType, "Supplier Return", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <div class="inventory__form-group">
+                                                    <label for="gin-supplier">Issued To</label>
+                                                    <select id="gin-supplier" value="@NewReturnedStock.AccountId" @onchange="HandleGINSupplierChanged" required>
+                                                        <option value="">Select supplier</option>
+                                                        @foreach (var supplier in GINSupplierOptions)
+                                                        {
+                                                            <option value="@supplier.SupplierAccountId">@supplier.SupplierName</option>
+                                                        }
+                                                    </select>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <div class="inventory__form-group">
+                                                    <label for="gin-reference">Reference <span class="gin-optional">(optional)</span></label>
+                                                    <input id="gin-reference"
+                                                           type="text"
+                                                           @bind="NewReturnedStock.ReferenceNumber"
+                                                           placeholder="Job, request, or ticket no." />
+                                                </div>
+                                            }
                                         </div>
+                                        @if (string.Equals(NewReturnedStock.IssueType, "Supplier Return", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <div class="inventory__form-group">
+                                                <label for="gin-reference-return">Reference <span class="gin-optional">(optional)</span></label>
+                                                <input id="gin-reference-return"
+                                                       type="text"
+                                                       @bind="NewReturnedStock.ReferenceNumber"
+                                                       placeholder="Return authorization or supplier reference" />
+                                            </div>
+                                        }
                                         <div class="inventory__form-group">
-                                            <label>Reason for Return</label>
-                                            <textarea @bind="NewReturnedStock.Reason" rows="3" placeholder="Enter reason for return..." required></textarea>
+                                            <label for="gin-notes">Remarks <span class="gin-optional">(optional)</span></label>
+                                            <textarea id="gin-notes"
+                                                      @bind="NewReturnedStock.Reason"
+                                                      rows="2"
+                                                      placeholder="Add a short note only when needed"></textarea>
                                         </div>
                                     </div>
 
-                                    <!-- Product Selection Section -->
                                     <div class="stock-transfer__form-section">
-                                        <h3>Select Products to Return</h3>
+                                        <div class="gin-section-heading">
+                                            <div>
+                                                <h3>Products</h3>
+                                                <p>Select each product and enter only the quantity to issue.</p>
+                                            </div>
+                                            <span>@NewReturnedStock.SelectedProducts.Count selected</span>
+                                        </div>
                                         <div class="stock-transfer__product-search">
-                                            <input type="text"
-                                                   placeholder="Search products..."
+                                            <input type="search"
+                                                   placeholder="Search product name or SKU..."
                                                    @bind="ReturnedStockProductSearch"
                                                    @bind:event="oninput" />
                                             <i class="bi bi-search"></i>
                                         </div>
                                         <div class="stock-transfer__product-list">
-                                            <table class="stock-transfer__selection-table">
+                                            <table class="stock-transfer__selection-table gin-product-table product-picker-table">
                                                 <thead>
                                                     <tr>
-                                                        <th style="width: 50px;">Select</th>
-                                                        <th>Product Name</th>
+                                                        <th class="gin-product-table__select">Select</th>
+                                                        <th class="product-picker-table__image-heading">Image</th>
+                                                        <th>Product</th>
                                                         <th>SKU</th>
-                                                        <th>Current Stock</th>
-                                                        <th>Return Quantity</th>
+                                                        <th>Available</th>
+                                                        <th>Issue Quantity</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    @foreach (var product in FilteredReturnedStockProducts)
+                                                    @if (!FilteredReturnedStockProducts.Any())
                                                     {
                                                         <tr>
-                                                            <td>
-                                                                <input type="checkbox"
-                                                                       checked="@NewReturnedStock.SelectedProducts.ContainsKey(product.Sku)"
-                                                                       @onchange="() => ToggleReturnedStockProductSelection(product)" />
-                                                            </td>
-                                                            <td>@product.ProductName</td>
-                                                            <td>@product.Sku</td>
-                                                            <td>@FormatStockCount(product.StockCount) @product.Uom1</td>
-                                                            <td>
-                                                                @if (NewReturnedStock.SelectedProducts.ContainsKey(product.Sku))
-                                                                {
-                                                                    <div style="display: flex; gap: 0.5rem; align-items: center;">
-                                                                        <input type="number"
-                                                                               min="1"
-                                                                               max="@product.StockCount"
-                                                                               @bind="NewReturnedStock.SelectedProducts[product.Sku].Quantity"
-                                                                               @bind:event="oninput"
-                                                                               class="stock-transfer__quantity-input"
-                                                                               style="width: 80px;"
-                                                                               required />
-                                                                        <select @bind="NewReturnedStock.SelectedProducts[product.Sku].SelectedUom"
-                                                                                @bind:event="onchange"
-                                                                                class="stock-transfer__quantity-input"
-                                                                                style="width: 100px;">
-                                                                            <option value="UOM1">@product.Uom1</option>
-                                                                            @if (!string.IsNullOrWhiteSpace(product.Uom2))
-                                                                            {
-                                                                                <option value="UOM2">@product.Uom2</option>
-                                                                            }
-                                                                        </select>
-                                                                    </div>
-                                                                }
-                                                                else
-                                                                {
-                                                                    <span class="text-muted">-</span>
-                                                                }
-                                                            </td>
+                                                            <td colspan="6" class="gin-product-table__empty">No matching products found.</td>
                                                         </tr>
+                                                    }
+                                                    else
+                                                    {
+                                                        @foreach (var product in FilteredReturnedStockProducts)
+                                                        {
+                                                            var isSelected = NewReturnedStock.SelectedProducts.ContainsKey(product.MasterAccountId);
+                                                            var cannotSelect = string.IsNullOrWhiteSpace(product.MasterAccountId) ||
+                                                                (!isSelected && product.StockCount.HasValue && product.StockCount.Value <= 0);
+                                                            <tr class="product-picker-row @(isSelected ? "gin-product-row--selected product-picker-row--selected" : string.Empty) @(cannotSelect ? "product-picker-row--disabled" : string.Empty)"
+                                                                role="checkbox"
+                                                                aria-label="@($"Select {product.ProductName}")"
+                                                                aria-checked="@isSelected"
+                                                                aria-disabled="@cannotSelect"
+                                                                tabindex="@(cannotSelect ? -1 : 0)"
+                                                                @onclick="() => ToggleReturnedStockProductSelection(product)"
+                                                                @onkeydown="args => HandleGinProductRowKeyDown(args, product)">
+                                                                <td @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
+                                                                    <input type="checkbox"
+                                                                           aria-label="@($"Select {product.ProductName}")"
+                                                                           checked="@isSelected"
+                                                                           disabled="@cannotSelect"
+                                                                           @onchange="() => ToggleReturnedStockProductSelection(product)" />
+                                                                </td>
+                                                                <td class="product-picker-table__image-cell">
+                                                                    <img src="@GetProductPickerImage(product)"
+                                                                         alt="@product.ProductName"
+                                                                         loading="lazy" />
+                                                                </td>
+                                                                <td class="product-picker-table__product-cell">
+                                                                    <strong>@product.ProductName</strong>
+                                                                </td>
+                                                                <td><code class="inventory-code-badge">@product.Sku</code></td>
+                                                                <td>
+                                                                    <strong>@FormatStockCount(product.StockCount)</strong>
+                                                                    <span>@product.Uom1</span>
+                                                                </td>
+                                                                <td @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
+                                                                    @if (isSelected)
+                                                                    {
+                                                                        <div class="gin-quantity-control">
+                                                                            <input type="number"
+                                                                                   min="1"
+                                                                                   max="@GetGinMaximumQuantityAttribute(product)"
+                                                                                   inputmode="numeric"
+                                                                                   aria-label="@($"Issue quantity for {product.ProductName}")"
+                                                                                   @bind="NewReturnedStock.SelectedProducts[product.MasterAccountId].Quantity"
+                                                                                   @bind:event="oninput"
+                                                                                   required />
+                                                                            <span>@NewReturnedStock.SelectedProducts[product.MasterAccountId].UomDisplay</span>
+                                                                        </div>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <span class="text-muted">—</span>
+                                                                    }
+                                                                </td>
+                                                            </tr>
+                                                        }
                                                     }
                                                 </tbody>
                                             </table>
                                         </div>
-                                        <div class="stock-transfer__selection-summary">
-                                            <strong>Selected Products:</strong> @NewReturnedStock.SelectedProducts.Count
-                                        </div>
                                     </div>
+
+                                    @if (!string.IsNullOrWhiteSpace(GINApiError))
+                                    {
+                                        <div class="gin-form-error" role="alert">
+                                            <i class="bi bi-exclamation-circle"></i>
+                                            <span>@GINApiError</span>
+                                        </div>
+                                    }
                                 </form>
                             </div>
                         </div>
                     </div>
                 }
-
-                @if (ShowEditReturnedStockModalWindow && EditReturnedStock != null)
-                {
-                    <div class="returned-modal-overlay" @onclick="CloseEditReturnedStockModal">
-                        <div class="returned-modal" @onclick:stopPropagation="true">
-                            <div class="returned-modal__header">
-                                <div class="returned-modal__title">
-                                    <i class="bi bi-pencil-square"></i>
-                                    <h2>Edit GIN</h2>
-                                </div>
-                                <div class="returned-modal__actions">
-                                    <button type="button" class="returned-modal__btn returned-modal__btn--save" @onclick="HandleEditReturnedStock">
-                                        Save Changes
-                                    </button>
-                                    <button type="button" class="returned-modal__btn returned-modal__btn--cancel" @onclick="CloseEditReturnedStockModal">
-                                        Cancel
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="returned-modal__body">
-                                <form class="returned-form" @onsubmit:preventDefault>
-                                    <div class="stock-transfer__form-section">
-                                        <h3>Return Details</h3>
-                                        <div class="inventory__form-row">
-                                            <div class="inventory__form-group">
-                                                <label>GIN No</label>
-                                                <input type="text" @bind="EditReturnedStock.ReturnedStockNo" readonly />
-                                            </div>
-                                            <div class="inventory__form-group">
-                                                <label>Date Issued</label>
-                                                <input type="date" @bind="EditReturnedStock.DateIssued" required />
-                                            </div>
-                                        </div>
-                                        <div class="inventory__form-row">
-                                            <div class="inventory__form-group">
-                                                <label>Issued By (Branch)</label>
-                                                <select @bind="EditReturnedStock.IssuedBy" required>
-                                                    <option value="">Select Branch</option>
-                                                    <option value="Main Branch">Main Branch</option>
-                                                    <option value="Branch A">Branch A</option>
-                                                    <option value="Branch B">Branch B</option>
-                                                    <option value="Branch C">Branch C</option>
-                                                </select>
-                                            </div>
-                                            <div class="inventory__form-group">
-                                                <label>Issued To (Supplier)</label>
-                                                <select @bind="EditReturnedStock.IssuedTo" required>
-                                                    <option value="">Select Supplier</option>
-                                                    @foreach (var supplier in Suppliers)
-                                                    {
-                                                        <option value="@supplier.Name">@supplier.Name</option>
-                                                    }
-                                                </select>
-                                            </div>
-                                        </div>
-                                        <div class="inventory__form-row">
-                                            <div class="inventory__form-group">
-                                                <label>Status</label>
-                                                <select @bind="EditReturnedStock.Status" required>
-                                                    <option value="Pending">Pending</option>
-                                                    <option value="Completed">Completed</option>
-                                                    <option value="In Progress">In Progress</option>
-                                                    <option value="Cancelled">Cancelled</option>
-                                                </select>
-                                            </div>
-                                            <div class="inventory__form-group">
-                                                <label>UOM</label>
-                                                <input type="text" @bind="EditReturnedStock.Uom" placeholder="e.g., Bottles" />
-                                            </div>
-                                        </div>
-                                        <div class="inventory__form-row">
-                                            <div class="inventory__form-group">
-                                                <label>Total Quantity</label>
-                                                <input type="number" min="0" @bind="EditReturnedStock.Quantity" />
-                                            </div>
-                                            <div class="inventory__form-group">
-                                                <label>Total Amount (RM)</label>
-                                                <input type="number" step="0.01" min="0" @bind="EditReturnedStock.Amount" />
-                                            </div>
-                                        </div>
-                                        <div class="inventory__form-group">
-                                            <label>Reason for Return</label>
-                                            <textarea @bind="EditReturnedStock.Reason" rows="3" placeholder="Enter reason for return..."></textarea>
-                                        </div>
-                                    </div>
-
-                                    <div class="stock-transfer__form-section">
-
-                                        @if (EditReturnedStock.Products.Any())
-                                        {
-                                            <div class="stock-transfer__form-section">
-                                                <h3>Returned Products</h3>
-                                                <div class="stock-transfer__table-container">
-                                                    <table class="stock-transfer__selection-table">
-                                                        <thead>
-                                                            <tr>
-                                                                <th>Product Name</th>
-                                                                <th>SKU</th>
-                                                                <th>Quantity</th>
-                                                                <th>UOM</th>
-                                                                <th>Unit Price (RM)</th>
-                                                                <th>Line Amount (RM)</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            @foreach (var product in EditReturnedStock.Products)
-                                                            {
-                                                                <tr>
-                                                                    <td>@product.ProductName</td>
-                                                                    <td>@product.Sku</td>
-                                                                    <td>@product.Quantity</td>
-                                                                    <td>@product.Uom</td>
-                                                                    <td>@product.UnitPrice.ToString("N2")</td>
-                                                                    <td>@product.LineAmount.ToString("N2")</td>
-                                                                </tr>
-                                                            }
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            <p>No products recorded for this return.</p>
-                                        }
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                }
-
                 <div class="inventory__table-wrapper table-scroll">
                     <div class="table-scroll__inner">
-                        <table class="stock-transfer__table resizable-table inventory-mobile-compact-table inventory-mobile-compact-table--gin @((IsReturnedStockDeleteMode || IsReturnedStockPrintModeActive) ? "inventory-mobile-compact-table--selecting" : string.Empty) @(IsReturnedStockPrintModeActive ? "purchase-orders__table" : string.Empty)">
+<table class="stock-transfer__table resizable-table inventory-mobile-compact-table inventory-mobile-compact-table--gin @(IsReturnedStockPrintModeActive ? "inventory-mobile-compact-table--selecting purchase-orders__table" : string.Empty)">
                             <thead>
                                 <tr>
-                                    @if (IsReturnedStockDeleteMode)
-                                    {
-                                        <th class="inventory__checkbox-col">
-                                            <input type="checkbox"
-                                                   checked="@IsAllReturnedStocksSelected"
-                                                   @onchange="ToggleAllReturnedStocksSelection" />
-                                        </th>
-                                    }
-                                    else if (IsReturnedStockPrintModeActive)
+                                    @if (IsReturnedStockPrintModeActive)
                                     {
                                         <th class="purchase-orders__checkbox-col">Select</th>
                                     }
@@ -2528,32 +2552,41 @@
                                         GIN No<span class="resize-handle"></span>
                                     </th>
                                     <th class='@GetSortHeaderClass(GINSortColumn, GINSortAscending, "DateIssued")' @onclick='() => ToggleGINSort("DateIssued")'>
-                                        Date Issued<span class="resize-handle"></span>
+                                        Issue Date<span class="resize-handle"></span>
                                     </th>
                                     <th class='@GetSortHeaderClass(GINSortColumn, GINSortAscending, "IssuedBy")' @onclick='() => ToggleGINSort("IssuedBy")'>
-                                        Issued By<span class="resize-handle"></span>
+                                        Branch<span class="resize-handle"></span>
+                                    </th>
+                                    <th class='@GetSortHeaderClass(GINSortColumn, GINSortAscending, "Purpose")' @onclick='() => ToggleGINSort("Purpose")'>
+                                        Purpose<span class="resize-handle"></span>
                                     </th>
                                     <th class='@GetSortHeaderClass(GINSortColumn, GINSortAscending, "IssuedTo")' @onclick='() => ToggleGINSort("IssuedTo")'>
                                         Issued To<span class="resize-handle"></span>
                                     </th>
                                     <th class='@GetSortHeaderClass(GINSortColumn, GINSortAscending, "Quantity")' @onclick='() => ToggleGINSort("Quantity")'>
-                                        Quantity (unit)<span class="resize-handle"></span>
+                                        Total Qty<span class="resize-handle"></span>
                                     </th>
-                                    <th class='@GetSortHeaderClass(GINSortColumn, GINSortAscending, "Amount")' @onclick='() => ToggleGINSort("Amount")'>
-                                        Amount (RM)
-                                    </th>
-                                    @if (!IsReturnedStockDeleteMode && !IsReturnedStockPrintModeActive)
+                                    <th>Status</th>
+                                    @if (!IsReturnedStockPrintModeActive)
                                     {
                                         <th class="inventory-row-actions-column">Actions</th>
                                     }
                                 </tr>
                             </thead>
                             <tbody>
-                                @if (!PaginatedReturnedStock.Any())
+                                @if (IsGINApiLoading && !ReturnedStockList.Any())
                                 {
                                     <tr>
-                                        <td colspan="10" style="text-align: center; padding: 2rem; color: #6b7280;">
-                                            No GIN records found. Click the + button to add a new GIN.
+                                        <td colspan="9" class="gin-table-message">
+                                            <i class="bi bi-arrow-repeat"></i> Loading GIN records...
+                                        </td>
+                                    </tr>
+                                }
+                                else if (!PaginatedReturnedStock.Any())
+                                {
+                                    <tr>
+                                        <td colspan="9" class="gin-table-message">
+                                            No GIN records found. Use <strong>Issue Stock</strong> to create one.
                                         </td>
                                     </tr>
                                 }
@@ -2562,15 +2595,7 @@
                                     @foreach (var returnedStock in PaginatedReturnedStock)
                                     {
                                         <tr @onclick="() => ToggleMobileGinRow(returnedStock)" class="@GetReturnedStockRowClass(returnedStock)">
-                                            @if (IsReturnedStockDeleteMode)
-                                            {
-                                                <td class="inventory__checkbox-col" @onclick:stopPropagation="true">
-                                                    <input type="checkbox"
-                                                           checked="@SelectedReturnedStocksForDeletion.Contains(returnedStock)"
-                                                           @onchange="() => ToggleReturnedStockForDeletion(returnedStock)" />
-                                                </td>
-                                            }
-                                            else if (IsReturnedStockPrintModeActive)
+                                            @if (IsReturnedStockPrintModeActive)
                                             {
                                                 <td class="purchase-orders__checkbox-col" @onclick:stopPropagation="true">
                                                     <input type="checkbox"
@@ -2578,44 +2603,58 @@
                                                            @onchange="() => ToggleReturnedStockForPrintSelection(returnedStock)" />
                                                 </td>
                                             }
-                                            <td>@returnedStock.ReturnedStockNo</td>
+                                            <td><strong>@(string.IsNullOrWhiteSpace(returnedStock.ReturnedStockNo) ? "—" : returnedStock.ReturnedStockNo)</strong></td>
                                             <td>@returnedStock.DateIssued.ToString("dd/MM/yyyy")</td>
                                             <td><span class="inventory-branch-chip">@returnedStock.IssuedBy</span></td>
-                                            <td>@returnedStock.IssuedTo</td>
+                                            <td>@returnedStock.Purpose</td>
+                                            <td>@(string.IsNullOrWhiteSpace(returnedStock.IssuedTo) ? "—" : returnedStock.IssuedTo)</td>
                                             <td><span class="inventory-quantity-value">@returnedStock.Quantity @returnedStock.Uom</span></td>
-                                            <td><span class="inventory-money-value">RM @returnedStock.Amount.ToString("N2")</span></td>
-                                            @if (!IsReturnedStockDeleteMode && !IsReturnedStockPrintModeActive)
+                                            <td><span class="gin-status">@returnedStock.Status</span></td>
+                                            @if (!IsReturnedStockPrintModeActive)
                                             {
                                                 <td class="inventory-row-actions-column" @onclick:stopPropagation="true">
                                                     <button type="button" class="product-row-action" title="View GIN details" aria-label="View GIN details" @onclick="() => ShowGinDetails(returnedStock)">
                                                         <i class="bi bi-eye"></i>
                                                     </button>
-                                                    <button type="button" class="product-row-action" title="Edit GIN" aria-label="Edit GIN" @onclick="() => EditReturnedStockFromRow(returnedStock)">
-                                                        <i class="bi bi-pencil"></i>
-                                                    </button>
+                                                    @if (CanEditGin(returnedStock))
+                                                    {
+                                                        <button type="button" class="product-row-action" title="Edit GIN" aria-label="Edit GIN" @onclick="() => EditReturnedStockFromRow(returnedStock)">
+                                                            <i class="bi bi-pencil"></i>
+                                                        </button>
+                                                    }
                                                 </td>
                                             }
                                         </tr>
-                                        @if (ExpandedMobileGinNo == returnedStock.ReturnedStockNo && !IsReturnedStockDeleteMode && !IsReturnedStockPrintModeActive)
+                                        @if (ExpandedMobileGinNo == returnedStock.ReturnedStockNo && !IsReturnedStockPrintModeActive)
                                         {
                                             <tr class="inventory-mobile-detail-row">
-                                                <td colspan="7">
+                                                <td colspan="8">
                                                     <div class="inventory-mobile-details">
                                                         <div class="inventory-mobile-detail"><span>GIN No</span><strong>@returnedStock.ReturnedStockNo</strong></div>
-                                                        <div class="inventory-mobile-detail"><span>Date</span><strong>@returnedStock.DateIssued.ToString("dd/MM/yyyy")</strong></div>
-                                                        <div class="inventory-mobile-detail"><span>Issued By</span><strong>@returnedStock.IssuedBy</strong></div>
-                                                        <div class="inventory-mobile-detail"><span>Issued To</span><strong>@returnedStock.IssuedTo</strong></div>
+                                                        <div class="inventory-mobile-detail"><span>Issue Date</span><strong>@returnedStock.DateIssued.ToString("dd/MM/yyyy")</strong></div>
+                                                        <div class="inventory-mobile-detail"><span>Branch</span><strong>@returnedStock.IssuedBy</strong></div>
+                                                        <div class="inventory-mobile-detail"><span>Purpose</span><strong>@returnedStock.Purpose</strong></div>
+                                                        <div class="inventory-mobile-detail"><span>Issued To</span><strong>@(string.IsNullOrWhiteSpace(returnedStock.IssuedTo) ? "—" : returnedStock.IssuedTo)</strong></div>
                                                         <div class="inventory-mobile-detail"><span>Quantity</span><strong>@returnedStock.Quantity @returnedStock.Uom</strong></div>
-                                                        <div class="inventory-mobile-detail"><span>Amount</span><strong>RM @returnedStock.Amount.ToString("N2")</strong></div>
                                                         <div class="inventory-mobile-detail"><span>Status</span><strong>@returnedStock.Status</strong></div>
-                                                        <div class="inventory-mobile-detail inventory-mobile-detail--wide"><span>Reason</span><strong>@(string.IsNullOrWhiteSpace(returnedStock.Reason) ? "-" : returnedStock.Reason)</strong></div>
+                                                        @if (!string.IsNullOrWhiteSpace(returnedStock.ReferenceNumber))
+                                                        {
+                                                            <div class="inventory-mobile-detail"><span>Reference</span><strong>@returnedStock.ReferenceNumber</strong></div>
+                                                        }
+                                                        @if (!string.IsNullOrWhiteSpace(returnedStock.Reason))
+                                                        {
+                                                            <div class="inventory-mobile-detail inventory-mobile-detail--wide"><span>Remarks</span><strong>@returnedStock.Reason</strong></div>
+                                                        }
                                                         <div class="inventory-mobile-detail-actions">
                                                             <button type="button" @onclick:stopPropagation="true" @onclick="() => ShowGinDetails(returnedStock)">
                                                                 <i class="bi bi-eye"></i><span>View Details</span>
                                                             </button>
-                                                            <button type="button" @onclick:stopPropagation="true" @onclick="() => EditReturnedStockFromRow(returnedStock)">
-                                                                <i class="bi bi-pencil"></i><span>Edit GIN</span>
-                                                            </button>
+                                                            @if (CanEditGin(returnedStock))
+                                                            {
+                                                                <button type="button" @onclick:stopPropagation="true" @onclick="() => EditReturnedStockFromRow(returnedStock)">
+                                                                    <i class="bi bi-pencil"></i><span>Edit GIN</span>
+                                                                </button>
+                                                            }
                                                         </div>
                                                     </div>
                                                 </td>
@@ -2646,7 +2685,7 @@
                                 <i class="bi bi-box-arrow-in-down"></i>
                                 <span>Receive goods</span>
                             </button>
-                            <button class="btn-delete" title="Delete GRN" @onclick="ToggleGRNDeleteMode">
+                            <button class="btn-delete" title="Delete draft GRN" @onclick="ToggleGRNDeleteMode">
                                 <i class="bi bi-trash3"></i>
                             </button>
                             @if (!IsGRNPrintModeActive)
@@ -2730,6 +2769,14 @@
                     </div>
                 }
 
+                <div class="grn-history-heading">
+                    <div>
+                        <h2>GRN History</h2>
+                        <p>Posted supplier receipts and transfer receipts for this branch.</p>
+                    </div>
+                    <span><i class="bi bi-check-circle"></i> @FilteredGRNs.Count() record@(FilteredGRNs.Count() == 1 ? string.Empty : "s")</span>
+                </div>
+
                 <div class="inventory__table-wrapper table-scroll">
                     <div class="table-scroll__inner">
                         <table class="inventory__table resizable-table inventory-mobile-compact-table inventory-mobile-compact-table--grn @((IsGRNDeleteMode || IsGRNPrintModeActive) ? "inventory-mobile-compact-table--selecting" : string.Empty) @(IsGRNPrintModeActive ? "purchase-orders__table" : string.Empty)">
@@ -2778,6 +2825,8 @@
                                                 <td class="inventory__checkbox-col" @onclick:stopPropagation="true">
                                                     <input type="checkbox"
                                                            checked="@SelectedGRNsForDeletion.Contains(grn)"
+                                                           disabled="@(!CanEditGrn(grn))"
+                                                           title="@(CanEditGrn(grn) ? "Select draft GRN" : "Posted GRNs cannot be deleted")"
                                                            @onchange="() => ToggleGRNForDeletion(grn)" />
                                                 </td>
                                             }
@@ -2804,7 +2853,7 @@
                                                     <button type="button" class="product-row-action" title="View GRN details" aria-label="View GRN details" @onclick="() => ShowGrnDetails(grn)">
                                                         <i class="bi bi-eye"></i>
                                                     </button>
-                                                    @if (!grn.IsLocked && !grn.IsVoid)
+                                                    @if (CanEditGrn(grn))
                                                     {
                                                         <button type="button" class="product-row-action" title="Edit GRN" aria-label="Edit GRN" @onclick="() => EditGRNFromRow(grn)">
                                                             <i class="bi bi-pencil"></i>
@@ -2812,7 +2861,7 @@
                                                     }
                                                     else
                                                     {
-                                                        <button type="button" class="product-row-action" title="@(grn.IsVoid ? "GRN is voided" : "GRN is locked")" aria-label="GRN locked" disabled>
+                                                        <button type="button" class="product-row-action" title="@GetGrnReadOnlyReason(grn)" aria-label="GRN is view-only" disabled>
                                                             <i class="bi bi-lock"></i>
                                                         </button>
                                                     }
@@ -2837,7 +2886,7 @@
                                                              <button type="button" @onclick:stopPropagation="true" @onclick="() => ShowGrnDetails(grn)">
                                                                  <i class="bi bi-eye"></i><span>View Details</span>
                                                              </button>
-                                                             @if (!grn.IsLocked && !grn.IsVoid)
+                                                             @if (CanEditGrn(grn))
                                                              {
                                                                  <button type="button" @onclick:stopPropagation="true" @onclick="() => EditGRNFromRow(grn)">
                                                                      <i class="bi bi-pencil"></i><span>Edit GRN</span>
@@ -2845,7 +2894,7 @@
                                                              }
                                                              else
                                                              {
-                                                                 <button type="button" disabled title="@(grn.IsVoid ? "GRN is voided" : "GRN is locked")">
+                                                                 <button type="button" disabled title="@GetGrnReadOnlyReason(grn)">
                                                                      <i class="bi bi-lock"></i><span>@grn.Status</span>
                                                                  </button>
                                                              }
@@ -2953,11 +3002,73 @@
 
                                     <section class="grn-form__section">
                                         <h3 class="grn-form__section-title">Item Received</h3>
-                                        <p class="grn-form__helper">The item comes from the selected PO. Staff only confirm the quantity and any batch or serial details.</p>
+                                        <p class="grn-form__helper">Scan the delivered item to confirm it matches the selected PO, then enter the received quantity.</p>
+                                        <div class="grn-barcode-panel">
+                                            <div class="grn-barcode-panel__heading">
+                                                <span class="grn-barcode-panel__icon"><i class="bi bi-upc-scan"></i></span>
+                                                <div>
+                                                    <strong>Scan product barcode</strong>
+                                                    <span>Works with a handheld scanner or the device camera.</span>
+                                                </div>
+                                            </div>
+                                            <div class="grn-barcode-panel__controls">
+                                                <input id="grn-barcode-input"
+                                                       type="text"
+                                                       value="@GRNBarcodeScanValue"
+                                                       @oninput="HandleGRNBarcodeInput"
+                                                       @onkeyup="HandleGRNBarcodeKeyUp"
+                                                       placeholder="Scan or type barcode / SKU"
+                                                       autocomplete="off"
+                                                       enterkeyhint="done"
+                                                       disabled="@string.IsNullOrWhiteSpace(NewGRNPONo)"
+                                                       aria-label="Product barcode or SKU" />
+                                                <button type="button"
+                                                        class="grn-barcode-panel__button grn-barcode-panel__button--check"
+                                                        @onclick="ProcessGRNBarcodeScan"
+                                                        disabled="@(string.IsNullOrWhiteSpace(NewGRNPONo) || string.IsNullOrWhiteSpace(GRNBarcodeScanValue))">
+                                                    <i class="bi bi-check2"></i><span>Check</span>
+                                                </button>
+                                                <button type="button"
+                                                        class="grn-barcode-panel__button grn-barcode-panel__button--camera"
+                                                        @onclick="OpenGRNBarcodeScannerAsync"
+                                                        disabled="@string.IsNullOrWhiteSpace(NewGRNPONo)">
+                                                    <i class="bi bi-camera"></i><span>Use camera</span>
+                                                </button>
+                                            </div>
+                                            @if (string.IsNullOrWhiteSpace(NewGRNPONo))
+                                            {
+                                                <p class="grn-barcode-panel__hint"><i class="bi bi-info-circle"></i> Select a purchase order before scanning.</p>
+                                            }
+                                            else if (!string.IsNullOrWhiteSpace(GRNBarcodeScanMessage))
+                                            {
+                                                <p class="grn-barcode-panel__message @(GRNBarcodeScanSucceeded ? "grn-barcode-panel__message--success" : "grn-barcode-panel__message--error")" role="status">
+                                                    <i class="bi @(GRNBarcodeScanSucceeded ? "bi-check-circle-fill" : "bi-exclamation-circle-fill")"></i>
+                                                    @GRNBarcodeScanMessage
+                                                </p>
+                                            }
+                                        </div>
                                         <div class="grn-form__grid">
                                             <div class="grn-form__field grn-form__field--wide">
                                                 <label>Item</label>
-                                                <input value="@NewGRNName" placeholder="Select a purchase order first" readonly />
+                                                <div class="grn-selected-product">
+                                                    <div class="gin-product-option__image">
+                                                        @if (HasInventoryImage(SelectedGRNInventoryProduct))
+                                                        {
+                                                            <img src="@ResolveProductImage(SelectedGRNInventoryProduct)" alt="" loading="lazy" />
+                                                        }
+                                                        else
+                                                        {
+                                                            <i class="bi bi-box-seam"></i>
+                                                        }
+                                                    </div>
+                                                    <div>
+                                                        <strong>@(string.IsNullOrWhiteSpace(NewGRNName) ? "Select a purchase order first" : NewGRNName)</strong>
+                                                        @if (!string.IsNullOrWhiteSpace(NewGRNItemSku))
+                                                        {
+                                                            <span>@NewGRNItemSku</span>
+                                                        }
+                                                    </div>
+                                                </div>
                                             </div>
                                             <div class="grn-form__field"><label>SKU</label><input value="@(string.IsNullOrWhiteSpace(NewGRNItemSku) ? "—" : NewGRNItemSku)" readonly /></div>
                                             <div class="grn-form__field"><label>UOM</label><input value="@(string.IsNullOrWhiteSpace(NewGRNUom) ? "—" : NewGRNUom)" readonly /></div>
@@ -2971,11 +3082,36 @@
                                         </div>
                                         <div class="grn-form__system-note">
                                             <i class="bi bi-info-circle"></i>
-                                            <span>Price, tax, currency, supplier account and API document IDs are taken from the PO automatically.</span>
+                                            <span>Accounting fields and API document IDs are handled in the background from the PO and inventory setup.</span>
                                         </div>
                                     </section>
                                 </form>
                             </div>
+
+                            @if (IsGRNBarcodeScannerVisible)
+                            {
+                                <div class="grn-barcode-camera-overlay" @onclick="CloseGRNBarcodeScannerAsync">
+                                    <section class="grn-barcode-camera" role="dialog" aria-modal="true" aria-labelledby="grn-camera-title" @onclick:stopPropagation="true">
+                                        <header class="grn-barcode-camera__header">
+                                            <div>
+                                                <span>Camera scanner</span>
+                                                <h3 id="grn-camera-title">Scan product barcode</h3>
+                                            </div>
+                                            <button type="button" @onclick="CloseGRNBarcodeScannerAsync" aria-label="Close barcode scanner"><i class="bi bi-x-lg"></i></button>
+                                        </header>
+                                        <div class="grn-barcode-camera__viewport">
+                                            <video @ref="GRNBarcodeVideoElement" autoplay playsinline muted></video>
+                                            <div class="grn-barcode-camera__target" aria-hidden="true"><span></span></div>
+                                            @if (IsGRNBarcodeScannerStarting)
+                                            {
+                                                <div class="grn-barcode-camera__loading"><span class="spinner-border spinner-border-sm"></span> Starting camera...</div>
+                                            }
+                                        </div>
+                                        <p><i class="bi bi-brightness-high"></i> Keep the barcode inside the frame and hold the device steady.</p>
+                                        <button type="button" class="grn-barcode-camera__cancel" @onclick="CloseGRNBarcodeScannerAsync">Cancel scan</button>
+                                    </section>
+                                </div>
+                            }
                         </div>
                     </div>
                 }
@@ -3218,16 +3354,31 @@
                         </div>
                         <div class="inventory-view-hero__divider"></div>
                         <div class="inventory-view-hero__item">
-                            <span class="inventory-view-hero__label">TOTAL AMOUNT</span>
-                            <strong class="inventory-view-hero__price">RM @SelectedGinDetails.Amount.ToString("N2")</strong>
+                            <span class="inventory-view-hero__label">PURPOSE</span>
+                            <strong class="inventory-view-hero__value">@SelectedGinDetails.Purpose</strong>
                         </div>
                     </div>
 
+                    @if (FindRelatedTransfer(SelectedGinDetails) is { } relatedTransfer)
+                    {
+                        <div class="inventory-view-section">
+                            <h3 class="inventory-view-section__title"><i class="bi bi-arrow-left-right"></i> Related Stock Transfer</h3>
+                            <div class="inventory-related-document">
+                                <div>
+                                    <span>Generated automatically from</span>
+                                    <strong>@relatedTransfer.TransferNo</strong>
+                                    <small>@relatedTransfer.IssuedBy → @relatedTransfer.IssuedTo · @relatedTransfer.Status</small>
+                                </div>
+                                <button type="button" class="btn-view-primary" @onclick="() => OpenRelatedTransferAsync(relatedTransfer)">View Transfer</button>
+                            </div>
+                        </div>
+                    }
+
                     <div class="inventory-view-section">
-                        <h3 class="inventory-view-section__title"><i class="bi bi-people"></i> Authorization & Parties</h3>
+                        <h3 class="inventory-view-section__title"><i class="bi bi-box-arrow-up"></i> Issue Details</h3>
                         <div class="inventory-view-grid inventory-view-grid--3">
                             <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Issued By</span>
+                                <span class="inventory-view-field__label">Branch</span>
                                 <span class="inventory-view-field__value">@SelectedGinDetails.IssuedBy</span>
                             </div>
                             <div class="inventory-view-field">
@@ -3239,12 +3390,19 @@
                                 <span class="inventory-view-field__value font-bold">@SelectedGinDetails.Quantity @SelectedGinDetails.Uom</span>
                             </div>
                         </div>
+                        @if (!string.IsNullOrWhiteSpace(SelectedGinDetails.ReferenceNumber))
+                        {
+                            <div class="inventory-view-field">
+                                <span class="inventory-view-field__label">Reference</span>
+                                <span class="inventory-view-field__value">@SelectedGinDetails.ReferenceNumber</span>
+                            </div>
+                        }
                     </div>
 
                     @if (!string.IsNullOrWhiteSpace(SelectedGinDetails.Reason))
                     {
                         <div class="inventory-view-section">
-                            <h3 class="inventory-view-section__title"><i class="bi bi-card-text"></i> Issue Reason / Notes</h3>
+                            <h3 class="inventory-view-section__title"><i class="bi bi-card-text"></i> Remarks</h3>
                             <div class="inventory-view-remarks">
                                 <p>@SelectedGinDetails.Reason</p>
                             </div>
@@ -3262,19 +3420,32 @@
                                             <th>Product Name</th>
                                             <th>SKU</th>
                                             <th class="text-right">Quantity</th>
-                                            <th class="text-right">Unit Price</th>
-                                            <th class="text-right">Line Amount</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         @foreach (var line in SelectedGinDetails.Products)
                                         {
                                             <tr>
-                                                <td class="font-medium">@line.ProductName</td>
+                                                <td class="font-medium">
+                                                    <div class="gin-product-option">
+                                                        <div class="gin-product-option__image">
+                                                            @{
+                                                                var productImage = FindGinProduct(line.InventoryId, line.Sku)?.ImageUrl ?? EmptyInventoryImage;
+                                                            }
+                                                            @if (!string.Equals(productImage, EmptyInventoryImage, StringComparison.Ordinal))
+                                                            {
+                                                                <img src="@productImage" alt="" loading="lazy" />
+                                                            }
+                                                            else
+                                                            {
+                                                                <i class="bi bi-box-seam"></i>
+                                                            }
+                                                        </div>
+                                                        <span>@line.ProductName</span>
+                                                    </div>
+                                                </td>
                                                 <td><code class="inventory-code-badge">@line.Sku</code></td>
                                                 <td class="text-right font-bold" style="color: #164CA6;">@line.Quantity @line.Uom</td>
-                                                <td class="text-right">RM @line.UnitPrice.ToString("N2")</td>
-                                                <td class="text-right font-bold">RM @line.LineAmount.ToString("N2")</td>
                                             </tr>
                                         }
                                     </tbody>
@@ -3332,6 +3503,21 @@
                             <strong class="inventory-view-hero__price">@DisplayGrnMoney(SelectedGrnDetails.Amount, SelectedGrnDetails.CurrencyId)</strong>
                         </div>
                     </div>
+
+                    @if (FindRelatedTransfer(SelectedGrnDetails) is { } relatedTransfer)
+                    {
+                        <div class="inventory-view-section">
+                            <h3 class="inventory-view-section__title"><i class="bi bi-arrow-left-right"></i> Related Stock Transfer</h3>
+                            <div class="inventory-related-document">
+                                <div>
+                                    <span>Created automatically when transfer was received</span>
+                                    <strong>@relatedTransfer.TransferNo</strong>
+                                    <small>@relatedTransfer.IssuedBy → @relatedTransfer.IssuedTo · @relatedTransfer.Status</small>
+                                </div>
+                                <button type="button" class="btn-view-primary" @onclick="() => OpenRelatedTransferAsync(relatedTransfer)">View Transfer</button>
+                            </div>
+                        </div>
+                    }
 
                     <div class="inventory-view-section">
                         <h3 class="inventory-view-section__title"><i class="bi bi-journal-text"></i> Receiving Information</h3>
@@ -3439,33 +3625,68 @@
         public decimal Amount { get; set; }
         public bool IsLocked { get; set; }
         public bool IsVoid { get; set; }
-        public string Status => IsVoid
-            ? "Voided"
-            : IsLocked
-                ? "Completed"
-                : string.IsNullOrWhiteSpace(VerifyStatus) ? "Pending" : VerifyStatus;
+        public bool IsGeneratedFromDocument =>
+            !string.IsNullOrWhiteSpace(CreatedByDocumentId) ||
+            !string.IsNullOrWhiteSpace(CreatedByDocumentDisplayCode);
+        public string Status
+        {
+            get
+            {
+                if (IsVoid) return "Voided";
+                if (IsLocked || IsGeneratedFromDocument) return "Posted";
+
+                var status = VerifyStatus?.Trim() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(status)) return "Pending";
+                if (status.Contains("void", StringComparison.OrdinalIgnoreCase) ||
+                    status.Contains("cancel", StringComparison.OrdinalIgnoreCase)) return "Voided";
+                if (status.Contains("post", StringComparison.OrdinalIgnoreCase) ||
+                    status.Contains("complete", StringComparison.OrdinalIgnoreCase) ||
+                    status.Contains("receive", StringComparison.OrdinalIgnoreCase) ||
+                    status.Contains("accept", StringComparison.OrdinalIgnoreCase) ||
+                    status.Contains("verify", StringComparison.OrdinalIgnoreCase) ||
+                    status.Contains("approve", StringComparison.OrdinalIgnoreCase)) return "Posted";
+                if (status.Contains("draft", StringComparison.OrdinalIgnoreCase)) return "Draft";
+
+                return status;
+            }
+        }
     }
 
     public class ReturnedStockItem
     {
+        public string DocumentId { get; set; } = string.Empty;
         public string ReturnedStockNo { get; set; } = string.Empty;
         public DateTime DateIssued { get; set; }
+        public string BranchId { get; set; } = string.Empty;
         public string IssuedBy { get; set; } = string.Empty;
         public string IssuedTo { get; set; } = string.Empty;
         public int Quantity { get; set; }
         public string Uom { get; set; } = string.Empty;
         public decimal Amount { get; set; }
         public string Status { get; set; } = string.Empty;
+        public string Purpose { get; set; } = string.Empty;
+        public string ReferenceNumber { get; set; } = string.Empty;
         public string Reason { get; set; } = string.Empty;
+        public string VerifyStatus { get; set; } = string.Empty;
+        public int CreatedByDocumentTypeId { get; set; }
+        public string CreatedByDocumentTypeName { get; set; } = string.Empty;
+        public string CreatedByDocumentId { get; set; } = string.Empty;
+        public string CreatedByDocumentDisplayCode { get; set; } = string.Empty;
+        public bool IsLocked { get; set; }
+        public bool IsVoid { get; set; }
         public List<ReturnedStockProductLine> Products { get; set; } = new();
     }
 
     public class ReturnedStockProductLine
     {
+        public string DocumentLineId { get; set; } = string.Empty;
+        public string InventoryId { get; set; } = string.Empty;
         public string ProductName { get; set; } = string.Empty;
         public string Sku { get; set; } = string.Empty;
         public int Quantity { get; set; }
         public string Uom { get; set; } = string.Empty;
+        public string UomId { get; set; } = string.Empty;
+        public int InventoryTypeId { get; set; } = 1;
         public decimal UnitPrice { get; set; }
         public decimal LineAmount { get; set; }
     }
@@ -3529,8 +3750,29 @@
         public decimal Price { get; set; }
         public string Uom1 { get; set; } = string.Empty;
         public string Uom2 { get; set; } = string.Empty;
+        public string UnitOfMeasurementId { get; set; } = string.Empty;
+        public string SupplierAccountId { get; set; } = string.Empty;
+        public string SupplierName { get; set; } = string.Empty;
+        public int InventoryTypeId { get; set; } = 1;
+        public string ImagePath { get; set; } = string.Empty;
+        public string ImageFileName { get; set; } = string.Empty;
+        public string ImageUrl { get; set; } = string.Empty;
         public decimal? StockCount { get; set; }
         public string StockStatus { get; set; } = string.Empty;
+    }
+
+    public class GinSelectedProductInfo
+    {
+        public string DocumentLineId { get; set; } = string.Empty;
+        public string InventoryId { get; set; } = string.Empty;
+        public string ProductName { get; set; } = string.Empty;
+        public string Sku { get; set; } = string.Empty;
+        public int Quantity { get; set; } = 1;
+        public int OriginalQuantity { get; set; }
+        public string UomId { get; set; } = string.Empty;
+        public string UomDisplay { get; set; } = string.Empty;
+        public int InventoryTypeId { get; set; } = 1;
+        public decimal UnitCost { get; set; }
     }
 
     public class SelectedProductInfo
@@ -3646,6 +3888,7 @@
     private bool IsAddGRNFormVisible { get; set; }
     private bool IsGRNEditMode { get; set; }
     private bool IsStockTransferApiLoading { get; set; }
+    private string? StockTransferSuccessMessage { get; set; }
 
     private string PurchaseOrderSearchQuery { get; set; } = string.Empty;
     private int ProductsPageSize { get; set; } = 10;
@@ -3871,10 +4114,11 @@
 
     private List<MultiTableFilter.FilterColumn> GINFilterColumns => new()
     {
-        new() { Value = "ReturnedStockNo", Label = "Returned Stock No.", ControlType = "Text" },
-        new() { Value = "IssuedBy", Label = "Issued By", ControlType = "Text" },
+        new() { Value = "ReturnedStockNo", Label = "GIN No.", ControlType = "Text" },
+        new() { Value = "IssuedBy", Label = "Branch", ControlType = "Text" },
+        new() { Value = "Purpose", Label = "Purpose", ControlType = "Text" },
         new() { Value = "IssuedTo", Label = "Issued To", ControlType = "Text" },
-        new() { Value = "Amount", Label = "Amount (RM)", ControlType = "NumberRange", IsNumeric = true },
+        new() { Value = "Quantity", Label = "Quantity", ControlType = "NumberRange", IsNumeric = true },
         new() { Value = "DateIssued", Label = "Date Issued", ControlType = "DateRange", IsDate = true }
     };
 
@@ -3901,8 +4145,15 @@
         IsAddGRNFormVisible = true;
     }
 
-    private void CloseAddGRNForm()
+    private IEnumerable<PurchaseOrderItem> AvailableGRNPurchaseOrders =>
+        PurchaseOrders.Where(po =>
+            string.Equals(po.PoNo, NewGRNPONo, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(po.Status, "Approved", StringComparison.OrdinalIgnoreCase) ||
+            po.Status.Contains("Partial", StringComparison.OrdinalIgnoreCase));
+
+    private async Task CloseAddGRNForm()
     {
+        await CloseGRNBarcodeScannerAsync();
         IsAddGRNFormVisible = false;
         ResetGRNForm();
     }
@@ -3945,6 +4196,12 @@
         NewGRNBatchNumber = string.Empty;
         NewGRNSerialNumber = string.Empty;
         NewGRNStockActivityType = string.Empty;
+        GRNBarcodeScanValue = string.Empty;
+        GRNBarcodeScanMessage = null;
+        GRNBarcodeScanSucceeded = false;
+        IsGRNBarcodeScannerVisible = false;
+        IsGRNBarcodeScannerStarting = false;
+        StartGRNBarcodeScannerAfterRender = false;
         SelectedGRN = null;
         IsGRNEditMode = false;
         GRNApiError = null;
@@ -3965,6 +4222,13 @@
             return;
         }
 
+        if (!IsGRNEditMode && !AvailableGRNPurchaseOrders.Any(po =>
+                string.Equals(po.PoNo, NewGRNPONo, StringComparison.OrdinalIgnoreCase)))
+        {
+            GRNApiError = "Select an approved purchase order.";
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(NewGRNName))
         {
             GRNApiError = "Select an inventory item.";
@@ -3973,13 +4237,13 @@
 
         if (string.IsNullOrWhiteSpace(NewGRNInventoryId))
         {
-            GRNApiError = "The selected item does not have an API lineItemID.";
+            GRNApiError = "The PO item is not linked to an inventory record. Ask an administrator to check the item setup.";
             return;
         }
 
         if (string.IsNullOrWhiteSpace(NewGRNUom))
         {
-            GRNApiError = "Enter the API unitOfMeasurementID.";
+            GRNApiError = "The PO item does not have a unit of measure. Ask an administrator to check the item setup.";
             return;
         }
 
@@ -3991,7 +4255,7 @@
 
         if (string.IsNullOrWhiteSpace(NewGRNTransactionCurrencyId) || NewGRNExchangeRate <= 0)
         {
-            GRNApiError = "Currency ID and a positive exchange rate are required.";
+            GRNApiError = "The PO has incomplete currency information. Ask an administrator to check the purchase order.";
             return;
         }
 
@@ -4005,6 +4269,11 @@
 
         try
         {
+            if (!IsGRNEditMode)
+            {
+                NewGRNPostingDate = NewGRNDate;
+            }
+
             var grn = new StockGrnViewModel
             {
                 DocumentId = SelectedGRN?.DocumentId ?? string.Empty,
@@ -4058,7 +4327,7 @@
                 return;
             }
 
-            CloseAddGRNForm();
+            await CloseAddGRNForm();
             await LoadGRNsAsync();
         }
         finally
@@ -4069,6 +4338,12 @@
 
     private async Task EditGRNFromRow(GRNItem grn)
     {
+        if (!CanEditGrn(grn))
+        {
+            GRNApiError = "Posted or automatically generated GRNs are view-only.";
+            return;
+        }
+
         ResetGRNForm();
         SelectedGRN = grn;
         IsGRNEditMode = true;
@@ -4158,6 +4433,9 @@
     private void HandleGRNPurchaseOrderChanged(ChangeEventArgs args)
     {
         NewGRNPONo = args.Value?.ToString() ?? string.Empty;
+        GRNBarcodeScanValue = string.Empty;
+        GRNBarcodeScanMessage = null;
+        GRNBarcodeScanSucceeded = false;
         ApplySelectedPurchaseOrder();
     }
 
@@ -4264,7 +4542,101 @@
             return;
         }
 
+        ApplyInventoryItemToGRN(item);
+    }
+
+    private void HandleGRNBarcodeInput(ChangeEventArgs args)
+    {
+        GRNBarcodeScanValue = args.Value?.ToString() ?? string.Empty;
+        GRNBarcodeScanMessage = null;
+        GRNBarcodeScanSucceeded = false;
+    }
+
+    private void HandleGRNBarcodeKeyUp(KeyboardEventArgs args)
+    {
+        if (string.Equals(args.Key, "Enter", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(args.Code, "NumpadEnter", StringComparison.OrdinalIgnoreCase))
+        {
+            ProcessGRNBarcodeScan();
+        }
+    }
+
+    private void ProcessGRNBarcodeScan()
+    {
+        GRNBarcodeScanMessage = null;
+        GRNBarcodeScanSucceeded = false;
+
+        if (string.IsNullOrWhiteSpace(NewGRNPONo))
+        {
+            GRNBarcodeScanMessage = "Select a purchase order before scanning.";
+            return;
+        }
+
+        var scannedCode = GRNBarcodeScanValue.Trim();
+        if (string.IsNullOrWhiteSpace(scannedCode))
+        {
+            GRNBarcodeScanMessage = "Scan or enter a barcode or SKU.";
+            return;
+        }
+
+        var scannedItem = InventoryItems.FirstOrDefault(item =>
+            (!string.IsNullOrWhiteSpace(item.Barcode) &&
+             string.Equals(item.Barcode.Trim(), scannedCode, StringComparison.OrdinalIgnoreCase)) ||
+            (!string.IsNullOrWhiteSpace(item.Sku) &&
+             string.Equals(item.Sku.Trim(), scannedCode, StringComparison.OrdinalIgnoreCase)));
+
+        if (scannedItem is null)
+        {
+            GRNBarcodeScanMessage = $"No product was found for {scannedCode}. Check the barcode in product setup.";
+            return;
+        }
+
+        var purchaseOrder = PurchaseOrders.FirstOrDefault(po =>
+            string.Equals(po.PoNo, NewGRNPONo, StringComparison.OrdinalIgnoreCase));
+        var expectedItem = SelectedGRNInventoryProduct ?? InventoryItems.FirstOrDefault(item =>
+            purchaseOrder is not null &&
+            string.Equals(item.Type, purchaseOrder.Product, StringComparison.OrdinalIgnoreCase));
+
+        var matchesExpectedItem = expectedItem is not null
+            ? IsSameInventoryItem(expectedItem, scannedItem)
+            : purchaseOrder is not null &&
+              string.Equals(purchaseOrder.Product, scannedItem.Type, StringComparison.OrdinalIgnoreCase);
+
+        if (!matchesExpectedItem)
+        {
+            var expectedName = expectedItem?.Type ?? purchaseOrder?.Product ?? NewGRNName;
+            GRNBarcodeScanMessage = $"Wrong item scanned. This PO expects {expectedName}; you scanned {scannedItem.Type}.";
+            return;
+        }
+
+        ApplyInventoryItemToGRN(scannedItem);
+        GRNBarcodeScanValue = string.IsNullOrWhiteSpace(scannedItem.Barcode) ? scannedItem.Sku : scannedItem.Barcode;
+        GRNBarcodeScanSucceeded = true;
+        GRNBarcodeScanMessage = $"{scannedItem.Type} confirmed. Enter the received quantity.";
+    }
+
+    private static bool IsSameInventoryItem(
+        InventoryViewModel.InventoryItem expectedItem,
+        InventoryViewModel.InventoryItem scannedItem)
+    {
+        if (!string.IsNullOrWhiteSpace(expectedItem.MasterAccountId) &&
+            !string.IsNullOrWhiteSpace(scannedItem.MasterAccountId))
+        {
+            return string.Equals(expectedItem.MasterAccountId, scannedItem.MasterAccountId, StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (!string.IsNullOrWhiteSpace(expectedItem.Sku) && !string.IsNullOrWhiteSpace(scannedItem.Sku))
+        {
+            return string.Equals(expectedItem.Sku, scannedItem.Sku, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return string.Equals(expectedItem.Barcode, scannedItem.Barcode, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ApplyInventoryItemToGRN(InventoryViewModel.InventoryItem item)
+    {
         NewGRNName = item.Type;
+        NewGRNItemSku = item.Sku;
         NewGRNInventoryId = item.MasterAccountId;
         NewGRNUom = string.IsNullOrWhiteSpace(item.UnitOfMeasurementId)
             ? NormalizeStockUom(item.StockUom1)
@@ -4279,6 +4651,104 @@
         {
             NewGRNAccountId = item.SupplierAccountId;
         }
+    }
+
+    private async Task OpenGRNBarcodeScannerAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NewGRNPONo))
+        {
+            GRNBarcodeScanSucceeded = false;
+            GRNBarcodeScanMessage = "Select a purchase order before scanning.";
+            return;
+        }
+
+        GRNBarcodeScanMessage = null;
+        GRNBarcodeScanSucceeded = false;
+        IsGRNBarcodeScannerVisible = true;
+        IsGRNBarcodeScannerStarting = true;
+        StartGRNBarcodeScannerAfterRender = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task StartGRNBarcodeScannerAsync()
+    {
+        await EnsureInventoryModuleAsync();
+        if (_inventoryModule is null)
+        {
+            SetGRNBarcodeScannerError("Camera scanner could not be loaded. Use a handheld scanner or type the barcode.");
+            return;
+        }
+
+        try
+        {
+            GRNBarcodeDotNetReference ??= DotNetObjectReference.Create(this);
+            var error = await _inventoryModule.InvokeAsync<string?>(
+                "startBarcodeScanner",
+                GRNBarcodeVideoElement,
+                GRNBarcodeDotNetReference);
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                SetGRNBarcodeScannerError(error);
+                return;
+            }
+
+            IsGRNBarcodeScannerStarting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (JSDisconnectedException)
+        {
+            SetGRNBarcodeScannerError("The camera connection was interrupted. Please try again.");
+        }
+        catch (JSException)
+        {
+            SetGRNBarcodeScannerError("Camera scanning is unavailable on this device. Use a handheld scanner or type the barcode.");
+        }
+    }
+
+    private void SetGRNBarcodeScannerError(string message)
+    {
+        IsGRNBarcodeScannerVisible = false;
+        IsGRNBarcodeScannerStarting = false;
+        StartGRNBarcodeScannerAfterRender = false;
+        GRNBarcodeScanSucceeded = false;
+        GRNBarcodeScanMessage = message;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private async Task CloseGRNBarcodeScannerAsync()
+    {
+        StartGRNBarcodeScannerAfterRender = false;
+        IsGRNBarcodeScannerStarting = false;
+
+        if (_inventoryModule is not null)
+        {
+            try
+            {
+                await _inventoryModule.InvokeVoidAsync("stopBarcodeScanner");
+            }
+            catch (JSDisconnectedException)
+            {
+                // The page is already disconnected.
+            }
+            catch (JSException)
+            {
+                // The scanner may already have stopped after detecting a barcode.
+            }
+        }
+
+        IsGRNBarcodeScannerVisible = false;
+    }
+
+    [JSInvokable("OnGrnBarcodeDetected")]
+    public async Task OnGrnBarcodeDetected(string barcode)
+    {
+        IsGRNBarcodeScannerVisible = false;
+        IsGRNBarcodeScannerStarting = false;
+        StartGRNBarcodeScannerAfterRender = false;
+        GRNBarcodeScanValue = barcode ?? string.Empty;
+        ProcessGRNBarcodeScan();
+        await InvokeAsync(StateHasChanged);
     }
 
     private string ResolveGRNBranchId(string branch)
@@ -4320,6 +4790,19 @@
         {
             try
             {
+                await _inventoryModule.InvokeVoidAsync("stopBarcodeScanner");
+            }
+            catch (JSDisconnectedException)
+            {
+                // Ignored on disconnect
+            }
+            catch (JSException)
+            {
+                // The scanner was not active or already stopped.
+            }
+
+            try
+            {
                 await _inventoryModule.DisposeAsync();
             }
             catch (JSDisconnectedException)
@@ -4331,6 +4814,9 @@
                 Console.WriteLine($"Error disposing inventory module: {ex.Message}");
             }
         }
+
+        GRNBarcodeDotNetReference?.Dispose();
+        GRNBarcodeDotNetReference = null;
     }
 
     private List<TransferProductLine> SelectedTransferHistoryProductLines =>
@@ -4355,7 +4841,8 @@
         CategoryApiError,
         StockTransferApiError,
         StockTransferBranchApiError,
-        GRNApiError
+        GRNApiError,
+        GINApiError
     }.FirstOrDefault(message => !string.IsNullOrWhiteSpace(message));
 
     private void DismissInventoryError()
@@ -4365,6 +4852,7 @@
         StockTransferApiError = null;
         StockTransferBranchApiError = null;
         GRNApiError = null;
+        GINApiError = null;
     }
 
     private InventoryViewModel ViewModel { get; } = new();
@@ -4524,6 +5012,91 @@
         IsGinDetailsVisible = true;
     }
 
+    private bool CanEditGin(ReturnedStockItem item) =>
+        !item.IsVoid &&
+        !item.IsLocked &&
+        string.IsNullOrWhiteSpace(item.CreatedByDocumentId) &&
+        string.IsNullOrWhiteSpace(item.CreatedByDocumentDisplayCode);
+
+    private ReturnedStockItem? FindRelatedGin(TransferHistoryItem? transfer)
+    {
+        if (transfer is null) return null;
+
+        return ReturnedStockList.FirstOrDefault(gin =>
+            SameDocumentKey(gin.CreatedByDocumentId, transfer.DocumentId) ||
+            SameDocumentKey(gin.CreatedByDocumentId, transfer.TransferNo) ||
+            SameDocumentKey(gin.CreatedByDocumentDisplayCode, transfer.TransferNo) ||
+            (gin.CreatedByDocumentTypeName.Contains("transfer", StringComparison.OrdinalIgnoreCase) &&
+             SameDocumentKey(gin.ReferenceNumber, transfer.TransferNo)));
+    }
+
+    private GRNItem? FindRelatedGrn(TransferHistoryItem? transfer)
+    {
+        if (transfer is null) return null;
+
+        return GRNsForTransferReconciliation.FirstOrDefault(grn =>
+            !grn.IsVoid &&
+            (SameDocumentKey(grn.CreatedByDocumentId, transfer.DocumentId) ||
+             SameDocumentKey(grn.CreatedByDocumentId, transfer.TransferNo) ||
+             SameDocumentKey(grn.CreatedByDocumentDisplayCode, transfer.TransferNo) ||
+             SameDocumentKey(grn.PODocumentId, transfer.DocumentId) ||
+             SameDocumentKey(grn.PONo, transfer.TransferNo)));
+    }
+
+    private TransferHistoryItem? FindRelatedTransfer(ReturnedStockItem? gin)
+    {
+        if (gin is null) return null;
+
+        return TransferHistory.FirstOrDefault(transfer =>
+            SameDocumentKey(gin.CreatedByDocumentId, transfer.DocumentId) ||
+            SameDocumentKey(gin.CreatedByDocumentId, transfer.TransferNo) ||
+            SameDocumentKey(gin.CreatedByDocumentDisplayCode, transfer.TransferNo) ||
+            (gin.CreatedByDocumentTypeName.Contains("transfer", StringComparison.OrdinalIgnoreCase) &&
+             SameDocumentKey(gin.ReferenceNumber, transfer.TransferNo)));
+    }
+
+    private TransferHistoryItem? FindRelatedTransfer(GRNItem? grn)
+    {
+        if (grn is null) return null;
+
+        return TransferHistory.FirstOrDefault(transfer =>
+            SameDocumentKey(grn.CreatedByDocumentId, transfer.DocumentId) ||
+            SameDocumentKey(grn.CreatedByDocumentId, transfer.TransferNo) ||
+            SameDocumentKey(grn.CreatedByDocumentDisplayCode, transfer.TransferNo) ||
+            SameDocumentKey(grn.PODocumentId, transfer.DocumentId) ||
+            SameDocumentKey(grn.PONo, transfer.TransferNo));
+    }
+
+    private void OpenRelatedGin(ReturnedStockItem gin)
+    {
+        CloseTransferHistoryDetails();
+        SetActiveTab("ReturnedStock");
+        ShowGinDetails(gin);
+    }
+
+    private void OpenRelatedGrn(GRNItem grn)
+    {
+        CloseTransferHistoryDetails();
+        SetActiveTab("GRN");
+        ShowGrnDetails(grn);
+    }
+
+    private async Task OpenRelatedTransferAsync(TransferHistoryItem transfer)
+    {
+        CloseGinDetails();
+        CloseGrnDetails();
+        SetActiveTab("TransferOrders");
+        await ShowTransferHistoryDetailsAsync(new CombinedHistoryItem
+        {
+            ReferenceNo = transfer.TransferNo,
+            Type = "Branch Transfer",
+            Date = transfer.DateIssued,
+            From = transfer.IssuedBy,
+            To = transfer.IssuedTo,
+            Status = transfer.Status
+        });
+    }
+
     private void CloseGinDetails()
     {
         IsGinDetailsVisible = false;
@@ -4535,6 +5108,16 @@
         SelectedGrnDetails = item;
         IsGrnDetailsVisible = true;
     }
+
+    private static bool CanEditGrn(GRNItem item) =>
+        !item.IsLocked && !item.IsVoid && !item.IsGeneratedFromDocument;
+
+    private static string GetGrnReadOnlyReason(GRNItem item) =>
+        item.IsVoid
+            ? "GRN is voided"
+            : item.IsGeneratedFromDocument
+                ? "Transfer GRN is posted and view-only"
+                : "GRN is locked";
 
     private void CloseGrnDetails()
     {
@@ -4597,9 +5180,6 @@
             case "suppliers":
                 ConfirmSupplierDelete();
                 break;
-            case "returnedStock":
-                DeleteSelectedReturnedStocks();
-                break;
             case "grn":
                 await DeleteSelectedGRNs();
                 break;
@@ -4620,10 +5200,22 @@
             LoadProductsAsync(),
             LoadStockTransfersAsync(),
             LoadGRNsAsync(),
+            LoadGINsAsync(),
             LoadPendingStockReceiptsAsync(),
             LoadCategoriesAsync());
 
         ReconcileStockTransferStatuses();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!StartGRNBarcodeScannerAfterRender || !IsGRNBarcodeScannerVisible)
+        {
+            return;
+        }
+
+        StartGRNBarcodeScannerAfterRender = false;
+        await StartGRNBarcodeScannerAsync();
     }
 
     private async Task LoadCategoriesAsync()
@@ -4809,16 +5401,27 @@
 
 private static string NormalizeTransferStatus(string? status)
 {
-    if (string.IsNullOrWhiteSpace(status) ||
-        string.Equals(status, "Pending", StringComparison.OrdinalIgnoreCase))
-    {
-        return "In Transit";
-    }
+    if (string.IsNullOrWhiteSpace(status)) return "In Transit";
 
-    return status.Trim();
+    var value = status.Trim();
+    if (value.Contains("draft", StringComparison.OrdinalIgnoreCase)) return "Draft";
+    if (value.Contains("cancel", StringComparison.OrdinalIgnoreCase) ||
+        value.Contains("void", StringComparison.OrdinalIgnoreCase)) return "Cancelled";
+    if (value.Contains("receive", StringComparison.OrdinalIgnoreCase) ||
+        value.Contains("accept", StringComparison.OrdinalIgnoreCase) ||
+        value.Contains("complete", StringComparison.OrdinalIgnoreCase) ||
+        value.Contains("closed", StringComparison.OrdinalIgnoreCase)) return "Completed";
+    if (value.Contains("pending", StringComparison.OrdinalIgnoreCase) ||
+        value.Contains("transit", StringComparison.OrdinalIgnoreCase) ||
+        value.Contains("dispatch", StringComparison.OrdinalIgnoreCase) ||
+        value.Contains("posted", StringComparison.OrdinalIgnoreCase) ||
+        value.Contains("open", StringComparison.OrdinalIgnoreCase) ||
+        value.Contains("new", StringComparison.OrdinalIgnoreCase)) return "In Transit";
+
+    return value;
 }
 
-private static StockTransferProduct ToStockTransferProduct(InventoryViewModel.InventoryItem item)
+private StockTransferProduct ToStockTransferProduct(InventoryViewModel.InventoryItem item)
     {
         var stockCount = item.StockQuantity;
         var reorderLevel = ParseStockDecimal(item.LowAlertCount);
@@ -4838,10 +5441,68 @@ private static StockTransferProduct ToStockTransferProduct(InventoryViewModel.In
             Price = item.Price,
             Uom1 = NormalizeStockUom(item.StockUom1),
             Uom2 = NormalizeStockUom(item.StockUom2),
+            UnitOfMeasurementId = item.UnitOfMeasurementId,
+            SupplierAccountId = item.SupplierAccountId,
+            SupplierName = item.Supplier,
+            InventoryTypeId = item.InventoryTypeId,
+            ImagePath = item.ImagePath,
+            ImageFileName = item.ImageFileName,
+            ImageUrl = ResolveProductImage(item),
             StockCount = stockCount,
             StockStatus = stockStatus
         };
     }
+
+    private const string EmptyInventoryImage = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
+    private const string DefaultProductPickerImage = "_content/Beauty_Aesthetics_Hybrid.Shared/Images/sales/product-catalog.jpg";
+
+    private string GetProductPickerImage(StockTransferProduct product)
+    {
+        var cachedImage = ProductImageService.GetImage(product.MasterAccountId);
+        if (!string.IsNullOrWhiteSpace(cachedImage)) return cachedImage;
+
+        if (!string.IsNullOrWhiteSpace(product.ImagePath))
+        {
+            return ProductImageService.ResolveServerImageUrl(product.ImagePath, null);
+        }
+
+        if (!string.IsNullOrWhiteSpace(product.ImageFileName))
+        {
+            return ProductImageService.ResolveServerImageUrl(null, product.ImageFileName);
+        }
+
+        return HasInventoryImage(product.ImageUrl) ? product.ImageUrl : DefaultProductPickerImage;
+    }
+
+    private string ResolveProductImage(InventoryViewModel.InventoryItem? item)
+    {
+        var imageUrl = ProductImageService.ResolveImageUrl(item);
+        return string.IsNullOrWhiteSpace(imageUrl) ? EmptyInventoryImage : imageUrl;
+    }
+
+    private static bool HasInventoryImage(string? imageUrl) =>
+        !string.IsNullOrWhiteSpace(imageUrl) &&
+        !string.Equals(imageUrl, EmptyInventoryImage, StringComparison.Ordinal);
+
+    private bool HasInventoryImage(InventoryViewModel.InventoryItem? item) =>
+        HasInventoryImage(ResolveProductImage(item));
+
+    private InventoryViewModel.InventoryItem? SelectedPurchaseOrderInventoryProduct =>
+        InventoryItems.FirstOrDefault(item =>
+            string.Equals(item.Type, NewPurchaseOrder.Product, StringComparison.OrdinalIgnoreCase));
+
+    private InventoryViewModel.InventoryItem? EditingInventoryProduct =>
+        EditProduct is null
+            ? null
+            : InventoryItems.FirstOrDefault(item =>
+                string.Equals(item.MasterAccountId, EditProduct.MasterAccountId, StringComparison.OrdinalIgnoreCase));
+
+    private InventoryViewModel.InventoryItem? SelectedGRNInventoryProduct =>
+        InventoryItems.FirstOrDefault(item =>
+            (!string.IsNullOrWhiteSpace(NewGRNInventoryId) &&
+             string.Equals(item.MasterAccountId, NewGRNInventoryId, StringComparison.OrdinalIgnoreCase)) ||
+            (!string.IsNullOrWhiteSpace(NewGRNItemSku) &&
+             string.Equals(item.Sku, NewGRNItemSku, StringComparison.OrdinalIgnoreCase)));
 
     private static decimal ParseStockDecimal(string? value)
     {
@@ -4871,6 +5532,104 @@ private static StockTransferProduct ToStockTransferProduct(InventoryViewModel.In
             ? trimmed[(firstSpace + 1)..].Trim()
             : trimmed;
     }
+
+    private async Task LoadGINsAsync()
+    {
+        IsGINApiLoading = true;
+        GINApiError = null;
+        ReturnedStockList = [];
+
+        try
+        {
+            var result = await StockGinService.LoadGinsAsync(InventoryBranchId);
+            if (!result.Success || result.Value is null)
+            {
+                GINApiError = result.ErrorMessage ?? "Unable to load GIN records.";
+                return;
+            }
+
+            ReturnedStockList = result.Value
+                .Select(ToReturnedStockItem)
+                .OrderByDescending(item => item.DateIssued)
+                .ToList();
+            GINCurrentPage = 1;
+            SelectedReturnedStock = null;
+            SelectedReturnedStocksForPrint.Clear();
+        }
+        finally
+        {
+            IsGINApiLoading = false;
+        }
+    }
+
+    private ReturnedStockItem ToReturnedStockItem(StockGinViewModel gin)
+    {
+        var lines = gin.Lines.Select(line =>
+        {
+            var product = FindGinProduct(line.InventoryId, line.Sku);
+            var uomDisplay = product?.Uom1;
+            if (string.IsNullOrWhiteSpace(uomDisplay)) uomDisplay = line.UnitOfMeasurementId;
+
+            return new ReturnedStockProductLine
+            {
+                DocumentLineId = line.DocumentLineId,
+                InventoryId = line.InventoryId,
+                ProductName = string.IsNullOrWhiteSpace(line.ProductName) ? product?.ProductName ?? "Product" : line.ProductName,
+                Sku = string.IsNullOrWhiteSpace(line.Sku) ? product?.Sku ?? string.Empty : line.Sku,
+                Quantity = (int)Math.Max(0, Math.Round(line.Quantity)),
+                Uom = string.IsNullOrWhiteSpace(uomDisplay) ? "UNIT" : uomDisplay,
+                UomId = line.UnitOfMeasurementId,
+                InventoryTypeId = line.InventoryTypeId,
+                UnitPrice = line.UnitCost,
+                LineAmount = line.Quantity * line.UnitCost
+            };
+        }).ToList();
+
+        return new ReturnedStockItem
+        {
+            DocumentId = gin.DocumentId,
+            ReturnedStockNo = gin.DisplayCode,
+            DateIssued = gin.Date,
+            BranchId = gin.BranchId,
+            IssuedBy = ResolveGINBranchName(gin.BranchId),
+            IssuedTo = !string.IsNullOrWhiteSpace(gin.AccountName)
+                ? gin.AccountName
+                : string.IsNullOrWhiteSpace(gin.OrderBranchId) ? string.Empty : ResolveGINBranchName(gin.OrderBranchId),
+            Quantity = lines.Sum(line => line.Quantity),
+            Uom = lines.Select(line => line.Uom).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 1
+                ? lines.FirstOrDefault()?.Uom ?? "unit(s)"
+                : "unit(s)",
+            Status = gin.Status,
+            Purpose = string.IsNullOrWhiteSpace(gin.IssueType)
+                ? gin.IsGeneratedFromDocument ? "Stock Transfer" : "Stock Issue"
+                : gin.IssueType,
+            ReferenceNumber = gin.ReferenceNumber,
+            Reason = gin.Remarks,
+            VerifyStatus = gin.VerifyStatus,
+            CreatedByDocumentTypeId = gin.CreatedByDocumentTypeId,
+            CreatedByDocumentTypeName = gin.CreatedByDocumentTypeName,
+            CreatedByDocumentId = gin.CreatedByDocumentId,
+            CreatedByDocumentDisplayCode = gin.CreatedByDocumentDisplayCode,
+            IsLocked = gin.IsLocked,
+            IsVoid = gin.IsVoid,
+            Products = lines
+        };
+    }
+
+    private StockTransferProduct? FindGinProduct(string? inventoryId, string? sku) =>
+        StockTransferProducts.FirstOrDefault(product =>
+            (!string.IsNullOrWhiteSpace(inventoryId) &&
+             string.Equals(product.MasterAccountId, inventoryId, StringComparison.OrdinalIgnoreCase)) ||
+            (!string.IsNullOrWhiteSpace(sku) &&
+             string.Equals(product.Sku, sku, StringComparison.OrdinalIgnoreCase)));
+
+    private string ResolveGINBranchName(string? branchId)
+    {
+        var branch = StockTransferBranches.FirstOrDefault(item =>
+            string.Equals(item.Id, branchId, StringComparison.OrdinalIgnoreCase));
+        return branch?.Name ?? (string.IsNullOrWhiteSpace(branchId) ? InventoryBranchId : branchId);
+    }
+
     private async Task LoadGRNsAsync()
     {
         IsGRNApiLoading = true;
@@ -5000,7 +5759,7 @@ private static StockTransferProduct ToStockTransferProduct(InventoryViewModel.In
     {
         if (!await JSRuntime.InvokeAsync<bool>(
                 "confirm",
-                $"Accept {receipt.DisplayCode} into branch {InventoryBranchId}? This will update stock balances."))
+                $"Receive transfer {receipt.DisplayCode} into branch {InventoryBranchId}? This creates the GRN and completes the transfer."))
         {
             return;
         }
@@ -5024,7 +5783,7 @@ private static StockTransferProduct ToStockTransferProduct(InventoryViewModel.In
         var result = await PendingStockReceiptService.AcceptAsync(receipt.DocumentId);
         if (!result.Success)
         {
-            PendingStockReceiptError = result.ErrorMessage ?? "Unable to accept the incoming stock transfer.";
+            PendingStockReceiptError = result.ErrorMessage ?? "Unable to receive the incoming stock transfer.";
             return;
         }
 
@@ -5305,7 +6064,7 @@ private static StockTransferProduct ToStockTransferProduct(InventoryViewModel.In
                      SameDocumentKey(item.DocumentId, sourceTransfer.DocumentId) ||
                      SameDocumentKey(item.TransferNo, sourceTransfer.TransferNo)))
         {
-            item.Status = "Received";
+            item.Status = "Completed";
         }
     }
 
@@ -5337,7 +6096,7 @@ private void ReconcileStockTransferStatuses()
             if (receivedDocumentKeys.Contains(transfer.DocumentId) ||
                 receivedDocumentKeys.Contains(transfer.TransferNo))
             {
-                transfer.Status = "Received";
+                transfer.Status = "Completed";
             }
         }
     }
@@ -7171,10 +7930,11 @@ private void ShowAddBrandForm()
                     r.DateIssued.ToString("dd/MM/yyyy").Contains(search, StringComparison.OrdinalIgnoreCase) ||
                     (r.IssuedBy?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false) ||
                     (r.IssuedTo?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (r.Purpose?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (r.ReferenceNumber?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false) ||
                     (r.Status?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false) ||
                     (r.Reason?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                    r.Quantity.ToString().Contains(search, StringComparison.OrdinalIgnoreCase) ||
-                    r.Amount.ToString("N2").Contains(search, StringComparison.OrdinalIgnoreCase));
+                    r.Quantity.ToString().Contains(search, StringComparison.OrdinalIgnoreCase));
             }
 
             // Apply multiple filters
@@ -7191,8 +7951,8 @@ private void ShowAddBrandForm()
                     "DateIssued" => GINSortAscending ? returnedStock.OrderBy(r => r.DateIssued) : returnedStock.OrderByDescending(r => r.DateIssued),
                     "IssuedBy" => GINSortAscending ? returnedStock.OrderBy(r => r.IssuedBy) : returnedStock.OrderByDescending(r => r.IssuedBy),
                     "IssuedTo" => GINSortAscending ? returnedStock.OrderBy(r => r.IssuedTo) : returnedStock.OrderByDescending(r => r.IssuedTo),
+                    "Purpose" => GINSortAscending ? returnedStock.OrderBy(r => r.Purpose) : returnedStock.OrderByDescending(r => r.Purpose),
                     "Quantity" => GINSortAscending ? returnedStock.OrderBy(r => r.Quantity) : returnedStock.OrderByDescending(r => r.Quantity),
-                    "Amount" => GINSortAscending ? returnedStock.OrderBy(r => r.Amount) : returnedStock.OrderByDescending(r => r.Amount),
                     _ => returnedStock
                 };
             }
@@ -7217,7 +7977,7 @@ private void ShowAddBrandForm()
     private IEnumerable<ReturnedStockItem> ApplyGINFilter(IEnumerable<ReturnedStockItem> items, MultiTableFilter.FilterData filter)
     {
         if(filter.Column=="DateIssued"){var start=filter.StartDate?.Date??DateTime.MinValue.Date;var end=filter.EndDate?.Date??DateTime.MaxValue.Date;return items.Where(x=>x.DateIssued.Date>=start&&x.DateIssued.Date<=end);}
-        return filter.Column switch { "ReturnedStockNo"=>items.Where(x=>TextMatches(x.ReturnedStockNo,filter)), "IssuedBy"=>items.Where(x=>TextMatches(x.IssuedBy,filter)), "IssuedTo"=>items.Where(x=>TextMatches(x.IssuedTo,filter)), "Quantity"=>items.Where(x=>InRange(x.Quantity,filter)), "Amount"=>items.Where(x=>InRange(x.Amount,filter)), "Status"=>items.Where(x=>TextMatches(x.Status,filter)), "Reason"=>items.Where(x=>TextMatches(x.Reason,filter)), _=>items };
+        return filter.Column switch { "ReturnedStockNo"=>items.Where(x=>TextMatches(x.ReturnedStockNo,filter)), "IssuedBy"=>items.Where(x=>TextMatches(x.IssuedBy,filter)), "IssuedTo"=>items.Where(x=>TextMatches(x.IssuedTo,filter)), "Purpose"=>items.Where(x=>TextMatches(x.Purpose,filter)), "Quantity"=>items.Where(x=>InRange(x.Quantity,filter)), "Status"=>items.Where(x=>TextMatches(x.Status,filter)), "Reason"=>items.Where(x=>TextMatches(x.Reason,filter)), _=>items };
     }
 
     private static bool TextMatches(string? source, MultiTableFilter.FilterData filter)
@@ -7245,22 +8005,30 @@ private void ShowAddBrandForm()
     {
         return new ReturnedStockItem
         {
+            DocumentId = source.DocumentId,
             ReturnedStockNo = source.ReturnedStockNo,
             DateIssued = source.DateIssued,
+            BranchId = source.BranchId,
             IssuedBy = source.IssuedBy,
             IssuedTo = source.IssuedTo,
             Quantity = source.Quantity,
             Uom = source.Uom,
             Amount = source.Amount,
             Status = source.Status,
+            Purpose = source.Purpose,
+            ReferenceNumber = source.ReferenceNumber,
             Reason = source.Reason,
             Products = source.Products
                 .Select(product => new ReturnedStockProductLine
                 {
+                    DocumentLineId = product.DocumentLineId,
+                    InventoryId = product.InventoryId,
                     ProductName = product.ProductName,
                     Sku = product.Sku,
                     Quantity = product.Quantity,
                     Uom = product.Uom,
+                    UomId = product.UomId,
+                    InventoryTypeId = product.InventoryTypeId,
                     UnitPrice = product.UnitPrice,
                     LineAmount = product.LineAmount
                 })
@@ -7330,6 +8098,14 @@ private void ShowAddBrandForm()
     private bool IsGRNApiLoading { get; set; }
     private string? GRNApiError { get; set; }
     private string GRNItemProductSearch { get; set; } = string.Empty;
+    private string GRNBarcodeScanValue { get; set; } = string.Empty;
+    private string? GRNBarcodeScanMessage { get; set; }
+    private bool GRNBarcodeScanSucceeded { get; set; }
+    private bool IsGRNBarcodeScannerVisible { get; set; }
+    private bool IsGRNBarcodeScannerStarting { get; set; }
+    private bool StartGRNBarcodeScannerAfterRender { get; set; }
+    private ElementReference GRNBarcodeVideoElement { get; set; }
+    private DotNetObjectReference<Inventory>? GRNBarcodeDotNetReference { get; set; }
     private string? GRNSortColumn { get; set; }
     private bool GRNSortAscending { get; set; } = true;
 
@@ -7338,7 +8114,8 @@ private void ShowAddBrandForm()
     private HashSet<GRNItem> SelectedGRNsForDeletion { get; set; } = new();
     private bool IsGRNPrintModeActive { get; set; }
     private HashSet<GRNItem> SelectedGRNsForPrint { get; set; } = new();
-    private bool IsAllGRNsSelected => FilteredGRNs.Any() && SelectedGRNsForDeletion.Count == FilteredGRNs.Count();
+    private IEnumerable<GRNItem> DeletableGRNs => FilteredGRNs.Where(CanEditGrn);
+    private bool IsAllGRNsSelected => DeletableGRNs.Any() && SelectedGRNsForDeletion.Count == DeletableGRNs.Count();
 
     private List<GRNItem> GRNs { get; set; } = new();
     private List<GRNItem> GRNsForTransferReconciliation { get; set; } = new();
@@ -7446,6 +8223,8 @@ private void ShowAddBrandForm()
 
     private void ToggleGRNForDeletion(GRNItem grn)
     {
+        if (!CanEditGrn(grn)) return;
+
         if (SelectedGRNsForDeletion.Contains(grn))
         {
             SelectedGRNsForDeletion.Remove(grn);
@@ -7465,7 +8244,7 @@ private void ShowAddBrandForm()
         else
         {
             SelectedGRNsForDeletion.Clear();
-            foreach (var grn in FilteredGRNs)
+            foreach (var grn in DeletableGRNs)
             {
                 SelectedGRNsForDeletion.Add(grn);
             }
@@ -7672,8 +8451,9 @@ private void ShowAddBrandForm()
     }
 
 private async Task ShowAddTransferForm()
-    {
+{
         StockTransferApiError = null;
+        StockTransferSuccessMessage = null;
         if (StockTransferBranches.Count == 0)
         {
             await LoadStockTransferBranchesAsync();
@@ -7765,6 +8545,12 @@ private async Task ShowAddTransferForm()
             NewTransfer.SelectedProducts[product.Sku] = 1;
         }
     }
+
+    private void HandleTransferProductRowKeyDown(KeyboardEventArgs args, StockTransferProduct product)
+    {
+        if (IsProductSelectionKey(args)) ToggleProductSelection(product);
+    }
+
     private async Task HandleCreateTransfer()
     {
         if (IsStockTransferSaving)
@@ -7872,8 +8658,11 @@ private async Task ShowAddTransferForm()
             CloseAddTransferModal();
             await Task.WhenAll(
                 LoadStockTransfersAsync(),
+                LoadGINsAsync(),
                 LoadPendingStockReceiptsAsync(),
                 LoadProductsAsync());
+            ReconcileStockTransferStatuses();
+            StockTransferSuccessMessage = "Transfer created. The generated GIN is posted and the transfer is now In Transit.";
             StockTransferHistoryCurrentPage = 1;
         }
         finally
@@ -7918,6 +8707,11 @@ private async Task ShowAddTransferForm()
         }
     }
 
+    private void HandleRestockProductRowKeyDown(KeyboardEventArgs args, StockTransferProduct product)
+    {
+        if (IsProductSelectionKey(args)) ToggleRestockProductSelection(product);
+    }
+
     private void HandleRestock()
     {
         // TODO: Update stock counts based on selected products and quantities
@@ -7929,10 +8723,12 @@ private async Task ShowAddTransferForm()
 
     private void ShowAddReturnedStockModal()
     {
+        IsGINEditMode = false;
+        GINApiError = null;
         NewReturnedStock = new NewReturnedStockModel
         {
-            ReturnedStockNo = "GIN" + ReturnedStockCounter.ToString("D3"),
-            DateIssued = DateTime.Now
+            DateIssued = DateTime.Today,
+            BranchId = InventoryBranchId
         };
         ShowAddReturnedStockModalWindow = true;
     }
@@ -7941,83 +8737,179 @@ private async Task ShowAddTransferForm()
     {
         ShowAddReturnedStockModalWindow = false;
         ReturnedStockProductSearch = string.Empty;
+        IsGINEditMode = false;
     }
 
     private void ToggleReturnedStockProductSelection(StockTransferProduct product)
     {
-        if (NewReturnedStock.SelectedProducts.ContainsKey(product.Sku))
+        var key = product.MasterAccountId;
+        if (string.IsNullOrWhiteSpace(key))
         {
-            NewReturnedStock.SelectedProducts.Remove(product.Sku);
+            GINApiError = $"{product.ProductName} is missing its inventory ID and cannot be issued.";
+            return;
+        }
+
+        if (!NewReturnedStock.SelectedProducts.ContainsKey(key) &&
+            product.StockCount.HasValue && product.StockCount.Value <= 0)
+        {
+            GINApiError = $"{product.ProductName} is out of stock and cannot be issued.";
+            return;
+        }
+
+        if (NewReturnedStock.SelectedProducts.ContainsKey(key))
+        {
+            NewReturnedStock.SelectedProducts.Remove(key);
         }
         else
         {
-            NewReturnedStock.SelectedProducts[product.Sku] = new SelectedProductInfo
+            NewReturnedStock.SelectedProducts[key] = new GinSelectedProductInfo
             {
                 Quantity = 1,
-                SelectedUom = "UOM1", // Default to UOM1
+                InventoryId = product.MasterAccountId,
                 ProductName = product.ProductName,
-                Sku = product.Sku
+                Sku = product.Sku,
+                UomId = string.IsNullOrWhiteSpace(product.UnitOfMeasurementId)
+                    ? product.Uom1
+                    : product.UnitOfMeasurementId,
+                UomDisplay = product.Uom1,
+                InventoryTypeId = product.InventoryTypeId
             };
         }
     }
 
-    private void HandleAddReturnedStock()
+    private void HandleGinProductRowKeyDown(KeyboardEventArgs args, StockTransferProduct product)
     {
-        // Calculate total amount and total quantity based on selected products and quantities
-        decimal totalAmount = 0;
-        int totalQuantity = 0;
-        var uomDisplayList = new List<string>();
-        var productDetails = new List<ReturnedStockProductLine>();
+        if (IsProductSelectionKey(args)) ToggleReturnedStockProductSelection(product);
+    }
 
-        foreach (var selectedProduct in NewReturnedStock.SelectedProducts)
+    private static bool IsProductSelectionKey(KeyboardEventArgs args) =>
+        string.Equals(args.Key, "Enter", StringComparison.OrdinalIgnoreCase) || args.Key == " ";
+
+    private async Task HandleAddReturnedStock()
+    {
+        if (IsGINSaving) return;
+        GINApiError = ValidateGINForm();
+        if (!string.IsNullOrWhiteSpace(GINApiError)) return;
+
+        IsGINSaving = true;
+        try
         {
-            var product = StockTransferProducts.FirstOrDefault(p => p.Sku == selectedProduct.Key);
-            if (product != null)
+            var isSupplierReturn = string.Equals(
+                NewReturnedStock.IssueType,
+                "Supplier Return",
+                StringComparison.OrdinalIgnoreCase);
+            var gin = new StockGinViewModel
             {
-                var productInfo = selectedProduct.Value;
-                var selectedUom = productInfo.SelectedUom == "UOM2" && !string.IsNullOrWhiteSpace(product.Uom2)
-                    ? product.Uom2
-                    : product.Uom1;
-
-                var lineAmount = product.Price * productInfo.Quantity;
-                totalAmount += lineAmount;
-                totalQuantity += productInfo.Quantity;
-                uomDisplayList.Add(selectedUom);
-
-                productDetails.Add(new ReturnedStockProductLine
+                DocumentId = NewReturnedStock.DocumentId,
+                DisplayCode = NewReturnedStock.ReturnedStockNo,
+                BranchId = NewReturnedStock.BranchId,
+                Date = NewReturnedStock.DateIssued,
+                IssueType = NewReturnedStock.IssueType,
+                AccountId = isSupplierReturn ? NewReturnedStock.AccountId : string.Empty,
+                AccountName = isSupplierReturn ? NewReturnedStock.IssuedTo : string.Empty,
+                ReferenceNumber = NewReturnedStock.ReferenceNumber,
+                Remarks = NewReturnedStock.Reason,
+                Lines = NewReturnedStock.SelectedProducts.Values.Select(product => new StockGinLineViewModel
                 {
-                    ProductName = productInfo.ProductName,
-                    Sku = productInfo.Sku,
-                    Quantity = productInfo.Quantity,
-                    Uom = selectedUom,
-                    UnitPrice = product.Price,
-                    LineAmount = lineAmount
-                });
+                    DocumentLineId = product.DocumentLineId,
+                    InventoryId = product.InventoryId,
+                    ProductName = product.ProductName,
+                    Sku = product.Sku,
+                    Quantity = product.Quantity,
+                    UnitOfMeasurementId = product.UomId,
+                    InventoryTypeId = product.InventoryTypeId,
+                    UnitCost = product.UnitCost
+                }).ToList()
+            };
+
+            var result = IsGINEditMode
+                ? await StockGinService.UpdateGinAsync(gin)
+                : await StockGinService.CreateGinAsync(gin);
+            if (!result.Success)
+            {
+                GINApiError = result.ErrorMessage ?? $"Unable to {(IsGINEditMode ? "update" : "create")} GIN.";
+                return;
+            }
+
+            CloseAddReturnedStockModal();
+            await Task.WhenAll(LoadGINsAsync(), LoadProductsAsync());
+        }
+        finally
+        {
+            IsGINSaving = false;
+        }
+    }
+
+    private string? ValidateGINForm()
+    {
+        if (string.IsNullOrWhiteSpace(NewReturnedStock.IssueType)) return "Select why the stock is being issued.";
+        var isSupplierReturn = string.Equals(
+            NewReturnedStock.IssueType,
+            "Supplier Return",
+            StringComparison.OrdinalIgnoreCase);
+        if (isSupplierReturn && string.IsNullOrWhiteSpace(NewReturnedStock.AccountId))
+            return "Select the supplier receiving the stock.";
+        if (NewReturnedStock.SelectedProducts.Count == 0) return "Select at least one product.";
+        if (NewReturnedStock.SelectedProducts.Values.Any(product => product.Quantity <= 0))
+            return "Every selected product needs a quantity greater than zero.";
+
+        foreach (var selected in NewReturnedStock.SelectedProducts.Values)
+        {
+            var product = FindGinProduct(selected.InventoryId, selected.Sku);
+            if (isSupplierReturn && product is not null &&
+                !string.IsNullOrWhiteSpace(product.SupplierAccountId) &&
+                !string.Equals(product.SupplierAccountId, NewReturnedStock.AccountId, StringComparison.OrdinalIgnoreCase))
+            {
+                return $"{selected.ProductName} belongs to a different supplier.";
+            }
+            if (product?.StockCount is null) continue;
+            var available = GetGinMaximumQuantity(product);
+            if (selected.Quantity > available)
+            {
+                return $"{selected.ProductName} only has {available} {selected.UomDisplay} available.";
             }
         }
 
-        // Create new GIN record
-        var newReturnedStock = new ReturnedStockItem
+        if (string.Equals(NewReturnedStock.IssueType, "Other", StringComparison.OrdinalIgnoreCase) &&
+            string.IsNullOrWhiteSpace(NewReturnedStock.Reason)) return "Add a short note for the selected purpose.";
+        return null;
+    }
+
+    private int GetGinMaximumQuantity(StockTransferProduct product)
+    {
+        if (!product.StockCount.HasValue) return int.MaxValue;
+        var available = Math.Max(0, product.StockCount.Value);
+        if (IsGINEditMode && NewReturnedStock.SelectedProducts.TryGetValue(product.MasterAccountId, out var selected))
         {
-            ReturnedStockNo = NewReturnedStock.ReturnedStockNo,
-            DateIssued = NewReturnedStock.DateIssued,
-            IssuedBy = NewReturnedStock.IssuedBy,
-            IssuedTo = NewReturnedStock.IssuedTo,
-            Quantity = totalQuantity,
-            Uom = string.Join(", ", uomDisplayList.Distinct()),
-            Amount = totalAmount,
-            Status = "Pending",
-            Reason = NewReturnedStock.Reason,
-            Products = productDetails
-        };
+            available += selected.OriginalQuantity;
+        }
+        return (int)Math.Floor(available);
+    }
 
-        ReturnedStockList.Insert(0, newReturnedStock);
-        ReturnedStockCounter++;
+    private string? GetGinMaximumQuantityAttribute(StockTransferProduct product) =>
+        product.StockCount.HasValue ? GetGinMaximumQuantity(product).ToString(CultureInfo.InvariantCulture) : null;
 
-        // TODO: Update stock counts based on selected products and quantities
-        // TODO: Save to database
+    private IEnumerable<StockTransferProduct> GINSupplierOptions => StockTransferProducts
+        .Where(product => !string.IsNullOrWhiteSpace(product.SupplierAccountId) &&
+                          !string.IsNullOrWhiteSpace(product.SupplierName))
+        .DistinctBy(product => product.SupplierAccountId, StringComparer.OrdinalIgnoreCase)
+        .OrderBy(product => product.SupplierName);
 
-        CloseAddReturnedStockModal();
+    private void HandleGINPurposeChanged(ChangeEventArgs args)
+    {
+        NewReturnedStock.IssueType = args.Value?.ToString() ?? string.Empty;
+        if (!string.Equals(NewReturnedStock.IssueType, "Supplier Return", StringComparison.OrdinalIgnoreCase))
+        {
+            NewReturnedStock.AccountId = string.Empty;
+            NewReturnedStock.IssuedTo = string.Empty;
+        }
+    }
+
+    private void HandleGINSupplierChanged(ChangeEventArgs args)
+    {
+        NewReturnedStock.AccountId = args.Value?.ToString() ?? string.Empty;
+        NewReturnedStock.IssuedTo = GINSupplierOptions.FirstOrDefault(product =>
+            string.Equals(product.SupplierAccountId, NewReturnedStock.AccountId, StringComparison.OrdinalIgnoreCase))?.SupplierName ?? string.Empty;
     }
 
     private string GetReturnedStockRowClass(ReturnedStockItem item)
@@ -8057,7 +8949,7 @@ private async Task ShowAddTransferForm()
     {
         SelectReturnedStock(returnedStock);
 
-        if (IsReturnedStockDeleteMode || IsReturnedStockPrintModeActive)
+        if (IsReturnedStockPrintModeActive)
         {
             ExpandedMobileGinNo = null;
             return;
@@ -8066,66 +8958,77 @@ private async Task ShowAddTransferForm()
         ExpandedMobileGinNo = ExpandedMobileGinNo == returnedStock.ReturnedStockNo ? null : returnedStock.ReturnedStockNo;
     }
 
-    private void EditReturnedStockFromRow(ReturnedStockItem returnedStock)
+    private async Task EditReturnedStockFromRow(ReturnedStockItem returnedStock)
     {
+        if (!CanEditGin(returnedStock))
+        {
+            GINApiError = "Posted or automatically generated GIN records are view-only.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(returnedStock.DocumentId))
+        {
+            GINApiError = "This GIN has no API document ID and cannot be edited.";
+            return;
+        }
+
         SelectedReturnedStock = returnedStock;
-        ShowEditReturnedStockModal();
-    }
-    private void ShowEditReturnedStockModal()
-    {
-        if (SelectedReturnedStock == null)
+        IsGINApiLoading = true;
+        GINApiError = null;
+        try
         {
-            return;
+            var result = await StockGinService.LoadGinAsync(returnedStock.DocumentId);
+            if (!result.Success || result.Value is null)
+            {
+                GINApiError = result.ErrorMessage ?? "Unable to load the GIN for editing.";
+                return;
+            }
+
+            var gin = result.Value;
+            var form = new NewReturnedStockModel
+            {
+                DocumentId = gin.DocumentId,
+                ReturnedStockNo = gin.DisplayCode,
+                DateIssued = gin.Date,
+                BranchId = string.IsNullOrWhiteSpace(gin.BranchId) ? InventoryBranchId : gin.BranchId,
+                IssueType = gin.IssueType,
+                AccountId = gin.AccountId,
+                IssuedTo = gin.AccountName,
+                ReferenceNumber = gin.ReferenceNumber,
+                Reason = gin.Remarks
+            };
+
+            foreach (var line in gin.Lines)
+            {
+                var product = FindGinProduct(line.InventoryId, line.Sku);
+                var key = string.IsNullOrWhiteSpace(line.InventoryId) ? product?.MasterAccountId : line.InventoryId;
+                if (string.IsNullOrWhiteSpace(key)) continue;
+
+                var quantity = (int)Math.Max(1, Math.Round(line.Quantity));
+                form.SelectedProducts[key] = new GinSelectedProductInfo
+                {
+                    DocumentLineId = line.DocumentLineId,
+                    InventoryId = key,
+                    ProductName = string.IsNullOrWhiteSpace(line.ProductName) ? product?.ProductName ?? "Product" : line.ProductName,
+                    Sku = string.IsNullOrWhiteSpace(line.Sku) ? product?.Sku ?? string.Empty : line.Sku,
+                    Quantity = quantity,
+                    OriginalQuantity = quantity,
+                    UomId = string.IsNullOrWhiteSpace(line.UnitOfMeasurementId)
+                        ? product?.UnitOfMeasurementId ?? product?.Uom1 ?? "UNIT"
+                        : line.UnitOfMeasurementId,
+                    UomDisplay = product?.Uom1 ?? line.UnitOfMeasurementId,
+                    InventoryTypeId = line.InventoryTypeId,
+                    UnitCost = line.UnitCost
+                };
+            }
+
+            NewReturnedStock = form;
+            IsGINEditMode = true;
+            ShowAddReturnedStockModalWindow = true;
         }
-
-        EditReturnedStock = CloneReturnedStock(SelectedReturnedStock);
-        ShowEditReturnedStockModalWindow = true;
-    }
-
-    private void CloseEditReturnedStockModal()
-    {
-        ShowEditReturnedStockModalWindow = false;
-        EditReturnedStock = null;
-    }
-
-    private void HandleEditReturnedStock()
-    {
-        if (EditReturnedStock == null)
+        finally
         {
-            CloseEditReturnedStockModal();
-            return;
-        }
-
-        var index = ReturnedStockList.FindIndex(item => item.ReturnedStockNo == EditReturnedStock.ReturnedStockNo);
-        if (index >= 0)
-        {
-            ReturnedStockList[index] = CloneReturnedStock(EditReturnedStock);
-            SelectedReturnedStock = ReturnedStockList[index];
-        }
-
-        CloseEditReturnedStockModal();
-    }
-
-    private void ToggleReturnedStockDeleteMode()
-    {
-        IsReturnedStockDeleteMode = !IsReturnedStockDeleteMode;
-        if (!IsReturnedStockDeleteMode)
-        {
-            SelectedReturnedStocksForDeletion.Clear();
-        }
-    }
-
-    private void CancelReturnedStockDeleteMode()
-    {
-        IsReturnedStockDeleteMode = false;
-        SelectedReturnedStocksForDeletion.Clear();
-    }
-
-    private void ToggleReturnedStockForDeletion(ReturnedStockItem item)
-    {
-        if (!SelectedReturnedStocksForDeletion.Add(item))
-        {
-            SelectedReturnedStocksForDeletion.Remove(item);
+            IsGINApiLoading = false;
         }
     }
 
@@ -8139,75 +9042,41 @@ private async Task ShowAddTransferForm()
         StateHasChanged();
     }
 
-    private void ToggleAllReturnedStocksSelection(ChangeEventArgs args)
-    {
-        var isChecked = args.Value is bool value && value;
-
-        if (isChecked)
-        {
-            SelectedReturnedStocksForDeletion = FilteredReturnedStock.ToHashSet();
-        }
-        else
-        {
-            SelectedReturnedStocksForDeletion.Clear();
-        }
-    }
-
-    private void DeleteSelectedReturnedStocks()
-    {
-        if (!SelectedReturnedStocksForDeletion.Any())
-        {
-            return;
-        }
-
-        foreach (var item in SelectedReturnedStocksForDeletion.ToList())
-        {
-            ReturnedStockList.Remove(item);
-
-            if (SelectedReturnedStock == item)
-            {
-                SelectedReturnedStock = null;
-            }
-
-            SelectedReturnedStocksForPrint.Remove(item);
-        }
-
-        SelectedReturnedStocksForDeletion.Clear();
-        IsReturnedStockDeleteMode = false;
-
-        var remainingCount = FilteredReturnedStock.Count();
-        var totalPages = Math.Max(1, (int)Math.Ceiling(remainingCount / 5.0));
-
-        if (GINCurrentPage > totalPages)
-        {
-            GINCurrentPage = totalPages;
-        }
-    }
-
     private ReturnedStockItem? SelectedReturnedStock { get; set; }
-    private ReturnedStockItem? EditReturnedStock { get; set; }
-    private bool IsReturnedStockDeleteMode { get; set; } = false;
-    private HashSet<ReturnedStockItem> SelectedReturnedStocksForDeletion { get; set; } = new();
     private HashSet<ReturnedStockItem> SelectedReturnedStocksForPrint { get; set; } = new();
-    private bool IsAllReturnedStocksSelected =>
-        FilteredReturnedStock.Any() && SelectedReturnedStocksForDeletion.Count == FilteredReturnedStock.Count();
     private bool IsReturnedStockPrintModeActive { get; set; } = false;
 
-    private int ReturnedStockCounter { get; set; } = 4;
     private bool ShowAddReturnedStockModalWindow { get; set; } = false;
-    private bool ShowEditReturnedStockModalWindow { get; set; } = false;
-
+    private bool IsGINEditMode { get; set; }
+    private bool IsGINSaving { get; set; }
+    private bool IsGINApiLoading { get; set; }
+    private string? GINApiError { get; set; }
     private string ReturnedStockProductSearch { get; set; } = string.Empty;
     private NewReturnedStockModel NewReturnedStock { get; set; } = new();
 
+    private static readonly string[] GINIssueTypes =
+    [
+        "Internal Use",
+        "Damaged",
+        "Expired",
+        "Wastage",
+        "Supplier Return",
+        "Sample / Promotion",
+        "Other"
+    ];
+
     public class NewReturnedStockModel
     {
+        public string DocumentId { get; set; } = string.Empty;
         public string ReturnedStockNo { get; set; } = string.Empty;
         public DateTime DateIssued { get; set; } = DateTime.Today;
-        public string IssuedBy { get; set; } = string.Empty;
+        public string BranchId { get; set; } = string.Empty;
+        public string IssueType { get; set; } = string.Empty;
+        public string AccountId { get; set; } = string.Empty;
         public string IssuedTo { get; set; } = string.Empty;
+        public string ReferenceNumber { get; set; } = string.Empty;
         public string Reason { get; set; } = string.Empty;
-        public Dictionary<string, SelectedProductInfo> SelectedProducts { get; set; } = new();
+        public Dictionary<string, GinSelectedProductInfo> SelectedProducts { get; set; } = new();
     }
 
     private int RestockCounter { get; set; } = 4;
@@ -8232,81 +9101,7 @@ private async Task ShowAddTransferForm()
         public Dictionary<string, SelectedProductInfo> SelectedProducts { get; set; } = new();
     }
 
-    private List<ReturnedStockItem> ReturnedStockList { get; set; } = new()
-    {
-        new ReturnedStockItem
-        {
-            ReturnedStockNo = "GIN001",
-            DateIssued = DateTime.Now.AddDays(-7),
-            IssuedBy = "Main Branch",
-            IssuedTo = "Beauty Wholesale Co.",
-            Quantity = 15,
-            Uom = "Pieces",
-            Amount = 1250.50m,
-            Status = "Completed",
-            Reason = "Stock Adjustment",
-            Products = new()
-            {
-                new ReturnedStockProductLine
-                {
-                    ProductName = "Hydrating Mask Set",
-                    Sku = "GIN001-01",
-                    Quantity = 15,
-                    Uom = "Pieces",
-                    UnitPrice = 83.3667m,
-                    LineAmount = 1250.50m
-                }
-            }
-        },
-        new ReturnedStockItem
-        {
-            ReturnedStockNo = "GIN002",
-            DateIssued = DateTime.Now.AddDays(-4),
-            IssuedBy = "Main Branch",
-            IssuedTo = "Aesthetic Products Ltd.",
-            Quantity = 8,
-            Uom = "Bottles",
-            Amount = 890.00m,
-            Status = "Pending",
-            Reason = "Damaged Goods",
-            Products = new()
-            {
-                new ReturnedStockProductLine
-                {
-                    ProductName = "Facial Serum",
-                    Sku = "GIN002-01",
-                    Quantity = 8,
-                    Uom = "Bottles",
-                    UnitPrice = 111.25m,
-                    LineAmount = 890.00m
-                }
-            }
-        },
-        new ReturnedStockItem
-        {
-            ReturnedStockNo = "GIN003",
-            DateIssued = DateTime.Now.AddDays(-2),
-            IssuedBy = "Branch B",
-            IssuedTo = "Premium Beauty Inc.",
-            Quantity = 20,
-            Uom = "Boxes",
-            Amount = 2400.00m,
-            Status = "Pending",
-            Reason = "Expired Stock",
-            Products = new()
-            {
-                new ReturnedStockProductLine
-                {
-                    ProductName = "Cleansing Foam",
-                    Sku = "GIN003-01",
-                    Quantity = 20,
-                    Uom = "Boxes",
-                    UnitPrice = 120.00m,
-                    LineAmount = 2400.00m
-                }
-            }
-        }
-    };
+    private List<ReturnedStockItem> ReturnedStockList { get; set; } = [];
 
     private static string DisplayGrnMoney(decimal amount, string currencyId) =>
         $"{(string.IsNullOrWhiteSpace(currencyId) ? "MYR" : currencyId.Trim().ToUpperInvariant())} {amount:N2}";
@@ -8421,7 +9216,7 @@ private async Task ShowAddTransferForm()
             var builder = new StringBuilder();
 
             // CSV Header
-            builder.AppendLine("GIN No,Date Issued,Issued By,Issued To,Ref No,Type,Amount,Void");
+            builder.AppendLine("GIN No,Issue Date,Branch,Purpose,Issued To,Reference,Total Quantity,Status,Remarks");
 
             // CSV Data
             var ginList = FilteredReturnedStock.ToList();
@@ -8431,15 +9226,16 @@ private async Task ShowAddTransferForm()
                     CsvEscape(gin.ReturnedStockNo),
                     $"=\"{gin.DateIssued:dd/MM/yyyy}\"",
                     CsvEscape(gin.IssuedBy),
+                    CsvEscape(gin.Purpose),
                     CsvEscape(gin.IssuedTo),
-                    "",
-                    "Return",
-                    $"\"{gin.Amount:N2}\"",
-                    ""));
+                    CsvEscape(gin.ReferenceNumber),
+                    gin.Quantity.ToString(CultureInfo.InvariantCulture),
+                    CsvEscape(gin.Status),
+                    CsvEscape(gin.Reason)));
             }
 
             // Total row
-            builder.AppendLine($",,,,,,,Total Entries: {ginList.Count}");
+            builder.AppendLine($",,,,,,,,Total Entries: {ginList.Count}");
 
             var bytes = Encoding.UTF8.GetBytes(builder.ToString());
             var base64 = Convert.ToBase64String(bytes);
@@ -8588,8 +9384,8 @@ private async Task ShowAddTransferForm()
 
                 var productRows = gin.Products != null && gin.Products.Any()
                     ? string.Join(string.Empty, gin.Products.Select(p =>
-                        $"<tr><td>{WebUtility.HtmlEncode(p.ProductName)}</td><td>{WebUtility.HtmlEncode(p.Sku)}</td><td>{p.Quantity}</td><td>{WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(p.Uom) ? "-" : p.Uom)}</td><td>{p.UnitPrice:N2}</td><td>{p.LineAmount:N2}</td></tr>"))
-                    : "<tr><td colspan='6' style='text-align:center;'>No products recorded.</td></tr>";
+                        $"<tr><td>{WebUtility.HtmlEncode(p.ProductName)}</td><td>{WebUtility.HtmlEncode(p.Sku)}</td><td>{p.Quantity}</td><td>{WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(p.Uom) ? "-" : p.Uom)}</td></tr>"))
+                    : "<tr><td colspan='4' style='text-align:center;'>No products recorded.</td></tr>";
 
                 htmlBuilder.AppendLine("<div class='document'>");
                 htmlBuilder.AppendLine($"<div class='brand'><div class='brand__name'>Beauty Aesthetics</div><div class='brand__details'><div>www.beautyaesthetics.example</div><div>+60 12-345 6789</div><div>support@@beautyaesthetics.example</div></div></div>");
@@ -8597,18 +9393,20 @@ private async Task ShowAddTransferForm()
                 htmlBuilder.AppendLine("<div class='info-grid'>");
                 htmlBuilder.AppendLine($"<div class='info-card'><div class='info-card__label'>GIN No.</div><div class='info-card__value'>{WebUtility.HtmlEncode(gin.ReturnedStockNo)}</div></div>");
                 htmlBuilder.AppendLine($"<div class='info-card'><div class='info-card__label'>Date Issued</div><div class='info-card__value'>{gin.DateIssued:dd/MM/yyyy}</div></div>");
-                htmlBuilder.AppendLine($"<div class='info-card'><div class='info-card__label'>Issued By</div><div class='info-card__value'>{WebUtility.HtmlEncode(gin.IssuedBy)}</div></div>");
-                htmlBuilder.AppendLine($"<div class='info-card'><div class='info-card__label'>Issued To</div><div class='info-card__value'>{WebUtility.HtmlEncode(gin.IssuedTo)}</div></div>");
+                htmlBuilder.AppendLine($"<div class='info-card'><div class='info-card__label'>Branch</div><div class='info-card__value'>{WebUtility.HtmlEncode(gin.IssuedBy)}</div></div>");
+                htmlBuilder.AppendLine($"<div class='info-card'><div class='info-card__label'>Purpose</div><div class='info-card__value'>{WebUtility.HtmlEncode(gin.Purpose)}</div></div>");
                 htmlBuilder.AppendLine("</div>");
 
                 htmlBuilder.AppendLine("<div class='section-heading'>Summary</div>");
                 htmlBuilder.AppendLine("<table class='summary-table'><tbody>");
                 htmlBuilder.AppendLine($"<tr><th>Quantity (unit)</th><td>{quantityDisplay}</td></tr>");
-                htmlBuilder.AppendLine($"<tr><th>Amount (RM)</th><td>{gin.Amount:N2}</td></tr>");
+                htmlBuilder.AppendLine($"<tr><th>Issued To</th><td>{WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(gin.IssuedTo) ? "-" : gin.IssuedTo)}</td></tr>");
+                htmlBuilder.AppendLine($"<tr><th>Reference</th><td>{WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(gin.ReferenceNumber) ? "-" : gin.ReferenceNumber)}</td></tr>");
+                htmlBuilder.AppendLine($"<tr><th>Remarks</th><td>{WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(gin.Reason) ? "-" : gin.Reason)}</td></tr>");
                 htmlBuilder.AppendLine("</tbody></table>");
 
                 htmlBuilder.AppendLine("<div class='section-heading'>Products</div>");
-                htmlBuilder.AppendLine("<table><thead><tr><th>Product Name</th><th>SKU</th><th>Quantity</th><th>UOM</th><th>Unit Price (RM)</th><th>Amount (RM)</th></tr></thead><tbody>");
+                htmlBuilder.AppendLine("<table><thead><tr><th>Product Name</th><th>SKU</th><th>Quantity</th><th>UOM</th></tr></thead><tbody>");
                 htmlBuilder.AppendLine(productRows);
                 htmlBuilder.AppendLine("</tbody></table>");
 

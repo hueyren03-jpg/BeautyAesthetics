@@ -11,7 +11,7 @@
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
 
-<PageTitle>Incoming Stock Transfers</PageTitle>
+<PageTitle>Incoming Transfers</PageTitle>
 
 <main class="incoming-page">
     <header class="incoming-header">
@@ -21,8 +21,8 @@
         <div class="incoming-header__title">
             <span class="incoming-header__icon"><i class="bi bi-box-arrow-in-down"></i></span>
             <div>
-                <h1>Incoming Stock Transfers</h1>
-                <p>Review and accept stock sent to the current branch.</p>
+                <h1>Incoming Transfers</h1>
+                <p>Review stock sent to this branch, then receive it to create the GRN.</p>
             </div>
         </div>
         <div class="incoming-header__actions">
@@ -37,7 +37,7 @@
     <section class="incoming-summary" aria-label="Incoming stock summary">
         <div class="summary-item">
             <span class="summary-item__icon summary-item__icon--blue"><i class="bi bi-files"></i></span>
-            <div><small>Pending documents</small><strong>@Receipts.Count</strong></div>
+            <div><small>Pending receipt</small><strong>@Receipts.Count</strong></div>
         </div>
         <div class="summary-item">
             <span class="summary-item__icon summary-item__icon--teal"><i class="bi bi-box-seam"></i></span>
@@ -59,6 +59,7 @@
     {
         <div class="page-message page-message--success" role="status">
             <i class="bi bi-check-circle"></i><span>@SuccessMessage</span>
+            <button type="button" class="message-link" @onclick="ReturnToInventory">View GRN History</button>
         </div>
     }
 
@@ -93,6 +94,7 @@
                         <span class="receipt-field"><small>From</small><strong>@receipt.SourceName</strong></span>
                         <span class="receipt-field"><small>Date</small><strong>@FormatDate(receipt.FinancialDate)</strong></span>
                         <span class="receipt-field"><small>Quantity</small><strong>@receipt.TotalQuantity.ToString("N2")</strong></span>
+                        <span class="receipt-field"><small>Status</small><strong class="pending-receipt-status">Pending Receipt</strong></span>
                         <span class="receipt-field receipt-field--wide"><small>Remarks</small><strong>@DisplayValue(receipt.Remarks)</strong></span>
                         <i class="bi @(receipt.IsExpanded ? "bi-chevron-up" : "bi-chevron-down")"></i>
                     </button>
@@ -100,14 +102,14 @@
                         <button type="button" class="details-button" @onclick="() => ToggleDetailsAsync(receipt)">
                             <i class="bi bi-eye"></i><span>@(receipt.IsExpanded ? "Hide" : "Details")</span>
                         </button>
-                        <button type="button" class="accept-button" disabled="@(AcceptingDocumentId is not null)" @onclick="() => AcceptAsync(receipt)">
-                            @if (string.Equals(AcceptingDocumentId, receipt.DocumentId, StringComparison.OrdinalIgnoreCase))
+                        <button type="button" class="accept-button" disabled="@(ReceivingDocumentId is not null)" @onclick="() => ReceiveAsync(receipt)">
+                            @if (string.Equals(ReceivingDocumentId, receipt.DocumentId, StringComparison.OrdinalIgnoreCase))
                             {
-                                <span class="spinner-border spinner-border-sm"></span><span>Accepting</span>
+                                <span class="spinner-border spinner-border-sm"></span><span>Receiving</span>
                             }
                             else
                             {
-                                <i class="bi bi-box-arrow-in-down"></i><span>Accept stock</span>
+                                <i class="bi bi-box-arrow-in-down"></i><span>Receive Transfer</span>
                             }
                         </button>
                     </div>
@@ -157,7 +159,7 @@
     private bool IsLoading { get; set; }
     private string? ErrorMessage { get; set; }
     private string? SuccessMessage { get; set; }
-    private string? AcceptingDocumentId { get; set; }
+    private string? ReceivingDocumentId { get; set; }
 
     private string CurrentBranchId => string.IsNullOrWhiteSpace(BranchSession.CurrentBranch?.Id)
         ? "HQ"
@@ -233,14 +235,14 @@
         }
     }
 
-    private async Task AcceptAsync(PendingStockReceiptViewModel receipt)
+    private async Task ReceiveAsync(PendingStockReceiptViewModel receipt)
     {
-        if (string.IsNullOrWhiteSpace(receipt.DocumentId) || AcceptingDocumentId is not null)
+        if (string.IsNullOrWhiteSpace(receipt.DocumentId) || ReceivingDocumentId is not null)
         {
             return;
         }
 
-        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Accept stock transfer {DisplayCode(receipt)} into {CurrentBranchName}?");
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Receive transfer {DisplayCode(receipt)} into {CurrentBranchName}? This creates the GRN and completes the transfer.");
         if (!confirmed)
         {
             return;
@@ -248,7 +250,7 @@
 
         ErrorMessage = null;
         SuccessMessage = null;
-        AcceptingDocumentId = receipt.DocumentId;
+        ReceivingDocumentId = receipt.DocumentId;
         var acceptedDocumentId = receipt.DocumentId;
         var acceptedDisplayCode = DisplayCode(receipt);
 
@@ -257,27 +259,27 @@
             var result = await PendingStockReceiptService.AcceptAsync(acceptedDocumentId);
             if (!result.Success)
             {
-                ErrorMessage = result.ErrorMessage ?? "Unable to accept the stock transfer.";
+                ErrorMessage = result.ErrorMessage ?? "Unable to receive the stock transfer.";
                 return;
             }
 
             Receipts.RemoveAll(item => SameDocument(item.DocumentId, acceptedDocumentId));
-            var backendConfirmed = await ReconcileAcceptedTransferAsync(acceptedDocumentId);
+            var backendConfirmed = await ReconcileReceivedTransferAsync(acceptedDocumentId);
             SuccessMessage = backendConfirmed
-                ? $"{acceptedDisplayCode} was accepted. Stock balances and document statuses have been updated."
-                : $"{acceptedDisplayCode} was accepted. The server is still processing the stock movement; use Refresh shortly to confirm the balances.";
+                ? $"{acceptedDisplayCode} was received. The GRN is posted and the stock transfer is completed."
+                : $"{acceptedDisplayCode} was received. The server is still posting the GRN; use Refresh shortly to confirm it.";
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Unable to accept the stock transfer. {ex.Message}";
+            ErrorMessage = $"Unable to receive the stock transfer. {ex.Message}";
         }
         finally
         {
-            AcceptingDocumentId = null;
+            ReceivingDocumentId = null;
         }
     }
 
-    private async Task<bool> ReconcileAcceptedTransferAsync(string acceptedDocumentId)
+    private async Task<bool> ReconcileReceivedTransferAsync(string acceptedDocumentId)
     {
         var delays = new[] { 0, 400, 800, 1200 };
         foreach (var delay in delays)
