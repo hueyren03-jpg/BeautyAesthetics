@@ -12,12 +12,28 @@
         return style.overflowX === "auto" || style.overflowX === "scroll";
     }
 
+    function setReadableTouchWidth(table) {
+        const firstHeaderRow = table.tHead?.rows?.[0];
+        const firstBodyRow = table.tBodies?.[0]?.rows?.[0];
+        const columnCount = firstHeaderRow?.cells?.length || firstBodyRow?.cells?.length || 0;
+
+        if (columnCount < 4) {
+            table.style.removeProperty("--pos-touch-table-min-width");
+            return;
+        }
+
+        const widthPerColumn = columnCount >= 8 ? 128 : 140;
+        const minimumWidth = Math.min(1800, Math.max(680, columnCount * widthPerColumn));
+        table.style.setProperty("--pos-touch-table-min-width", `${minimumWidth}px`);
+    }
+
     function enhanceTable(table) {
         if (!(table instanceof HTMLTableElement)) {
             return;
         }
 
         table.classList.add(tableClass);
+        setReadableTouchWidth(table);
 
         const existingWrapper = table.closest(`.${wrapperClass}`);
         if (existingWrapper) {
