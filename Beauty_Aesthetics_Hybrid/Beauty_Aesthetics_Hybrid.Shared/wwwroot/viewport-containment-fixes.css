@@ -1,0 +1,197 @@
+/*
+   Tablet/mobile viewport containment.
+   Keep every page inside the visible workspace while allowing wide data tables
+   to scroll inside their own containers instead of widening the whole app.
+   Desktop/Windows layouts above 1180px are intentionally untouched.
+*/
+
+@media (max-width: 1180px) {
+    html,
+    body,
+    #app,
+    .page,
+    .content,
+    .PageWrapper {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    html,
+    body,
+    #app,
+    .page,
+    .content {
+        overflow-x: hidden !important;
+    }
+
+    /* Grid/flex items default to min-width:auto, which lets a wide child table
+       enlarge the whole page. Force workspace children to be shrinkable. */
+    .page > *,
+    .content > *,
+    .content main,
+    .content section,
+    .content article,
+    .content form,
+    .content header,
+    .content nav,
+    .content aside,
+    .content .card {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Common table hosts must own horizontal scrolling. Never let a table
+       propagate its intrinsic width to the page/grid track. */
+    .content :where(
+        .pos-touch-table-scroll,
+        .table-responsive,
+        .table-scroll,
+        .table-scroll__inner,
+        .employee-table-desktop,
+        .inventory__table-wrapper,
+        .services__table-wrapper,
+        .customer-list-card,
+        .customer-balance-table-wrap,
+        .line-table-wrap,
+        .sales-table-wrapper,
+        .report-table-wrapper,
+        .roster-table-wrapper,
+        [class*="table-wrapper"],
+        [class*="table-wrap"]
+    ) {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+        overflow-x: auto !important;
+        overscroll-behavior-x: contain !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+
+    /* Keep wide tables readable. They can be wider than the viewport, but only
+       their table host scrolls horizontally. */
+    .content .pos-touch-table-scroll > table,
+    .content .employee-table-desktop > table,
+    .content .table-responsive > table,
+    .content .table-scroll > table,
+    .content .table-scroll__inner > table {
+        max-width: none !important;
+    }
+
+    /* Employee tablet view: the desktop table remains a table, but is fully
+       contained inside the screen and scrolls internally when all 8 columns
+       cannot fit. */
+    .employee-page {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+    }
+
+    .employee-table-desktop {
+        display: block;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+    }
+
+    .employee-table-desktop .pos-touch-table-scroll {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .employee-table {
+        width: 100% !important;
+        min-width: 920px !important;
+    }
+
+    .employee-summary,
+    .employee-header,
+    .employee-mobile,
+    .employee-mobile__results,
+    .employee-pagination {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Long toolbar/filter rows should wrap or scroll inside themselves, not
+       enlarge the page. */
+    .content :where(
+        .inventory__toolbar,
+        .services__toolbar,
+        .customers-toolbar,
+        .employee-header,
+        .incoming-toolbar,
+        .pending-orders-toolbar,
+        .sales-toolbar,
+        .report-toolbar,
+        .roster-toolbar,
+        .tab-navigation,
+        .inventory__menu,
+        .services__menu
+    ) {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Media and form controls should never force a page wider than its card. */
+    .content img,
+    .content video,
+    .content canvas,
+    .content svg,
+    .content input,
+    .content select,
+    .content textarea {
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+}
+
+@media (max-width: 768px) {
+    /* Phone pages must never expose page-level horizontal scrolling. Wide
+       tables still scroll through their local wrappers above. */
+    .page,
+    .content,
+    .PageWrapper {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        overflow-x: hidden !important;
+    }
+
+    .employee-page {
+        padding-left: 8px !important;
+        padding-right: 8px !important;
+    }
+
+    /* The phone uses employee cards, so the desktop table should not reserve
+       any hidden intrinsic width. */
+    .employee-table-desktop.desktop-view {
+        display: none !important;
+    }
+
+    .employee-mobile.mobile-view {
+        display: flex !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .employee-mobile-card,
+    .customer-row,
+    .services-mobile-details,
+    .inventory-mobile-details {
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+    }
+}
