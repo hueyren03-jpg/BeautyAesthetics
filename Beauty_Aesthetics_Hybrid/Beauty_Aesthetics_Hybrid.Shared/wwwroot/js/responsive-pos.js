@@ -1,6 +1,18 @@
 (function () {
     "use strict";
 
+    function ensureInventoryMobileFixes() {
+        if (document.getElementById("inventory-mobile-fixes-css")) {
+            return;
+        }
+
+        var link = document.createElement("link");
+        link.id = "inventory-mobile-fixes-css";
+        link.rel = "stylesheet";
+        link.href = "_content/Beauty_Aesthetics_Hybrid.Shared/inventory-mobile-fixes.css";
+        document.head.appendChild(link);
+    }
+
     function getViewportWidth() {
         if (window.visualViewport && window.visualViewport.width) {
             return Math.round(window.visualViewport.width);
@@ -31,6 +43,7 @@
         refresh: applyViewportClass
     };
 
+    ensureInventoryMobileFixes();
     applyViewportClass();
 
     var resizeTimer;
