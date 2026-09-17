@@ -1,0 +1,633 @@
+/*
+   Shared tablet/mobile POS overrides.
+   Desktop/Windows remains the source layout. These rules only activate on
+   narrower viewports and are loaded after scoped component styles.
+*/
+
+html,
+body {
+    max-width: 100%;
+}
+
+.content,
+.content > *,
+.content main,
+.content section {
+    min-width: 0;
+}
+
+.content img,
+.content video,
+.content canvas,
+.content svg {
+    max-width: 100%;
+}
+
+/* Keep touch tables inside the usable viewport without compressing columns. */
+.content :where(.inventory__table-wrapper, .table-scroll, .table-scroll__inner, .line-table-wrap, .pos-table-scroll) {
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+}
+
+.content table {
+    max-width: none;
+}
+
+/* ============================================================
+   TABLET / COMPACT POS LAYOUT
+   ============================================================ */
+@media (max-width: 1180px) {
+    /* Layout shell: use the Windows content design with an off-canvas menu. */
+    .MainLayout .page,
+    .MainLayout .SidebarWrapper.sidebarClose.desktop-sidebar ~ .page,
+    .MainLayout .SidebarWrapper:not(.sidebarClose).desktop-sidebar ~ .page,
+    .MainLayout .SidebarWrapper.sidebarClose ~ .page,
+    .MainLayout .SidebarWrapper:not(.sidebarClose) ~ .page {
+        width: 100% !important;
+        max-width: 100vw !important;
+        margin-left: 0 !important;
+    }
+
+    .MainLayout .mobile-nav-toggle,
+    .MainLayout .mobile-nav-toggle.mobile-nav-toggle--visible {
+        display: inline-flex !important;
+    }
+
+    .MainLayout .SidebarWrapper,
+    .MainLayout .SidebarWrapper.desktop-sidebar,
+    .MainLayout .SidebarWrapper:not(.desktop-sidebar) {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: min(288px, 86vw) !important;
+        height: 100dvh !important;
+        min-height: 100vh !important;
+        padding-top: env(safe-area-inset-top, 0px) !important;
+        background: #fff !important;
+        border-right: 1px solid #d7e1ec !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        z-index: 5001 !important;
+        transition: transform .24s ease, opacity .2s ease !important;
+    }
+
+    .MainLayout .SidebarWrapper.sidebarClose,
+    .MainLayout .SidebarWrapper.sidebarClose.desktop-sidebar,
+    .MainLayout .SidebarWrapper.sidebarClose:not(.desktop-sidebar) {
+        transform: translateX(-102%) !important;
+        opacity: 0 !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+        box-shadow: none !important;
+    }
+
+    .MainLayout .SidebarWrapper:not(.sidebarClose),
+    .MainLayout .SidebarWrapper:not(.sidebarClose).desktop-sidebar,
+    .MainLayout .SidebarWrapper:not(.sidebarClose):not(.desktop-sidebar) {
+        transform: translateX(0) !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        pointer-events: auto !important;
+        box-shadow: 6px 0 30px rgba(15, 23, 42, .2) !important;
+    }
+
+    .MainLayout .SidebarWrapper .SidebarLogoWrapper {
+        display: flex !important;
+        height: 86px !important;
+    }
+
+    .MainLayout .SidebarWrapper .SidebarLogoWrapper .SidebarLogo {
+        width: 78px !important;
+    }
+
+    .MainLayout .SidebarWrapper h5,
+    .MainLayout .SidebarWrapper.sidebarClose h5 {
+        opacity: 1 !important;
+        visibility: visible !important;
+    }
+
+    .MainLayout .SidebarOverlay.visible,
+    .MainLayout .SidebarOverlay.desktop-overlay.visible {
+        background: rgba(15, 23, 42, .42) !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+    }
+
+    .MainLayout .HeaderWrapper {
+        min-height: 58px;
+        padding-left: max(14px, env(safe-area-inset-left, 0px));
+        padding-right: max(14px, env(safe-area-inset-right, 0px));
+    }
+
+    .MainLayout .ProfileSelection {
+        right: 12px !important;
+        width: min(330px, calc(100vw - 24px));
+        max-width: calc(100vw - 24px);
+    }
+
+    /* Shared page gutters. */
+    .content :where(.inventory, .services, .sale-page, .incoming-page, .dashboard-container) {
+        padding: 18px !important;
+    }
+
+    /* Headers and toolbars wrap instead of overflowing. */
+    .content :where(
+        .inventory__toolbar,
+        .services__toolbar,
+        .dashboard-page-header,
+        .dashboard-toolbar,
+        .incoming-header,
+        .incoming-toolbar,
+        .pending-orders-toolbar,
+        .customer-selection-controls,
+        .catalog-toolbar,
+        .sales-toolbar,
+        .report-toolbar,
+        .roster-toolbar
+    ) {
+        max-width: 100%;
+        min-width: 0;
+        flex-wrap: wrap !important;
+        gap: 12px !important;
+    }
+
+    .content :where(.inventory__toolbar-primary, .services__toolbar-primary, .pending-toolbar-actions, .customer-controls-actions) {
+        min-width: 0;
+        flex-wrap: wrap !important;
+    }
+
+    .content :where(.inventory__search-container, .services__search-container, .pending-search-wrap, .customer-search, .search-field) {
+        min-width: 220px;
+        max-width: 100% !important;
+    }
+
+    /* Dashboard: preserve Windows card design in a tablet-friendly 2-column grid. */
+    .dashboard-container :where(.stats-grid, .main-alerts-grid) {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    .dashboard-container .period-selector {
+        max-width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .dashboard-container .period-selector > * {
+        flex: 0 0 auto;
+    }
+
+    /* New Sale: keep catalog + cart side-by-side on normal tablets. */
+    .sale-page .sale-page-header {
+        gap: 14px !important;
+        padding: 14px 16px !important;
+    }
+
+    .sale-page .sale-progress {
+        max-width: 100%;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .sale-page .sale-progress > * {
+        flex: 0 0 auto;
+    }
+
+    .sale-page .pending-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    .sale-page .sale-workspace {
+        grid-template-columns: minmax(0, 1fr) minmax(310px, 38%) !important;
+        gap: 14px !important;
+    }
+
+    .sale-page :where(.catalog-column, .cart-panel, .order-panel, .catalog-panel) {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .sale-page :where(.customer-selection-controls, .pending-orders-toolbar) > * {
+        min-width: 0;
+    }
+
+    /* Inventory / services management pages. */
+    .inventory :where(.inventory-options__grid, .inventory-view-grid--3),
+    .services :where(.inventory-options__grid, .services-options__grid) {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    .inventory .stock-transfer__actions,
+    .services .services__action-buttons {
+        max-width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .inventory .stock-transfer__actions > *,
+    .services .services__action-buttons > * {
+        flex: 0 0 auto;
+    }
+
+    .inventory :where(.product-modal, .inventory-view-modal, .supplier-view-modal),
+    .services :where(.service-modal, .membership-modal),
+    .appointment-modal,
+    .sale-page :where(.item-dialog, .calculator-dialog) {
+        width: min(94vw, 980px) !important;
+        max-width: 94vw !important;
+        max-height: calc(100dvh - 28px) !important;
+    }
+
+    .content :where(.product-modal__body, .inventory-view-modal__body, .supplier-view-modal__body, .appointment-modal-body) {
+        overflow-y: auto;
+        overscroll-behavior-y: contain;
+    }
+
+    /* Appointment filtering becomes a readable tablet grid. */
+    .appointment-api-filters {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    /* Customer/forms: two-column Windows forms on tablets. */
+    .content :where(.form-grid, .inventory__form-row, .grn-form__grid) {
+        min-width: 0;
+    }
+
+    /* Prevent fixed-width labels/actions from forcing horizontal page scroll. */
+    .content :where(.tab-navigation, .inventory__menu, .services__menu) {
+        max-width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .content :where(.tab-navigation, .inventory__menu, .services__menu) > * {
+        flex: 0 0 auto;
+    }
+
+    /* Tables stay readable and swipe horizontally rather than shrinking text. */
+    .content .pos-wide-table,
+    .content table[data-pos-table="wide"] {
+        min-width: 820px !important;
+    }
+
+    .content table th,
+    .content table td {
+        white-space: normal;
+        overflow-wrap: normal;
+        word-break: normal;
+    }
+}
+
+/* ============================================================
+   PHONE / NARROW MOBILE POS
+   ============================================================ */
+@media (max-width: 768px) {
+    :root {
+        --pos-mobile-gutter: 10px;
+    }
+
+    .MainLayout .HeaderWrapper {
+        min-height: 56px;
+        height: calc(56px + env(safe-area-inset-top, 0px));
+        padding-left: max(10px, env(safe-area-inset-left, 0px));
+        padding-right: max(10px, env(safe-area-inset-right, 0px));
+    }
+
+    .MainLayout .ProfileIcon {
+        font-size: 18px !important;
+        padding: 7px 9px !important;
+    }
+
+    .MainLayout .ProfileDropdown {
+        padding-left: 7px !important;
+    }
+
+    .content :where(.inventory, .services, .sale-page, .incoming-page, .dashboard-container) {
+        padding: var(--pos-mobile-gutter) !important;
+    }
+
+    .content h1,
+    .content .page-title {
+        font-size: 20px !important;
+        line-height: 1.25 !important;
+    }
+
+    .content h2 {
+        font-size: 18px;
+    }
+
+    /* Stack page headers and primary toolbars. */
+    .content :where(
+        .dashboard-page-header,
+        .dashboard-toolbar,
+        .inventory__toolbar,
+        .services__toolbar,
+        .incoming-header,
+        .incoming-toolbar,
+        .pending-orders-toolbar,
+        .customer-selection-controls
+    ) {
+        align-items: stretch !important;
+        flex-direction: column !important;
+        width: 100% !important;
+    }
+
+    .content :where(.inventory__toolbar-primary, .services__toolbar-primary, .pending-toolbar-actions, .customer-controls-actions) {
+        width: 100% !important;
+        align-items: stretch !important;
+    }
+
+    .content :where(.inventory__search-container, .services__search-container, .pending-search-wrap, .customer-search, .search-field) {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        flex-basis: auto !important;
+    }
+
+    /* Dashboard cards become a vertical touch-friendly feed. */
+    .dashboard-container :where(.stats-grid, .main-alerts-grid) {
+        grid-template-columns: 1fr !important;
+        gap: 10px !important;
+    }
+
+    .dashboard-container .dashboard-branch-actions {
+        width: 100%;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .dashboard-container .dashboard-branch-pill,
+    .dashboard-container .dashboard-branch-switch {
+        min-height: 46px;
+    }
+
+    .dashboard-container .period-selector {
+        width: 100%;
+        padding-bottom: 2px;
+    }
+
+    /* New Sale becomes a one-column checkout workflow. */
+    .sale-page .sale-page-header {
+        align-items: stretch !important;
+        flex-direction: column !important;
+        gap: 10px !important;
+        margin-bottom: 12px !important;
+        padding: 12px !important;
+    }
+
+    .sale-page .sale-page-header > div:first-child {
+        width: 100%;
+    }
+
+    .sale-page .sale-page-icon {
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+    }
+
+    .sale-page .sale-page-header p {
+        display: none;
+    }
+
+    .sale-page .sale-progress {
+        width: 100%;
+    }
+
+    .sale-page .sale-progress span {
+        min-height: 44px;
+        padding: 8px 12px;
+    }
+
+    .sale-page .pending-grid {
+        grid-template-columns: 1fr !important;
+        gap: 10px !important;
+    }
+
+    .sale-page .pending-orders-toolbar {
+        padding: 12px !important;
+    }
+
+    .sale-page .pending-toolbar-actions,
+    .sale-page .customer-controls-actions {
+        display: grid !important;
+        grid-template-columns: 1fr !important;
+        width: 100% !important;
+    }
+
+    .sale-page .pending-stats-pill {
+        width: 100%;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .sale-page .primary-action,
+    .sale-page .new-customer-btn,
+    .sale-page .walkin-customer-btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .sale-page .sale-workspace {
+        display: grid !important;
+        grid-template-columns: 1fr !important;
+        gap: 12px !important;
+    }
+
+    .sale-page :where(.catalog-column, .cart-panel, .order-panel, .catalog-panel) {
+        width: 100% !important;
+        max-width: 100% !important;
+        position: static !important;
+    }
+
+    .sale-page .customer-strip {
+        align-items: flex-start !important;
+        flex-wrap: wrap !important;
+        gap: 10px !important;
+    }
+
+    .sale-page .customer-strip-actions {
+        width: 100%;
+    }
+
+    .sale-page .customer-strip-actions button {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .sale-page .catalog-toolbar {
+        align-items: stretch !important;
+        flex-direction: column !important;
+    }
+
+    .sale-page .type-tabs {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .sale-page .type-tabs > * {
+        flex: 0 0 auto;
+    }
+
+    /* Management pages: collapse grids/forms without changing data flow. */
+    .inventory :where(.inventory-options__grid, .inventory-view-grid, .inventory-view-grid--2, .inventory-view-grid--3),
+    .services :where(.inventory-options__grid, .services-options__grid) {
+        grid-template-columns: 1fr !important;
+    }
+
+    .content .inventory__form-row,
+    .content .grn-form__grid,
+    .content .form-grid {
+        display: grid !important;
+        grid-template-columns: 1fr !important;
+        gap: 10px !important;
+        width: 100% !important;
+    }
+
+    .content .inventory__form-row > *,
+    .content .grn-form__grid > *,
+    .content .form-grid > * {
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .inventory .stock-transfer__actions,
+    .services .services__action-buttons {
+        width: 100%;
+        padding-bottom: 2px;
+    }
+
+    /* Make tabs swipe instead of wrapping into tiny labels. */
+    .content :where(.tab-navigation, .inventory__menu, .services__menu) {
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        gap: 6px !important;
+    }
+
+    /* Appointments: filters and modal actions use the full phone width. */
+    .appointment-api-filters {
+        grid-template-columns: 1fr !important;
+        margin: 8px !important;
+    }
+
+    .appointment-api-filters > * {
+        width: 100%;
+    }
+
+    /* POS dialogs become tall sheets with scrollable bodies. */
+    .inventory :where(.product-modal, .inventory-view-modal, .supplier-view-modal),
+    .services :where(.service-modal, .membership-modal),
+    .appointment-modal,
+    .sale-page :where(.item-dialog, .calculator-dialog) {
+        width: calc(100vw - 12px) !important;
+        max-width: calc(100vw - 12px) !important;
+        max-height: calc(100dvh - 12px) !important;
+        margin: 6px !important;
+        border-radius: 14px !important;
+    }
+
+    .content :where(.product-modal__header, .inventory-view-modal__header, .supplier-view-modal__header, .appointment-modal-header) {
+        position: sticky;
+        top: 0;
+        z-index: 4;
+    }
+
+    .content :where(.product-modal__footer, .inventory-view-modal__footer, .supplier-view-modal__footer, .appointment-modal-footer) {
+        position: sticky;
+        bottom: 0;
+        z-index: 4;
+        flex-wrap: wrap;
+    }
+
+    .content :where(.product-modal__footer, .inventory-view-modal__footer, .supplier-view-modal__footer) > button {
+        min-width: min(160px, 100%);
+        flex: 1 1 160px;
+    }
+
+    /* Tables: preserve readable desktop columns and rely on finger swipe. */
+    .content .pos-wide-table,
+    .content table[data-pos-table="wide"] {
+        min-width: 760px !important;
+    }
+
+    .content table th,
+    .content table td {
+        vertical-align: middle;
+    }
+
+    .content .pagination,
+    .content [class*="pagination"] {
+        max-width: 100%;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    /* Long success/error messages should never cover the entire viewport. */
+    .content :where(.page-message, .inventory__api-message, .services__api-message) {
+        max-width: calc(100vw - 20px) !important;
+    }
+}
+
+/* Very small phones: remove secondary chrome but keep all actions reachable. */
+@media (max-width: 480px) {
+    .content :where(.inventory, .services, .sale-page, .incoming-page, .dashboard-container) {
+        padding: 8px !important;
+    }
+
+    .MainLayout .mobile-nav-toggle {
+        width: 44px !important;
+        height: 44px !important;
+    }
+
+    .MainLayout .ProfileSelection {
+        top: 62px !important;
+        right: 8px !important;
+        width: calc(100vw - 16px) !important;
+        max-width: calc(100vw - 16px) !important;
+    }
+
+    .sale-page .sale-page-header,
+    .incoming-header {
+        border-radius: 10px !important;
+    }
+
+    .sale-page .pending-card,
+    .dashboard-container .stat-card,
+    .dashboard-container .alert-card {
+        border-radius: 10px !important;
+    }
+
+    .content input,
+    .content select,
+    .content textarea {
+        max-width: 100%;
+    }
+}
+
+/* Short landscape phones: maximize vertical work area. */
+@media (max-width: 900px) and (max-height: 560px) and (orientation: landscape) {
+    .MainLayout .HeaderWrapper {
+        min-height: 50px;
+        height: 50px;
+        padding-top: 0;
+    }
+
+    .content :where(.inventory, .services, .sale-page, .incoming-page, .dashboard-container) {
+        padding-top: 8px !important;
+        padding-bottom: 8px !important;
+    }
+
+    .sale-page .sale-page-header p,
+    .dashboard-container .dashboard-subtitle {
+        display: none !important;
+    }
+}
