@@ -6,7 +6,7 @@ public sealed class PendingStockReceiptViewModel
     public string DisplayCode { get; init; } = string.Empty;
     public DateTime FinancialDate { get; init; }
     public string SourceName { get; init; } = "-";
-    public string DestinationBranchId { get; init; } = string.Empty;
+    public string DestinationBranchId { get; set; } = string.Empty;
     public string Remarks { get; init; } = string.Empty;
     public decimal TotalQuantity { get; init; }
     public decimal TotalCost { get; init; }
