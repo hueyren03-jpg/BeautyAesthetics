@@ -84,6 +84,25 @@ public sealed class ProductInventoryService : IProductInventoryService
         return ApiCallResult<IReadOnlyList<InventoryViewModel.InventoryItem>>.Ok(result.StatusCode, products);
     }
 
+    public async Task<ApiCallResult<InventoryViewModel.InventoryItem>> LoadProductAsync(
+        string masterAccountId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(masterAccountId))
+        {
+            return ApiCallResult<InventoryViewModel.InventoryItem>.Failure(
+                HttpStatusCode.BadRequest,
+                "Product record ID is missing.");
+        }
+
+        var result = await inventoryAC.LoadRecordAsync(masterAccountId, cancellationToken);
+        return result.Success && result.Value is not null
+            ? ApiCallResult<InventoryViewModel.InventoryItem>.Ok(result.StatusCode, ToProduct(result.Value))
+            : ApiCallResult<InventoryViewModel.InventoryItem>.Failure(
+                result.StatusCode,
+                result.ErrorMessage ?? "Unable to load product details.");
+    }
+
     public async Task<ApiCallResult<bool>> CreateProductAsync(
         InventoryViewModel.InventoryItem product,
         string branchId = "HQ",
@@ -252,6 +271,8 @@ public sealed class ProductInventoryService : IProductInventoryService
         record.Rack = product.Location.Trim();
         record.StockReorderLevel = ParseDecimal(product.LowAlertCount);
         record.MaxDiscountLimit = product.DiscountCap;
+        record.ImagePath = string.IsNullOrWhiteSpace(product.ImagePath) ? null : product.ImagePath.Trim();
+        record.ImageFileName = string.IsNullOrWhiteSpace(product.ImageFileName) ? null : product.ImageFileName.Trim();
         record.QuantityFactor = Math.Max(1, ParseDecimal(product.ConversionFactor));
         var primaryUom = ParseStockUom(product.StockUom1);
         var secondaryUom = ParseStockUom(product.StockUom2);

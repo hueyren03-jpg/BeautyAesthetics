@@ -7,6 +7,14 @@ namespace Beauty_Aesthetics_Hybrid
             InitializeComponent();
 
 #if ANDROID
+            blazorWebView.BlazorWebViewInitialized += (_, args) =>
+            {
+                if (args.WebView is Android.Webkit.WebView webView)
+                {
+                    webView.SetWebChromeClient(new CameraEnabledBlazorWebChromeClient());
+                }
+            };
+
             var context = Android.App.Application.Context;
             var resources = context?.Resources;
             var resourceId = resources?.GetIdentifier("status_bar_height", "dimen", "android") ?? 0;

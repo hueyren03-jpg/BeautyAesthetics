@@ -40,10 +40,18 @@ public sealed class ProductImageService
         var rawFile = imageFileName?.Trim() ?? string.Empty;
 
         string rawUrl;
-        if (!string.IsNullOrEmpty(rawPath) && !string.IsNullOrEmpty(rawFile))
+        if (rawPath.StartsWith("data:", StringComparison.OrdinalIgnoreCase) ||
+            rawPath.StartsWith("blob:", StringComparison.OrdinalIgnoreCase))
         {
-            var separator = rawPath.EndsWith('/') || rawPath.EndsWith('\\') ? string.Empty : "/";
-            rawUrl = $"{rawPath}{separator}{rawFile}";
+            rawUrl = rawPath;
+        }
+        else if (!string.IsNullOrEmpty(rawPath) && !string.IsNullOrEmpty(rawFile))
+        {
+            var normalizedPath = rawPath.Replace('\\', '/');
+            rawUrl = normalizedPath.EndsWith($"/{rawFile}", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(normalizedPath, rawFile, StringComparison.OrdinalIgnoreCase)
+                ? normalizedPath
+                : $"{normalizedPath.TrimEnd('/')}/{rawFile.TrimStart('/', '\\')}";
         }
         else
         {

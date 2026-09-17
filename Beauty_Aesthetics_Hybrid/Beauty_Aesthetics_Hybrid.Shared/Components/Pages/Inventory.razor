@@ -18,6 +18,7 @@
 @inject IJSRuntime JSRuntime
 @inject IProductInventoryService ProductInventoryService
 @inject ProductImageService ProductImageService
+@inject Beauty_Aesthetics_WebPos.APIClient.FileUploadAC FileUploadAC
 @inject IInventoryOptionService InventoryOptionService
 @inject IStockGrnService StockGrnService
 @inject IStockGinService StockGinService
@@ -177,8 +178,8 @@
                                 <h2>Add New Product</h2>
                             </div>
                             <div class="product-modal__actions">
-                                <button type="button" class="product-modal__btn product-modal__btn--save" @onclick="HandleAddProduct">
-                                    Save
+                                <button type="button" class="product-modal__btn product-modal__btn--save" @onclick="HandleAddProduct" disabled="@(IsProductSaving || IsProductImageUploading)">
+                                    @(IsProductSaving ? "Saving..." : "Save")
                                 </button>
                                 <button type="button" class="product-modal__btn product-modal__btn--cancel" @onclick="CloseAddProductForm">
                                     Cancel
@@ -187,6 +188,41 @@
                         </div>
                         <div class="product-modal__body">
                             <form class="product-form" @onsubmit:preventDefault>
+                                @if (!string.IsNullOrWhiteSpace(ProductApiError))
+                                {
+                                    <div class="inventory__alert inventory__alert--error">@ProductApiError</div>
+                                }
+                                <div class="product-image-editor">
+                                    <div class="product-image-editor__preview">
+                                        @if (!string.IsNullOrWhiteSpace(NewProductImageUrl))
+                                        {
+                                            <img src="@NewProductImageUrl" alt="New product preview" />
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-image"></i>
+                                        }
+                                    </div>
+                                    <div class="product-image-editor__content">
+                                        <strong>Product image</strong>
+                                        <span>JPG, PNG or WEBP, up to 5 MB.</span>
+                                        <div class="product-image-editor__actions">
+                                            <label for="new-product-image" class="product-image-editor__choose">
+                                                <i class="bi bi-upload"></i>
+                                                @(IsProductImageUploading ? "Uploading..." : "Choose image")
+                                            </label>
+                                            <InputFile id="new-product-image" OnChange="HandleNewProductImageSelected" accept="image/jpeg,image/png,image/webp" disabled="@IsProductImageUploading" />
+                                            @if (!string.IsNullOrWhiteSpace(NewProductImageUrl))
+                                            {
+                                                <button type="button" class="product-image-editor__remove" @onclick="RemoveNewProductImage"><i class="bi bi-trash3"></i> Remove</button>
+                                            }
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(ProductImageError))
+                                        {
+                                            <small class="product-image-editor__error" role="alert">@ProductImageError</small>
+                                        }
+                                    </div>
+                                </div>
                                 <div class="inventory__form-row">
                                     <div class="inventory__form-group">
                                         <label>SKU</label>
@@ -296,8 +332,8 @@
                                 <h2>Edit Product</h2>
                             </div>
                             <div class="product-modal__actions">
-                                <button type="button" class="product-modal__btn product-modal__btn--save" @onclick="HandleEditProduct">
-                                    Save
+                                <button type="button" class="product-modal__btn product-modal__btn--save" @onclick="HandleEditProduct" disabled="@(IsProductSaving || IsProductImageUploading)">
+                                    @(IsProductSaving ? "Saving..." : "Save")
                                 </button>
                                 <button type="button" class="product-modal__btn product-modal__btn--cancel" @onclick="CloseEditProductForm">
                                     Cancel
@@ -306,20 +342,39 @@
                         </div>
                         <div class="product-modal__body">
                             <form class="product-form" @onsubmit:preventDefault>
-                                <div class="product-form__image-preview">
-                                    <div class="product-form__image-frame">
-                                        @if (HasInventoryImage(EditingInventoryProduct))
+                                @if (!string.IsNullOrWhiteSpace(ProductApiError))
+                                {
+                                    <div class="inventory__alert inventory__alert--error">@ProductApiError</div>
+                                }
+                                <div class="product-image-editor">
+                                    <div class="product-image-editor__preview">
+                                        @if (!string.IsNullOrWhiteSpace(EditProductImageUrl))
                                         {
-                                            <img src="@ResolveProductImage(EditingInventoryProduct)" alt="@EditProduct.Type" loading="lazy" />
+                                            <img src="@EditProductImageUrl" alt="@EditProduct.Type" />
                                         }
                                         else
                                         {
                                             <i class="bi bi-image"></i>
                                         }
                                     </div>
-                                    <div class="product-form__image-copy">
+                                    <div class="product-image-editor__content">
                                         <strong>Product image</strong>
-                                        <span>@DisplayProductValue(EditProduct.Type) · @DisplayProductValue(EditProduct.Sku)</span>
+                                        <span>Current image is loaded from the product record. Choose a file to replace it.</span>
+                                        <div class="product-image-editor__actions">
+                                            <label for="edit-product-image" class="product-image-editor__choose">
+                                                <i class="bi bi-upload"></i>
+                                                @(IsProductImageUploading ? "Uploading..." : "Change image")
+                                            </label>
+                                            <InputFile id="edit-product-image" OnChange="HandleEditProductImageSelected" accept="image/jpeg,image/png,image/webp" disabled="@IsProductImageUploading" />
+                                            @if (!string.IsNullOrWhiteSpace(EditProductImageUrl))
+                                            {
+                                                <button type="button" class="product-image-editor__remove" @onclick="RemoveEditProductImage"><i class="bi bi-trash3"></i> Remove</button>
+                                            }
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(ProductImageError))
+                                        {
+                                            <small class="product-image-editor__error" role="alert">@ProductImageError</small>
+                                        }
                                     </div>
                                 </div>
                                 <div class="inventory__form-row">
@@ -2709,6 +2764,10 @@
                 <div class="inventory__toolbar">
                     <div class="inventory__toolbar-primary inventory__toolbar-primary--left">
                         <div class="stock-transfer__actions">
+                            <button class="tab-btn stock-transfer__btn-with-text grn-scan-action" title="Scan a delivered product to start receiving" @onclick="StartGRNScanWorkflowAsync">
+                                <i class="bi bi-upc-scan"></i>
+                                <span>Scan goods</span>
+                            </button>
                             <button class="tab-btn stock-transfer__btn-with-text" title="Receive goods from a supplier purchase order" @onclick="ShowAddGRNForm">
                                 <i class="bi bi-box-arrow-in-down"></i>
                                 <span>Receive goods</span>
@@ -2761,6 +2820,50 @@
                     </div>
                     <AdvancedInventoryFilter Columns="@GRNFilterColumns" OnApply="@HandleGRNFiltersApplied" OnClear="@HandleGRNFiltersCleared" ModuleName="GRN" ResultCount="@FilteredGRNs.Count()" />
                 </div>
+
+                @if (IsGRNScanWorkflowVisible)
+                {
+                    <section class="grn-scan-workflow" aria-labelledby="grn-scan-workflow-title">
+                        <header class="grn-scan-workflow__header">
+                            <span class="grn-scan-workflow__icon"><i class="bi bi-upc-scan"></i></span>
+                            <div>
+                                <h2 id="grn-scan-workflow-title">Scan received product</h2>
+                                <p>Scan first. The matching approved purchase order will be prepared for receiving.</p>
+                            </div>
+                            <button type="button" class="grn-scan-workflow__close" @onclick="CloseGRNScanWorkflowAsync" aria-label="Close scan goods"><i class="bi bi-x-lg"></i></button>
+                        </header>
+                        <div class="grn-barcode-panel__controls">
+                            <input id="grn-barcode-input"
+                                   @ref="GRNBarcodeInputElement"
+                                   type="text"
+                                   value="@GRNBarcodeScanValue"
+                                   @oninput="HandleGRNBarcodeInput"
+                                   @onkeyup="HandleGRNBarcodeKeyUp"
+                                   placeholder="Scan or type barcode / SKU"
+                                   autocomplete="off"
+                                   enterkeyhint="done"
+                                   aria-label="Product barcode or SKU" />
+                            <button type="button"
+                                    class="grn-barcode-panel__button grn-barcode-panel__button--check"
+                                    @onclick="ProcessGRNBarcodeScan"
+                                    disabled="@string.IsNullOrWhiteSpace(GRNBarcodeScanValue)">
+                                <i class="bi bi-check2"></i><span>Check item</span>
+                            </button>
+                            <button type="button"
+                                    class="grn-barcode-panel__button grn-barcode-panel__button--camera"
+                                    @onclick="OpenGRNBarcodeScannerAsync">
+                                <i class="bi bi-camera"></i><span>Camera</span>
+                            </button>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(GRNBarcodeScanMessage))
+                        {
+                            <p class="grn-barcode-panel__message @(GRNBarcodeScanSucceeded ? "grn-barcode-panel__message--success" : "grn-barcode-panel__message--error")" role="status">
+                                <i class="bi @(GRNBarcodeScanSucceeded ? "bi-check-circle-fill" : "bi-exclamation-circle-fill")"></i>
+                                @GRNBarcodeScanMessage
+                            </p>
+                        }
+                    </section>
+                }
 
                 @if (IsGRNApiLoading)
                 {
@@ -2981,7 +3084,7 @@
                                         <div class="grn-form__grid">
                                             <div class="grn-form__field grn-form__field--wide">
                                                 <label for="grn-po">Purchase Order <span class="inventory__required">*</span></label>
-                                                <select id="grn-po" value="@NewGRNPONo" @onchange="HandleGRNPurchaseOrderChanged" disabled="@IsGRNEditMode">
+                                                <select id="grn-po" @ref="GRNPurchaseOrderSelectElement" value="@NewGRNPONo" @onchange="HandleGRNPurchaseOrderChanged" disabled="@IsGRNEditMode">
                                                     <option value="">Select approved PO</option>
                                                     @if (!string.IsNullOrWhiteSpace(NewGRNPONo) && !AvailableGRNPurchaseOrders.Any(po => po.PoNo == NewGRNPONo))
                                                     {
@@ -3030,55 +3133,15 @@
 
                                     <section class="grn-form__section">
                                         <h3 class="grn-form__section-title">Item Received</h3>
-                                        <p class="grn-form__helper">Scan the delivered item to confirm it matches the selected PO, then enter the received quantity.</p>
-                                        <div class="grn-barcode-panel">
-                                            <div class="grn-barcode-panel__heading">
-                                                <span class="grn-barcode-panel__icon"><i class="bi bi-upc-scan"></i></span>
-                                                <div>
-                                                    <strong>Scan product barcode</strong>
-                                                    <span>Works with a handheld scanner or the device camera.</span>
-                                                </div>
-                                            </div>
-                                            <div class="grn-barcode-panel__controls">
-                                                <input id="grn-barcode-input"
-                                                       type="text"
-                                                       value="@GRNBarcodeScanValue"
-                                                       @oninput="HandleGRNBarcodeInput"
-                                                       @onkeyup="HandleGRNBarcodeKeyUp"
-                                                       placeholder="Scan or type barcode / SKU"
-                                                       autocomplete="off"
-                                                       enterkeyhint="done"
-                                                       disabled="@string.IsNullOrWhiteSpace(NewGRNPONo)"
-                                                       aria-label="Product barcode or SKU" />
-                                                <button type="button"
-                                                        class="grn-barcode-panel__button grn-barcode-panel__button--check"
-                                                        @onclick="ProcessGRNBarcodeScan"
-                                                        disabled="@(string.IsNullOrWhiteSpace(NewGRNPONo) || string.IsNullOrWhiteSpace(GRNBarcodeScanValue))">
-                                                    <i class="bi bi-check2"></i><span>Check</span>
-                                                </button>
-                                                <button type="button"
-                                                        class="grn-barcode-panel__button grn-barcode-panel__button--camera"
-                                                        @onclick="OpenGRNBarcodeScannerAsync"
-                                                        disabled="@string.IsNullOrWhiteSpace(NewGRNPONo)">
-                                                    <i class="bi bi-camera"></i><span>Use camera</span>
-                                                </button>
-                                            </div>
-                                            @if (string.IsNullOrWhiteSpace(NewGRNPONo))
-                                            {
-                                                <p class="grn-barcode-panel__hint"><i class="bi bi-info-circle"></i> Select a purchase order before scanning.</p>
-                                            }
-                                            else if (!string.IsNullOrWhiteSpace(GRNBarcodeScanMessage))
-                                            {
-                                                <p class="grn-barcode-panel__message @(GRNBarcodeScanSucceeded ? "grn-barcode-panel__message--success" : "grn-barcode-panel__message--error")" role="status">
-                                                    <i class="bi @(GRNBarcodeScanSucceeded ? "bi-check-circle-fill" : "bi-exclamation-circle-fill")"></i>
-                                                    @GRNBarcodeScanMessage
-                                                </p>
-                                            }
-                                        </div>
+                                        <p class="grn-form__helper">@(GRNBarcodeScanSucceeded ? "Review the scanned product and enter the received quantity." : "The item is filled automatically from the selected purchase order.")</p>
+                                        @if (GRNBarcodeScanSucceeded && !string.IsNullOrWhiteSpace(GRNBarcodeScanMessage))
+                                        {
+                                            <p class="grn-form__scan-result" role="status"><i class="bi bi-check-circle-fill"></i> @GRNBarcodeScanMessage</p>
+                                        }
                                         <div class="grn-form__grid">
                                             <div class="grn-form__field grn-form__field--wide">
                                                 <label>Item</label>
-                                                <div class="grn-selected-product">
+                                                <div class="grn-selected-product @(GRNBarcodeScanSucceeded ? "grn-selected-product--scanned" : string.Empty)">
                                                     <div class="gin-product-option__image">
                                                         @if (HasInventoryImage(SelectedGRNInventoryProduct))
                                                         {
@@ -3095,6 +3158,10 @@
                                                         {
                                                             <span>@NewGRNItemSku</span>
                                                         }
+                                                        @if (GRNBarcodeScanSucceeded)
+                                                        {
+                                                            <span class="grn-selected-product__scan-status"><i class="bi bi-check-circle-fill"></i> Scanned product</span>
+                                                        }
                                                     </div>
                                                 </div>
                                             </div>
@@ -3102,7 +3169,7 @@
                                             <div class="grn-form__field"><label>UOM</label><input value="@(string.IsNullOrWhiteSpace(NewGRNUom) ? "—" : NewGRNUom)" readonly /></div>
                                             <div class="grn-form__field">
                                                 <label for="grn-quantity">Quantity Received <span class="inventory__required">*</span></label>
-                                                <input id="grn-quantity" type="number" min="0.01" step="0.01" @bind="NewGRNReceivedQuantity" />
+                                                <input id="grn-quantity" @ref="GRNQuantityInputElement" type="number" min="0.01" step="0.01" @bind="NewGRNReceivedQuantity" />
                                             </div>
                                             <div class="grn-form__field"><label for="grn-batch">Batch No. <span class="grn-form__optional">Optional</span></label><input id="grn-batch" @bind="NewGRNBatchNumber" /></div>
                                             <div class="grn-form__field"><label for="grn-serial">Serial No. <span class="grn-form__optional">Optional</span></label><input id="grn-serial" @bind="NewGRNSerialNumber" /></div>
@@ -3116,31 +3183,32 @@
                                 </form>
                             </div>
 
-                            @if (IsGRNBarcodeScannerVisible)
-                            {
-                                <div class="grn-barcode-camera-overlay" @onclick="CloseGRNBarcodeScannerAsync">
-                                    <section class="grn-barcode-camera" role="dialog" aria-modal="true" aria-labelledby="grn-camera-title" @onclick:stopPropagation="true">
-                                        <header class="grn-barcode-camera__header">
-                                            <div>
-                                                <span>Camera scanner</span>
-                                                <h3 id="grn-camera-title">Scan product barcode</h3>
-                                            </div>
-                                            <button type="button" @onclick="CloseGRNBarcodeScannerAsync" aria-label="Close barcode scanner"><i class="bi bi-x-lg"></i></button>
-                                        </header>
-                                        <div class="grn-barcode-camera__viewport">
-                                            <video @ref="GRNBarcodeVideoElement" autoplay playsinline muted></video>
-                                            <div class="grn-barcode-camera__target" aria-hidden="true"><span></span></div>
-                                            @if (IsGRNBarcodeScannerStarting)
-                                            {
-                                                <div class="grn-barcode-camera__loading"><span class="spinner-border spinner-border-sm"></span> Starting camera...</div>
-                                            }
-                                        </div>
-                                        <p><i class="bi bi-brightness-high"></i> Keep the barcode inside the frame and hold the device steady.</p>
-                                        <button type="button" class="grn-barcode-camera__cancel" @onclick="CloseGRNBarcodeScannerAsync">Cancel scan</button>
-                                    </section>
-                                </div>
-                            }
                         </div>
+                    </div>
+                }
+
+                @if (IsGRNBarcodeScannerVisible)
+                {
+                    <div class="grn-barcode-camera-overlay" @onclick="CloseGRNBarcodeScannerAsync">
+                        <section class="grn-barcode-camera" role="dialog" aria-modal="true" aria-labelledby="grn-camera-title" @onclick:stopPropagation="true">
+                            <header class="grn-barcode-camera__header">
+                                <div>
+                                    <span>GRN receiving</span>
+                                    <h3 id="grn-camera-title">Scan received product</h3>
+                                </div>
+                                <button type="button" @onclick="CloseGRNBarcodeScannerAsync" aria-label="Close barcode scanner"><i class="bi bi-x-lg"></i></button>
+                            </header>
+                            <div class="grn-barcode-camera__viewport">
+                                <video @ref="GRNBarcodeVideoElement" autoplay playsinline muted></video>
+                                <div class="grn-barcode-camera__target" aria-hidden="true"><span></span></div>
+                                @if (IsGRNBarcodeScannerStarting)
+                                {
+                                    <div class="grn-barcode-camera__loading"><span class="spinner-border spinner-border-sm"></span> Starting camera...</div>
+                                }
+                            </div>
+                            <p><i class="bi bi-brightness-high"></i> Keep the product barcode inside the frame and hold the device steady.</p>
+                            <button type="button" class="grn-barcode-camera__cancel" @onclick="CloseGRNBarcodeScannerAsync">Cancel scan</button>
+                        </section>
                     </div>
                 }
             </div>
@@ -3850,6 +3918,8 @@
         public string Location { get; set; } = string.Empty;
         public string LowAlertCount { get; set; } = string.Empty;
         public decimal DiscountCap { get; set; }
+        public string ImagePath { get; set; } = string.Empty;
+        public string ImageFileName { get; set; } = string.Empty;
     }
 
     public class EditProductModel
@@ -3870,6 +3940,8 @@
         public string Location { get; set; } = string.Empty;
         public string LowAlertCount { get; set; } = string.Empty;
         public decimal DiscountCap { get; set; }
+        public string ImagePath { get; set; } = string.Empty;
+        public string ImageFileName { get; set; } = string.Empty;
     }
 
     public class NewPurchaseOrderModel
@@ -4003,7 +4075,11 @@
             product.Location,
             product.LowAlertCount,
             product.DiscountCap
-        );
+        )
+        {
+            ImagePath = product.ImagePath,
+            ImageFileName = product.ImageFileName
+        };
 
     private static InventoryViewModel.InventoryItem ToInventoryItem(EditProductModel product) =>
         new(
@@ -4024,7 +4100,9 @@
         )
         {
             StockQuantity = product.StockQuantity,
-            MasterAccountId = product.MasterAccountId
+            MasterAccountId = product.MasterAccountId,
+            ImagePath = product.ImagePath,
+            ImageFileName = product.ImageFileName
         };
 
     private string SearchQuery { get; set; } = string.Empty;
@@ -4085,12 +4163,18 @@
 
     private async Task HandleEditProduct()
     {
+        if (IsProductSaving)
+        {
+            return;
+        }
+
         if (SelectedItem == null || EditProduct == null)
         {
             CloseEditProductForm();
             return;
         }
 
+        IsProductSaving = true;
         ProductApiError = null;
         try
         {
@@ -4102,12 +4186,13 @@
                 return;
             }
 
+            ProductImageService.RemoveImage(EditProduct.MasterAccountId);
             CloseEditProductForm();
             await LoadProductsAsync();
         }
         finally
         {
-            ProductApiError = null;
+            IsProductSaving = false;
         }
     }
 
@@ -4196,11 +4281,51 @@
         IsAddGRNFormVisible = true;
     }
 
-    private IEnumerable<PurchaseOrderItem> AvailableGRNPurchaseOrders =>
-        PurchaseOrders.Where(po =>
-            string.Equals(po.PoNo, NewGRNPONo, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(po.Status, "Approved", StringComparison.OrdinalIgnoreCase) ||
-            po.Status.Contains("Partial", StringComparison.OrdinalIgnoreCase));
+    private async Task StartGRNScanWorkflowAsync()
+    {
+        ResetGRNForm();
+        IsAddGRNFormVisible = false;
+        IsGRNScanWorkflowVisible = true;
+        FocusGRNBarcodeAfterRender = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task CloseGRNScanWorkflowAsync()
+    {
+        await CloseGRNBarcodeScannerAsync();
+        ResetGRNForm();
+        IsGRNScanWorkflowVisible = false;
+    }
+
+    private IEnumerable<PurchaseOrderItem> AvailableGRNPurchaseOrders
+    {
+        get
+        {
+            var orders = PurchaseOrders.Where(po =>
+                string.Equals(po.PoNo, NewGRNPONo, StringComparison.OrdinalIgnoreCase) ||
+                IsPurchaseOrderAvailableForReceiving(po));
+
+            if (string.IsNullOrWhiteSpace(GRNScannedInventoryId))
+            {
+                return orders;
+            }
+
+            var scannedItem = InventoryItems.FirstOrDefault(item =>
+                string.Equals(item.MasterAccountId, GRNScannedInventoryId, StringComparison.OrdinalIgnoreCase));
+            if (scannedItem is null)
+            {
+                return orders;
+            }
+
+            return orders.Where(po =>
+                string.Equals(po.PoNo, NewGRNPONo, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(po.Product, scannedItem.Type, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private static bool IsPurchaseOrderAvailableForReceiving(PurchaseOrderItem purchaseOrder) =>
+        string.Equals(purchaseOrder.Status, "Approved", StringComparison.OrdinalIgnoreCase) ||
+        purchaseOrder.Status.Contains("Partial", StringComparison.OrdinalIgnoreCase);
 
     private async Task CloseAddGRNForm()
     {
@@ -4250,6 +4375,11 @@
         GRNBarcodeScanValue = string.Empty;
         GRNBarcodeScanMessage = null;
         GRNBarcodeScanSucceeded = false;
+        GRNScannedInventoryId = string.Empty;
+        IsGRNScanWorkflowVisible = false;
+        FocusGRNBarcodeAfterRender = false;
+        FocusGRNQuantityAfterRender = false;
+        FocusGRNPurchaseOrderAfterRender = false;
         IsGRNBarcodeScannerVisible = false;
         IsGRNBarcodeScannerStarting = false;
         StartGRNBarcodeScannerAfterRender = false;
@@ -4484,10 +4614,26 @@
     private void HandleGRNPurchaseOrderChanged(ChangeEventArgs args)
     {
         NewGRNPONo = args.Value?.ToString() ?? string.Empty;
-        GRNBarcodeScanValue = string.Empty;
-        GRNBarcodeScanMessage = null;
-        GRNBarcodeScanSucceeded = false;
+        var scannedItem = InventoryItems.FirstOrDefault(item =>
+            !string.IsNullOrWhiteSpace(GRNScannedInventoryId) &&
+            string.Equals(item.MasterAccountId, GRNScannedInventoryId, StringComparison.OrdinalIgnoreCase));
+
+        if (scannedItem is null)
+        {
+            GRNBarcodeScanValue = string.Empty;
+            GRNBarcodeScanMessage = null;
+            GRNBarcodeScanSucceeded = false;
+        }
+
         ApplySelectedPurchaseOrder();
+
+        if (scannedItem is not null && !string.IsNullOrWhiteSpace(NewGRNPONo))
+        {
+            ApplyInventoryItemToGRN(scannedItem);
+            GRNBarcodeScanSucceeded = true;
+            GRNBarcodeScanMessage = $"{scannedItem.Type} matched to {NewGRNPONo}.";
+            FocusGRNQuantityAfterRender = true;
+        }
     }
 
     private void ApplySelectedPurchaseOrder(bool preserveReceiptValues = false)
@@ -4616,17 +4762,15 @@
     {
         GRNBarcodeScanMessage = null;
         GRNBarcodeScanSucceeded = false;
-
-        if (string.IsNullOrWhiteSpace(NewGRNPONo))
-        {
-            GRNBarcodeScanMessage = "Select a purchase order before scanning.";
-            return;
-        }
+        FocusGRNBarcodeAfterRender = false;
+        FocusGRNQuantityAfterRender = false;
+        FocusGRNPurchaseOrderAfterRender = false;
 
         var scannedCode = GRNBarcodeScanValue.Trim();
         if (string.IsNullOrWhiteSpace(scannedCode))
         {
             GRNBarcodeScanMessage = "Scan or enter a barcode or SKU.";
+            FocusGRNBarcodeAfterRender = true;
             return;
         }
 
@@ -4639,6 +4783,20 @@
         if (scannedItem is null)
         {
             GRNBarcodeScanMessage = $"No product was found for {scannedCode}. Check the barcode in product setup.";
+            GRNBarcodeScanValue = string.Empty;
+            FocusGRNBarcodeAfterRender = true;
+            return;
+        }
+
+        if (IsGRNScanWorkflowVisible)
+        {
+            StartGRNReceiptFromScannedItem(scannedItem);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(NewGRNPONo))
+        {
+            GRNBarcodeScanMessage = "Start from Scan goods or select a purchase order.";
             return;
         }
 
@@ -4657,6 +4815,8 @@
         {
             var expectedName = expectedItem?.Type ?? purchaseOrder?.Product ?? NewGRNName;
             GRNBarcodeScanMessage = $"Wrong item scanned. This PO expects {expectedName}; you scanned {scannedItem.Type}.";
+            GRNBarcodeScanValue = string.Empty;
+            FocusGRNBarcodeAfterRender = true;
             return;
         }
 
@@ -4664,6 +4824,51 @@
         GRNBarcodeScanValue = string.IsNullOrWhiteSpace(scannedItem.Barcode) ? scannedItem.Sku : scannedItem.Barcode;
         GRNBarcodeScanSucceeded = true;
         GRNBarcodeScanMessage = $"{scannedItem.Type} confirmed. Enter the received quantity.";
+        FocusGRNQuantityAfterRender = true;
+    }
+
+    private void StartGRNReceiptFromScannedItem(InventoryViewModel.InventoryItem scannedItem)
+    {
+        var matchingOrders = PurchaseOrders
+            .Where(IsPurchaseOrderAvailableForReceiving)
+            .Where(order => string.Equals(
+                order.Product?.Trim(),
+                scannedItem.Type?.Trim(),
+                StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (matchingOrders.Count == 0)
+        {
+            GRNBarcodeScanMessage = $"{scannedItem.Type} was found, but there is no approved purchase order available to receive it.";
+            GRNBarcodeScanValue = string.Empty;
+            FocusGRNBarcodeAfterRender = true;
+            return;
+        }
+
+        GRNScannedInventoryId = scannedItem.MasterAccountId;
+        ApplyInventoryItemToGRN(scannedItem);
+        GRNBarcodeScanValue = string.IsNullOrWhiteSpace(scannedItem.Barcode)
+            ? scannedItem.Sku
+            : scannedItem.Barcode;
+        GRNBarcodeScanSucceeded = true;
+        IsGRNScanWorkflowVisible = false;
+        IsAddGRNFormVisible = true;
+
+        if (matchingOrders.Count == 1)
+        {
+            NewGRNPONo = matchingOrders[0].PoNo;
+            ApplySelectedPurchaseOrder();
+            ApplyInventoryItemToGRN(scannedItem);
+            GRNBarcodeScanMessage = $"{scannedItem.Type} matched to {NewGRNPONo}.";
+            FocusGRNQuantityAfterRender = true;
+            return;
+        }
+
+        NewGRNPONo = string.Empty;
+        NewGRNSupplier = string.Empty;
+        NewGRNAccountId = string.Empty;
+        GRNBarcodeScanMessage = $"{scannedItem.Type} was scanned. Select one of the {matchingOrders.Count} matching approved purchase orders.";
+        FocusGRNPurchaseOrderAfterRender = true;
     }
 
     private static bool IsSameInventoryItem(
@@ -4706,15 +4911,18 @@
 
     private async Task OpenGRNBarcodeScannerAsync()
     {
-        if (string.IsNullOrWhiteSpace(NewGRNPONo))
+        if (!IsGRNScanWorkflowVisible)
         {
             GRNBarcodeScanSucceeded = false;
-            GRNBarcodeScanMessage = "Select a purchase order before scanning.";
+            GRNBarcodeScanMessage = "Open Scan goods before using the camera.";
             return;
         }
 
         GRNBarcodeScanMessage = null;
         GRNBarcodeScanSucceeded = false;
+        FocusGRNBarcodeAfterRender = false;
+        FocusGRNQuantityAfterRender = false;
+        FocusGRNPurchaseOrderAfterRender = false;
         IsGRNBarcodeScannerVisible = true;
         IsGRNBarcodeScannerStarting = true;
         StartGRNBarcodeScannerAfterRender = true;
@@ -4764,6 +4972,7 @@
         StartGRNBarcodeScannerAfterRender = false;
         GRNBarcodeScanSucceeded = false;
         GRNBarcodeScanMessage = message;
+        FocusGRNBarcodeAfterRender = IsGRNScanWorkflowVisible;
         _ = InvokeAsync(StateHasChanged);
     }
 
@@ -4789,6 +4998,7 @@
         }
 
         IsGRNBarcodeScannerVisible = false;
+        FocusGRNBarcodeAfterRender = IsGRNScanWorkflowVisible;
     }
 
     [JSInvokable("OnGrnBarcodeDetected")]
@@ -4968,7 +5178,11 @@
     private InventoryViewModel.InventoryItem? SelectedItem { get; set; }
     private bool IsProductApiLoading { get; set; }
     private bool IsProductSaving { get; set; }
+    private bool IsProductImageUploading { get; set; }
     private string? ProductApiError { get; set; }
+    private string? ProductImageError { get; set; }
+    private string NewProductImagePreview { get; set; } = string.Empty;
+    private string EditProductImagePreview { get; set; } = string.Empty;
     private bool IsProductDetailsVisible { get; set; }
     private InventoryViewModel.InventoryItem? SelectedProductDetails { get; set; }
     private InventoryOptionDetailsModel? SelectedInventoryOptionDetails { get; set; }
@@ -4995,10 +5209,10 @@
         SelectedProductDetails = null;
     }
 
-    private void EditProductFromDetails(InventoryViewModel.InventoryItem item)
+    private async Task EditProductFromDetails(InventoryViewModel.InventoryItem item)
     {
         CloseProductDetails();
-        EditProductFromTable(item);
+        await EditProductFromTable(item);
     }
 
     private void ShowBrandDetails(BrandItem brand)
@@ -5260,6 +5474,24 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (FocusGRNBarcodeAfterRender && IsGRNScanWorkflowVisible && !IsGRNBarcodeScannerVisible)
+        {
+            FocusGRNBarcodeAfterRender = false;
+            await GRNBarcodeInputElement.FocusAsync();
+        }
+
+        if (FocusGRNPurchaseOrderAfterRender && IsAddGRNFormVisible && !IsGRNBarcodeScannerVisible)
+        {
+            FocusGRNPurchaseOrderAfterRender = false;
+            await GRNPurchaseOrderSelectElement.FocusAsync();
+        }
+
+        if (FocusGRNQuantityAfterRender && IsAddGRNFormVisible && !IsGRNBarcodeScannerVisible)
+        {
+            FocusGRNQuantityAfterRender = false;
+            await GRNQuantityInputElement.FocusAsync();
+        }
+
         if (!StartGRNBarcodeScannerAfterRender || !IsGRNBarcodeScannerVisible)
         {
             return;
@@ -5530,6 +5762,19 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
         var imageUrl = ProductImageService.ResolveImageUrl(item);
         return string.IsNullOrWhiteSpace(imageUrl) ? EmptyInventoryImage : imageUrl;
     }
+
+    private string NewProductImageUrl => !string.IsNullOrWhiteSpace(NewProductImagePreview)
+        ? NewProductImagePreview
+        : ProductImageService.ResolveServerImageUrl(NewProduct.ImagePath, NewProduct.ImageFileName);
+
+    private string EditProductImageUrl => !string.IsNullOrWhiteSpace(EditProductImagePreview)
+        ? EditProductImagePreview
+        : EditProduct is null
+            ? string.Empty
+            : ProductImageService.ResolveImageUrl(
+                EditProduct.MasterAccountId,
+                EditProduct.ImagePath,
+                EditProduct.ImageFileName);
 
     private static bool HasInventoryImage(string? imageUrl) =>
         !string.IsNullOrWhiteSpace(imageUrl) &&
@@ -7444,10 +7689,10 @@ private void ShowAddBrandForm()
     }
 
 
-    private void EditProductFromTable(InventoryViewModel.InventoryItem item)
+    private async Task EditProductFromTable(InventoryViewModel.InventoryItem item)
     {
         SelectItem(item);
-        ShowEditProductForm();
+        await ShowEditProductForm();
     }
     private static string DisplayProductValue(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();
@@ -7602,13 +7847,18 @@ private void ShowAddBrandForm()
 
     private void ShowAddProductForm()
     {
-        ShowAddForm = true;
         NewProduct = new NewProductModel();
+        NewProductImagePreview = string.Empty;
+        ProductImageError = null;
+        ProductApiError = null;
+        ShowAddForm = true;
     }
 
     private void CloseAddProductForm()
     {
         ShowAddForm = false;
+        NewProductImagePreview = string.Empty;
+        ProductImageError = null;
     }
 
     private async Task HandleAddProduct()
@@ -7639,28 +7889,53 @@ private void ShowAddBrandForm()
         }
     }
 
-    private void ShowEditProductForm()
+    private async Task ShowEditProductForm()
     {
         if (SelectedItem == null) return;
 
+        ProductApiError = null;
+        ProductImageError = null;
+        EditProductImagePreview = string.Empty;
+        IsProductApiLoading = true;
+
+        var product = SelectedItem;
+        try
+        {
+            var result = await ProductInventoryService.LoadProductAsync(SelectedItem.MasterAccountId);
+            if (!result.Success || result.Value is null)
+            {
+                ProductApiError = result.ErrorMessage ?? "Unable to load the product before editing.";
+            }
+            else
+            {
+                product = result.Value with { StockQuantity = SelectedItem.StockQuantity };
+            }
+        }
+        finally
+        {
+            IsProductApiLoading = false;
+        }
+
         EditProduct = new EditProductModel
         {
-            MasterAccountId = SelectedItem.MasterAccountId,
-            Sku = SelectedItem.Sku,
-            Type = SelectedItem.Type,
-            Barcode = SelectedItem.Barcode,
-            ConversionFactor = SelectedItem.ConversionFactor,
-            Price = SelectedItem.Price,
-            Brand = SelectedItem.Brand,
-            Category = SelectedItem.Category,
-            Supplier = SelectedItem.Supplier,
-            Locked = SelectedItem.Locked,
-            StockUom1 = SelectedItem.StockUom1,
-            StockUom2 = SelectedItem.StockUom2,
-            StockQuantity = SelectedItem.StockQuantity,
-            Location = SelectedItem.Location,
-            LowAlertCount = SelectedItem.LowAlertCount,
-            DiscountCap = SelectedItem.DiscountCap
+            MasterAccountId = product.MasterAccountId,
+            Sku = product.Sku,
+            Type = product.Type,
+            Barcode = product.Barcode,
+            ConversionFactor = product.ConversionFactor,
+            Price = product.Price,
+            Brand = product.Brand,
+            Category = product.Category,
+            Supplier = product.Supplier,
+            Locked = product.Locked,
+            StockUom1 = product.StockUom1,
+            StockUom2 = product.StockUom2,
+            StockQuantity = product.StockQuantity,
+            Location = product.Location,
+            LowAlertCount = product.LowAlertCount,
+            DiscountCap = product.DiscountCap,
+            ImagePath = product.ImagePath,
+            ImageFileName = product.ImageFileName
         };
 
         ShowEditForm = true;
@@ -7670,6 +7945,108 @@ private void ShowAddBrandForm()
     {
         ShowEditForm = false;
         EditProduct = null;
+        EditProductImagePreview = string.Empty;
+        ProductImageError = null;
+    }
+
+    private Task HandleNewProductImageSelected(InputFileChangeEventArgs args) =>
+        HandleProductImageSelectedAsync(args.File, isEdit: false);
+
+    private Task HandleEditProductImageSelected(InputFileChangeEventArgs args) =>
+        HandleProductImageSelectedAsync(args.File, isEdit: true);
+
+    private async Task HandleProductImageSelectedAsync(IBrowserFile file, bool isEdit)
+    {
+        ProductImageError = null;
+
+        if (file is null || !file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            ProductImageError = "Select a valid JPG, PNG or WEBP image.";
+            return;
+        }
+
+        const long maxImageBytes = 5 * 1024 * 1024;
+        if (file.Size > maxImageBytes)
+        {
+            ProductImageError = "Image must be 5 MB or smaller.";
+            return;
+        }
+
+        IsProductImageUploading = true;
+        try
+        {
+            await using var previewStream = file.OpenReadStream(maxImageBytes);
+            using var previewBuffer = new MemoryStream();
+            await previewStream.CopyToAsync(previewBuffer);
+            var preview = $"data:{file.ContentType};base64,{Convert.ToBase64String(previewBuffer.ToArray())}";
+
+            var upload = await FileUploadAC.UploadImageAsync(file, "Inventory");
+            if (!upload.Success || string.IsNullOrWhiteSpace(upload.Value))
+            {
+                ProductImageError = upload.ErrorMessage ?? "Unable to upload the product image.";
+                return;
+            }
+
+            var (imagePath, imageFileName) = SplitUploadedImageLocation(upload.Value);
+            if (isEdit)
+            {
+                if (EditProduct is null) return;
+                EditProduct.ImagePath = imagePath;
+                EditProduct.ImageFileName = imageFileName;
+                EditProductImagePreview = preview;
+            }
+            else
+            {
+                NewProduct.ImagePath = imagePath;
+                NewProduct.ImageFileName = imageFileName;
+                NewProductImagePreview = preview;
+            }
+        }
+        catch (IOException)
+        {
+            ProductImageError = "The selected image could not be read. Please choose another file.";
+        }
+        catch (Exception)
+        {
+            ProductImageError = "The product image could not be uploaded. Please try again.";
+        }
+        finally
+        {
+            IsProductImageUploading = false;
+        }
+    }
+
+    private static (string ImagePath, string ImageFileName) SplitUploadedImageLocation(string uploadedLocation)
+    {
+        var normalized = (uploadedLocation ?? string.Empty).Trim().Replace('\\', '/');
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return (string.Empty, string.Empty);
+        }
+
+        var queryIndex = normalized.IndexOfAny(['?', '#']);
+        var locationWithoutQuery = queryIndex >= 0 ? normalized[..queryIndex] : normalized;
+        var separatorIndex = locationWithoutQuery.LastIndexOf('/');
+        return separatorIndex >= 0
+            ? (normalized[..separatorIndex], locationWithoutQuery[(separatorIndex + 1)..])
+            : (string.Empty, locationWithoutQuery);
+    }
+
+    private void RemoveNewProductImage()
+    {
+        NewProduct.ImagePath = string.Empty;
+        NewProduct.ImageFileName = string.Empty;
+        NewProductImagePreview = string.Empty;
+        ProductImageError = null;
+    }
+
+    private void RemoveEditProductImage()
+    {
+        if (EditProduct is null) return;
+        EditProduct.ImagePath = string.Empty;
+        EditProduct.ImageFileName = string.Empty;
+        EditProductImagePreview = string.Empty;
+        ProductImageError = null;
     }
 
     private string GetGRNRowClass(GRNItem item)
@@ -8152,9 +8529,17 @@ private void ShowAddBrandForm()
     private string GRNBarcodeScanValue { get; set; } = string.Empty;
     private string? GRNBarcodeScanMessage { get; set; }
     private bool GRNBarcodeScanSucceeded { get; set; }
+    private string GRNScannedInventoryId { get; set; } = string.Empty;
+    private bool IsGRNScanWorkflowVisible { get; set; }
     private bool IsGRNBarcodeScannerVisible { get; set; }
     private bool IsGRNBarcodeScannerStarting { get; set; }
     private bool StartGRNBarcodeScannerAfterRender { get; set; }
+    private bool FocusGRNBarcodeAfterRender { get; set; }
+    private bool FocusGRNQuantityAfterRender { get; set; }
+    private bool FocusGRNPurchaseOrderAfterRender { get; set; }
+    private ElementReference GRNBarcodeInputElement { get; set; }
+    private ElementReference GRNQuantityInputElement { get; set; }
+    private ElementReference GRNPurchaseOrderSelectElement { get; set; }
     private ElementReference GRNBarcodeVideoElement { get; set; }
     private DotNetObjectReference<Inventory>? GRNBarcodeDotNetReference { get; set; }
     private string? GRNSortColumn { get; set; }
