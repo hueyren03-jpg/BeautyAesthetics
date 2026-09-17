@@ -16,4 +16,8 @@ public interface IInventoryPendingAcceptService
     Task<ApiCallResult<string>> AcceptAsync(
         string documentId,
         CancellationToken cancellationToken = default);
+
+    Task<ApiCallResult<string>> AcceptAsync(
+        PendingStockReceiptViewModel receipt,
+        CancellationToken cancellationToken = default);
 }
