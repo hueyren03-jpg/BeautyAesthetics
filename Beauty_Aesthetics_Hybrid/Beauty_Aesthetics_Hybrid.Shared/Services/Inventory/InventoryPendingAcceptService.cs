@@ -130,6 +130,18 @@ public sealed class InventoryPendingAcceptService : IInventoryPendingAcceptServi
                     transferDisplayCode
                 },
                 receipt.DocumentId);
+
+            // The Stock Transfer itself is the authoritative source for the receiving branch.
+            // Pending movement detail rows may expose the movement/source branch instead,
+            // which can cause the linked GRN to be searched or created under the wrong branch.
+            var transferDestinationBranchId = FirstNonEmpty(
+                sourceTransfer.Document.ToBranchID,
+                sourceTransfer.Document.OrderBranchID);
+            if (!string.IsNullOrWhiteSpace(transferDestinationBranchId))
+            {
+                destinationBranchId = NormalizeBranchId(transferDestinationBranchId);
+                receipt.DestinationBranchId = destinationBranchId;
+            }
         }
 
         var existingGrnResult = await LoadDestinationGrnsAsync(destinationBranchId, receipt.FinancialDate, cancellationToken);
