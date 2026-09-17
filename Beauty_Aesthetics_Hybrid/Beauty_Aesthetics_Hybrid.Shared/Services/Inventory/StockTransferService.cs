@@ -117,6 +117,19 @@ public sealed class StockTransferService : IStockTransferService
                 templateResult.ErrorMessage ?? "Unable to prepare a new stock transfer.");
         }
 
+        HashSet<string>? existingTransferIds = null;
+        if (string.IsNullOrWhiteSpace(templateResult.Value.Document.DocumentID))
+        {
+            var beforeCreate = await LoadTransfersAsync(transfer.FromBranchId, cancellationToken);
+            if (beforeCreate.Success && beforeCreate.Value is not null)
+            {
+                existingTransferIds = beforeCreate.Value
+                    .Where(item => !string.IsNullOrWhiteSpace(item.DocumentId))
+                    .Select(item => item.DocumentId)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            }
+        }
+
         ApplyDocument(templateResult.Value.Document, transfer);
         ApplyLines(templateResult.Value, transfer, isNew: true);
         templateResult.Value.Document.SaveAction = "Added";
@@ -141,11 +154,43 @@ public sealed class StockTransferService : IStockTransferService
             transfer.DisplayCode,
             transfer.DocumentId);
 
+        if (!string.IsNullOrWhiteSpace(transfer.DocumentId))
+        {
+            var createdRecord = await stockTransferAC.LoadRecordAsync(transfer.DocumentId, cancellationToken);
+            if (createdRecord.Success && createdRecord.Value is not null)
+            {
+                ApplyCreatedIdentity(transfer, createdRecord.Value.Document);
+                transfer.Lines = createdRecord.Value.DocumentLines.Count > 0
+                    ? createdRecord.Value.DocumentLines.Select(ToLineViewModel).ToList()
+                    : transfer.Lines;
+            }
+            else if (string.IsNullOrWhiteSpace(templateResult.Value.Document.DocumentID))
+            {
+                transfer.DocumentId = string.Empty;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(transfer.DocumentId) && existingTransferIds is not null)
+        {
+            var resolvedTransfer = await ResolveCreatedTransferAsync(
+                transfer,
+                existingTransferIds,
+                cancellationToken);
+
+            if (resolvedTransfer is not null)
+            {
+                transfer.DocumentId = resolvedTransfer.DocumentId;
+                transfer.DocumentTypeId = resolvedTransfer.DocumentTypeId;
+                transfer.DisplayCode = resolvedTransfer.DisplayCode;
+                transfer.Lines = resolvedTransfer.Lines;
+            }
+        }
+
         if (string.IsNullOrWhiteSpace(transfer.DocumentId))
         {
             return ApiCallResult<bool>.Failure(
                 HttpStatusCode.Conflict,
-                "Stock Transfer was created, but its document ID was not returned, so the related GIN could not be generated safely.");
+                "Stock Transfer was created, but its document ID could not be resolved safely, so the related GIN was not generated.");
         }
 
         var ginResult = await EnsureTransferGinAsync(transfer, cancellationToken);
@@ -214,6 +259,50 @@ public sealed class StockTransferService : IStockTransferService
         return ToBoolean(
             await stockTransferAC.DeleteAsync(documentId, cancellationToken),
             "Unable to delete stock transfer.");
+    }
+
+    private async Task<StockTransferViewModel?> ResolveCreatedTransferAsync(
+        StockTransferViewModel requestedTransfer,
+        IReadOnlySet<string> existingTransferIds,
+        CancellationToken cancellationToken)
+    {
+        var afterCreate = await LoadTransfersAsync(requestedTransfer.FromBranchId, cancellationToken);
+        if (!afterCreate.Success || afterCreate.Value is null)
+        {
+            return null;
+        }
+
+        var candidates = afterCreate.Value
+            .Where(candidate =>
+                !string.IsNullOrWhiteSpace(candidate.DocumentId) &&
+                !existingTransferIds.Contains(candidate.DocumentId) &&
+                SameKey(candidate.FromBranchId, requestedTransfer.FromBranchId) &&
+                SameKey(candidate.ToBranchId, requestedTransfer.ToBranchId) &&
+                candidate.Date.Date == requestedTransfer.Date.Date &&
+                SameText(candidate.Remarks, requestedTransfer.Remarks))
+            .ToList();
+
+        var verifiedCandidates = new List<StockTransferViewModel>();
+        foreach (var candidate in candidates)
+        {
+            var detailResult = await LoadTransferAsync(candidate.DocumentId, cancellationToken);
+            if (!detailResult.Success || detailResult.Value is null)
+            {
+                continue;
+            }
+
+            var detail = detailResult.Value;
+            if (SameKey(detail.FromBranchId, requestedTransfer.FromBranchId) &&
+                SameKey(detail.ToBranchId, requestedTransfer.ToBranchId) &&
+                detail.Date.Date == requestedTransfer.Date.Date &&
+                SameText(detail.Remarks, requestedTransfer.Remarks) &&
+                TransferLinesMatch(detail.Lines, requestedTransfer.Lines))
+            {
+                verifiedCandidates.Add(detail);
+            }
+        }
+
+        return verifiedCandidates.Count == 1 ? verifiedCandidates[0] : null;
     }
 
     private async Task<ApiCallResult<bool>> EnsureTransferGinAsync(
@@ -394,6 +483,16 @@ public sealed class StockTransferService : IStockTransferService
         envelope.DocumentLines = updatedLines;
     }
 
+    private static void ApplyCreatedIdentity(StockTransferViewModel transfer, StockTransferDocumentDTO document)
+    {
+        transfer.DocumentId = First(document.DocumentID, transfer.DocumentId);
+        transfer.DocumentTypeId = document.DocumentTypeID != 0 ? document.DocumentTypeID : transfer.DocumentTypeId;
+        transfer.DisplayCode = First(document.DisplayCode, document.ReferenceNumber, transfer.DisplayCode, transfer.DocumentId);
+        transfer.FromBranchId = First(document.FromBranchID, document.BranchID, document.EditBranchID, transfer.FromBranchId);
+        transfer.ToBranchId = First(document.ToBranchID, document.OrderBranchID, transfer.ToBranchId);
+        transfer.Remarks = document.Remarks ?? transfer.Remarks;
+    }
+
     private static StockTransferViewModel ToViewModel(StockTransferDocumentDTO document) => new()
     {
         DocumentId = document.DocumentID ?? string.Empty,
@@ -538,6 +637,32 @@ public sealed class StockTransferService : IStockTransferService
         return null;
     }
 
+    private static bool TransferLinesMatch(
+        IReadOnlyCollection<StockTransferLineViewModel> actual,
+        IReadOnlyCollection<StockTransferLineViewModel> expected)
+    {
+        var actualTotals = actual
+            .Where(line => !string.IsNullOrWhiteSpace(line.InventoryId))
+            .GroupBy(line => LineMatchKey(line), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Sum(line => line.Quantity), StringComparer.OrdinalIgnoreCase);
+
+        var expectedTotals = expected
+            .Where(line => !string.IsNullOrWhiteSpace(line.InventoryId))
+            .GroupBy(line => LineMatchKey(line), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Sum(line => line.Quantity), StringComparer.OrdinalIgnoreCase);
+
+        return actualTotals.Count == expectedTotals.Count &&
+               expectedTotals.All(item =>
+                   actualTotals.TryGetValue(item.Key, out var actualQuantity) &&
+                   actualQuantity == item.Value);
+    }
+
+    private static string LineMatchKey(StockTransferLineViewModel line) =>
+        $"{line.InventoryId.Trim()}|{NormalizeUom(line.UnitOfMeasurementId)}";
+
+    private static string NormalizeUom(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "UNIT" : value.Trim().ToUpperInvariant();
+
     private static bool LooksLikeDocumentId(string? value) =>
         !string.IsNullOrWhiteSpace(value) &&
         !string.Equals(value, "Success", StringComparison.OrdinalIgnoreCase) &&
@@ -547,6 +672,12 @@ public sealed class StockTransferService : IStockTransferService
         !string.IsNullOrWhiteSpace(left) &&
         !string.IsNullOrWhiteSpace(right) &&
         string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private static bool SameText(string? left, string? right) =>
+        string.Equals(
+            left?.Trim() ?? string.Empty,
+            right?.Trim() ?? string.Empty,
+            StringComparison.OrdinalIgnoreCase);
 
     private static void Set(JsonObject line, string name, string? value) => line[name] = value;
     private static void Set(JsonObject line, string name, int value) => line[name] = value;
