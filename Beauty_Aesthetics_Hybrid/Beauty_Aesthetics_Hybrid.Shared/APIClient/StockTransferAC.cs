@@ -201,13 +201,17 @@ public sealed class StockTransferAC
             var apiResponse = JsonSerializer.Deserialize<ApiResponse<JsonElement>>(responseBody, JsonOptions);
             if (apiResponse?.StatusCode > 0)
             {
-                return apiResponse.IsSuccess
-                    ? ApiCallResult<string>.Ok(
-                        response.StatusCode,
-                        string.IsNullOrWhiteSpace(apiResponse.Message) ? "Success" : apiResponse.Message)
-                    : ApiCallResult<string>.Failure(
+                if (!apiResponse.IsSuccess)
+                {
+                    return ApiCallResult<string>.Failure(
                         response.StatusCode,
                         string.IsNullOrWhiteSpace(apiResponse.Message) ? invalidResponseMessage : apiResponse.Message);
+                }
+
+                var fallback = string.IsNullOrWhiteSpace(apiResponse.Message) ? "Success" : apiResponse.Message;
+                return ApiCallResult<string>.Ok(
+                    response.StatusCode,
+                    ReadMutationResult(apiResponse.Result, fallback));
             }
         }
         catch (JsonException)
@@ -216,6 +220,79 @@ public sealed class StockTransferAC
         }
 
         return ApiCallResult<string>.Ok(response.StatusCode, "Success");
+    }
+
+    private static string ReadMutationResult(JsonElement result, string fallback)
+    {
+        if (result.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+        {
+            return fallback;
+        }
+
+        if (result.ValueKind == JsonValueKind.String)
+        {
+            return string.IsNullOrWhiteSpace(result.GetString()) ? fallback : result.GetString()!;
+        }
+
+        if (result.ValueKind == JsonValueKind.Number)
+        {
+            return result.GetRawText();
+        }
+
+        if (result.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in result.EnumerateArray())
+            {
+                var value = ReadMutationResult(item, string.Empty);
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value;
+                }
+            }
+
+            return fallback;
+        }
+
+        if (result.ValueKind == JsonValueKind.Object)
+        {
+            var preferredNames = new[]
+            {
+                "DocumentID", "DocumentId", "StockTransferDocumentID", "StockTransferDocumentId", "Id", "ID", "DisplayCode"
+            };
+
+            foreach (var preferredName in preferredNames)
+            {
+                foreach (var property in result.EnumerateObject())
+                {
+                    if (!string.Equals(property.Name, preferredName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var value = ReadMutationResult(property.Value, string.Empty);
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        return value;
+                    }
+                }
+            }
+
+            foreach (var property in result.EnumerateObject())
+            {
+                if (property.Value.ValueKind is not (JsonValueKind.Object or JsonValueKind.Array))
+                {
+                    continue;
+                }
+
+                var value = ReadMutationResult(property.Value, string.Empty);
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value;
+                }
+            }
+        }
+
+        return fallback;
     }
 
     private static string BuildApiErrorMessage(HttpStatusCode statusCode, string responseBody, string fallbackMessage)
