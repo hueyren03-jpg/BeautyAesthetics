@@ -1,16 +1,26 @@
 (function () {
     "use strict";
 
-    function ensureInventoryMobileFixes() {
-        if (document.getElementById("inventory-mobile-fixes-css")) {
+    function ensureStylesheet(id, href) {
+        if (document.getElementById(id)) {
             return;
         }
 
         var link = document.createElement("link");
-        link.id = "inventory-mobile-fixes-css";
+        link.id = id;
         link.rel = "stylesheet";
-        link.href = "_content/Beauty_Aesthetics_Hybrid.Shared/inventory-mobile-fixes.css";
+        link.href = href;
         document.head.appendChild(link);
+    }
+
+    function ensureResponsiveStyles() {
+        ensureStylesheet(
+            "inventory-mobile-fixes-css",
+            "_content/Beauty_Aesthetics_Hybrid.Shared/inventory-mobile-fixes.css");
+
+        ensureStylesheet(
+            "viewport-containment-fixes-css",
+            "_content/Beauty_Aesthetics_Hybrid.Shared/viewport-containment-fixes.css");
     }
 
     function getViewportWidth() {
@@ -43,13 +53,16 @@
         refresh: applyViewportClass
     };
 
-    ensureInventoryMobileFixes();
+    ensureResponsiveStyles();
     applyViewportClass();
 
     var resizeTimer;
     function scheduleRefresh() {
         window.clearTimeout(resizeTimer);
-        resizeTimer = window.setTimeout(applyViewportClass, 80);
+        resizeTimer = window.setTimeout(function () {
+            ensureResponsiveStyles();
+            applyViewportClass();
+        }, 80);
     }
 
     window.addEventListener("resize", scheduleRefresh, { passive: true });
