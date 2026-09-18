@@ -226,6 +226,24 @@
             return;
         }
 
+        /*
+         * Inventory/Services tables already have page-owned scroll regions.
+         * Always reuse the OUTER region instead of turning an inner helper
+         * element into a second horizontal scroller. Nested scroll containers
+         * prevent sticky Actions columns from staying pinned to the phone edge.
+         */
+        const preferredScrollContainer = table.closest(
+            ".inventory__table-wrapper.table-scroll, " +
+            ".inventory__table-wrapper, " +
+            ".services__table-wrapper, " +
+            ".membership-options__table-region"
+        );
+
+        if (preferredScrollContainer) {
+            preferredScrollContainer.classList.add(wrapperClass);
+            return;
+        }
+
         const parent = table.parentElement;
         if (!parent) {
             return;
