@@ -15,7 +15,7 @@
     @* This is the main body *@
     <div class="PageWrapper">
         @* move this back up if broken *@
-        <div class="SidebarWrapper @(isSidebarOpen ? "" : "sidebarClose") @(!isMobileLayout ? "desktop-sidebar" : "")">
+        <div class="SidebarWrapper @(isSidebarOpen ? "" : "sidebarClose") @(isMobileLayout ? "compact-sidebar" : "desktop-sidebar")">
             <div class="Sidebar">
                 <div class="SidebarLogoWrapper">
                     <img src="images/EBI_Logo.png" class="SidebarLogo" />
@@ -75,7 +75,7 @@
                 
             </div>
         </div>
-        <div class="SidebarOverlay @(isSidebarOpen ? "visible" : "") @(!isMobileLayout ? "desktop-overlay" : "")"
+        <div class="SidebarOverlay @(isSidebarOpen ? "visible" : "") @(isMobileLayout ? "compact-overlay" : "desktop-overlay")"
              @onclick="CloseSidebar"
              aria-hidden="true"></div>
         <div class="page">
@@ -164,6 +164,17 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // Keep compact drawer positioning tied to the real rendered header edge.
+        // Android WebView safe-area values are not reliable in landscape.
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("posResponsive.syncHeaderMetrics");
+        }
+        catch
+        {
+            // Layout still has CSS fallbacks when JS metrics are unavailable.
+        }
+
         if (!firstRender)
         {
             return;
