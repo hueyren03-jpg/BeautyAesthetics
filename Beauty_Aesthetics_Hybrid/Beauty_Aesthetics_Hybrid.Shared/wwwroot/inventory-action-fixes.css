@@ -1,78 +1,143 @@
-/* Restore Inventory row actions that were hidden by the older mobile table rules.
-   Loaded after the responsive/mobile override layers so Product, Inventory Options,
-   Purchase Order, GIN and GRN keep their View/Edit controls on phones.
+/* Final Inventory action-column rules for phone POS layouts.
+   This file is loaded after Inventory.razor.css and the shared responsive layers.
+   It intentionally overrides older compact-table rules that hide action cells.
 */
 
 @media (max-width: 768px) {
-    /* Product and Inventory Options already render action cells. Keep them visible
-       and large enough for touch instead of allowing a generic mobile rule to hide
-       or collapse them. */
-    .inventory .product-actions-heading,
-    .inventory .product-row-actions,
-    .inventory .inventory-options__table .inventory-option-actions-column,
-    .inventory .inventory-row-actions-column {
+    /* Every Inventory action header/cell stays visible on phones, regardless of
+       nth-child based compact-table rules in Inventory.razor.css. */
+    .inventory th.product-actions-heading,
+    .inventory td.product-row-actions,
+    .inventory th.inventory-option-actions-column,
+    .inventory td.inventory-option-actions-column,
+    .inventory th.inventory-row-actions-column,
+    .inventory td.inventory-row-actions-column,
+    .inventory .inventory-mobile-compact-table th.inventory-row-actions-column,
+    .inventory .inventory-mobile-compact-table td.inventory-row-actions-column,
+    .inventory .inventory-mobile-compact-table--po th.inventory-row-actions-column,
+    .inventory .inventory-mobile-compact-table--po td.inventory-row-actions-column,
+    .inventory .inventory-mobile-compact-table--stock th.inventory-row-actions-column,
+    .inventory .inventory-mobile-compact-table--stock td.inventory-row-actions-column,
+    .inventory .inventory-mobile-compact-table--gin th.inventory-row-actions-column,
+    .inventory .inventory-mobile-compact-table--gin td.inventory-row-actions-column,
+    .inventory .inventory-mobile-compact-table--grn th.inventory-row-actions-column,
+    .inventory .inventory-mobile-compact-table--grn td.inventory-row-actions-column {
         display: table-cell !important;
         visibility: visible !important;
         opacity: 1 !important;
         pointer-events: auto !important;
+        box-sizing: border-box !important;
+        width: 92px !important;
+        min-width: 92px !important;
+        max-width: 92px !important;
+        padding: 5px !important;
         text-align: center !important;
         vertical-align: middle !important;
         white-space: nowrap !important;
         overflow: visible !important;
     }
 
-    .inventory .product-actions-heading,
-    .inventory .product-row-actions,
-    .inventory .inventory-row-actions-column {
-        width: 104px !important;
-        min-width: 104px !important;
-        max-width: 104px !important;
-        padding-left: 6px !important;
-        padding-right: 6px !important;
+    /* Keep Actions reachable while swiping a wide Inventory table. */
+    .inventory th.product-actions-heading,
+    .inventory td.product-row-actions,
+    .inventory th.inventory-option-actions-column,
+    .inventory td.inventory-option-actions-column,
+    .inventory th.inventory-row-actions-column,
+    .inventory td.inventory-row-actions-column {
+        position: sticky !important;
+        right: 0 !important;
     }
 
-    .inventory .inventory-options__table .inventory-option-actions-column {
-        width: 104px !important;
-        min-width: 104px !important;
-        max-width: 104px !important;
-        padding-left: 6px !important;
-        padding-right: 6px !important;
+    .inventory th.product-actions-heading,
+    .inventory th.inventory-option-actions-column,
+    .inventory th.inventory-row-actions-column {
+        z-index: 8 !important;
+        background: #eaf2fb !important;
+        box-shadow: -5px 0 8px -8px rgba(15, 23, 42, 0.45) !important;
     }
 
-    .inventory .product-row-actions .product-row-action,
-    .inventory .inventory-row-actions-column .product-row-action,
-    .inventory .inventory-option-actions-column .product-row-action,
-    .inventory .inventory-option-actions-column .tab-btn {
+    .inventory td.product-row-actions,
+    .inventory td.inventory-option-actions-column,
+    .inventory td.inventory-row-actions-column {
+        z-index: 5 !important;
+        background: #ffffff !important;
+        box-shadow: -5px 0 8px -8px rgba(15, 23, 42, 0.45) !important;
+    }
+
+    .inventory tbody tr:hover td.product-row-actions,
+    .inventory tbody tr:hover td.inventory-option-actions-column,
+    .inventory tbody tr:hover td.inventory-row-actions-column,
+    .inventory tbody tr.selected td.product-row-actions,
+    .inventory tbody tr.selected td.inventory-option-actions-column,
+    .inventory tbody tr.selected td.inventory-row-actions-column {
+        background: #f7fbff !important;
+    }
+
+    /* POS-sized View/Edit controls. Two buttons fit in the 92px action cell. */
+    .inventory td.product-row-actions .product-row-action,
+    .inventory td.inventory-row-actions-column .product-row-action,
+    .inventory td.inventory-option-actions-column .product-row-action,
+    .inventory td.inventory-option-actions-column .tab-btn {
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        width: 42px !important;
-        min-width: 42px !important;
-        height: 42px !important;
-        min-height: 42px !important;
+        width: 38px !important;
+        min-width: 38px !important;
+        max-width: 38px !important;
+        height: 40px !important;
+        min-height: 40px !important;
         padding: 0 !important;
-        margin: 0 !important;
+        margin: 0 2px !important;
         border-radius: 8px !important;
         touch-action: manipulation !important;
+        flex: 0 0 38px !important;
     }
 
-    .inventory .product-row-actions .product-row-action + .product-row-action,
-    .inventory .inventory-row-actions-column .product-row-action + .product-row-action,
-    .inventory .inventory-option-actions-column .product-row-action + .tab-btn,
-    .inventory .inventory-option-actions-column .tab-btn + .tab-btn {
-        margin-left: 6px !important;
+    /* Some Inventory Option actions use .tab-btn rather than product-row-action. */
+    .inventory td.inventory-option-actions-column {
+        gap: 2px !important;
     }
 
-    /* Stock Transfer intentionally uses its expandable mobile row instead of a
-       separate actions column. Preserve that special layout. */
-    .inventory .inventory-mobile-compact-table--stock .inventory-row-actions-column {
-        display: none !important;
-        width: 0 !important;
+    /* The table wrapper owns any horizontal overflow; never move the action
+       buttons outside the visible Inventory page. */
+    .inventory .inventory__table-wrapper,
+    .inventory .table-scroll,
+    .inventory .table-scroll__inner {
+        width: 100% !important;
+        max-width: 100% !important;
         min-width: 0 !important;
-        max-width: 0 !important;
-        padding: 0 !important;
-        border: 0 !important;
-        visibility: hidden !important;
-        pointer-events: none !important;
+        overflow-x: auto !important;
+        overflow-y: visible;
+        -webkit-overflow-scrolling: touch !important;
+    }
+
+    /* Purchase Order compact view: reserve room for the restored Actions cell.
+       The old 42% + 32% + 26% layout consumed 100% before Actions existed. */
+    .inventory .inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting)
+        th:nth-child(1),
+    .inventory .inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting)
+        td:nth-child(1) {
+        width: 31% !important;
+    }
+
+    .inventory .inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting)
+        th:nth-child(2),
+    .inventory .inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting)
+        td:nth-child(2) {
+        width: 25% !important;
+    }
+
+    .inventory .inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting)
+        th:nth-child(5),
+    .inventory .inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting)
+        td:nth-child(5) {
+        width: 20% !important;
+    }
+
+    /* GIN/GRN can keep their readable intrinsic width and scroll locally.
+       The sticky Actions cell remains visible at the right edge. */
+    .inventory .inventory-mobile-compact-table--gin,
+    .inventory .inventory-mobile-compact-table--grn {
+        max-width: none !important;
     }
 }
