@@ -1982,8 +1982,7 @@
                         </div>
                     </div>
                 }
-
-                <!-- Add Transfer Modal -->
+                <!-- Stock Transfer Modal — mirrors SenangRetails Stock Transfer workflow -->
                 @if (ShowAddTransferModal)
                 {
                     <div class="transfer-modal-overlay" @onclick="CloseAddTransferModal">
@@ -1991,10 +1990,16 @@
                             <div class="transfer-modal__header">
                                 <div class="transfer-modal__title">
                                     <i class="bi bi-arrow-left-right"></i>
-                                    <h2>Create New Transfer</h2>
+                                    <div>
+                                        <h2>Stock Transfer</h2>
+                                        <p>Move stock between branches</p>
+                                    </div>
                                 </div>
                                 <div class="transfer-modal__actions">
-                                    <button type="button" class="transfer-modal__btn transfer-modal__btn--save" @onclick="HandleCreateTransfer" disabled="@IsStockTransferSaving">
+                                    <button type="button"
+                                            class="transfer-modal__btn transfer-modal__btn--save"
+                                            @onclick="HandleCreateTransfer"
+                                            disabled="@(IsStockTransferSaving || NewTransfer.SelectedProducts.Count == 0)">
                                         @if (IsStockTransferSaving)
                                         {
                                             <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
@@ -2002,7 +2007,7 @@
                                         }
                                         else
                                         {
-                                            <span>Create Transfer</span>
+                                            <span>Confirm Stock Transfer</span>
                                         }
                                     </button>
                                     <button type="button" class="transfer-modal__btn transfer-modal__btn--cancel" @onclick="CloseAddTransferModal">
@@ -2012,24 +2017,21 @@
                             </div>
                             <div class="transfer-modal__body">
                                 <form class="transfer-form" @onsubmit:preventDefault>
-                                    <!-- Transfer Details Section -->
+                                    @if (!string.IsNullOrWhiteSpace(StockTransferApiError))
+                                    {
+                                        <div class="inventory__alert inventory__alert--error">@StockTransferApiError</div>
+                                    }
+
                                     <div class="stock-transfer__form-section">
                                         <h3>Transfer Details</h3>
                                         <div class="inventory__form-row">
                                             <div class="inventory__form-group">
-                                                <label>Transfer Number</label>
-                                                <input type="text" value="Auto-generated" readonly />
-                                            </div>
-                                            <div class="inventory__form-group">
-                                                <label>Date Issued</label>
-                                                <input type="date" @bind="NewTransfer.DateIssued" required />
-                                            </div>
-                                        </div>
-                                        <div class="inventory__form-row">
-                                            <div class="inventory__form-group">
-                                                <label>Issued By (Branch)</label>
-                                                <select value="@NewTransfer.IssuedBy" @onchange="HandleTransferSourceBranchChanged" disabled="@(IsStockTransferBranchApiLoading || IsTransferProductApiLoading)" required>
-                                                    <option value="">Select source branch</option>
+                                                <label>From Branch <span class="inventory__required">*</span></label>
+                                                <select value="@NewTransfer.IssuedBy"
+                                                        @onchange="HandleTransferSourceBranchChanged"
+                                                        disabled="@(IsStockTransferBranchApiLoading || IsTransferProductApiLoading)"
+                                                        required>
+                                                    <option value="">Select origin branch</option>
                                                     @foreach (var branch in StockTransferBranches)
                                                     {
                                                         <option value="@branch.Id">@branch.DisplayName</option>
@@ -2037,7 +2039,7 @@
                                                 </select>
                                             </div>
                                             <div class="inventory__form-group">
-                                                <label>Issued To (Branch)</label>
+                                                <label>To Branch <span class="inventory__required">*</span></label>
                                                 <select @bind="NewTransfer.IssuedTo" disabled="@IsStockTransferBranchApiLoading" required>
                                                     <option value="">Select destination branch</option>
                                                     @foreach (var branch in StockTransferBranches)
@@ -2048,17 +2050,22 @@
                                             </div>
                                         </div>
                                         <div class="inventory__form-group">
-                                            <label>Notes (Optional)</label>
-                                            <textarea @bind="NewTransfer.Notes" rows="3" placeholder="Add any additional notes..."></textarea>
+                                            <label>Remarks <span class="gin-optional">(optional)</span></label>
+                                            <textarea @bind="NewTransfer.Notes" rows="2" placeholder="Remarks"></textarea>
                                         </div>
                                     </div>
 
-                                    <!-- Product Selection Section -->
                                     <div class="stock-transfer__form-section">
-                                        <h3>Select Products</h3>
+                                        <div class="gin-section-heading">
+                                            <div>
+                                                <h3>Add Product</h3>
+                                                <p>Select products, then enter quantity and cost.</p>
+                                            </div>
+                                            <span>@NewTransferTotalSku selected</span>
+                                        </div>
                                         <div class="stock-transfer__product-search">
-                                            <input type="text"
-                                                   placeholder="Search products..."
+                                            <input type="search"
+                                                   placeholder="Search product name or SKU..."
                                                    @bind="TransferProductSearch"
                                                    @bind:event="oninput" />
                                             <i class="bi bi-search"></i>
@@ -2067,66 +2074,92 @@
                                             <table class="stock-transfer__selection-table product-picker-table">
                                                 <thead>
                                                     <tr>
-                                                        <th style="width: 50px;">Select</th>
+                                                        <th style="width: 54px;">Select</th>
                                                         <th class="product-picker-table__image-heading">Image</th>
                                                         <th>Product</th>
-                                                        <th>SKU</th>
-                                                        <th>Available Stock</th>
-                                                        <th>Quantity to Transfer</th>
+                                                        <th>Qty</th>
+                                                        <th>Cost (MYR)</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    @foreach (var product in FilteredTransferProducts)
+                                                    @if (!FilteredTransferProducts.Any())
                                                     {
-                                                        var isSelected = NewTransfer.SelectedProducts.ContainsKey(product.Sku);
-                                                        var isUnavailable = product.StockCount is null || product.StockCount <= 0;
-                                                        <tr class="product-picker-row @(isSelected ? "product-picker-row--selected" : string.Empty) @(isUnavailable ? "product-picker-row--disabled" : string.Empty)"
-                                                            role="checkbox"
-                                                            aria-label="@($"Select {product.ProductName}")"
-                                                            aria-checked="@isSelected"
-                                                            aria-disabled="@isUnavailable"
-                                                            tabindex="@(isUnavailable ? -1 : 0)"
-                                                            @onclick="() => ToggleProductSelection(product)"
-                                                            @onkeydown="args => HandleTransferProductRowKeyDown(args, product)">
-                                                            <td @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
-                                                                <input type="checkbox"
-                                                                       checked="@isSelected"
-                                                                       disabled="@isUnavailable"
-                                                                       title="@GetStockSelectionTitle(product)"
-                                                                       @onchange="() => ToggleProductSelection(product)" />
-                                                            </td>
-                                                            <td class="product-picker-table__image-cell">
-                                                                <img src="@GetProductPickerImage(product)"
-                                                                     alt="@product.ProductName"
-                                                                     loading="lazy" />
-                                                            </td>
-                                                            <td class="product-picker-table__product-cell">
-                                                                <strong>@product.ProductName</strong>
-                                                            </td>
-                                                            <td>@product.Sku</td>
-                                                            <td>@FormatStockCount(product.StockCount) @product.Uom1</td>
-                                                            <td @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
-                                                                @if (isSelected)
-                                                                {
-                                                                    <input type="number"
-                                                                           min="1"
-                                                                           max="@product.StockCount"
-                                                                           @bind="NewTransfer.SelectedProducts[product.Sku]"
-                                                                           class="stock-transfer__quantity-input"
-                                                                           required />
-                                                                }
-                                                                else
-                                                                {
-                                                                    <span class="text-muted">-</span>
-                                                                }
-                                                            </td>
+                                                        <tr>
+                                                            <td colspan="5" class="gin-product-table__empty">No matching products found.</td>
                                                         </tr>
+                                                    }
+                                                    else
+                                                    {
+                                                        @foreach (var product in FilteredTransferProducts)
+                                                        {
+                                                            var isSelected = NewTransfer.SelectedProducts.ContainsKey(product.Sku);
+                                                            var isUnavailable = product.StockCount is null || product.StockCount <= 0;
+                                                            <tr class="product-picker-row @(isSelected ? "product-picker-row--selected" : string.Empty) @(isUnavailable ? "product-picker-row--disabled" : string.Empty)"
+                                                                @onclick="() => ToggleProductSelection(product)">
+                                                                <td @onclick:stopPropagation="true">
+                                                                    <input type="checkbox"
+                                                                           checked="@isSelected"
+                                                                           disabled="@isUnavailable"
+                                                                           title="@GetStockSelectionTitle(product)"
+                                                                           @onchange="() => ToggleProductSelection(product)" />
+                                                                </td>
+                                                                <td class="product-picker-table__image-cell">
+                                                                    <img src="@GetProductPickerImage(product)" alt="@product.ProductName" loading="lazy" />
+                                                                </td>
+                                                                <td class="product-picker-table__product-cell">
+                                                                    <strong>@product.ProductName</strong>
+                                                                    <small>@product.Sku · Stock: @FormatStockCount(product.StockCount) @product.Uom1</small>
+                                                                </td>
+                                                                <td @onclick:stopPropagation="true">
+                                                                    @if (isSelected)
+                                                                    {
+                                                                        <input type="number"
+                                                                               min="1"
+                                                                               max="@product.StockCount"
+                                                                               class="stock-transfer__quantity-input"
+                                                                               @bind="NewTransfer.SelectedProducts[product.Sku]"
+                                                                               @bind:event="oninput" />
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <span class="text-muted">—</span>
+                                                                    }
+                                                                </td>
+                                                                <td @onclick:stopPropagation="true">
+                                                                    @if (isSelected)
+                                                                    {
+                                                                        <input type="number"
+                                                                               min="0"
+                                                                               step="0.01"
+                                                                               class="stock-transfer__quantity-input"
+                                                                               @bind="NewTransfer.SelectedCosts[product.Sku]"
+                                                                               @bind:event="oninput" />
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <span class="text-muted">—</span>
+                                                                    }
+                                                                </td>
+                                                            </tr>
+                                                        }
                                                     }
                                                 </tbody>
                                             </table>
                                         </div>
-                                        <div class="stock-transfer__selection-summary">
-                                            <strong>Selected Products:</strong> @NewTransfer.SelectedProducts.Count
+
+                                        <div class="delivery-order-total summary-card-container">
+                                            <div class="side-by-side summary-line">
+                                                <span class="summary-text">Total SKU</span>
+                                                <span class="summary-value">@NewTransferTotalSku</span>
+                                            </div>
+                                            <div class="side-by-side summary-line">
+                                                <span class="summary-text">Total Quantity</span>
+                                                <span class="summary-value">@NewTransferTotalQuantity</span>
+                                            </div>
+                                            <div class="side-by-side summary-total-line">
+                                                <span class="summary-total-text">Total Cost</span>
+                                                <span class="summary-total-value">MYR @NewTransferTotalCost.ToString("N2")</span>
+                                            </div>
                                         </div>
                                     </div>
                                 </form>
@@ -2134,6 +2167,7 @@
                         </div>
                     </div>
                 }
+
 
                 <!-- Transfer History Modal -->
                 @if (ShowTransferHistory)
