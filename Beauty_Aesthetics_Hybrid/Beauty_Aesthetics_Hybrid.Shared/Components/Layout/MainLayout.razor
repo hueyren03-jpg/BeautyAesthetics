@@ -10,7 +10,7 @@
 @inject AppFeedbackService Feedback
 @inject Microsoft.JSInterop.IJSRuntime JSRuntime
 
-<div class="MainLayout">
+<div class="MainLayout @(isPhoneLayout ? "phone-layout" : string.Empty)">
     @* This is the side bar *@
 
     @* This is the main body *@
@@ -205,6 +205,7 @@
     private string? branchSwitchError;
     private bool isSidebarOpen = false;
     private bool isMobileLayout = true;
+    private bool isPhoneLayout = false;
     private string detectedFormFactor = string.Empty;
 
     protected override void OnInitialized()
@@ -215,6 +216,7 @@
         try
         {
             detectedFormFactor = FormFactor.GetFormFactor() ?? string.Empty;
+            isPhoneLayout = detectedFormFactor.Equals("Phone", StringComparison.OrdinalIgnoreCase);
             var desktopCapable =
                 detectedFormFactor.Equals("Desktop", StringComparison.OrdinalIgnoreCase) ||
                 detectedFormFactor.Equals("Web", StringComparison.OrdinalIgnoreCase);
@@ -225,6 +227,7 @@
         catch
         {
             detectedFormFactor = string.Empty;
+            isPhoneLayout = false;
             isSidebarOpen = false;
             isMobileLayout = true;
         }
