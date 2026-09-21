@@ -124,10 +124,13 @@ public sealed class StockGrnAC
         string id,
         CancellationToken cancellationToken = default)
     {
-        using var request = CreatePostRequest("/api/Doc_Stock_GRN/Delete", new StockGrnLookupDTO
+        using var request = new HttpRequestMessage(HttpMethod.Delete, "/api/Doc_Stock_GRN/Delete")
         {
-            Id = id
-        });
+            Content = JsonContent.Create(
+                new StockGrnLookupDTO { Id = id },
+                mediaType: JsonPatchMediaType,
+                options: JsonOptions)
+        };
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
 
         return await ReadMutationResponseAsync(
