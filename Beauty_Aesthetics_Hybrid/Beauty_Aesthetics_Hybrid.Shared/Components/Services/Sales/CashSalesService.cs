@@ -160,7 +160,6 @@ public sealed class CashSalesService : ICashSalesService
         if (!templateResult.Success || templateResult.Value is null)
         {
             var message = templateResult.ErrorMessage ?? "Unable to initialize a cash sale.";
-            feedback.Error(message, "Sale not created");
             return ApiCallResult<Transaction>.Failure(templateResult.StatusCode, message);
         }
 
@@ -175,7 +174,6 @@ public sealed class CashSalesService : ICashSalesService
         if (!createResult.Success)
         {
             var message = createResult.ErrorMessage ?? "Unable to create the cash sale.";
-            feedback.Error(message, "Sale not created");
             return ApiCallResult<Transaction>.Failure(createResult.StatusCode, message);
         }
 
@@ -189,16 +187,10 @@ public sealed class CashSalesService : ICashSalesService
             if (!paymentResult.Success)
             {
                 var message = paymentResult.ErrorMessage ?? "The sale was created, but its payment could not be saved.";
-                feedback.Warning(message, "Sale created with payment issue");
                 return ApiCallResult<Transaction>.Failure(paymentResult.StatusCode, message);
             }
         }
 
-        feedback.Success(
-            string.IsNullOrWhiteSpace(transaction.InvoiceNumber)
-                ? "Sale completed successfully."
-                : $"Sale {transaction.InvoiceNumber} completed successfully.",
-            "Sale completed");
         return ApiCallResult<Transaction>.Ok(createResult.StatusCode, transaction);
     }
 
@@ -208,7 +200,6 @@ public sealed class CashSalesService : ICashSalesService
         if (!loadResult.Success || loadResult.Value is null)
         {
             var message = loadResult.ErrorMessage ?? "Unable to load the cash sale for editing.";
-            feedback.Error(message, "Sale not updated");
             return ApiCallResult<Transaction>.Failure(loadResult.StatusCode, message);
         }
 
@@ -216,7 +207,6 @@ public sealed class CashSalesService : ICashSalesService
         if (header is null)
         {
             const string message = "Cash sale header was missing.";
-            feedback.Error(message, "Sale not updated");
             return ApiCallResult<Transaction>.Failure(HttpStatusCode.OK, message);
         }
 
@@ -225,7 +215,6 @@ public sealed class CashSalesService : ICashSalesService
         if (!saveResult.Success)
         {
             var message = saveResult.ErrorMessage ?? "Unable to update the cash sale.";
-            feedback.Error(message, "Sale not updated");
             return ApiCallResult<Transaction>.Failure(saveResult.StatusCode, message);
         }
 
@@ -235,16 +224,10 @@ public sealed class CashSalesService : ICashSalesService
             if (!paymentResult.Success)
             {
                 var message = paymentResult.ErrorMessage ?? "The sale was updated, but its payment could not be saved.";
-                feedback.Warning(message, "Sale updated with payment issue");
                 return ApiCallResult<Transaction>.Failure(paymentResult.StatusCode, message);
             }
         }
 
-        feedback.Success(
-            string.IsNullOrWhiteSpace(transaction.InvoiceNumber)
-                ? "Sale updated successfully."
-                : $"Sale {transaction.InvoiceNumber} updated successfully.",
-            "Sale updated");
         return ApiCallResult<Transaction>.Ok(saveResult.StatusCode, transaction);
     }
 
@@ -264,15 +247,9 @@ public sealed class CashSalesService : ICashSalesService
 
         if (result.Success)
         {
-            feedback.Success(
-                string.IsNullOrWhiteSpace(transaction.InvoiceNumber)
-                    ? "Sale voided successfully."
-                    : $"Sale {transaction.InvoiceNumber} voided successfully.",
-                "Sale voided");
         }
         else
         {
-            feedback.Error(result.ErrorMessage ?? "Unable to void the sale.", "Sale not voided");
         }
 
         return result;
