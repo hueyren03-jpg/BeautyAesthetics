@@ -320,14 +320,6 @@
                                placeholder="e.g., single in-clinic session; apply once daily, etc." />
                     </div>
 
-                    @if (_showSuccessMessage)
-                    {
-                        <div class="success-message">
-                            <i class="bi bi-check-circle-fill"></i>
-                            <span>@_successMessage</span>
-                        </div>
-                    }
-
                     <div class="form-actions">
                         @if (ViewModel.IsEditingDrug)
                         {
@@ -589,8 +581,6 @@
     private string _importErrorMessage = string.Empty;
     private bool _showValidationError = false;
     private string _validationErrorMessage = string.Empty;
-    private bool _showSuccessMessage = false;
-    private string _successMessage = string.Empty;
     private bool _showDeleteModal = false;
     private int? _drugToDeleteId = null;
     private string _drugToDeleteName = string.Empty;
@@ -612,7 +602,6 @@
     {
         ViewModel.StartNewDrug();
         _showValidationError = false;
-        _showSuccessMessage = false;
         _mobilePanel = "editor";
         Feedback.Info("Enter the medicine details and save when ready.", "New medicine", 2000);
         StateHasChanged();
@@ -622,7 +611,6 @@
     {
         ViewModel.SelectDrugForEdit(drug);
         _showValidationError = false;
-        _showSuccessMessage = false;
         _mobilePanel = "editor";
         Feedback.Info($"Editing {drug.Name}.", "Edit medicine", 2000);
         StateHasChanged();
@@ -632,7 +620,6 @@
     {
         ViewModel.StartNewDrug();
         _showValidationError = false;
-        _showSuccessMessage = false;
         _mobilePanel = "library";
         Feedback.Info("Medicine changes were not saved.", "Edit cancelled", 1800);
         StateHasChanged();
@@ -642,34 +629,26 @@
     private async Task SaveDrug()
     {
         _showValidationError = false;
-        _showSuccessMessage = false;
         _validationErrorMessage = string.Empty;
-        _successMessage = string.Empty;
 
         try
         {
-            if (ViewModel.IsEditingDrug)
+            var wasEditing = ViewModel.IsEditingDrug;
+
+            if (wasEditing)
             {
                 ViewModel.UpdateDrug();
-                _successMessage = "Drug updated successfully!";
             }
             else
             {
                 ViewModel.CreateDrug();
-                _successMessage = "Drug created successfully!";
             }
 
             Feedback.Success(
-                _successMessage,
-                ViewModel.IsEditingDrug ? "Medicine updated" : "Medicine created");
-            // Show success message
-            _showSuccessMessage = true;
-            _showValidationError = false;
-            StateHasChanged();
+                wasEditing ? "Drug updated successfully!" : "Drug created successfully!",
+                wasEditing ? "Medicine updated" : "Medicine created");
 
-            // Auto-hide success message after 1 second
-            await Task.Delay(1000);
-            _showSuccessMessage = false;
+            _showValidationError = false;
             StateHasChanged();
         }
         catch (InvalidOperationException ex)
@@ -677,7 +656,6 @@
             _showValidationError = true;
             _validationErrorMessage = ex.Message;
             Feedback.Warning(_validationErrorMessage, "Medicine not saved");
-            _showSuccessMessage = false;
             StateHasChanged();
         }
         catch (Exception ex)
@@ -686,7 +664,6 @@
             _showValidationError = true;
             _validationErrorMessage = $"An error occurred: {ex.Message}";
             Feedback.Error(_validationErrorMessage, "Medicine not saved");
-            _showSuccessMessage = false;
             StateHasChanged();
         }
     }
@@ -1080,7 +1057,6 @@
     {
         _showImportStatus = false;
         _showValidationError = false;
-        _showSuccessMessage = false;
         
         var file = e.File;
         if (file == null) return;
