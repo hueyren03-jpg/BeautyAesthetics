@@ -6,6 +6,7 @@
 @using Microsoft.JSInterop
 @using Microsoft.AspNetCore.Components.Web
 @inject IJSRuntime JS
+@inject AppFeedbackService Feedback
 
 <PageTitle>Prescription</PageTitle>
 
@@ -1206,12 +1207,15 @@
             string.IsNullOrEmpty(ViewModel.NewDrugReason))
         {
             _showValidationError = true;
+            Feedback.Warning("Frequency, duration and reason are required before adding the drug.", "Drug not added");
             StateHasChanged();
             return;
         }
 
         _showValidationError = false;
+        var drugName = ViewModel.SelectedDrugToAdd?.Name ?? "Drug";
         ViewModel.AddSelectedDrug();
+        Feedback.Success($"{drugName} added to the prescription.", "Drug added", 2400);
         _mobilePanel = "selected";
         StateHasChanged();
     }
@@ -1224,6 +1228,7 @@
         {
             _statusMessage = prescriptionNumber;
             _isSuccess = false;
+            Feedback.Error(prescriptionNumber, "Prescription not submitted");
             _lastSubmittedPrescription = null;
             _showPrintConfirmationModal = false;
             _showSignatureModal = false;
@@ -1236,6 +1241,7 @@
             
             _statusMessage = $"Prescription {prescriptionNumber} submitted successfully!";
             _isSuccess = true;
+            Feedback.Success(_statusMessage, "Prescription submitted");
             
             // Show signature modal first
             _showSignatureModal = true;
@@ -1287,6 +1293,7 @@
         if (!string.IsNullOrWhiteSpace(_tempSignatureDataUrl))
         {
             _signatureDataUrl = _tempSignatureDataUrl;
+            Feedback.Success("Doctor signature captured successfully.", "Signature saved", 2400);
             _showSignatureModal = false;
             _canvasInitialized = false;
             _tempSignatureDataUrl = string.Empty;
@@ -1294,7 +1301,10 @@
             // Show print confirmation modal after signature is saved
             _showPrintConfirmationModal = true;
         }
-        // If no signature, don't proceed - signature is required
+        if (string.IsNullOrWhiteSpace(_tempSignatureDataUrl))
+        {
+            Feedback.Warning("Add a signature before continuing.", "Signature required");
+        }
         
         StateHasChanged();
     }
@@ -1303,6 +1313,7 @@
     {
         await JS.InvokeVoidAsync("clearSignatureCanvas");
         _tempSignatureDataUrl = string.Empty;
+        Feedback.Info("Signature cleared.", "Signature cleared", 1800);
         StateHasChanged();
     }
     
@@ -1482,6 +1493,7 @@
         _editingPrescriptionType = prescription.Type;
         _editingPrescriptionStatus = prescription.Status;
         _showEditPrescriptionModal = true;
+        Feedback.Info($"Editing prescription {prescription.PrescriptionNumber}.", "Edit prescription", 2200);
         StateHasChanged();
     }
     
@@ -1506,6 +1518,7 @@
         
         _statusMessage = $"Prescription {_editingPrescriptionNumber} updated successfully!";
         _isSuccess = true;
+        Feedback.Success(_statusMessage, "Prescription updated");
         
         CloseEditPrescriptionModal();
         
@@ -1524,6 +1537,7 @@
         ViewModel.RemovePrescription(prescription.Id);
         _statusMessage = $"Prescription {prescription.PrescriptionNumber} deleted successfully!";
         _isSuccess = true;
+        Feedback.Success(_statusMessage, "Prescription deleted");
         
         // Clear message after 3 seconds
         Task.Delay(3000).ContinueWith(_ =>
@@ -1562,6 +1576,7 @@
         _drugSearchForAdd = string.Empty;
         _newPrescriptionDrugs = new();
         _showAddPrescriptionModal = true;
+        Feedback.Info("Add medicines and save when the prescription is ready.", "New prescription", 2200);
         StateHasChanged();
     }
     
@@ -1585,7 +1600,8 @@
         // Check if drug already added
         if (_newPrescriptionDrugs.Any(d => d.Drug?.Id == drug.Id))
         {
-            return; // Already added
+            Feedback.Info($"{drug.Name} is already in this prescription.", "Drug already added", 2000);
+            return;
         }
         
         var editableDrug = new EditableDrugItem
@@ -1607,6 +1623,7 @@
         };
         
         _newPrescriptionDrugs.Add(editableDrug);
+        Feedback.Success($"{drug.Name} added to the new prescription.", "Drug added", 2200);
         _drugSearchForAdd = string.Empty; // Clear search
         StateHasChanged();
     }
@@ -1615,6 +1632,7 @@
     {
         if (string.IsNullOrWhiteSpace(_newCustomDrugName) || string.IsNullOrWhiteSpace(_newCustomDrugCode))
         {
+            Feedback.Warning("Custom drug name and code are required.", "Drug not added");
             return;
         }
         
@@ -1637,6 +1655,7 @@
         };
         
         _newPrescriptionDrugs.Add(editableDrug);
+        Feedback.Success($"{editableDrug.DrugName} added to the new prescription.", "Custom drug added", 2200);
         
         // Clear custom drug fields
         _newCustomDrugName = string.Empty;
@@ -1652,6 +1671,7 @@
     private void RemoveDrugFromNewPrescription(EditableDrugItem drug)
     {
         _newPrescriptionDrugs.Remove(drug);
+        Feedback.Info($"{drug.DrugName} removed from the prescription.", "Drug removed", 1800);
         
         // Re-number remaining drugs
         for (int i = 0; i < _newPrescriptionDrugs.Count; i++)
@@ -1666,6 +1686,7 @@
     {
         if (!_newPrescriptionDrugs.Any())
         {
+            Feedback.Warning("Add at least one drug before saving the prescription.", "Prescription not saved");
             return;
         }
         
@@ -1687,6 +1708,7 @@
         
         _statusMessage = $"Prescription {prescriptionNumber} created successfully!";
         _isSuccess = true;
+        Feedback.Success(_statusMessage, "Prescription created");
         
         CloseAddPrescriptionModal();
         
@@ -1708,6 +1730,7 @@
         var prescriptionHtml = GeneratePrescriptionHTML(_lastSubmittedPrescription);
         
         await JS.InvokeVoidAsync("printPrescription", prescriptionHtml, _lastSubmittedPrescription.PrescriptionNumber);
+        Feedback.Success($"Prescription {_lastSubmittedPrescription.PrescriptionNumber} sent to print.", "Print ready", 2600);
     }
     
     private async Task GeneratePDFPrescription()
@@ -1718,6 +1741,7 @@
         var fileName = $"{_lastSubmittedPrescription.PrescriptionNumber}_Prescription.pdf";
         
         await JS.InvokeVoidAsync("generatePrescriptionPDF", prescriptionHtml, fileName);
+        Feedback.Success($"{fileName} generated successfully.", "PDF generated", 2600);
     }
     
     private string GeneratePrescriptionHTML(Prescription prescription)
