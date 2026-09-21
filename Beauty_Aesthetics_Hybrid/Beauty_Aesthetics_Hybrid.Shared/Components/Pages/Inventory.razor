@@ -5163,7 +5163,10 @@
             _ => ActiveTab
         };
 
-        // Document histories are branch-scoped, so branch IDs must exist first.
+        // GIN, GRN, product balance and transfer history are branch-scoped.
+        // Initialize the persisted/current branch before issuing any inventory API request;
+        // otherwise InventoryBranchId falls back to HQ and valid history can appear empty.
+        await BranchSession.InitializeAsync();
         await LoadStockTransferBranchesAsync();
 
         await Task.WhenAll(
@@ -5653,6 +5656,8 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
                 .Select(ToGRNItem)
                 .Select(item =>
                 {
+                    // LoadProxy is already branch-scoped. Keep the API row even when a
+                    // deployment omits branchID or returns a different branch display value.
                     if (string.IsNullOrWhiteSpace(item.DOCBranch))
                     {
                         item.DOCBranch = InventoryBranchId;
@@ -5660,7 +5665,6 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
 
                     return item;
                 })
-                .Where(item => IsSameBranch(item.DOCBranch, InventoryBranchId))
                 .OrderByDescending(item => item.Date)
                 .ToList();
 
