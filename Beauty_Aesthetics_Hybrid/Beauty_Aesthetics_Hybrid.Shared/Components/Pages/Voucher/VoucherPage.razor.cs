@@ -1,10 +1,13 @@
 using Beauty_Aesthetics_WebPos.Components.ViewModels;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Microsoft.AspNetCore.Components;
 
 namespace Beauty_Aesthetics_WebPos.Components.Pages.Voucher
 {
     public partial class VoucherPage : ComponentBase
     {
+        [Inject] private AppFeedbackService Feedback { get; set; } = default!;
+
         private VoucherPageViewModel VM;
 
         public VoucherPage(VoucherPageViewModel vm)
@@ -22,12 +25,14 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages.Voucher
             if (!string.IsNullOrWhiteSpace(voucherName))
             {
                 var encodedName = Uri.EscapeDataString(voucherName);
+                Feedback.Info($"Opening voucher campaign {voucherName}.", "Voucher details", 2200);
                 NavManager.NavigateTo($"/voucherdetails/{encodedName}");
             }
         }
 
         private void NavigateToAddVoucher()
         {
+            Feedback.Info("Create a new voucher campaign.", "New voucher", 2200);
             NavManager.NavigateTo("/voucherform");
         }
 
@@ -62,6 +67,11 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages.Voucher
             if (confirmed)
             {
                 VM.DeleteVoucher(voucherName);
+                Feedback.Success($"Voucher campaign {voucherName} deleted.", "Voucher deleted");
+            }
+            else
+            {
+                Feedback.Info("Voucher deletion cancelled.", "Delete cancelled", 2000);
             }
         }
 
