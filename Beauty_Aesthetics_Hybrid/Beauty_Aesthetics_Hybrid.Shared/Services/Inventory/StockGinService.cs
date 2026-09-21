@@ -18,7 +18,7 @@ public sealed class StockGinService : IStockGinService
     }
 
     public async Task<ApiCallResult<IReadOnlyList<StockGinViewModel>>> LoadGinsAsync(
-        string branchId = "HQ",
+        string branchId,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(branchId))

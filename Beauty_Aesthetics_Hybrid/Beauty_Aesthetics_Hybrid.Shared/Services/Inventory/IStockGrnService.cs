@@ -6,7 +6,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.Inventory;
 public interface IStockGrnService
 {
     Task<ApiCallResult<IReadOnlyList<StockGrnViewModel>>> LoadGrnsAsync(
-        string branchId = "HQ",
+        string branchId,
         CancellationToken cancellationToken = default);
 
     Task<ApiCallResult<StockGrnViewModel>> LoadGrnAsync(

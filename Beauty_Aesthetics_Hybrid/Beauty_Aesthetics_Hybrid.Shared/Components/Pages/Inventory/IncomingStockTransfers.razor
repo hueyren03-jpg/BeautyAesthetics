@@ -1,0 +1,342 @@
+@page "/inventory/incoming-transfers"
+@namespace Beauty_Aesthetics_WebPos.Components.Pages
+@using Beauty_Aesthetics_WebPos.APIClient.ResultPattern
+@using Beauty_Aesthetics_WebPos.Components.Layout
+@using Beauty_Aesthetics_WebPos.Components.Services.Branches
+@using Beauty_Aesthetics_WebPos.Components.Services.Inventory
+@using Beauty_Aesthetics_WebPos.Components.ViewModels
+@using Microsoft.JSInterop
+@layout MainLayout
+@inject IInventoryPendingAcceptService PendingStockReceiptService
+@inject IBranchSessionService BranchSession
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Incoming Transfers</PageTitle>
+
+<main class="incoming-page">
+    <header class="incoming-header">
+        <button type="button" class="icon-button" title="Back to Stock Transfer" @onclick="ReturnToInventory">
+            <i class="bi bi-arrow-left"></i>
+        </button>
+        <div class="incoming-header__title">
+            <span class="incoming-header__icon"><i class="bi bi-box-arrow-in-down"></i></span>
+            <div>
+                <h1>Incoming Transfers</h1>
+                <p>Review stock sent to this branch, then receive it to complete the stock transfer.</p>
+            </div>
+        </div>
+        <div class="incoming-header__actions">
+            <span class="branch-chip"><i class="bi bi-building"></i> @CurrentBranchName</span>
+            <button type="button" class="refresh-button" @onclick="LoadPendingAsync" disabled="@IsLoading">
+                <i class="bi bi-arrow-clockwise @(IsLoading ? "is-spinning" : string.Empty)"></i>
+                <span>Refresh</span>
+            </button>
+        </div>
+    </header>
+
+    <section class="incoming-summary" aria-label="Incoming stock summary">
+        <div class="summary-item">
+            <span class="summary-item__icon summary-item__icon--blue"><i class="bi bi-files"></i></span>
+            <div><small>Pending receipt</small><strong>@Receipts.Count</strong></div>
+        </div>
+        <div class="summary-item">
+            <span class="summary-item__icon summary-item__icon--teal"><i class="bi bi-box-seam"></i></span>
+            <div><small>Total quantity</small><strong>@Receipts.Sum(item => item.TotalQuantity).ToString("N2")</strong></div>
+        </div>
+        <div class="summary-item">
+            <span class="summary-item__icon summary-item__icon--amber"><i class="bi bi-list-check"></i></span>
+            <div><small>Loaded line items</small><strong>@Receipts.Sum(item => item.Lines.Count)</strong></div>
+        </div>
+    </section>
+
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <div class="page-message page-message--error" role="alert">
+            <i class="bi bi-exclamation-circle"></i><span>@ErrorMessage</span>
+        </div>
+    }
+    @if (!string.IsNullOrWhiteSpace(SuccessMessage))
+    {
+        <div class="page-message page-message--success" role="status">
+            <i class="bi bi-check-circle"></i><span>@SuccessMessage</span>
+            <button type="button" class="message-link" @onclick="ReturnToInventory">View Stock Transfer History</button>
+        </div>
+    }
+
+    <div class="incoming-toolbar">
+        <label class="search-field">
+            <i class="bi bi-search"></i>
+            <input type="search" placeholder="Search document, source branch or remarks" @bind="SearchTerm" @bind:event="oninput" />
+        </label>
+        <span class="result-count">@FilteredReceipts.Count() result@(FilteredReceipts.Count() == 1 ? string.Empty : "s")</span>
+    </div>
+
+    @if (IsLoading && Receipts.Count == 0)
+    {
+        <div class="loading-state"><span class="spinner-border spinner-border-sm"></span> Loading incoming transfers...</div>
+    }
+    else if (!FilteredReceipts.Any())
+    {
+        <section class="empty-state">
+            <span><i class="bi bi-inbox"></i></span>
+            <h2>No incoming transfers</h2>
+            <p>@(string.IsNullOrWhiteSpace(SearchTerm) ? "There is no stock waiting for this branch." : "No incoming transfer matches your search.")</p>
+        </section>
+    }
+    else
+    {
+        <section class="receipt-list">
+            @foreach (var receipt in FilteredReceipts)
+            {
+                <article class="receipt-row">
+                    <button type="button" class="receipt-row__summary" @onclick="() => ToggleDetailsAsync(receipt)">
+                        <span class="receipt-code"><small>TRANSFER</small><strong>@DisplayCode(receipt)</strong></span>
+                        <span class="receipt-field"><small>From</small><strong>@receipt.SourceName</strong></span>
+                        <span class="receipt-field"><small>Date</small><strong>@FormatDate(receipt.FinancialDate)</strong></span>
+                        <span class="receipt-field"><small>Quantity</small><strong>@receipt.TotalQuantity.ToString("N2")</strong></span>
+                        <span class="receipt-field"><small>Status</small><strong class="pending-receipt-status">Pending Receipt</strong></span>
+                        <span class="receipt-field receipt-field--wide"><small>Remarks</small><strong>@DisplayValue(receipt.Remarks)</strong></span>
+                        <i class="bi @(receipt.IsExpanded ? "bi-chevron-up" : "bi-chevron-down")"></i>
+                    </button>
+                    <div class="receipt-row__actions">
+                        <button type="button" class="details-button" @onclick="() => ToggleDetailsAsync(receipt)">
+                            <i class="bi bi-eye"></i><span>@(receipt.IsExpanded ? "Hide" : "Details")</span>
+                        </button>
+                        <button type="button" class="accept-button" disabled="@(ReceivingDocumentId is not null)" @onclick="() => ReceiveAsync(receipt)">
+                            @if (string.Equals(ReceivingDocumentId, receipt.DocumentId, StringComparison.OrdinalIgnoreCase))
+                            {
+                                <span class="spinner-border spinner-border-sm"></span><span>Receiving</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-box-arrow-in-down"></i><span>Receive Transfer</span>
+                            }
+                        </button>
+                    </div>
+
+                    @if (receipt.IsExpanded)
+                    {
+                        <div class="receipt-details">
+                            @if (!receipt.DetailsLoaded)
+                            {
+                                <div class="loading-state"><span class="spinner-border spinner-border-sm"></span> Loading transfer items...</div>
+                            }
+                            else if (receipt.Lines.Count == 0)
+                            {
+                                <p class="receipt-details__empty">No item lines were returned for this transfer.</p>
+                            }
+                            else
+                            {
+                                <div class="line-table-wrap">
+                                    <table class="line-table">
+                                        <thead><tr><th>SKU</th><th>Item</th><th>Batch</th><th class="number-cell">Quantity</th><th class="number-cell">Cost (MYR)</th></tr></thead>
+                                        <tbody>
+                                            @foreach (var line in receipt.Lines)
+                                            {
+                                                <tr>
+                                                    <td>@DisplayValue(line.ItemCode)</td>
+                                                    <td>@DisplayValue(line.ItemName)</td>
+                                                    <td>@DisplayValue(line.BatchNo)</td>
+                                                    <td class="number-cell">@line.Quantity.ToString("N2")</td>
+                                                    <td class="number-cell">@line.TotalCost.ToString("N2")</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                        </div>
+                    }
+                </article>
+            }
+        </section>
+    }
+</main>
+
+@code {
+    private List<PendingStockReceiptViewModel> Receipts { get; set; } = [];
+    private string SearchTerm { get; set; } = string.Empty;
+    private bool IsLoading { get; set; }
+    private string? ErrorMessage { get; set; }
+    private string? SuccessMessage { get; set; }
+    private string? ReceivingDocumentId { get; set; }
+
+    private string CurrentBranchId => string.IsNullOrWhiteSpace(BranchSession.CurrentBranch?.Id)
+        ? string.Empty
+        : BranchSession.CurrentBranch.Id.Trim();
+
+    private string CurrentBranchName => string.IsNullOrWhiteSpace(BranchSession.CurrentBranch?.Name)
+        ? CurrentBranchId
+        : BranchSession.CurrentBranch.Name.Trim();
+
+    private IEnumerable<PendingStockReceiptViewModel> FilteredReceipts => Receipts.Where(receipt =>
+        string.IsNullOrWhiteSpace(SearchTerm)
+        || DisplayCode(receipt).Contains(SearchTerm, StringComparison.OrdinalIgnoreCase)
+        || receipt.SourceName.Contains(SearchTerm, StringComparison.OrdinalIgnoreCase)
+        || receipt.Remarks.Contains(SearchTerm, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await BranchSession.InitializeAsync();
+        await LoadPendingAsync();
+    }
+
+    private async Task LoadPendingAsync()
+    {
+        IsLoading = true;
+        ErrorMessage = null;
+        Receipts = [];
+        try
+        {
+            if (string.IsNullOrWhiteSpace(CurrentBranchId))
+            {
+                ErrorMessage = "Select a working branch before loading incoming transfers.";
+                return;
+            }
+
+            var result = await PendingStockReceiptService.LoadPendingAsync(CurrentBranchId);
+            if (!result.Success || result.Value is null)
+            {
+                ErrorMessage = result.ErrorMessage ?? "Unable to load incoming stock transfers.";
+                return;
+            }
+
+            Receipts = result.Value.ToList();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Unable to load incoming stock transfers. {ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task ToggleDetailsAsync(PendingStockReceiptViewModel receipt)
+    {
+        receipt.IsExpanded = !receipt.IsExpanded;
+        if (!receipt.IsExpanded || receipt.DetailsLoaded)
+        {
+            return;
+        }
+
+        ErrorMessage = null;
+        try
+        {
+            var result = await PendingStockReceiptService.LoadDetailsAsync(receipt.DocumentId);
+            if (!result.Success || result.Value is null)
+            {
+                receipt.IsExpanded = false;
+                ErrorMessage = result.ErrorMessage ?? "Unable to load transfer details.";
+                return;
+            }
+
+            receipt.Lines = result.Value;
+            receipt.DetailsLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            receipt.IsExpanded = false;
+            ErrorMessage = $"Unable to load transfer details. {ex.Message}";
+        }
+    }
+
+    private async Task ReceiveAsync(PendingStockReceiptViewModel receipt)
+    {
+        if (string.IsNullOrWhiteSpace(receipt.DocumentId) || ReceivingDocumentId is not null)
+        {
+            return;
+        }
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>(
+            "confirm",
+            $"Receive transfer {DisplayCode(receipt)} into {CurrentBranchName}? This completes the stock transfer.");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        ErrorMessage = null;
+        SuccessMessage = null;
+        ReceivingDocumentId = receipt.DocumentId;
+        var acceptedDocumentId = receipt.DocumentId;
+        var acceptedDisplayCode = DisplayCode(receipt);
+
+        try
+        {
+            receipt.DestinationBranchId = CurrentBranchId;
+
+            var result = await PendingStockReceiptService.AcceptAsync(receipt);
+            if (!result.Success)
+            {
+                ErrorMessage = result.ErrorMessage ?? "Unable to receive the stock transfer.";
+                return;
+            }
+
+            // AcceptStockIn is the transfer-receipt operation. It does not create a GRN.
+            Receipts.RemoveAll(item => SameDocument(item.DocumentId, acceptedDocumentId));
+            var noLongerPending = await ReconcileReceivedTransferAsync(acceptedDocumentId);
+
+            SuccessMessage = noLongerPending
+                ? $"{acceptedDisplayCode} was received and the stock transfer is completed."
+                : $"{acceptedDisplayCode} was accepted. The pending list may take a moment to refresh.";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Unable to receive the stock transfer. {ex.Message}";
+        }
+        finally
+        {
+            ReceivingDocumentId = null;
+        }
+    }
+
+    private async Task<bool> ReconcileReceivedTransferAsync(string acceptedDocumentId)
+    {
+        var delays = new[] { 0, 400, 800, 1200 };
+        foreach (var delay in delays)
+        {
+            if (delay > 0)
+            {
+                await Task.Delay(delay);
+            }
+
+            ApiCallResult<IReadOnlyList<PendingStockReceiptViewModel>> latest;
+            try
+            {
+                latest = await PendingStockReceiptService.LoadPendingAsync(CurrentBranchId);
+            }
+            catch
+            {
+                continue;
+            }
+            if (!latest.Success || latest.Value is null)
+            {
+                continue;
+            }
+
+            var acceptedStillPending = latest.Value.Any(item => SameDocument(item.DocumentId, acceptedDocumentId));
+            Receipts = latest.Value.Where(item => !SameDocument(item.DocumentId, acceptedDocumentId)).ToList();
+            if (!acceptedStillPending)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void ReturnToInventory() => NavigationManager.NavigateTo("/inventory?tab=TransferOrders");
+
+    private static bool SameDocument(string? left, string? right) =>
+        !string.IsNullOrWhiteSpace(left) &&
+        !string.IsNullOrWhiteSpace(right) &&
+        string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private static string DisplayCode(PendingStockReceiptViewModel receipt) => string.IsNullOrWhiteSpace(receipt.DisplayCode) ? receipt.DocumentId : receipt.DisplayCode;
+    private static string DisplayValue(string? value) => string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();
+    private static string FormatDate(DateTime value) => value.Year <= 1 ? "-" : value.ToString("dd/MM/yyyy");
+}

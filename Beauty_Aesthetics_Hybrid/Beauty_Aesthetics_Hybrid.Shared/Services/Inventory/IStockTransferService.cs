@@ -6,7 +6,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.Inventory;
 public interface IStockTransferService
 {
     Task<ApiCallResult<IReadOnlyList<StockTransferViewModel>>> LoadTransfersAsync(
-        string branchId = "HQ",
+        string branchId,
         CancellationToken cancellationToken = default);
 
     Task<ApiCallResult<StockTransferViewModel>> LoadTransferAsync(

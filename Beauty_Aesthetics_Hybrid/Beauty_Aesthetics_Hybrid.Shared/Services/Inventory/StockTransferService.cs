@@ -18,14 +18,21 @@ public sealed class StockTransferService : IStockTransferService
     }
 
     public async Task<ApiCallResult<IReadOnlyList<StockTransferViewModel>>> LoadTransfersAsync(
-        string branchId = "HQ",
+        string branchId,
         CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(branchId))
+        {
+            return ApiCallResult<IReadOnlyList<StockTransferViewModel>>.Failure(
+                HttpStatusCode.BadRequest,
+                "Select a working branch before loading stock transfer history.");
+        }
+
         // Match SenangRetails: one branch-scoped LoadProxy request. Beauty has no
         // transfer-history date picker, so keep a practical two-year window.
         var result = await stockTransferAC.LoadProxyAsync(new StockTransferProxyRequestDTO
         {
-            BranchID = NormalizeBranchId(branchId),
+            BranchID = branchId.Trim(),
             StartDate = DateTime.Today.AddYears(-2),
             EndDate = DateTime.Today.AddDays(1).AddTicks(-1),
             PageNumber = 1,

@@ -1,0 +1,3446 @@
+@page "/sales"
+@namespace Beauty_Aesthetics_WebPos.Components.Pages
+@using Beauty_Aesthetics_WebPos.Components.Models
+@using Beauty_Aesthetics_WebPos.APIClient.ResultPattern
+@using Microsoft.Extensions.Localization
+@inject IJSRuntime JS
+@using Beauty_Aesthetics_WebPos.Components.Services.Sales
+@using Beauty_Aesthetics_WebPos.Components.Services.Inventory
+@using Beauty_Aesthetics_WebPos.Components.Services.Customers
+@using Beauty_Aesthetics_WebPos.Models.DTOs
+@inject ICashSalesService CashSalesService
+@inject IPendingOrderService PendingOrderService
+@inject IBranchLookupService BranchLookupService
+@inject ICustomerService CustomerService
+@inject IProductInventoryService ProductInventoryService
+@inject ProductImageService ProductImageService
+@inject IServiceItemService ServiceItemService
+@inject IPackageService PackageService
+@inject NavigationManager NavigationManager
+@implements IAsyncDisposable
+@inject IStringLocalizer<Sales> L
+
+<style>
+    /* Hide Blazor Error UI by default */
+    #blazor-error-ui {
+        display: none !important;
+        background: #ffeb3b;
+        bottom: 0;
+        box-shadow: 0 -1px 5px rgba(0,0,0,0.3);
+        padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+        position: fixed;
+        width: 100%;
+        z-index: 1000;
+    }
+
+    /* ==================================== 1. COLOR VARIABLES (THEMING) ==================================== */
+
+    :root { /* Light Mode Defaults */
+        --color-primary: #164ca6;
+        --color-primary-hover: #0F3575;
+        --color-text: #2d3748;
+        --color-text-secondary: #718096;
+        --color-text-contrast: white;
+        --color-background-page: #f7f9fc; /* Main page background (Light Gray) */
+        --color-background-card: #ffffff; /* Card/Component background (White) */
+        --color-border: #e2e8f0;
+        --color-shadow: rgba(0,0,0,0.08); /* Semantic Colors for Dashboard Cards / Status */
+        --color-success: #047857; /* Green for Revenue */
+        --color-info: #1d4ed8; /* Blue for New Clients */
+        --color-warning: #c2410c; /* Orange for Appointments Today */
+        --color-danger: #e53e3e; /* Red for Logout / Alerts */
+    }
+
+    /* ==================================== 2. GLOBAL RESET & TYPOGRAPHY ==================================== */
+
+    body {
+        font-family: 'Inter', sans-serif;
+        color: var(--color-text);
+        background-color: var(--color-background-page);
+        transition: background-color 0.3s, color 0.3s;
+        margin: 0;
+        padding: 0;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+        color: var(--color-text);
+        margin-top: 0;
+    }
+    /* Dashboard specific margin reset */
+
+    h1, h5, p {
+        margin: 0;
+    }
+    /* ==================================== 3. BASE COMPONENTS (Using Variables) ==================================== */
+
+    .card {
+        background: var(--color-background-card);
+        padding: 16px;
+        border-radius: 12px;
+        box-shadow: var(--color-shadow) 0px 2px 4px;
+        border: 1px solid var(--color-border);
+        transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s;
+    }
+
+    .btn {
+        padding: 8px 16px;
+        background: var(--color-primary);
+        color: var(--color-text-contrast);
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: background 0.2s;
+    }
+
+        .btn:hover {
+            background: var(--color-primary-hover);
+        }
+
+    .btn-danger {
+        background: var(--color-danger);
+    }
+
+        .btn-danger:hover {
+            background: color-mix(in srgb, var(--color-danger) 90%, black);
+        }
+
+    .btn-primary {
+        background: var(--color-primary);
+    }
+
+    .input {
+        padding: 8px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--color-border);
+        background-color: var(--color-background-card);
+        color: var(--color-text);
+        width: 100%;
+        box-sizing: border-box;
+        transition: border-color 0.2s, background-color 0.2s;
+    }
+
+        .input:focus {
+            border-color: var(--color-primary);
+            outline: none;
+        }
+    /* Data Table Styles (Using Variables) */
+
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+        .data-table th {
+            padding: 12px 10px;
+            font-weight: 600;
+            text-align: left;
+            background: var(--color-background-card);
+            color: var(--color-text);
+            border-bottom: 2px solid var(--color-border);
+        }
+
+        .data-table td {
+            padding: 10px;
+            border-bottom: 1px solid var(--color-border);
+            color: var(--color-text);
+            background: var(--color-background-card);
+        }
+
+        .data-table tr:hover {
+            background-color: color-mix(in srgb, var(--color-background-card) 95%, var(--color-primary));
+        }
+    /* Utility Class for Text (Used for text on contrasting background) */
+
+    .text-contrast {
+        color: var(--color-text-contrast) !important;
+    }
+    /* ==================================== 4. DASHBOARD LAYOUT & COMPONENTS ==================================== */ /* --- GLOBAL LAYOUT --- */
+
+    .PageWrapper {
+        display: flex;
+        min-height: 100vh;
+    }
+    /* --- MAIN CONTENT AREA (PAGE) --- */
+
+    .page {
+        flex-grow: 1;
+        display: grid;
+        grid-template-rows: 80px 1fr; /* Header height is 80px */
+        min-height: 100vh; /* Initial margin for collapsed sidebar (80px) */
+        margin-left: 80px;
+        transition: margin-left 0.3s ease-in-out;
+        background-color: var(--color-background-page);
+    }
+
+    /* --- HEADER --- */
+
+    .HeaderWrapper { /* Matches the deep blue color gradient */
+        background: linear-gradient(135deg, #0d5cb5 0%, #094a99 100%);
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        padding-right: 2.5rem;
+        z-index: 50;
+    }
+    /* Profile Icon and Dropdown */
+
+    .ProfileIcon {
+        font-size: 24px;
+        color: #ccc;
+        background-color: transparent;
+        padding: 10px;
+        border-radius: 9999px;
+        cursor: pointer;
+    }
+
+    .profile {
+        cursor: pointer;
+        position: relative;
+    }
+    /* Style for the actual dropdown box */
+
+    .ProfileSelection {
+        position: absolute;
+        top: 70px;
+        right: 0;
+        background-color: var(--color-background-card);
+        border: 1px solid var(--color-border);
+        border-radius: 8px;
+        z-index: 1000;
+        transform: translateY(0);
+        opacity: 1;
+        visibility: visible;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        min-width: 240px;
+    }
+
+    .isProfileClose {
+        visibility: hidden;
+        transform: translateY(-15px);
+        opacity: 0;
+    }
+    /* Dropdown content styling */
+
+    .ProfileUserName {
+        font-weight: 600;
+        padding: 10px 20px 0;
+    }
+
+    .ProfileEmail {
+        color: var(--color-text-secondary);
+        font-size: 12px;
+        padding: 0 20px 10px;
+    }
+
+    .ProfileSelectionItemGroup {
+        display: flex;
+        align-items: center;
+        padding: 8px 20px;
+        cursor: pointer;
+        font-size: 14px;
+    }
+
+        .ProfileSelectionItemGroup:hover {
+            background-color: #f7f9fb;
+        }
+
+    .ProfileSelectionIcon {
+        margin-right: 10px;
+        color: var(--color-text-secondary);
+    }
+
+    .ProfileSelectionLogout {
+        padding: 12px 20px;
+        cursor: pointer;
+        border-top: 1px solid var(--color-border);
+        color: var(--color-danger);
+        font-weight: 500;
+        font-size: 14px;
+    }
+
+        .ProfileSelectionLogout:hover {
+            background-color: #fefcbf;
+        }
+
+    /* --- HEADER TITLE --- */
+
+    .DashboardTitleInHeader {
+        color: white;
+        font-size: 1.25rem;
+        font-weight: 600;
+        position: absolute;
+        left: 100px;
+        display: none;
+    }
+    /* --- PAGE CONTENT --- */
+
+    .ContentTitle {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--color-text);
+        margin-bottom: 1.5rem;
+        display: none;
+    }
+
+    .ContentGrid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+    /* --- CARDS (Used on Dashboard) --- */
+
+    .Card { /* Uses base .card properties with slightly different padding/rounding */
+        background-color: var(--color-background-card);
+        padding: 1.5rem;
+        border-radius: 0.75rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+        border: 1px solid var(--color-border);
+    }
+
+    .CardTextLG {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--color-text-secondary);
+    }
+
+    .CardTextXL {
+        font-size: 2.25rem;
+        font-weight: 700;
+        margin-top: 0.5rem;
+    }
+    /* Specific colors (using semantic variables) */
+
+    .TextGreen {
+        color: var(--color-success);
+    }
+
+    .TextBlue {
+        color: var(--color-info);
+    }
+
+    .TextOrange {
+        color: var(--color-warning);
+    }
+    /* Mobile Menu Toggle visibility - Default block on mobile */
+
+    .mobile-menu-toggle {
+        display: block;
+        position: absolute;
+        left: 20px;
+        color: white;
+        font-size: 24px;
+        cursor: pointer;
+    }
+ 
+
+    /* =============================================================
+       COLLAPSIBLE PANELS FOR CUSTOMERS
+       ============================================================= */
+
+    /* VIP Box */
+    .vip-box {
+        margin: 0 0 24px 0;
+        padding: 20px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+        border: 2px solid #fbbf24;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 700;
+        color: #92400e;
+        box-shadow: 0 4px 12px rgba(251, 191, 36, 0.2);
+    }
+
+        .vip-box input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: #f59e0b;
+        }
+
+        .vip-box label {
+            cursor: pointer;
+            margin: 0;
+        }
+
+    /* Collapsible List */
+    .collapsible-list {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    /* Panel Container */
+    .panel {
+        margin-bottom: 16px;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid rgba(0,0,0,0.06);
+        background: var(--card, #fff);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+
+    /* Panel Header - Blue Gradient */
+    .panel-header {
+        padding: 18px 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+        background: linear-gradient(135deg, #0b66ff 0%, #0a4ad6 100%);
+        color: white;
+        font-weight: 600;
+        font-size: 16px;
+        user-select: none;
+        transition: all 0.2s ease;
+    }
+
+        .panel-header:hover {
+            background: linear-gradient(135deg, #0a5ce6 0%, #0939b8 100%);
+        }
+
+        .panel-header strong {
+            color: white;
+            font-weight: 600;
+        }
+
+    /* Chevron Arrow */
+    .chev {
+        font-size: 18px;
+        font-weight: bold;
+        color: white;
+        opacity: 0.9;
+        transition: transform 0.3s ease;
+    }
+
+    .panel-header:hover .chev {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+
+    /* Panel Body - Collapsible Content */
+    .panel-body {
+        max-height: 0;
+        overflow: hidden;
+        padding: 0 24px;
+        background: var(--card, #fff);
+        opacity: 0;
+        transition: max-height 0.4s ease, padding 0.4s ease, opacity 0.4s ease;
+    }
+
+        .panel-body.open {
+            max-height: 5000px;
+            padding: 24px;
+            opacity: 1;
+            overflow: visible;
+            border-top: 1px solid rgba(0,0,0,0.06);
+        }
+
+        /* Form Grid inside Panels */
+        .panel-body .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+            .panel-body .form-grid > div {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+            }
+
+            .panel-body .form-grid label {
+                display: block;
+                font-size: 14px;
+                font-weight: 600;
+                margin-bottom: 4px;
+                color: var(--muted, #6b7280);
+            }
+
+    /* Popup (E-Invoice) */
+    .popup {
+        margin-top: 16px;
+        padding: 20px;
+        background: linear-gradient(135deg, #f8f9fa 0%, #f1f3f4 100%);
+        border-radius: 8px;
+        border: 1px solid rgba(0,0,0,0.06);
+    }
+
+    /* Relationships Headers */
+    .panel-body h4 {
+        margin: 24px 0 12px 0;
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--ebi-deep, #0b66ff);
+        border-bottom: 2px solid var(--ebi-deep, #0b66ff);
+        padding-bottom: 8px;
+    }
+
+        .panel-body h4:first-of-type {
+            margin-top: 0;
+        }
+
+    #blazor-error-ui {
+        display: none;
+        background: lightyellow;
+        bottom: 0;
+        box-shadow: 0 -1px 5px rgba(0,0,0,0.3);
+        padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+        position: fixed;
+        width: 100%;
+        z-index: 1000;
+    }
+
+        #blazor-error-ui .dismiss {
+            cursor: pointer;
+            position: absolute;
+            right: 0.75rem;
+            top: 0.5rem;
+        }
+
+    /* Margin when sidebar is open (320px) */
+
+    .sidebar-open-margin {
+        margin-left: 320px;
+    }
+
+    .content {
+        overflow-y: auto;
+        padding: 24px;
+    }
+
+    /* Sales Dashboard Layout */
+    .sales-dashboard {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+        gap: 24px;
+        margin-top: 24px;
+    }
+
+    .dashboard-card {
+        background: white;
+        border-radius: 16px;
+        padding: 28px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        transition: all 0.3s ease;
+        border: 1px solid #e5e7eb;
+    }
+
+    .dashboard-card:hover {
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+        transform: translateY(-4px);
+    }
+
+    .full-width {
+        grid-column: 1 / -1;
+    }
+
+    .card-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: #1f2937;
+        margin: 0 0 20px 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .card-title::before {
+        content: '';
+        width: 4px;
+        height: 24px;
+        background: linear-gradient(135deg, #0b66ff 0%, #0a4ad6 100%);
+        border-radius: 2px;
+    }
+
+    .transaction-history-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 40px;
+        padding: 0 14px;
+        border: 1px solid #b8d1f3;
+        border-radius: 6px;
+        background: #f7fbff;
+        color: #075bb5;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+    }
+
+    .toolbar-history-link {
+        margin-left: auto;
+    }
+
+    .transaction-history-link:hover {
+        background: #eaf4ff;
+        border-color: #5c9de3;
+        box-shadow: 0 3px 10px rgba(16, 91, 170, 0.14);
+    }
+
+    /* Summary Section */
+    .summary-text {
+        margin-bottom: 24px;
+        padding: 20px;
+        background: linear-gradient(135deg, #f0f7ff 0%, #e0f2fe 100%);
+        border-radius: 12px;
+        border-left: 4px solid #0b66ff;
+    }
+
+    .summary-amount {
+        font-size: 24px;
+        font-weight: 700;
+        color: #0b66ff;
+        margin-bottom: 8px;
+    }
+
+    .summary-rounding {
+        font-size: 14px;
+        color: #6b7280;
+        font-weight: 500;
+    }
+
+    /* Chart Container */
+    .chart-container {
+        position: relative;
+        height: 300px;
+        margin: 20px 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .chart-container canvas {
+        max-height: 100%;
+    }
+
+    /* Legend */
+    .legend {
+        display: flex;
+        gap: 24px;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-top: 20px;
+    }
+
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #4b5563;
+    }
+
+    .legend-dot {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Cash Total */
+    .cash-total {
+        margin-top: 20px;
+        padding: 16px;
+        background: #f9fafb;
+        border-radius: 10px;
+        text-align: center;
+        font-size: 15px;
+        color: #6b7280;
+    }
+
+    .cash-total strong {
+        color: #10b981;
+        font-size: 20px;
+        display: block;
+        margin-top: 8px;
+    }
+
+    /* Status Badges */
+    .status-badge {
+        display: inline-block;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .status-paid {
+        background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+        color: #065f46;
+    }
+
+    .status-pending {
+        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+        color: #92400e;
+    }
+
+    .status-cancelled {
+        background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+        color: #991b1b;
+    }
+
+    .status-voided {
+        background: linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%);
+        color: #374151;
+    }
+
+    /* Empty State */
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #9ca3af;
+        font-size: 16px;
+        font-weight: 500;
+    }
+
+    .empty-state::before {
+        content: "📊";
+        display: block;
+        font-size: 64px;
+        margin-bottom: 16px;
+        opacity: 0.5;
+    }
+
+    .recent-transactions-table {
+        overflow-x: auto;
+    }
+
+    .mobile-transactions-list {
+        display: none;
+    }
+
+    .mobile-transaction-card {
+        background: #ffffff;
+        border-bottom: 1px solid #edf1f7;
+        padding: 16px 0 14px;
+    }
+
+    .mobile-transaction-card:first-child {
+        padding-top: 0;
+    }
+
+    .mobile-transaction-card:last-child {
+        border-bottom: 0;
+        padding-bottom: 0;
+    }
+
+    .mobile-transaction-heading {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+
+    .mobile-transaction-invoice {
+        color: #003f87;
+        font-size: 14px;
+        font-weight: 800;
+        line-height: 20px;
+        letter-spacing: 0;
+    }
+
+    .mobile-transaction-customer {
+        color: #020617;
+        font-size: 16px;
+        font-weight: 800;
+        line-height: 22px;
+    }
+
+    .mobile-transaction-meta {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px 18px;
+        padding-top: 12px;
+        border-top: 1px solid #eef2f7;
+    }
+
+    .mobile-transaction-field {
+        min-width: 0;
+    }
+
+    .mobile-transaction-label {
+        display: block;
+        color: #667085;
+        font-size: 11px;
+        font-weight: 800;
+        line-height: 15px;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+    }
+
+    .mobile-transaction-value {
+        display: block;
+        margin-top: 2px;
+        color: #17233a;
+        font-size: 13px;
+        font-weight: 500;
+        line-height: 18px;
+    }
+
+    .mobile-transaction-value.amount {
+        color: #001f4e;
+        font-size: 14px;
+        font-weight: 800;
+    }
+
+    .mobile-transaction-actions {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 9px;
+        margin-top: 14px;
+    }
+
+    .mobile-transaction-action {
+        height: 33px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #e2e8f0;
+        border-radius: 4px;
+        background: #ffffff;
+        color: #b5bfce;
+        font-size: 15px;
+        cursor: pointer;
+    }
+
+    .mobile-transaction-action.delete {
+        color: #ef4444;
+    }
+
+    .mobile-transaction-action:active {
+        background: #f8fafc;
+        transform: translateY(1px);
+    }
+
+    /* Controls */
+    .controls {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+        gap: 16px;
+        flex-wrap: wrap;
+    }
+
+    .filters {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    /* Modal Styles */
+    .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 999;
+        backdrop-filter: blur(4px);
+        animation: fadeIn 0.2s ease-out;
+    }
+
+    .modal-panel {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 90%;
+        max-width: 600px;
+        max-height: 90vh;
+        overflow-y: auto;
+        z-index: 1000;
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+        animation: slideUp 0.3s ease-out;
+    }
+
+    .modal-header-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 28px 32px;
+        border-bottom: 2px solid #f3f4f6;
+    }
+
+    .modal-header-toolbar h3 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 700;
+        color: #1f2937;
+    }
+
+    .modal-header-toolbar button {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        padding: 0;
+        background: #f3f4f6;
+        color: #6b7280;
+        border: none;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .modal-header-toolbar button:hover {
+        background: #e5e7eb;
+        color: #374151;
+        transform: rotate(90deg);
+    }
+
+    .modal-content {
+        padding: 32px;
+    }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin-bottom: 24px;
+    }
+
+    .form-grid > div {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .form-grid label {
+        font-weight: 600;
+        font-size: 14px;
+        color: #374151;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+        padding-top: 24px;
+        border-top: 2px solid #f3f4f6;
+    }
+
+    /* Animations */
+    @@keyframes fadeIn {
+        from {
+            opacity: 0;
+        }
+        to {
+            opacity: 1;
+        }
+    }
+
+    @@keyframes slideUp {
+        from {
+            opacity: 0;
+            transform: translate(-50%, -45%);
+        }
+        to {
+            opacity: 1;
+            transform: translate(-50%, -50%);
+        }
+    }
+
+    /* Responsive */
+    @@media (max-width: 768px) {
+        .transaction-history-link span {
+            display: none;
+        }
+
+        .transaction-history-link {
+            width: 40px;
+            padding: 0;
+            flex: 0 0 40px;
+        }
+
+        .dashboard-card.recent-transactions-card {
+            padding: 18px 14px;
+            border-radius: 8px;
+        }
+
+        .recent-transactions-card .card-title {
+            margin-bottom: 16px;
+            font-size: 18px;
+            font-weight: 600;
+            color: #001f4e;
+        }
+
+        .recent-transactions-card .card-title::before {
+            width: 4px;
+            height: 18px;
+            border-radius: 3px;
+        }
+
+        .recent-transactions-table {
+            display: none;
+        }
+
+        .mobile-transactions-list {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .mobile-transaction-card .status-badge {
+            padding: 5px 10px;
+            border-radius: 999px;
+            font-size: 10px;
+            line-height: 14px;
+            white-space: nowrap;
+        }
+
+        .sales-dashboard {
+            grid-template-columns: 1fr;
+        }
+
+        .filters {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .controls {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .modal-panel {
+            width: 95%;
+            max-height: 95vh;
+        }
+
+        .modal-content {
+            padding: 20px;
+        }
+
+        .form-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    /* Stats Cards Row */
+    .stats-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+
+    .stat-card {
+        background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
+        border-radius: 12px;
+        padding: 14px 16px;
+        border: 2px solid #e5e7eb;
+        transition: all 0.3s ease;
+    }
+
+    .stat-card:hover {
+        border-color: #0b66ff;
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(11, 102, 255, 0.15);
+    }
+
+    .stat-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 4px;
+    }
+
+    .stat-value {
+        font-size: 20px;
+        font-weight: 800;
+        color: #1f2937;
+        line-height: 1;
+    }
+
+    .stat-change {
+        font-size: 11px;
+        font-weight: 600;
+        margin-top: 6px;
+        display: inline-block;
+        padding: 3px 6px;
+        border-radius: 4px;
+    }
+
+    .stat-change.positive {
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    .stat-change.negative {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .stat-change.neutral {
+        background: #e5e7eb;
+        color: #4b5563;
+    }
+
+    /* Transaction Detail Modal */
+    .detail-modal {
+        width: 90%;
+        max-width: 700px;
+    }
+
+    .detail-section {
+        margin-bottom: 24px;
+        padding-bottom: 24px;
+        border-bottom: 2px solid #f3f4f6;
+    }
+
+    .detail-section:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+        padding-bottom: 0;
+    }
+
+    .detail-section h4 {
+        font-size: 16px;
+        font-weight: 700;
+        color: #1f2937;
+        margin: 0 0 16px 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .detail-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 16px;
+    }
+
+    .detail-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .detail-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .detail-value {
+        font-size: 15px;
+        font-weight: 600;
+        color: #1f2937;
+    }
+
+    .detail-value.highlight {
+        font-size: 20px;
+        color: #0b66ff;
+    }
+
+    .items-list {
+        background: #f9fafb;
+        border-radius: 10px;
+        padding: 16px;
+    }
+
+    .item-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 0;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .item-row:last-child {
+        border-bottom: none;
+    }
+
+    .item-name {
+        font-weight: 600;
+        color: #1f2937;
+    }
+
+    .item-details {
+        font-size: 13px;
+        color: #6b7280;
+        margin-top: 4px;
+    }
+
+    .item-price {
+        font-weight: 700;
+        color: #10b981;
+        font-size: 15px;
+    }
+
+    .total-section {
+        background: linear-gradient(135deg, #f0f7ff 0%, #e0f2fe 100%);
+        border-radius: 12px;
+        padding: 20px;
+        margin-top: 20px;
+    }
+
+    .total-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        font-size: 15px;
+    }    .total-row.final {
+        font-size: 22px;
+        font-weight: 800;
+        color: #0b66ff;
+        padding-top: 16px;
+        margin-top: 12px;
+        border-top: 2px solid #0b66ff;
+    }
+
+    .toolbar-pending-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 20px;
+        height: 20px;
+        padding: 0 6px;
+        background: #f59e0b;
+        color: #fff;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        margin-left: 6px;
+    }
+</style>
+
+<div class="sales-header">
+    <h3 class="page-title">@L["Title_SalesDashboard"]</h3>
+    <div class="filters-row">
+        <input type="date" @bind="startDate" class="input date-input" max="@endDate.ToString("yyyy-MM-dd")" onclick="this.showPicker()" />
+        <span class="date-separator">@L["Label_To"]</span>
+        <input type="date" @bind="endDate" class="input date-input" min="@startDate.ToString("yyyy-MM-dd")" onclick="this.showPicker()" />
+        <select @bind="selectedOutlet" @bind:after="FilterByBranch" class="input outlet-select">
+            <option value="">@L["Opt_AllOutlets"]</option>
+            @foreach (var branch in branches)
+            {
+                <option value="@branch.Id">@branch.Name</option>
+            }
+        </select>
+        <button class="btn apply-btn" @onclick="ApplyFilters">@L["Btn_Apply"]</button>
+        <button class="btn new-sale-btn" @onclick="OpenNewSalePage">
+            <i class="bi bi-plus-lg"></i> @L["Btn_NewSale"]
+            @if (PendingOrderService.GetAll().Count > 0)
+            {
+                <span class="toolbar-pending-badge" title="Pending Orders">@PendingOrderService.GetAll().Count</span>
+            }
+        </button>
+        <button type="button" class="transaction-history-link toolbar-history-link" @onclick="OpenTransactionHistory">
+            <i class="bi bi-clock-history"></i>
+            <span>Transaction History</span>
+        </button>
+    </div>
+</div>
+
+<div class="stats-row">
+    <div class="stat-card">
+        <div class="stat-label">@L["Stat_TotalSales"]</div>
+        <div class="stat-value">MYR @totalSales.ToString("N2")</div>
+        <span class="stat-change @ChangeClass(totalSales, previousTotalSales)">@FormatChange(totalSales, previousTotalSales)</span>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">@L["Stat_Transactions"]</div>
+        <div class="stat-value">@recentTransactions.Count</div>
+        <span class="stat-change @ChangeClass(recentTransactions.Count, previousTransactionCount)">@FormatChange(recentTransactions.Count, previousTransactionCount)</span>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">@L["Stat_AvgSale"]</div>
+        <div class="stat-value">MYR @((recentTransactions.Any() ? recentTransactions.Average(t => t.Amount) : 0).ToString("N2"))</div>
+        <span class="stat-change @ChangeClass(summary.AverageSale, previousAverageSale)">@FormatChange(summary.AverageSale, previousAverageSale)</span>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">@L["Stat_CashMovement"]</div>
+        <div class="stat-value">MYR @cashMovementAmount.ToString("N2")</div>
+        <span class="stat-change @ChangeClass(cashMovementAmount, previousCashMovement)">@FormatChange(cashMovementAmount, previousCashMovement)</span>
+    </div>
+</div>
+
+<div class="sales-dashboard">
+    <div class="card dashboard-card">
+        <h3 class="card-title">@L["Title_TransactionBreakdown"]</h3>
+        <div class="summary-text">
+            <div class="summary-amount">MYR @totalSales.ToString("N2")</div>
+            <div class="summary-rounding">@L["Label_Rounding"]: MYR @rounding.ToString("N2")</div>
+        </div>
+        <div class="chart-container">
+            <canvas id="transactionPieChart"></canvas>
+        </div>
+        <div class="legend">
+            @for (var index = 0; index < transactionData.Count; index++)
+            {
+                var item = transactionData[index];
+                <div class="legend-item">
+                    <span class="legend-dot" style="background-color: @ChartColor(index);"></span>
+                    <span>@item.Percentage.ToString("0")% @item.Category</span>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="card dashboard-card">
+        <h3 class="card-title">@L["Title_CashFlowSummary"]</h3>
+        <div class="chart-container">
+            <canvas id="cashFlowBarChart"></canvas>
+        </div>
+        <div class="cash-total">
+            @L["Label_CashMovementSale"]
+            <strong>MYR @cashMovementAmount.ToString("N2")</strong>
+        </div>
+    </div>
+
+    <div class="card dashboard-card full-width recent-transactions-card">
+        <h3 class="card-title">@L["Title_RecentTransactions"]</h3>
+        @if (RecentTransactions.Any())
+        {
+            <div class="recent-transactions-table">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>@L["Col_Date"]</th>
+                            <th>@L["Col_Invoice"]</th>
+                            <th>@L["Col_Customer"]</th>
+                            <th>@L["Col_Type"]</th>
+                            <th>@L["Col_Items"]</th>
+                            <th>@L["Col_Amount"]</th>
+                            <th>@L["Col_Payment"]</th>
+                            <th>@L["Col_Status"]</th>
+                            <th>@L["Col_Actions"]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var t in RecentTransactions)
+                        {
+                            <tr>
+                                <td>@t.Date.ToString("dd/MM/yyyy")</td>
+                                <td>@t.InvoiceNumber</td>
+                                <td>@t.CustomerName</td>
+                                <td>@t.Type</td>
+                                <td>@t.ItemCount</td>
+                                <td>MYR @t.Amount.ToString("N2")</td>
+                                <td>@t.PaymentMethod</td>
+                                <td><span class="status-badge status-@t.Status.ToLower()">@L[$"Status_{t.Status}"]</span></td>
+                                <td class="action-buttons">
+                                    <button class="btn-action btn-view" @onclick="() => ViewTransactionDetail(t)" title="@L["Tip_View"]"><i class="bi bi-eye"></i></button>
+                                    <button class="btn-action btn-edit" @onclick="() => EditTransaction(t)" title="@L["Tip_Edit"]"><i class="bi bi-pencil"></i></button>
+                                    <button class="btn-action btn-delete" @onclick="() => ShowCancelModal(t)" title="@L["Tip_Delete"]"><i class="bi bi-trash"></i></button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="mobile-transactions-list">
+                @foreach (var t in RecentTransactions)
+                {
+                    <article class="mobile-transaction-card">
+                        <div class="mobile-transaction-heading">
+                            <div>
+                                <div class="mobile-transaction-invoice">@t.InvoiceNumber</div>
+                                <div class="mobile-transaction-customer">@t.CustomerName</div>
+                            </div>
+                            <span class="status-badge status-@t.Status.ToLower()">@L[$"Status_{t.Status}"]</span>
+                        </div>
+
+                        <div class="mobile-transaction-meta">
+                            <div class="mobile-transaction-field">
+                                <span class="mobile-transaction-label">@L["Col_Date"]</span>
+                                <span class="mobile-transaction-value">@t.Date.ToString("dd/MM/yyyy")</span>
+                            </div>
+                            <div class="mobile-transaction-field">
+                                <span class="mobile-transaction-label">@L["Col_Type"]</span>
+                                <span class="mobile-transaction-value">@t.Type</span>
+                            </div>
+                            <div class="mobile-transaction-field">
+                                <span class="mobile-transaction-label">@L["Col_Payment"]</span>
+                                <span class="mobile-transaction-value">@t.PaymentMethod</span>
+                            </div>
+                            <div class="mobile-transaction-field">
+                                <span class="mobile-transaction-label">@L["Col_Amount"]</span>
+                                <span class="mobile-transaction-value amount">MYR @t.Amount.ToString("N2")</span>
+                            </div>
+                        </div>
+
+                        <div class="mobile-transaction-actions">
+                            <button class="mobile-transaction-action" @onclick="() => ViewTransactionDetail(t)" title="@L["Tip_View"]" aria-label="@L["Tip_View"]">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                            <button class="mobile-transaction-action" @onclick="() => EditTransaction(t)" title="@L["Tip_Edit"]" aria-label="@L["Tip_Edit"]">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="mobile-transaction-action delete" @onclick="() => ShowCancelModal(t)" title="@L["Tip_Delete"]" aria-label="@L["Tip_Delete"]">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="empty-state">@L["Msg_NoTransactions"]</div>
+        }
+    </div>
+</div>
+
+@if (showNewSaleModal)
+{
+    <div class="modal-backdrop pos-sale-backdrop"></div>
+    <div class="pos-sale-shell step-@newSaleStep @(showNewSaleReceipt ? "receipt" : string.Empty)" role="dialog" aria-modal="false">
+        <header class="pos-sale-header">
+            <div class="pos-sale-title">
+                <span class="pos-sale-icon"><i class="bi bi-bag-plus"></i></span>
+                <div>
+                    <h3>@L["Title_NewSale"]</h3>
+                    <p>Build cart, collect payment, then save the transaction.</p>
+                </div>
+            </div>
+            <button class="btn-close-modal pos-close" @onclick="HideNewSale" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+        </header>
+
+        <div class="pos-stepper" aria-label="Sale progress">
+            <button type="button" class="pos-step @(newSaleStep == 1 ? "active" : newSaleStep > 1 ? "complete" : "")" @onclick="() => SetNewSaleStep(1)">
+                <span>@(newSaleStep > 1 ? "✓" : "1")</span> Customer
+            </button>
+            <button type="button" class="pos-step @(newSaleStep == 2 ? "active" : newSaleStep > 2 ? "complete" : "")" @onclick="() => SetNewSaleStep(2)" disabled="@(newSaleStep < 2)">
+                <span>@(newSaleStep > 2 ? "✓" : "2")</span> Cart
+            </button>
+            <button type="button" class="pos-step @(newSaleStep == 3 ? "active" : newSaleStep > 3 ? "complete" : "")" @onclick="() => SetNewSaleStep(3)" disabled="@(newSaleStep < 3)">
+                <span>@(newSaleStep > 3 ? "✓" : "3")</span> Payment
+            </button>
+            <button type="button" class="pos-step @(newSaleStep == 4 ? "active" : "")" disabled="@(!showNewSaleReceipt)">
+                <span>4</span> Receipt
+            </button>
+        </div>
+
+        @if (showNewSaleReceipt && savedNewSale is not null)
+        {
+            <section class="pos-receipt-state">
+                <div class="pos-receipt-icon"><i class="bi bi-check2-circle"></i></div>
+                <h4>Sale Saved</h4>
+                <p class="pos-receipt-number">@savedNewSale.InvoiceNumber</p>
+                <span class="pos-receipt-total-label">Total paid</span>
+                <strong>MYR @savedNewSale.Amount.ToString("N2")</strong>
+                <div class="pos-receipt-summary">
+                    <div>
+                        <span>Customer</span>
+                        <strong>@(string.IsNullOrWhiteSpace(savedNewSale.CustomerName) ? "Walk-in customer" : savedNewSale.CustomerName)</strong>
+                    </div>
+                    <div>
+                        <span>Payment</span>
+                        <strong>@(string.IsNullOrWhiteSpace(savedNewSale.PaymentMethod) ? "-" : savedNewSale.PaymentMethod)</strong>
+                    </div>
+                    <div>
+                        <span>Amount received</span>
+                        <strong>MYR @newSalePaidAmount.ToString("N2")</strong>
+                    </div>
+                    <div class="change">
+                        <span>Change returned</span>
+                        <strong>MYR @savedSaleChange.ToString("N2")</strong>
+                    </div>
+                    <div>
+                        <span>Date</span>
+                        <strong>@savedNewSale.Date.ToString("dd/MM/yyyy")</strong>
+                    </div>
+                    <div>
+                        <span>Items</span>
+                        <strong>@savedNewSale.Items.Sum(item => Math.Max(1, item.Quantity))</strong>
+                    </div>
+                </div>
+                <div class="pos-receipt-actions">
+                    <button class="btn btn-cancel" @onclick="HideNewSale">Close</button>
+                    <button class="btn pos-print-receipt" @onclick="() => PrintReceipt(savedNewSale, newSalePaidAmount)">
+                        <i class="bi bi-printer"></i> Print Receipt
+                    </button>
+                    <button class="btn btn-primary" @onclick="ShowNewSale"><i class="bi bi-plus-lg"></i> New Sale</button>
+                </div>
+            </section>
+        }
+        else
+        {
+            <div class="pos-sale-body step-@newSaleStep">
+                <section class="pos-workspace">
+                    @if (newSaleStep == 1)
+                    {
+                    <div class="pos-step-intro">
+                        <span class="pos-step-intro-icon"><i class="bi bi-person-check"></i></span>
+                        <div>
+                            <span class="pos-step-kicker">Step 1 of 3</span>
+                            <h4>Who is this sale for?</h4>
+                            <p>Select a customer and confirm where the sale is being made.</p>
+                        </div>
+                    </div>
+                    <div class="pos-section-card pos-customer-section">
+                        <div class="pos-section-heading">
+                            <span><i class="bi bi-person-vcard"></i></span>
+                            <div>
+                                <h4>Customer</h4>
+                                <p>Select the customer for this receipt.</p>
+                            </div>
+                        </div>
+                        <div class="pos-form-grid two">
+                            <label>
+                                Customer
+                                <select class="input" @bind="newSale.AccountId" @bind:after="ApplyNewSaleCustomerSelection">
+                                    <option value="">Select customer</option>
+                                    @foreach (var customer in customerOptions)
+                                    {
+                                        <option value="@customer.SystemID">@CustomerOptionLabel(customer)</option>
+                                    }
+                                </select>
+                            </label>
+                            <label>
+                                Date
+                                <input type="date" class="input" @bind="newSale.Date" />
+                            </label>
+                            <label>
+                                Branch
+                                <select class="input" @bind="newSale.BranchId" @bind:after="UpdateNewSaleTotals">
+                                    <option value="">@L["Opt_SelectOutlet"]</option>
+                                    @foreach (var branch in branches)
+                                    {
+                                        <option value="@branch.Id">@branch.Name</option>
+                                    }
+                                </select>
+                            </label>
+                            <label>
+                                Reference
+                                <input class="input" @bind="newSale.ReferenceNumber" placeholder="Optional receipt reference" />
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="pos-step-actions">
+                        <button class="btn btn-cancel" @onclick="HideNewSale">Cancel</button>
+                        <button class="btn btn-primary pos-next-btn" @onclick="ContinueFromCustomerStep">
+                            Continue to Cart <i class="bi bi-arrow-right"></i>
+                        </button>
+                    </div>
+                    }
+
+                    @if (newSaleStep == 2)
+                    {
+                    <div class="pos-step-intro">
+                        <span class="pos-step-intro-icon cart"><i class="bi bi-cart3"></i></span>
+                        <div>
+                            <span class="pos-step-kicker">Step 2 of 3</span>
+                            <h4>Build the cart</h4>
+                            <p>Choose the services, products, or packages for this sale.</p>
+                        </div>
+                    </div>
+                    <div class="pos-cart-workspace-grid">
+                    <div class="pos-section-card pos-catalog-panel">
+                        <div class="pos-section-heading">
+                            <span><i class="bi bi-cart3"></i></span>
+                            <div>
+                                <h4>Choose an item</h4>
+                                <p>Select an available service, product, or package.</p>
+                            </div>
+                        </div>
+                        <div class="pos-catalog-toolbar">
+                            <div class="pos-type-tabs" role="tablist" aria-label="Item type">
+                                @foreach (var type in SaleItemTypes)
+                                {
+                                    <button type="button"
+                                            class="pos-type-tab @(string.Equals(selectedSaleItemType, type, StringComparison.OrdinalIgnoreCase) ? "active" : "")"
+                                            @onclick="() => SelectSaleItemType(type)">
+                                        <i class="bi @SaleItemTypeIcon(type)"></i>
+                                        <span>@type</span>
+                                    </button>
+                                }
+                            </div>
+                            <label class="pos-catalog-search">
+                                <i class="bi bi-search"></i>
+                                <input value="@saleCatalogSearch" @oninput="UpdateSaleCatalogSearch" placeholder="Search name or SKU" aria-label="Search sale items" />
+                            </label>
+                        </div>
+
+                        @if (isCatalogLoading)
+                        {
+                            <div class="pos-catalog-message"><span class="spinner-border spinner-border-sm"></span> Loading available items...</div>
+                        }
+                        else if (!FilteredSaleCatalogItems.Any())
+                        {
+                            <div class="pos-catalog-message"><i class="bi bi-search"></i> No matching items found.</div>
+                        }
+                        else
+                        {
+                            <div class="pos-catalog-grid">
+                                @foreach (var item in FilteredSaleCatalogItems)
+                                {
+                                    <article class="pos-catalog-card @(selectedCatalogItemId == item.Id ? "selected" : "")">
+                                        <button type="button"
+                                            class="pos-catalog-select"
+                                            aria-label="Select @item.Name"
+                                            @onclick="() => SelectSaleCatalogItem(item.Id)">
+                                            <img src="@item.ImageUrl" alt="" class="pos-catalog-image" />
+                                            <span class="pos-catalog-card-body">
+                                                <span class="pos-catalog-type">@item.Type</span>
+                                                <strong>@item.Name</strong>
+                                                <small>@item.Sku</small>
+                                                <b>MYR @item.Price.ToString("N2")</b>
+                                            </span>
+                                        </button>
+                                        @if (selectedCatalogItemId == item.Id)
+                                        {
+                                            <span class="pos-catalog-check"><i class="bi bi-check-lg"></i></span>
+                                        }
+                                        <button type="button"
+                                            class="pos-catalog-quick-add"
+                                            title="Add @item.Name to cart"
+                                            @onclick="() => AddCatalogItemToSale(item)">
+                                            <i class="bi bi-cart-plus"></i>
+                                            <span>Add to cart</span>
+                                        </button>
+                                    </article>
+                                }
+                            </div>
+                        }
+
+                        @if (SelectedSaleCatalogItem is not null)
+                        {
+                            <div class="pos-selected-item-bar">
+                                <div class="pos-selected-item-summary">
+                                    <img src="@SelectedSaleCatalogItem.ImageUrl" alt="" />
+                                    <div>
+                                        <span>Selected item</span>
+                                        <strong>@SelectedSaleCatalogItem.Name</strong>
+                                        <small>MYR @SelectedSaleCatalogItem.Price.ToString("N2") each</small>
+                                    </div>
+                                </div>
+                                <label>Qty<input type="number" class="input" @bind="newSaleItemDraft.Quantity" min="1" step="1" /></label>
+                                <label>Discount<input type="number" class="input" @bind="newSaleItemDraft.Discount" min="0" step="0.01" /></label>
+                                <button type="button" class="btn pos-add-item" @onclick="AddDraftItemToSale">
+                                    <i class="bi bi-cart-plus"></i> Add to cart
+                                </button>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="pos-section-card pos-cart-panel @(isMobileCartOpen ? "mobile-open" : null)">
+                        <div class="pos-section-heading compact">
+                            <span><i class="bi bi-receipt"></i></span>
+                            <div>
+                                <h4>Your Cart</h4>
+                                <p>@newSale.Items.Sum(item => item.Quantity) item(s) in @newSale.Items.Count line(s)</p>
+                            </div>
+                            <div class="pos-cart-header-actions">
+                                <button type="button" class="pos-clear-cart" @onclick="ClearNewSaleCart" disabled="@(!newSale.Items.Any())">
+                                    <i class="bi bi-trash3"></i><span>Clear Cart</span>
+                                </button>
+                                <button type="button" class="pos-mobile-sheet-close" aria-label="Back to items" @onclick="CloseMobileCart">
+                                    <i class="bi bi-arrow-left"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        @if (newSale.Items.Any())
+                        {
+                            <div class="pos-cart-list">
+                                @foreach (var item in newSale.Items)
+                                {
+                                    <article class="pos-cart-row">
+                                        <img src="@CartItemImage(item)" alt="" class="pos-cart-thumb" />
+                                        <div class="pos-cart-main">
+                                            <strong>@item.Name</strong>
+                                            <span>@item.Category • Qty @item.Quantity • MYR @item.UnitPrice.ToString("N2")</span>
+                                        </div>
+                                        <div class="pos-cart-amount">
+                                            <strong>MYR @item.TotalPrice.ToString("N2")</strong>
+                                            @if (item.Discount > 0)
+                                            {
+                                                <span>- MYR @item.Discount.ToString("N2") discount</span>
+                                            }
+                                        </div>
+                                        <button class="pos-remove-item" @onclick="() => RemoveNewSaleItem(item)" title="Remove item">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </article>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="pos-empty-cart">
+                                <i class="bi bi-basket"></i>
+                                <strong>Your cart is empty</strong>
+                                <span>Add at least one item to continue.</span>
+                            </div>
+                        }
+                        <footer class="pos-cart-totals">
+                            <div><span>Subtotal</span><strong>MYR @NewSaleSubtotal.ToString("N2")</strong></div>
+                            @if (NewSaleDiscount > 0)
+                            {
+                                <div class="discount"><span>Discount</span><strong>- MYR @NewSaleDiscount.ToString("N2")</strong></div>
+                            }
+                            <div class="total"><span>Cart total</span><strong>MYR @NewSaleTotal.ToString("N2")</strong></div>
+                        </footer>
+                        <div class="pos-mobile-cart-page-actions">
+                            <button type="button" class="pos-mobile-cart-continue" @onclick="CloseMobileCart">
+                                <i class="bi bi-arrow-left"></i><span>Continue shopping</span>
+                            </button>
+                            <button type="button" class="pos-mobile-proceed" @onclick="ContinueFromCartStep" disabled="@(!newSale.Items.Any())">
+                                Continue to Payment <i class="bi bi-arrow-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                    </div>
+
+                    <div class="pos-step-actions pos-cart-desktop-actions">
+                        <button class="btn btn-cancel" @onclick="() => SetNewSaleStep(1)"><i class="bi bi-arrow-left"></i> Back</button>
+                        <button class="btn btn-primary pos-next-btn" @onclick="ContinueFromCartStep">
+                            Continue to Payment <i class="bi bi-arrow-right"></i>
+                        </button>
+                    </div>
+                    <div class="pos-mobile-checkout-bar" role="region" aria-label="Cart summary">
+                        <button type="button" class="pos-mobile-cart-summary" @onclick="OpenMobileCart">
+                            <span class="pos-mobile-cart-icon"><i class="bi bi-bag"></i><b>@newSale.Items.Sum(item => item.Quantity)</b></span>
+                            <span><small>@newSale.Items.Count item line(s)</small><strong>MYR @NewSaleTotal.ToString("N2")</strong></span>
+                        </button>
+                        <button type="button" class="pos-mobile-proceed" @onclick="ContinueFromCartStep" disabled="@(!newSale.Items.Any())">
+                            Proceed <i class="bi bi-arrow-right"></i>
+                        </button>
+                    </div>
+                    }
+
+                    @if (newSaleStep == 3)
+                    {
+                    <div class="pos-step-intro">
+                        <span class="pos-step-intro-icon review"><i class="bi bi-clipboard-check"></i></span>
+                        <div>
+                            <span class="pos-step-kicker">Review order</span>
+                            <h4>Confirm selected items</h4>
+                            <p>Check the customer and cart before collecting payment.</p>
+                        </div>
+                    </div>
+                    <section class="pos-review-customer">
+                        <span class="pos-review-avatar"><i class="bi bi-person"></i></span>
+                        <div>
+                            <small>Customer</small>
+                            <strong>@newSale.CustomerName</strong>
+                            <span>@(string.IsNullOrWhiteSpace(newSale.CustomerContact) ? "No contact number" : newSale.CustomerContact)</span>
+                        </div>
+                        <div class="pos-review-meta">
+                            <small>Sale date</small>
+                            <strong>@newSale.Date.ToString("dd/MM/yyyy")</strong>
+                            <span>@newSale.Branch</span>
+                        </div>
+                    </section>
+                    <section class="pos-review-items">
+                        <header>
+                            <div>
+                                <h4>Selected items</h4>
+                                <p>@newSale.Items.Count line(s), @newSale.Items.Sum(item => item.Quantity) item(s)</p>
+                            </div>
+                            <button type="button" class="btn btn-cancel" @onclick="() => SetNewSaleStep(2)"><i class="bi bi-pencil"></i> Edit cart</button>
+                        </header>
+                        <div class="pos-review-list">
+                            @foreach (var item in newSale.Items)
+                            {
+                                <article class="pos-review-item">
+                                    <img src="@CartItemImage(item)" alt="" />
+                                    <div class="pos-review-item-main">
+                                        <span>@item.Category</span>
+                                        <strong>@item.Name</strong>
+                                        <small>Qty @item.Quantity at MYR @item.UnitPrice.ToString("N2")</small>
+                                    </div>
+                                    <div class="pos-review-item-price">
+                                        <strong>MYR @item.TotalPrice.ToString("N2")</strong>
+                                        @if (item.Discount > 0)
+                                        {
+                                            <small>Includes MYR @item.Discount.ToString("N2") discount</small>
+                                        }
+                                    </div>
+                                </article>
+                            }
+                        </div>
+                    </section>
+                    }
+                </section>
+
+                @if (newSaleStep == 3)
+                {
+                <aside class="pos-summary-panel">
+                    <div class="pos-step-intro compact">
+                        <span class="pos-step-intro-icon payment"><i class="bi bi-credit-card"></i></span>
+                        <div>
+                            <span class="pos-step-kicker">Step 3 of 3</span>
+                            <h4>Collect payment</h4>
+                            <p>Confirm the method and amount received.</p>
+                        </div>
+                    </div>
+                    <div class="pos-summary-card">
+                        <h4>Payment</h4>
+                        <div class="pos-payment-method-field">
+                            <span class="pos-payment-label">Method</span>
+                            @if (paymentTypes.Count == 0)
+                            {
+                                <div class="pos-payment-method-empty">
+                                    <i class="bi bi-credit-card"></i>
+                                    <span>No payment methods available.</span>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="pos-payment-methods" role="radiogroup" aria-label="Payment method">
+                                    @foreach (var payment in paymentTypes)
+                                    {
+                                        <button type="button"
+                                                class="pos-payment-method @(newSale.PaymentTypeId == payment.POSPaymentTypeID ? "selected" : null)"
+                                                role="radio"
+                                                aria-checked="@(newSale.PaymentTypeId == payment.POSPaymentTypeID)"
+                                                title="@payment.POSPaymentTypeName"
+                                                @onclick="() => SelectPaymentMethod(payment.POSPaymentTypeID)">
+                                            <span class="pos-payment-icon">
+                                                <i class="bi @PaymentMethodIcon(payment.POSPaymentTypeName)"></i>
+                                            </span>
+                                            <span class="pos-payment-name">@payment.POSPaymentTypeName</span>
+                                            @if (newSale.PaymentTypeId == payment.POSPaymentTypeID)
+                                            {
+                                                <i class="bi bi-check-circle-fill pos-payment-check" aria-hidden="true"></i>
+                                            }
+                                        </button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <label>
+                            Amount received
+                            <div class="pos-money-input">
+                                <span>MYR</span>
+                                <input type="number" class="input" @bind="newSalePaidAmount" min="0" step="0.01" placeholder="0.00" />
+                            </div>
+                        </label>
+                        <button type="button" class="pos-exact-amount" @onclick="UseExactNewSaleAmount">
+                            <i class="bi bi-check2"></i> Use exact amount: MYR @NewSaleTotal.ToString("N2")
+                        </button>
+                    </div>
+
+                    <div class="pos-summary-card accent">
+                        <h4>Summary</h4>
+                        <div class="pos-total-row">
+                            <span>Subtotal</span>
+                            <strong>MYR @NewSaleSubtotal.ToString("N2")</strong>
+                        </div>
+                        <div class="pos-total-row">
+                            <span>Discount</span>
+                            <strong>- MYR @NewSaleDiscount.ToString("N2")</strong>
+                        </div>
+                        <div class="pos-total-row muted">
+                            <span>Tax</span>
+                            <strong>MYR @newSale.Tax.ToString("N2")</strong>
+                        </div>
+                        <div class="pos-total-row final">
+                            <span>Total</span>
+                            <strong>MYR @NewSaleTotal.ToString("N2")</strong>
+                        </div>
+                        <div class="pos-total-row">
+                            <span>Change</span>
+                            <strong>MYR @NewSaleChange.ToString("N2")</strong>
+                        </div>
+                    </div>
+
+                    <textarea class="input pos-notes" @bind="newSale.Notes" placeholder="Receipt remarks or internal note"></textarea>
+
+                    <div class="pos-footer-actions">
+                        <button class="btn btn-cancel" @onclick="() => SetNewSaleStep(2)"><i class="bi bi-arrow-left"></i> Back</button>
+                        <button class="btn btn-primary pos-save-sale" @onclick="SaveNewSale" disabled="@isSaving">
+                            @if (isSaving)
+                            {
+                                <span class="spinner-border spinner-border-sm"></span>
+                                <span>Saving...</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-check2-circle"></i>
+                                <span>Save Transaction</span>
+                            }
+                        </button>
+                    </div>
+                    <div class="pos-mobile-payment-bar" role="region" aria-label="Payment summary">
+                        <button type="button" class="pos-mobile-payment-total" @onclick="UseExactNewSaleAmount">
+                            <small>Total due</small>
+                            <strong>MYR @NewSaleTotal.ToString("N2")</strong>
+                            <span>@(NewSaleChange > 0 ? $"Change MYR {NewSaleChange:N2}" : "Tap for exact amount")</span>
+                        </button>
+                        <button type="button" class="pos-mobile-proceed payment" @onclick="SaveNewSale" disabled="@isSaving">
+                            @if (isSaving) { <span class="spinner-border spinner-border-sm"></span><span>Saving</span> }
+                            else { <span>Pay now</span><i class="bi bi-lock-fill"></i> }
+                        </button>
+                    </div>
+                </aside>
+                }
+            </div>
+        }
+    </div>
+}
+
+@if (showSaleChangeConfirmation && savedNewSale is not null)
+{
+    <div class="sale-change-backdrop">
+        <section class="sale-change-popup"
+                 role="alertdialog"
+                 aria-modal="true"
+                 aria-labelledby="sale-change-title">
+            <div class="sale-change-icon" aria-hidden="true">
+                <i class="bi bi-cash-coin"></i>
+            </div>
+            <div class="sale-change-copy">
+                <span>Transaction saved</span>
+                <h3 id="sale-change-title">Change for customer</h3>
+                <p>@(savedSaleChange > 0 ? "Return this amount to the customer." : "The customer paid the exact amount.")</p>
+            </div>
+            <strong class="sale-change-amount">MYR @savedSaleChange.ToString("N2")</strong>
+            <div class="sale-change-breakdown">
+                <div><span>Sale total</span><strong>MYR @savedNewSale.Amount.ToString("N2")</strong></div>
+                <div><span>Amount received</span><strong>MYR @newSalePaidAmount.ToString("N2")</strong></div>
+            </div>
+            <button type="button" class="sale-change-confirm" @onclick="DismissSaleChangeConfirmation">
+                <i class="bi bi-check-lg"></i>
+                Continue to receipt
+            </button>
+        </section>
+    </div>
+}
+
+@* Transaction Detail Modal *@
+@if (showDetailModal && selectedTransaction != null)
+{
+    <TransactionDetailDialog Transaction="selectedTransaction" OnClose="HideDetailModal" OnPrint="@(() => PrintReceipt(selectedTransaction))" />
+}
+@if (false && showDetailModal && selectedTransaction != null)
+{
+    <div class="modal-backdrop" @onclick="HideDetailModal"></div>
+    <div class="modal-panel detail-modal">
+        <div class="modal-header-toolbar">
+            <h3><i class="bi bi-file-earmark-text" style="color: #0d5cb5; margin-right: 8px;"></i>@L["Title_TransDetails"]</h3>
+            <button class="btn-close-modal" @onclick="HideDetailModal"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="modal-content">
+            <div class="detail-section">
+                <h4><i class="bi bi-clipboard-data" style="color: #0d5cb5; margin-right: 8px;"></i>@L["Sec_TransInfo"]</h4>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <span class="detail-label">@L["Col_Invoice"]</span>
+                        <span class="detail-value">@selectedTransaction.InvoiceNumber</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">@L["Col_Date"]</span>
+                        <span class="detail-value">@selectedTransaction.Date.ToString("dd MMMM yyyy")</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">@L["Label_Time"]</span>
+                        <span class="detail-value">@selectedTransaction.Date.ToString("hh:mm tt")</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">@L["Col_Status"]</span>
+                        <span class="status-badge status-@selectedTransaction.Status.ToLower()">@L[$"Status_{selectedTransaction.Status}"]</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="detail-section">
+                <h4><i class="bi bi-person" style="color: #0d5cb5; margin-right: 8px;"></i>@L["Sec_CustomerInfo"]</h4>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <span class="detail-label">@L["Label_CustomerName"]</span>
+                        <span class="detail-value">@selectedTransaction.CustomerName</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">@L["Label_Contact"]</span>
+                        <span class="detail-value">@selectedTransaction.CustomerContact</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">@L["Label_Email"]</span>
+                        <span class="detail-value">@selectedTransaction.CustomerEmail</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">@L["Label_OutletBranch"]</span>
+                        <span class="detail-value">@selectedTransaction.Branch</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="detail-section">
+                <h4><i class="bi bi-bag" style="color: #0d5cb5; margin-right: 8px;"></i>@L["Sec_ItemsServices"]</h4>
+                <div class="items-list">
+                    @foreach (var item in selectedTransaction.Items)
+                    {
+                        <div class="item-row">
+                            <div>
+                                <div class="item-name">@item.Name</div>
+                                <div class="item-details">@item.Quantity x MYR @item.UnitPrice.ToString("N2")</div>
+                            </div>
+                            <div class="item-price">MYR @item.TotalPrice.ToString("N2")</div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="detail-section">
+                <h4><i class="bi bi-credit-card" style="color: #0d5cb5; margin-right: 8px;"></i>@L["Sec_PaymentDetails"]</h4>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <span class="detail-label">@L["Col_Payment"]</span>
+                        <span class="detail-value">@selectedTransaction.PaymentMethod</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">@L["Label_TransType"]</span>
+                        <span class="detail-value">@selectedTransaction.Type</span>
+                    </div>
+                    @if (!string.IsNullOrEmpty(selectedTransaction.ReferenceNumber))
+                    {
+                        <div class="detail-item">
+                            <span class="detail-label">@L["Label_RefNumber"]</span>
+                            <span class="detail-value">@selectedTransaction.ReferenceNumber</span>
+                        </div>
+                    }
+                </div>
+
+                <div class="total-section">
+                    <div class="total-row">
+                        <span>@L["Label_Subtotal"]:</span>
+                        <span>MYR @selectedTransaction.Subtotal.ToString("N2")</span>
+                    </div>
+                    <div class="total-row">
+                        <span>@L["Label_Tax"] (6%):</span>
+                        <span>MYR @selectedTransaction.Tax.ToString("N2")</span>
+                    </div>
+                    <div class="total-row">
+                        <span>@L["Label_Discount"]:</span>
+                        <span style="color: #ef4444;">- MYR @selectedTransaction.Discount.ToString("N2")</span>
+                    </div>
+                    <div class="total-row final">
+                        <span>@L["Label_TotalAmount"]:</span>
+                        <span>MYR @selectedTransaction.Amount.ToString("N2")</span>
+                    </div>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(selectedTransaction.Notes))
+            {
+                <div class="detail-section">
+                    <h4><i class="bi bi-journal-text" style="color: #0d5cb5; margin-right: 8px;"></i>@L["Label_Notes"]</h4>
+                    <div style="background: #f9fafb; padding: 16px; border-radius: 8px; color: #6b7280; line-height: 1.6;">
+                        @selectedTransaction.Notes
+                    </div>
+                </div>
+            }
+
+            <div class="form-actions" style="margin-top: 24px;">
+                <button class="btn btn-cancel" @onclick="HideDetailModal">@L["Btn_Close"]</button>
+                <button class="btn btn-primary" @onclick="() => PrintReceipt(selectedTransaction)"><i class="bi bi-printer" style="margin-right: 6px;"></i>Print Receipt</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Edit Transaction Modal *@
+@if (showEditModal && editingTransaction != null)
+{
+    <TransactionEditDialog Transaction="editingTransaction" Customers="customerOptions" Branches="branches" PaymentTypes="paymentTypes" IsSaving="isLoading" OnClose="HideEditModal" OnSave="SaveEditTransaction" />
+}
+@if (false && showEditModal && editingTransaction != null)
+{
+    <div class="modal-backdrop" @onclick="HideEditModal"></div>
+    <div class="modal-panel">
+        <div class="modal-header-toolbar">
+            <h3><i class="bi bi-pencil-square" style="color: #f59e0b; margin-right: 8px;"></i>@L["Title_EditTrans"]</h3>
+            <button class="btn-close-modal" @onclick="HideEditModal"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="modal-content">
+            <div class="form-grid">
+                <div>
+                    <label>@L["Col_Invoice"]</label>
+                    <input type="text" class="input" @bind="editingTransaction.InvoiceNumber" readonly style="background: #f3f4f6;" />
+                </div>
+                <div>
+                    <label>@L["Label_CustomerName"]</label>
+                    <select class="input" @bind="editingTransaction.AccountId" @bind:after="ApplyEditCustomerSelection">
+                        <option value="">Select customer</option>
+                        @foreach (var customer in customerOptions)
+                        {
+                            <option value="@customer.SystemID">@CustomerOptionLabel(customer)</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label>@L["Label_TransDate"]</label>
+                    <input type="date" class="input" @bind="editingTransaction.Date" />
+                </div>
+                <div>
+                    <label>@L["Label_OutletBranch"]</label>
+                    <select class="input" @bind="editingTransaction.BranchId">
+                        @foreach (var branch in branches)
+                        {
+                            <option value="@branch.Id">@branch.Name</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label>@L["Label_TransType"]</label>
+                    <select class="input" @bind="editingTransaction.Type">
+                        <option value="Service">@L["Opt_Service"]</option>
+                        <option value="Product">@L["Opt_Product"]</option>
+                    </select>
+                </div>
+                <div>
+                    <label>@L["Label_PaymentMethod"]</label>
+                    <select class="input" @bind="editingTransaction.PaymentTypeId">
+                        <option value="0">@L["Opt_SelectMethod"]</option>
+                        @foreach (var payment in paymentTypes)
+                        {
+                            <option value="@payment.POSPaymentTypeID">@payment.POSPaymentTypeName</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label>@L["Col_Status"]</label>
+                    <select class="input" @bind="editingTransaction.Status">
+                        <option value="Paid">@L["Status_Paid"]</option>
+                        <option value="Pending">@L["Status_Pending"]</option>
+                    </select>
+                </div>
+                <div>
+                    <label>@L["Label_AmountMYR"]</label>
+                    <input type="number" class="input" @bind="editingTransaction.Amount" step="0.01" min="0" />
+                </div>
+                <div>
+                    <label>@L["Label_Contact"]</label>
+                    <input type="text" class="input" @bind="editingTransaction.CustomerContact" />
+                </div>
+                <div>
+                    <label>@L["Label_Email"]</label>
+                    <input type="email" class="input" @bind="editingTransaction.CustomerEmail" />
+                </div>
+                <div style="grid-column: 1 / -1;">
+                    <label>@L["Label_Notes"]</label>
+                    <textarea class="input" rows="3" @bind="editingTransaction.Notes"></textarea>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-cancel" @onclick="HideEditModal">@L["Btn_Cancel"]</button>
+                <button class="btn btn-primary" @onclick="SaveEditTransaction"><i class="bi bi-check-lg" style="margin-right: 6px;"></i>@L["Btn_SaveChanges"]</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Cancel Transaction Modal *@
+@if (showCancelModal && cancellingTransaction != null)
+{
+    <div class="modal-backdrop" @onclick="HideCancelModal"></div>
+    <div class="modal-panel" style="max-width: 500px;">
+        <div class="modal-header-toolbar">
+            <h3><i class="bi bi-trash" style="color: #ef4444; margin-right: 8px;"></i>@L["Title_CancelTrans"]</h3>
+            <button class="btn-close-modal" @onclick="HideCancelModal"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="modal-content">
+            <div style="padding: 20px; background: #fef3c7; border-radius: 10px; border-left: 4px solid #f59e0b; margin-bottom: 20px;">
+                <p style="margin: 0; color: #92400e; font-weight: 600;">
+                    @L["Msg_CancelWarning"]
+                </p>
+                <p style="margin: 8px 0 0 0; color: #92400e; font-size: 14px;">
+                    @L["Col_Invoice"]: <strong>@cancellingTransaction.InvoiceNumber</strong><br/>
+                    @L["Col_Amount"]: <strong>MYR @cancellingTransaction.Amount.ToString("N2")</strong>
+                </p>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <label style="font-weight: 600; display: block; margin-bottom: 8px;">@L["Label_CancelReason"] *</label>
+                <textarea class="input" rows="4" @bind="cancellationReason" placeholder="@L["Placeholder_EnterReason"]"></textarea>
+            </div>
+
+            <div class="form-actions" style="border-top: none; padding-top: 0;">
+                <button class="btn btn-cancel" @onclick="HideCancelModal">@L["Btn_GoBack"]</button>
+                <button class="btn btn-danger" @onclick="ConfirmCancelTransaction"><i class="bi bi-x-circle" style="margin-right: 6px;"></i>@L["Title_CancelTrans"]</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrWhiteSpace(apiError) || newSaleValidationMessages.Any())
+{
+    <AppErrorPopup Title="@(string.IsNullOrWhiteSpace(apiError) ? "Please check the required fields" : "Unable to complete the request")"
+                   Message="@apiError"
+                   Messages="@newSaleValidationMessages"
+                   OnDismiss="DismissSalesMessage" />
+}
+
+ @code {
+    private DateTime _startDate = DateTime.Today.AddDays(-30);
+    private DateTime startDate
+    {
+        get => _startDate;
+        set
+        {
+            _startDate = value;
+            if (_endDate < _startDate) _endDate = _startDate;
+        }
+    }
+
+    private DateTime _endDate = DateTime.Today;
+    private DateTime endDate
+    {
+        get => _endDate;
+        set => _endDate = value >= _startDate ? value : _startDate;
+    }
+
+    private string selectedOutlet = "";
+    private List<BranchLookupItem> branches = new();
+    private List<CashSalesPaymentTypeDTO> paymentTypes = new();
+    private List<Customer> customerOptions = new();
+    private List<SaleCatalogItem> saleCatalogItems = new();
+    private string selectedSaleItemType = "";
+    private string selectedCatalogItemId = "";
+    private string saleCatalogSearch = "";
+    private bool isCatalogLoading;
+    private string apiError = "";
+    private bool isLoading;
+    private bool isSaving;
+
+    private bool showNewSaleModal;
+    private bool showDetailModal;
+    private bool showEditModal;
+    private bool showCancelModal;
+    private Transaction newSale = new();
+    private TransactionItem newSaleItemDraft = CreateDefaultSaleItem();
+    private Transaction? savedNewSale;
+    private int newSaleStep = 1;
+    private decimal newSalePaidAmount;
+    private bool showNewSaleReceipt;
+    private bool showSaleChangeConfirmation;
+    private bool isMobileCartOpen;
+    private decimal savedSaleChange;
+    private Transaction? selectedTransaction;
+    private Transaction? editingTransaction;
+    private Transaction? cancellingTransaction;
+    private List<string> newSaleValidationMessages = new();
+    private string cancellationReason = "";
+
+    private List<TransactionCategory> transactionData = new();
+    private List<CashFlowItem> cashFlowData = new();
+    private List<Transaction> recentTransactions = new();
+    private IReadOnlyList<Transaction> RecentTransactions => recentTransactions
+        .OrderByDescending(transaction => transaction.Date)
+        .ThenByDescending(transaction => transaction.CreatedAt)
+        .Take(10)
+        .ToList();
+    private SalesSummary summary = new();
+    private decimal totalSales => summary.TotalSales;
+    private decimal rounding => summary.Rounding;
+    private decimal cashMovementAmount => cashFlowData.Sum(item => item.Amount);
+    private decimal NewSaleSubtotal => newSale.Items.Sum(item => Math.Max(1, item.Quantity) * item.UnitPrice);
+    private decimal NewSaleDiscount => newSale.Items.Sum(item => Math.Clamp(item.Discount, 0, Math.Max(1, item.Quantity) * item.UnitPrice));
+    private decimal NewSaleTotal => Math.Max(0, NewSaleSubtotal - NewSaleDiscount + newSale.Tax);
+    private decimal NewSaleChange => Math.Max(0, newSalePaidAmount - NewSaleTotal);
+    private decimal previousTotalSales;
+    private int previousTransactionCount;
+    private decimal previousAverageSale;
+    private decimal previousCashMovement;
+    private static readonly string[] ChartColors =
+    {
+        "#FF6B9D", "#4A90E2", "#22C55E", "#F59E0B",
+        "#8B5CF6", "#06B6D4", "#EF4444", "#64748B"
+    };
+    private bool chartsNeedRefresh;
+    private bool routeRefreshInProgress;
+
+    protected override async Task OnInitializedAsync()
+    {
+        NavigationManager.LocationChanged += HandleLocationChanged;
+        await LoadLookupsAsync();
+        await LoadDataAsync();
+        chartsNeedRefresh = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (chartsNeedRefresh)
+        {
+            chartsNeedRefresh = false;
+            await InitializeCharts();
+        }
+    }
+
+    private void HandleLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs args)
+    {
+        var route = NavigationManager.ToBaseRelativePath(args.Location)
+            .Split('?', '#')[0]
+            .Trim('/');
+
+        if (string.Equals(route, "sales", StringComparison.OrdinalIgnoreCase))
+            _ = InvokeAsync(RefreshSalesDashboardAsync);
+    }
+
+    private async Task RefreshSalesDashboardAsync()
+    {
+        if (routeRefreshInProgress)
+            return;
+
+        routeRefreshInProgress = true;
+        try
+        {
+            await LoadDataAsync();
+            chartsNeedRefresh = true;
+            await InvokeAsync(StateHasChanged);
+        }
+        finally
+        {
+            routeRefreshInProgress = false;
+        }
+    }
+
+    private async Task LoadLookupsAsync()
+    {
+        var branchResult = await BranchLookupService.LoadBranchesAsync();
+        if (branchResult.Success && branchResult.Value is not null)
+            branches = branchResult.Value.ToList();
+        else
+            apiError = branchResult.ErrorMessage ?? "Unable to load branches.";
+
+        var paymentResult = await CashSalesService.LoadPaymentTypesAsync();
+        if (paymentResult.Success && paymentResult.Value is not null)
+            paymentTypes = paymentResult.Value.ToList();
+        else if (string.IsNullOrWhiteSpace(apiError))
+            apiError = paymentResult.ErrorMessage ?? "Unable to load payment methods.";
+
+        var customerResult = await CustomerService.SearchCustomersAsync(string.Empty);
+        if (customerResult.Success && customerResult.Value is not null)
+            customerOptions = customerResult.Value
+                .Where(customer => !string.IsNullOrWhiteSpace(customer.SystemID))
+                .OrderBy(customer => customer.FirstName)
+                .ThenBy(customer => customer.LastName)
+                .ToList();
+        else if (string.IsNullOrWhiteSpace(apiError))
+            apiError = customerResult.ErrorMessage ?? "Unable to load customers.";
+
+        await LoadSaleCatalogAsync();
+    }
+
+    private async Task LoadSaleCatalogAsync()
+    {
+        isCatalogLoading = true;
+        try
+        {
+            var productTask = ProductInventoryService.LoadProductsAsync("HQ");
+            var serviceTask = ServiceItemService.LoadServiceItemsAsync("hq");
+            await Task.WhenAll(productTask, serviceTask);
+
+            var productResult = await productTask;
+            var serviceResult = await serviceTask;
+            var services = serviceResult.Success && serviceResult.Value is not null
+                ? serviceResult.Value
+                    .Where(item => !string.Equals(item.Status, "Inactive", StringComparison.OrdinalIgnoreCase))
+                    .ToList()
+                : [];
+
+            var catalog = new List<SaleCatalogItem>();
+            if (productResult.Success && productResult.Value is not null)
+            {
+                catalog.AddRange(productResult.Value
+                    .Where(item => !string.IsNullOrWhiteSpace(item.MasterAccountId))
+                    .Select(item => new SaleCatalogItem(
+                        item.MasterAccountId,
+                        item.Type,
+                        item.Sku,
+                        "Product",
+                        item.Price,
+                        item.Type,
+                        ResolveCatalogImage("Product", item.MasterAccountId, item.ImagePath, item.ImageFileName))));
+            }
+
+            catalog.AddRange(services
+                .Where(item => !string.IsNullOrWhiteSpace(item.MasterAccountId))
+                .Select(item => new SaleCatalogItem(
+                    item.MasterAccountId!,
+                    item.ServiceName,
+                    item.Sku,
+                    "Service",
+                    item.Price,
+                    item.SalesDescription,
+                    ResolveCatalogImage("Service", item.MasterAccountId, item.ImagePath, item.ImageFileName))));
+
+            if (services.Count > 0)
+            {
+                var packageResult = await PackageService.LoadPackagesAsync(services, "hq");
+                if (packageResult.Success && packageResult.Value is not null)
+                {
+                    catalog.AddRange(packageResult.Value
+                        .Where(item => !string.IsNullOrWhiteSpace(item.MasterAccountId)
+                            && !string.Equals(item.Status, "Inactive", StringComparison.OrdinalIgnoreCase))
+                        .Select(item => new SaleCatalogItem(
+                            item.MasterAccountId,
+                            item.Name,
+                            item.Sku,
+                            "Package",
+                            item.Price,
+                            item.SalesDescription,
+                            ResolveCatalogImage("Package", item.MasterAccountId, item.ImagePath, item.ImageFileName))));
+                }
+            }
+
+            saleCatalogItems = catalog
+                .GroupBy(item => item.Id, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .OrderBy(item => item.Type)
+                .ThenBy(item => item.Name)
+                .ToList();
+
+            if (saleCatalogItems.Count == 0 && string.IsNullOrWhiteSpace(apiError))
+                apiError = productResult.ErrorMessage ?? serviceResult.ErrorMessage ?? "Unable to load sale items.";
+        }
+        finally
+        {
+            isCatalogLoading = false;
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        isLoading = true;
+        apiError = "";
+        try
+        {
+            var result = await LoadSelectedOutletTransactionsAsync();
+            if (!result.Success || result.Value is null)
+            {
+                recentTransactions = new();
+                RebuildSummary();
+                apiError = result.ErrorMessage ?? "Unable to load cash sales.";
+            }
+            else
+            {
+                recentTransactions = result.Value.ToList();
+                RebuildSummary();
+            }
+
+            await LoadChartDataAsync();
+            await LoadComparisonDataAsync();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task<ApiCallResult<IReadOnlyList<Transaction>>> LoadSelectedOutletTransactionsAsync(
+        DateTime? rangeStart = null, DateTime? rangeEnd = null, bool resolvePaymentMethods = true)
+    {
+        var effectiveStart = rangeStart ?? startDate;
+        var effectiveEnd = rangeEnd ?? endDate;
+
+        if (!string.IsNullOrWhiteSpace(selectedOutlet) || branches.Count == 0)
+            return await CashSalesService.LoadTransactionsAsync(effectiveStart, effectiveEnd, selectedOutlet, resolvePaymentMethods);
+
+        var branchIds = branches
+            .Select(branch => branch.Id)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (branchIds.Count == 0)
+            return await CashSalesService.LoadTransactionsAsync(effectiveStart, effectiveEnd, string.Empty, resolvePaymentMethods);
+
+        var results = await Task.WhenAll(branchIds.Select(branchId =>
+            CashSalesService.LoadTransactionsAsync(effectiveStart, effectiveEnd, branchId, resolvePaymentMethods)));
+        var successfulResults = results.Where(result => result.Success && result.Value is not null).ToList();
+
+        if (successfulResults.Count == 0)
+        {
+            var firstFailure = results.FirstOrDefault(result => !result.Success);
+            return ApiCallResult<IReadOnlyList<Transaction>>.Failure(
+                firstFailure?.StatusCode ?? System.Net.HttpStatusCode.BadGateway,
+                firstFailure?.ErrorMessage ?? "Unable to load sales for any outlet.");
+        }
+
+        var transactions = successfulResults
+            .SelectMany(result => result.Value!)
+            .GroupBy(TransactionIdentity, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderByDescending(transaction => transaction.Date)
+            .ToList();
+
+        return ApiCallResult<IReadOnlyList<Transaction>>.Ok(successfulResults[0].StatusCode, transactions);
+    }
+
+    private static string TransactionIdentity(Transaction transaction) =>
+        !string.IsNullOrWhiteSpace(transaction.DocumentId)
+            ? transaction.DocumentId
+            : $"{transaction.BranchId}|{transaction.InvoiceNumber}|{transaction.Date:O}|{transaction.Amount}";
+
+    private void RebuildSummary()
+    {
+        var serviceAmount = recentTransactions.Where(t => t.Type.Equals("Service", StringComparison.OrdinalIgnoreCase)).Sum(t => t.Amount);
+        var productAmount = recentTransactions.Where(t => t.Type.Equals("Product", StringComparison.OrdinalIgnoreCase)).Sum(t => t.Amount);
+        var total = recentTransactions.Sum(t => t.Amount);
+        summary = new SalesSummary
+        {
+            TotalSales = total,
+            TotalTransactions = recentTransactions.Count,
+            AverageSale = recentTransactions.Count == 0 ? 0 : total / recentTransactions.Count,
+            TotalCash = PaymentTotal("cash"),
+            TotalCard = PaymentTotal("card"),
+            TotalOnlineTransfer = PaymentTotal("transfer", "online"),
+            TotalEWallet = PaymentTotal("wallet", "e-wallet"),
+            Outstanding = recentTransactions.Where(t => t.Status.Equals("Pending", StringComparison.OrdinalIgnoreCase)).Sum(t => t.Amount),
+            ServicesAmount = serviceAmount,
+            ProductsAmount = productAmount,
+            ServicesPercentage = total == 0 ? "0" : Math.Round(serviceAmount / total * 100).ToString("0"),
+            ProductsPercentage = total == 0 ? "0" : Math.Round(productAmount / total * 100).ToString("0"),
+            FromDate = startDate,
+            ToDate = endDate
+        };
+        transactionData = new();
+        cashFlowData = new();
+    }
+
+    private async Task LoadChartDataAsync()
+    {
+        var branchIds = GetAnalyticsBranchIds();
+        var typeResults = await Task.WhenAll(branchIds.Select(branchId =>
+            CashSalesService.LoadSalesByTypeAsync(startDate, endDate, branchId)));
+        var typeValues = typeResults
+            .Where(result => result.Success && result.Value is not null)
+            .Select(result => result.Value!)
+            .ToList();
+
+        var categoryAmounts = new (string Name, decimal Amount)[]
+        {
+            ("Services", typeValues.Sum(value => value.Service)),
+            ("Products", typeValues.Sum(value => value.Product)),
+            ("Packages", typeValues.Sum(value => value.Package)),
+            ("Vouchers", typeValues.Sum(value => value.Voucher)),
+            ("Top Ups", typeValues.Sum(value => value.TopUp)),
+            ("Bundles", typeValues.Sum(value => value.Bundle)),
+            ("Deposits", typeValues.Sum(value => value.Deposit)),
+            ("Service Charges", typeValues.Sum(value => value.ServiceCharge))
+        };
+        var categorizedTotal = categoryAmounts.Sum(item => item.Amount);
+        transactionData = categoryAmounts
+            .Where(item => item.Amount != 0)
+            .Select(item => new TransactionCategory
+            {
+                Category = item.Name,
+                Amount = item.Amount,
+                Percentage = categorizedTotal == 0 ? 0 : item.Amount / categorizedTotal * 100
+            })
+            .ToList();
+
+        if (typeValues.Count > 0)
+        {
+            summary.ServicesAmount = typeValues.Sum(value => value.Service);
+            summary.ProductsAmount = typeValues.Sum(value => value.Product);
+            summary.ServicesPercentage = PercentageOf(summary.ServicesAmount, categorizedTotal);
+            summary.ProductsPercentage = PercentageOf(summary.ProductsAmount, categorizedTotal);
+        }
+
+        var collectionValues = await LoadCollectionValuesAsync(startDate, endDate, branchIds);
+        cashFlowData = collectionValues
+            .Where(item => !string.IsNullOrWhiteSpace(item.ReportGroup))
+            .GroupBy(item => item.ReportGroup!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(group => new CashFlowItem
+            {
+                Category = group.Key,
+                Amount = group.Sum(item => item.Amount),
+                Date = endDate
+            })
+            .Where(item => item.Amount != 0)
+            .OrderByDescending(item => item.Amount)
+            .ToList();
+    }
+
+    private async Task LoadComparisonDataAsync()
+    {
+        var dayCount = Math.Max(1, (endDate.Date - startDate.Date).Days + 1);
+        var previousEnd = startDate.Date.AddTicks(-1);
+        var previousStart = startDate.Date.AddDays(-dayCount);
+
+        var previousTransactionsResult = await LoadSelectedOutletTransactionsAsync(
+            previousStart,
+            previousEnd,
+            resolvePaymentMethods: false);
+        var previousTransactions = previousTransactionsResult.Success &&
+                                   previousTransactionsResult.Value is not null
+            ? previousTransactionsResult.Value
+            : Array.Empty<Transaction>();
+
+        previousTotalSales = previousTransactions.Sum(transaction => transaction.Amount);
+        previousTransactionCount = previousTransactions.Count;
+        previousAverageSale = previousTransactionCount == 0
+            ? 0
+            : previousTotalSales / previousTransactionCount;
+
+        var previousCollections = await LoadCollectionValuesAsync(
+            previousStart,
+            previousEnd,
+            GetAnalyticsBranchIds());
+        previousCashMovement = previousCollections.Sum(item => item.Amount);
+    }
+
+    private async Task<IReadOnlyList<SalesByCollectionDTO>> LoadCollectionValuesAsync(
+        DateTime rangeStart,
+        DateTime rangeEnd,
+        IReadOnlyList<string> branchIds)
+    {
+        var results = await Task.WhenAll(branchIds.Select(branchId =>
+            CashSalesService.LoadSalesByCollectionAsync(rangeStart, rangeEnd, branchId)));
+        return results
+            .Where(result => result.Success && result.Value is not null)
+            .SelectMany(result => result.Value!)
+            .ToList();
+    }
+
+    private static string FormatChange(decimal current, decimal previous)
+    {
+        if (previous == 0)
+            return current == 0 ? "0.0%" : "New";
+
+        var percentage = (current - previous) / Math.Abs(previous) * 100;
+        return $"{(percentage > 0 ? "+" : string.Empty)}{percentage:0.0}%";
+    }
+
+    private static string ChangeClass(decimal current, decimal previous) =>
+        current > previous ? "positive" : current < previous ? "negative" : "neutral";
+    private IReadOnlyList<string> GetAnalyticsBranchIds()
+    {
+        if (!string.IsNullOrWhiteSpace(selectedOutlet))
+            return new[] { selectedOutlet };
+
+        var branchIds = branches
+            .Select(branch => branch.Id)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return branchIds.Count > 0 ? branchIds : new[] { "HQ" };
+    }
+
+    private static string PercentageOf(decimal amount, decimal total) =>
+        total == 0 ? "0" : Math.Round(amount / total * 100).ToString("0");
+
+    private static string ChartColor(int index) => ChartColors[index % ChartColors.Length];
+    private decimal PaymentTotal(params string[] terms) => recentTransactions
+        .Where(t => terms.Any(term => t.PaymentMethod.Contains(term, StringComparison.OrdinalIgnoreCase)))
+        .Sum(t => t.Amount);
+
+    private void OpenNewSalePage() => NavigationManager.NavigateTo("/sales/new");
+    private void OpenTransactionHistory() => NavigationManager.NavigateTo("/sales/transactions");
+
+    private async Task InitializeCharts()
+    {
+        // Let the route transition finish so Chart.js can measure both canvases.
+        await Task.Delay(100);
+
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("salesCharts.createPieChart", "transactionPieChart",
+                    transactionData.Select(t => t.Category).ToArray(), transactionData.Select(t => (double)t.Amount).ToArray(),
+                    transactionData.Select((_, index) => ChartColor(index)).ToArray());
+                await JS.InvokeVoidAsync("salesCharts.createBarChart", "cashFlowBarChart",
+                    cashFlowData.Select(c => c.Category).ToArray(), cashFlowData.Select(c => (double)c.Amount).ToArray(),
+                    cashFlowData.Select((_, index) => ChartColor(index + 2)).ToArray());
+                return;
+            }
+            catch (Exception) when (attempt < 3)
+            {
+                await Task.Delay(150);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error initializing sales charts: {ex.Message}");
+            }
+        }
+    }
+
+    private async Task ApplyFilters()
+    {
+        await RefreshSalesDashboardAsync();
+    }
+
+    private Task FilterByBranch() => ApplyFilters();
+
+    private async Task ViewTransactionDetail(Transaction transaction)
+    {
+        apiError = "";
+        selectedTransaction = transaction;
+        if (!string.IsNullOrWhiteSpace(transaction.DocumentId))
+        {
+            var result = await CashSalesService.LoadTransactionAsync(transaction.DocumentId);
+            if (result.Success && result.Value is not null)
+                selectedTransaction = result.Value;
+            else
+                apiError = result.ErrorMessage ?? "Unable to load transaction details.";
+        }
+        showDetailModal = true;
+    }
+
+    private void HideDetailModal()
+    {
+        showDetailModal = false;
+        selectedTransaction = null;
+    }
+
+    private async Task PrintReceipt(Transaction transaction, decimal? amountReceived = null)
+    {
+        var receiptNumber = string.IsNullOrWhiteSpace(transaction.InvoiceNumber)
+            ? transaction.DocumentId
+            : transaction.InvoiceNumber;
+        var paidAmount = amountReceived.GetValueOrDefault(transaction.Amount);
+        if (paidAmount <= 0)
+            paidAmount = transaction.Amount;
+
+        var change = Math.Max(0, paidAmount - transaction.Amount);
+        var rows = transaction.Items.Any()
+            ? string.Join(string.Empty, transaction.Items.Select(item => $"""
+                <tr>
+                    <td><strong>{EncodeReceiptText(item.Name)}</strong><small>{EncodeReceiptText(item.Category)}</small></td>
+                    <td class="number">{Math.Max(1, item.Quantity)}</td>
+                    <td class="number">{item.UnitPrice:N2}</td>
+                    <td class="number">{item.Discount:N2}</td>
+                    <td class="number">{item.TotalPrice:N2}</td>
+                </tr>
+                """))
+            : "<tr><td colspan=\"5\" class=\"empty\">No item details returned.</td></tr>";
+
+        var html = $$"""
+            <!doctype html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <title>Receipt {{EncodeReceiptText(receiptNumber)}}</title>
+                <style>
+                    * { box-sizing: border-box; }
+                    body { margin: 0; padding: 18px; color: #172033; font-family: Arial, sans-serif; font-size: 12px; }
+                    .receipt { width: 100%; max-width: 390px; margin: 0 auto; }
+                    .brand { text-align: center; padding-bottom: 14px; border-bottom: 2px solid #0759ad; }
+                    .brand h1 { margin: 0; color: #064a94; font-size: 22px; }
+                    .brand p { margin: 4px 0 0; color: #64748b; }
+                    .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 14px; padding: 14px 0; }
+                    .meta div { min-width: 0; }
+                    .meta span { display: block; color: #64748b; font-size: 10px; text-transform: uppercase; }
+                    .meta strong { display: block; margin-top: 2px; overflow-wrap: anywhere; }
+                    table { width: 100%; border-collapse: collapse; }
+                    th { padding: 8px 4px; border-top: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; color: #475569; font-size: 10px; text-align: left; }
+                    td { padding: 9px 4px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+                    td small { display: block; margin-top: 2px; color: #64748b; }
+                    .number { text-align: right; white-space: nowrap; }
+                    .empty { color: #64748b; text-align: center; }
+                    .totals { margin: 12px 0 0 auto; width: 72%; }
+                    .total-row { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; }
+                    .total-row.final { margin-top: 5px; padding-top: 9px; border-top: 2px solid #0759ad; color: #064a94; font-size: 15px; font-weight: 700; }
+                    .payment { margin-top: 14px; padding: 11px; border-radius: 6px; background: #eff6ff; }
+                    .footer { margin-top: 18px; color: #64748b; text-align: center; font-size: 10px; }
+                    @media print { body { padding: 0; } }
+                </style>
+            </head>
+            <body>
+                <main class="receipt">
+                    <header class="brand"><h1>Beauty Aesthetics</h1><p>Clinic Management</p></header>
+                    <section class="meta">
+                        <div><span>Receipt No.</span><strong>{{EncodeReceiptText(receiptNumber)}}</strong></div>
+                        <div><span>Date</span><strong>{{transaction.Date:dd/MM/yyyy hh:mm tt}}</strong></div>
+                        <div><span>Customer</span><strong>{{EncodeReceiptText(transaction.CustomerName)}}</strong></div>
+                        <div><span>Branch</span><strong>{{EncodeReceiptText(string.IsNullOrWhiteSpace(transaction.Branch) ? transaction.BranchId : transaction.Branch)}}</strong></div>
+                    </section>
+                    <table>
+                        <thead><tr><th>Item</th><th class="number">Qty</th><th class="number">Price</th><th class="number">Disc.</th><th class="number">Total</th></tr></thead>
+                        <tbody>{{rows}}</tbody>
+                    </table>
+                    <section class="totals">
+                        <div class="total-row"><span>Subtotal</span><strong>MYR {{transaction.Subtotal:N2}}</strong></div>
+                        <div class="total-row"><span>Discount</span><strong>- MYR {{transaction.Discount:N2}}</strong></div>
+                        <div class="total-row"><span>Tax</span><strong>MYR {{transaction.Tax:N2}}</strong></div>
+                        <div class="total-row final"><span>Total</span><span>MYR {{transaction.Amount:N2}}</span></div>
+                    </section>
+                    <section class="payment">
+                        <div class="total-row"><span>Payment</span><strong>{{EncodeReceiptText(transaction.PaymentMethod)}}</strong></div>
+                        <div class="total-row"><span>Received</span><strong>MYR {{paidAmount:N2}}</strong></div>
+                        <div class="total-row"><span>Change</span><strong>MYR {{change:N2}}</strong></div>
+                    </section>
+                    <footer class="footer">Thank you for visiting Beauty Aesthetics.</footer>
+                </main>
+            </body>
+            </html>
+            """;
+
+        await JS.InvokeVoidAsync("printDocument", html, $"Receipt {receiptNumber}");
+    }
+
+    private static string EncodeReceiptText(string? value) =>
+        System.Net.WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(value) ? "-" : value);
+
+    private void ShowNewSale()
+    {
+        var branch = branches.FirstOrDefault();
+        var payment = paymentTypes.FirstOrDefault();
+        newSale = new Transaction
+        {
+            Date = DateTime.Today,
+            ItemCount = 0,
+            Status = "Paid",
+            BranchId = branch?.Id ?? "",
+            Branch = branch?.Name ?? "",
+            PaymentTypeId = payment?.POSPaymentTypeID ?? 0,
+            PaymentMethod = payment?.POSPaymentTypeName ?? "",
+            Items = new()
+        };
+        newSaleItemDraft = CreateDefaultSaleItem();
+        selectedSaleItemType = "";
+        selectedCatalogItemId = "";
+        saleCatalogSearch = "";
+        newSaleStep = 1;
+        newSalePaidAmount = 0;
+        savedNewSale = null;
+        showNewSaleReceipt = false;
+        showSaleChangeConfirmation = false;
+        isMobileCartOpen = false;
+        savedSaleChange = 0;
+        apiError = "";
+        newSaleValidationMessages.Clear();
+        showNewSaleModal = true;
+    }
+
+    private async Task SaveNewSale()
+    {
+        newSaleValidationMessages = GetNewSaleValidationMessages(newSale);
+        if (newSaleValidationMessages.Any() || isSaving) return;
+
+        isSaving = true;
+        apiError = "";
+        try
+        {
+            ApplySelections(newSale);
+            var customer = customerOptions.FirstOrDefault(item => item.SystemID == newSale.AccountId);
+            if (customer is null)
+            {
+                newSaleValidationMessages.Add("Select a customer.");
+                return;
+            }
+            ApplyCustomerSelection(newSale, customer);
+            BuildTotalsAndLine(newSale);
+            newSalePaidAmount = Math.Max(newSalePaidAmount, newSale.Amount);
+
+            var result = await CashSalesService.CreateTransactionAsync(newSale);
+            if (!result.Success)
+            {
+                apiError = result.ErrorMessage ?? "Unable to create the cash sale.";
+                return;
+            }
+
+            savedNewSale = MergeReceiptTransaction(newSale, result.Value);
+            savedSaleChange = Math.Max(0, newSalePaidAmount - savedNewSale.Amount);
+            showNewSaleReceipt = true;
+            showSaleChangeConfirmation = true;
+            newSaleStep = 4;
+            await LoadDataAsync();
+            await InitializeCharts();
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void HideNewSale()
+    {
+        showNewSaleModal = false;
+        showNewSaleReceipt = false;
+        showSaleChangeConfirmation = false;
+        isMobileCartOpen = false;
+        savedSaleChange = 0;
+        savedNewSale = null;
+        newSaleValidationMessages.Clear();
+    }
+
+    private void DismissSaleChangeConfirmation()
+    {
+        showSaleChangeConfirmation = false;
+    }
+
+    private List<string> GetNewSaleValidationMessages(Transaction sale)
+    {
+        var messages = new List<string>();
+        if (string.IsNullOrWhiteSpace(sale.AccountId)) messages.Add("Customer Name");
+        if (sale.Date == default) messages.Add("Transaction Date");
+        if (string.IsNullOrWhiteSpace(sale.BranchId)) messages.Add("Outlet / Branch");
+        if (sale.PaymentTypeId == 0) messages.Add("Payment Method");
+        if (!sale.Items.Any()) messages.Add("Add at least one item.");
+        if (sale.Items.Any(item => string.IsNullOrWhiteSpace(item.Name))) messages.Add("Every item needs a name.");
+        if (sale.Items.Any(item => item.Quantity <= 0)) messages.Add("Item quantity must be at least 1.");
+        if (sale.Items.Any(item => item.UnitPrice <= 0)) messages.Add("Item price must be more than 0.");
+        if (sale.Items.Any(item => item.Discount < 0)) messages.Add("Item discount cannot be negative.");
+        if (BuildSaleTotal(sale) <= 0) messages.Add("Total amount must be more than 0.");
+        if (ReferenceEquals(sale, newSale) && newSalePaidAmount > 0 && newSalePaidAmount < BuildSaleTotal(sale)) messages.Add("Amount received is lower than the sale total.");
+        return messages;
+    }
+
+    private void ContinueFromCustomerStep()
+    {
+        newSaleValidationMessages.Clear();
+        if (string.IsNullOrWhiteSpace(newSale.AccountId))
+            newSaleValidationMessages.Add("Select a customer.");
+        if (newSale.Date == default)
+            newSaleValidationMessages.Add("Select the transaction date.");
+        if (string.IsNullOrWhiteSpace(newSale.BranchId))
+            newSaleValidationMessages.Add("Select an outlet or branch.");
+        if (newSaleValidationMessages.Any()) return;
+
+        ApplySelections(newSale);
+        var customer = customerOptions.FirstOrDefault(item => item.SystemID == newSale.AccountId);
+        if (customer is not null)
+            ApplyCustomerSelection(newSale, customer);
+        newSaleStep = 2;
+    }
+
+    private void ContinueFromCartStep()
+    {
+        newSaleValidationMessages.Clear();
+        if (!newSale.Items.Any())
+        {
+            newSaleValidationMessages.Add("Add at least one item to the cart.");
+            return;
+        }
+
+        UpdateNewSaleTotals();
+        newSalePaidAmount = NewSaleTotal;
+        isMobileCartOpen = false;
+        newSaleStep = 3;
+    }
+
+    private void OpenMobileCart() => isMobileCartOpen = true;
+
+    private void CloseMobileCart() => isMobileCartOpen = false;
+
+    private void UseExactNewSaleAmount()
+    {
+        newSalePaidAmount = NewSaleTotal;
+        newSaleValidationMessages.Clear();
+    }
+
+    private void SetNewSaleStep(int step)
+    {
+        if (step is < 1 or > 4) return;
+        if (step == 4 && !showNewSaleReceipt) return;
+        if (step > newSaleStep && step != 4) return;
+        newSaleValidationMessages.Clear();
+        isMobileCartOpen = false;
+        newSaleStep = step;
+    }
+
+    private void AddDraftItemToSale()
+    {
+        var draftTotal = Math.Max(1, newSaleItemDraft.Quantity) * newSaleItemDraft.UnitPrice;
+        newSaleValidationMessages.Clear();
+        if (string.IsNullOrWhiteSpace(newSaleItemDraft.InventoryId))
+            newSaleValidationMessages.Add("Choose an item to add to the cart.");
+        if (newSaleItemDraft.UnitPrice <= 0)
+            newSaleValidationMessages.Add("Enter an item price more than 0.");
+        if (newSaleItemDraft.Discount < 0 || newSaleItemDraft.Discount > draftTotal)
+            newSaleValidationMessages.Add("Discount cannot be higher than the item amount.");
+        if (newSaleValidationMessages.Any())
+        {
+            newSaleStep = 2;
+            return;
+        }
+
+        var quantity = Math.Max(1, newSaleItemDraft.Quantity);
+        var discount = Math.Clamp(newSaleItemDraft.Discount, 0, draftTotal);
+        newSale.Items.Add(new TransactionItem
+        {
+            InventoryId = newSaleItemDraft.InventoryId,
+            Name = newSaleItemDraft.Name.Trim(),
+            Description = newSaleItemDraft.Description,
+            ImageUrl = newSaleItemDraft.ImageUrl,
+            Category = string.IsNullOrWhiteSpace(newSaleItemDraft.Category) ? "Product" : newSaleItemDraft.Category,
+            Quantity = quantity,
+            UnitPrice = decimal.Round(newSaleItemDraft.UnitPrice, 2),
+            Discount = decimal.Round(discount, 2),
+            TotalPrice = decimal.Round(draftTotal - discount, 2)
+        });
+        newSaleItemDraft = CreateDefaultSaleItem();
+        newSaleItemDraft.Category = selectedSaleItemType;
+        selectedCatalogItemId = "";
+        UpdateNewSaleTotals();
+        newSaleStep = 2;
+    }
+
+    private void SelectSaleCatalogItem(string itemId)
+    {
+        selectedCatalogItemId = itemId;
+        var selected = saleCatalogItems.FirstOrDefault(item =>
+            string.Equals(item.Id, selectedCatalogItemId, StringComparison.OrdinalIgnoreCase));
+
+        if (selected is null)
+        {
+            newSaleItemDraft = CreateDefaultSaleItem();
+            newSaleItemDraft.Category = selectedSaleItemType;
+            return;
+        }
+
+        newSaleItemDraft.InventoryId = selected.Id;
+        newSaleItemDraft.Name = selected.Name;
+        newSaleItemDraft.Description = string.IsNullOrWhiteSpace(selected.Description)
+            ? selected.Name
+            : selected.Description;
+        newSaleItemDraft.ImageUrl = selected.ImageUrl;
+        newSaleItemDraft.Category = selected.Type;
+        newSaleItemDraft.UnitPrice = selected.Price;
+        newSaleItemDraft.Quantity = Math.Max(1, newSaleItemDraft.Quantity);
+        newSaleValidationMessages.Clear();
+    }
+
+    private void AddCatalogItemToSale(SaleCatalogItem catalogItem)
+    {
+        newSaleValidationMessages.Clear();
+        if (catalogItem.Price <= 0)
+        {
+            SelectSaleCatalogItem(catalogItem.Id);
+            newSaleValidationMessages.Add("This item does not have a valid selling price.");
+            return;
+        }
+
+        var existingItem = newSale.Items.FirstOrDefault(item =>
+            string.Equals(item.InventoryId, catalogItem.Id, StringComparison.OrdinalIgnoreCase)
+            && item.Discount == 0);
+
+        if (existingItem is not null)
+        {
+            existingItem.Quantity = Math.Max(1, existingItem.Quantity) + 1;
+            existingItem.TotalPrice = decimal.Round(existingItem.Quantity * existingItem.UnitPrice, 2);
+        }
+        else
+        {
+            newSale.Items.Add(new TransactionItem
+            {
+                InventoryId = catalogItem.Id,
+                Name = catalogItem.Name,
+                Description = string.IsNullOrWhiteSpace(catalogItem.Description)
+                    ? catalogItem.Name
+                    : catalogItem.Description,
+                ImageUrl = catalogItem.ImageUrl,
+                Category = catalogItem.Type,
+                Quantity = 1,
+                UnitPrice = decimal.Round(catalogItem.Price, 2),
+                Discount = 0,
+                TotalPrice = decimal.Round(catalogItem.Price, 2)
+            });
+        }
+
+        selectedCatalogItemId = catalogItem.Id;
+        UpdateNewSaleTotals();
+    }
+
+    private void SelectSaleItemType(string type)
+    {
+        selectedSaleItemType = type;
+        selectedCatalogItemId = "";
+        newSaleItemDraft = CreateDefaultSaleItem();
+        newSaleItemDraft.Category = selectedSaleItemType;
+        newSaleValidationMessages.Clear();
+    }
+
+    private IEnumerable<string> SaleItemTypes => saleCatalogItems
+        .Select(item => item.Type)
+        .Where(type => !string.IsNullOrWhiteSpace(type))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(type => type);
+
+    private IEnumerable<SaleCatalogItem> FilteredSaleCatalogItems => saleCatalogItems
+        .Where(item => string.IsNullOrWhiteSpace(selectedSaleItemType)
+            || string.Equals(item.Type, selectedSaleItemType, StringComparison.OrdinalIgnoreCase))
+        .Where(item => string.IsNullOrWhiteSpace(saleCatalogSearch)
+            || item.Name.Contains(saleCatalogSearch, StringComparison.OrdinalIgnoreCase)
+            || item.Sku.Contains(saleCatalogSearch, StringComparison.OrdinalIgnoreCase));
+
+    private SaleCatalogItem? SelectedSaleCatalogItem => saleCatalogItems.FirstOrDefault(item =>
+        string.Equals(item.Id, selectedCatalogItemId, StringComparison.OrdinalIgnoreCase));
+
+    private void UpdateSaleCatalogSearch(ChangeEventArgs args) =>
+        saleCatalogSearch = args.Value?.ToString() ?? "";
+
+    private static string CatalogImageForType(string? type) => type?.ToLowerInvariant() switch
+    {
+        "service" => "_content/Beauty_Aesthetics_Hybrid.Shared/Images/sales/service-catalog.jpg",
+        "package" => "_content/Beauty_Aesthetics_Hybrid.Shared/Images/sales/package-catalog.jpg",
+        _ => "_content/Beauty_Aesthetics_Hybrid.Shared/Images/sales/product-catalog.jpg"
+    };
+
+    private string ResolveCatalogImage(
+        string type,
+        string? masterAccountId,
+        string? imagePath,
+        string? imageFileName)
+    {
+        var imageUrl = ProductImageService.ResolveImageUrl(masterAccountId, imagePath, imageFileName);
+        return string.IsNullOrWhiteSpace(imageUrl) ? CatalogImageForType(type) : imageUrl;
+    }
+
+    private static string CartItemImage(TransactionItem item) =>
+        string.IsNullOrWhiteSpace(item.ImageUrl) ? CatalogImageForType(item.Category) : item.ImageUrl;
+
+    private static string SaleItemTypeIcon(string type) => type.ToLowerInvariant() switch
+    {
+        "service" => "bi-stars",
+        "package" => "bi-box2-heart",
+        _ => "bi-bag"
+    };
+
+    private static string PaymentMethodIcon(string? paymentMethod)
+    {
+        var method = paymentMethod?.Trim().ToLowerInvariant() ?? string.Empty;
+
+        if (method.Contains("cash")) return "bi-cash-stack";
+        if (method.Contains("bank") || method.Contains("transfer")) return "bi-bank";
+        if (method.Contains("card") || method.Contains("visa") || method.Contains("master")) return "bi-credit-card-2-front";
+        if (method.Contains("wallet") || method.Contains("e-wallet") || method.Contains("ewallet")) return "bi-wallet2";
+        if (method.Contains("voucher")) return "bi-ticket-perforated";
+        if (method.Contains("point")) return "bi-stars";
+        if (method.Contains("cheque") || method.Contains("check")) return "bi-receipt";
+
+        return "bi-credit-card";
+    }
+
+    private void SelectPaymentMethod(int paymentTypeId)
+    {
+        newSale.PaymentTypeId = paymentTypeId;
+        UpdateNewSaleTotals();
+    }
+
+    private void DismissSalesMessage()
+    {
+        apiError = string.Empty;
+        newSaleValidationMessages.Clear();
+    }
+
+    private void RemoveNewSaleItem(TransactionItem item)
+    {
+        newSale.Items.Remove(item);
+        UpdateNewSaleTotals();
+    }
+
+    private void ClearNewSaleCart()
+    {
+        newSale.Items.Clear();
+        newSalePaidAmount = 0;
+        newSaleValidationMessages.Clear();
+        UpdateNewSaleTotals();
+    }
+
+    private void UpdateNewSaleTotals()
+    {
+        BuildTotalsAndLine(newSale);
+        if (newSalePaidAmount == 0 || newSalePaidAmount < newSale.Amount)
+            newSalePaidAmount = newSale.Amount;
+    }
+
+    private async Task EditTransaction(Transaction transaction)
+    {
+        apiError = "";
+        var source = transaction;
+        if (!string.IsNullOrWhiteSpace(transaction.DocumentId))
+        {
+            var result = await CashSalesService.LoadTransactionAsync(transaction.DocumentId);
+            if (!result.Success || result.Value is null)
+            {
+                apiError = result.ErrorMessage ?? "Unable to load the cash sale for editing.";
+                return;
+            }
+            source = result.Value;
+        }
+        editingTransaction = CloneTransaction(source);
+        showEditModal = true;
+    }
+
+    private void HideEditModal()
+    {
+        showEditModal = false;
+        editingTransaction = null;
+    }
+
+    private async Task SaveEditTransaction()
+    {
+        if (editingTransaction is null || isSaving) return;
+        var validation = GetNewSaleValidationMessages(editingTransaction);
+        if (validation.Any())
+        {
+            apiError = string.Join(" ", validation);
+            return;
+        }
+
+        isSaving = true;
+        apiError = "";
+        try
+        {
+            ApplySelections(editingTransaction);
+            BuildTotalsAndLine(editingTransaction);
+            var result = await CashSalesService.UpdateTransactionAsync(editingTransaction);
+            if (!result.Success)
+            {
+                apiError = result.ErrorMessage ?? "Unable to update the cash sale.";
+                return;
+            }
+            showEditModal = false;
+            editingTransaction = null;
+            await LoadDataAsync();
+            await InitializeCharts();
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void ApplyNewSaleCustomerSelection()
+    {
+        var customer = customerOptions.FirstOrDefault(item => item.SystemID == newSale.AccountId);
+        if (customer is not null) ApplyCustomerSelection(newSale, customer);
+    }
+
+    private void ApplyEditCustomerSelection()
+    {
+        if (editingTransaction is null) return;
+        var customer = customerOptions.FirstOrDefault(item => item.SystemID == editingTransaction.AccountId);
+        if (customer is not null) ApplyCustomerSelection(editingTransaction, customer);
+    }
+
+    private static void ApplyCustomerSelection(Transaction sale, Customer customer)
+    {
+        sale.AccountId = customer.SystemID ?? string.Empty;
+        sale.CustomerName = $"{customer.FirstName} {customer.LastName}".Trim();
+        sale.CustomerContact = customer.ContactNumber1;
+        sale.CustomerEmail = customer.Email;
+    }
+
+    private static string CustomerOptionLabel(Customer customer)
+    {
+        var name = $"{customer.FirstName} {customer.LastName}".Trim();
+        return string.IsNullOrWhiteSpace(customer.ContactNumber1) ? name : $"{name} - {customer.ContactNumber1}";
+    }
+    private void ApplySelections(Transaction sale)
+    {
+        sale.Branch = branches.FirstOrDefault(item => item.Id == sale.BranchId)?.Name ?? sale.BranchId;
+        if (sale.Payments.Count > 0)
+        {
+            foreach (var payment in sale.Payments)
+                payment.PaymentMethod = paymentTypes.FirstOrDefault(item => item.POSPaymentTypeID == payment.PaymentTypeId)?.POSPaymentTypeName ?? payment.PaymentMethod;
+            sale.PaymentTypeId = sale.Payments[0].PaymentTypeId;
+            sale.PaymentMethod = string.Join(" + ", sale.Payments
+                .Select(payment => payment.PaymentMethod)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+        }
+        else
+        {
+            sale.PaymentMethod = paymentTypes.FirstOrDefault(item => item.POSPaymentTypeID == sale.PaymentTypeId)?.POSPaymentTypeName ?? sale.PaymentMethod;
+        }
+    }
+
+    private static void BuildTotalsAndLine(Transaction sale)
+    {
+        if (sale.Items.Any())
+        {
+            foreach (var item in sale.Items)
+            {
+                item.Quantity = Math.Max(1, item.Quantity);
+                var gross = item.Quantity * item.UnitPrice;
+                item.Discount = Math.Clamp(item.Discount, 0, gross);
+                item.TotalPrice = decimal.Round(Math.Max(0, gross - item.Discount), 2);
+                if (string.IsNullOrWhiteSpace(item.Category))
+                    item.Category = "Product";
+            }
+
+            sale.Subtotal = decimal.Round(sale.Items.Sum(item => item.Quantity * item.UnitPrice), 2);
+            sale.Discount = decimal.Round(sale.Items.Sum(item => item.Discount), 2);
+            sale.Tax = 0;
+            sale.Amount = decimal.Round(Math.Max(0, sale.Subtotal - sale.Discount + sale.Tax), 2);
+            sale.ItemCount = sale.Items.Sum(item => Math.Max(1, item.Quantity));
+            var categories = sale.Items
+                .Select(item => item.Category)
+                .Where(category => !string.IsNullOrWhiteSpace(category))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            sale.Type = categories.Count == 1 ? categories[0] : "Mixed";
+            return;
+        }
+
+        sale.Subtotal = decimal.Round(sale.Amount / 1.06m, 2);
+        sale.Tax = sale.Amount - sale.Subtotal;
+        var quantity = Math.Max(1, sale.ItemCount);
+        sale.Items = new()
+        {
+            new TransactionItem
+            {
+                Name = sale.Type == "Service" ? "Service Item" : "Product Item",
+                Category = sale.Type,
+                Quantity = quantity,
+                UnitPrice = sale.Subtotal / quantity,
+                TotalPrice = sale.Subtotal
+            }
+        };
+    }
+
+    private static decimal BuildSaleTotal(Transaction sale)
+    {
+        if (!sale.Items.Any())
+            return sale.Amount;
+
+        return decimal.Round(sale.Items.Sum(item =>
+        {
+            var gross = Math.Max(1, item.Quantity) * item.UnitPrice;
+            return Math.Max(0, gross - Math.Clamp(item.Discount, 0, gross));
+        }), 2);
+    }
+
+    private static TransactionItem CreateDefaultSaleItem() => new()
+    {
+        Category = "-",
+        Quantity = 1
+    };
+
+    private sealed record SaleCatalogItem(
+        string Id,
+        string Name,
+        string Sku,
+        string Type,
+        decimal Price,
+        string Description,
+        string ImageUrl);
+
+    private static Transaction CloneTransaction(Transaction source) => new()
+    {
+        Id = source.Id,
+        DocumentId = source.DocumentId,
+        AccountId = source.AccountId,
+        BranchId = source.BranchId,
+        PaymentTypeId = source.PaymentTypeId,
+        InvoiceNumber = source.InvoiceNumber,
+        Date = source.Date,
+        CustomerName = source.CustomerName,
+        CustomerContact = source.CustomerContact,
+        CustomerEmail = source.CustomerEmail,
+        Branch = source.Branch,
+        Type = source.Type,
+        ItemCount = source.ItemCount,
+        Amount = source.Amount,
+        Subtotal = source.Subtotal,
+        Tax = source.Tax,
+        Discount = source.Discount,
+        PaymentMethod = source.PaymentMethod,
+        Status = source.Status,
+        ReferenceNumber = source.ReferenceNumber,
+        Notes = source.Notes,
+        Items = source.Items.Select(item => new TransactionItem
+        {
+            Id = item.Id,
+            InventoryId = item.InventoryId,
+            Name = item.Name,
+            Description = item.Description,
+            ImageUrl = item.ImageUrl,
+            Category = item.Category,
+            Quantity = item.Quantity,
+            UnitPrice = item.UnitPrice,
+            TotalPrice = item.TotalPrice,
+            Discount = item.Discount
+        }).ToList(),
+        Payments = source.Payments.Select(payment => new TransactionPayment
+        {
+            ReceiptLineId = payment.ReceiptLineId,
+            PaymentTypeId = payment.PaymentTypeId,
+            PaymentMethod = payment.PaymentMethod,
+            Amount = payment.Amount
+        }).ToList(),
+        CreatedAt = source.CreatedAt,
+        CreatedBy = source.CreatedBy
+    };
+
+    private static Transaction MergeReceiptTransaction(Transaction sale, Transaction? apiResult)
+    {
+        var receipt = CloneTransaction(sale);
+        if (apiResult is null)
+            return receipt;
+
+        receipt.Id = apiResult.Id != 0 ? apiResult.Id : receipt.Id;
+        receipt.DocumentId = string.IsNullOrWhiteSpace(apiResult.DocumentId) ? receipt.DocumentId : apiResult.DocumentId;
+        receipt.InvoiceNumber = string.IsNullOrWhiteSpace(apiResult.InvoiceNumber) ? receipt.InvoiceNumber : apiResult.InvoiceNumber;
+        receipt.Date = apiResult.Date == default ? receipt.Date : apiResult.Date;
+        receipt.Status = string.IsNullOrWhiteSpace(apiResult.Status) ? receipt.Status : apiResult.Status;
+        return receipt;
+    }
+
+    private void ShowCancelModal(Transaction transaction)
+    {
+        cancellingTransaction = transaction;
+        cancellationReason = "";
+        showCancelModal = true;
+    }
+
+    private void HideCancelModal()
+    {
+        showCancelModal = false;
+        cancellingTransaction = null;
+        cancellationReason = "";
+    }
+
+    private async Task ConfirmCancelTransaction()
+    {
+        if (cancellingTransaction is null || isSaving) return;
+        if (string.IsNullOrWhiteSpace(cancellationReason))
+        {
+            await JS.InvokeVoidAsync("alert", "Please provide a deletion reason.");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(cancellingTransaction.DocumentId))
+        {
+            apiError = "This transaction does not contain a server document ID and cannot be deleted.";
+            return;
+        }
+
+        isSaving = true;
+        apiError = "";
+        try
+        {
+            var result = await CashSalesService.DeleteTransactionAsync(cancellingTransaction, cancellationReason);
+            if (!result.Success)
+            {
+                apiError = result.ErrorMessage ?? "Unable to delete the cash sale.";
+                return;
+            }
+            HideCancelModal();
+            await LoadDataAsync();
+            await InitializeCharts();
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        NavigationManager.LocationChanged -= HandleLocationChanged;
+        try { await JS.InvokeVoidAsync("salesCharts.destroyCharts"); }
+        catch { }
+    }
+}

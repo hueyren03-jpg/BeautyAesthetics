@@ -1,0 +1,350 @@
+@using Beauty_Aesthetics_WebPos.Components.Layout
+@namespace Beauty_Aesthetics_WebPos.Components.Pages
+@using Microsoft.Extensions.Localization
+@layout MainLayout
+@page "/"
+@inject IStringLocalizer<Dashboard> Localizer
+
+<PageTitle>Dashboard</PageTitle>
+
+<div class="dashboard-container">
+    <div class="dashboard-page-header">
+        <div class="dashboard-title-block">
+            <h1 class="page-title">@Localizer["Dashboard"]</h1>
+            <p class="dashboard-subtitle">@GetDateRangeLabel()</p>
+        </div>
+        <div class="dashboard-branch-actions">
+            <div class="dashboard-branch-pill" title="Current branch">
+                <i class="bi bi-building"></i>
+                <span>@selectedBranchName</span>
+            </div>
+            @if (canSwitchBranch)
+            {
+                <button type="button" class="dashboard-branch-switch" @onclick="OpenBranchPicker">
+                    <i class="bi bi-arrow-left-right"></i>
+                    <span>Switch branch</span>
+                </button>
+            }
+        </div>
+    </div>
+    @if (isDashboardLoading)
+    {
+        <div class="dashboard-api-state">Loading dashboard data...</div>
+    }
+    <div class="stats-section">
+        <div class="section-header dashboard-toolbar">
+            <h2 class="section-title">@GetPerformanceTitle()</h2>
+            <div class="period-selector">
+                <div class="date-selector-wrapper" @onclick="OpenDatePicker" @onclick:stopPropagation="true">
+                    <input type="date"
+                           @ref="dateInputRef"
+                           id="dashboard-date-input"
+                           class="date-selector-input"
+                           value="@selectedDate.ToString("yyyy-MM-dd")"
+                           @onchange="OnDateSelected" />
+                </div>
+                <button class="period-btn @(selectedPeriod == "day" ? "active" : "")" @onclick='() => SelectPeriod("day")'>
+                    <i class="bi bi-calendar-day"></i>
+                    <span>@Localizer["Day"]</span>
+                </button>
+                <button class="period-btn @(selectedPeriod == "week" ? "active" : "")" @onclick='() => SelectPeriod("week")'>
+                    <i class="bi bi-calendar-week"></i>
+                    <span>@Localizer["Week"]</span>
+                </button>
+                <button class="period-btn @(selectedPeriod == "month" ? "active" : "")" @onclick='() => SelectPeriod("month")'>
+                    <i class="bi bi-calendar-month"></i>
+                    <span>@Localizer["Month"]</span>
+                </button>
+                <button class="period-btn @(selectedPeriod == "year" ? "active" : "")" @onclick='() => SelectPeriod("year")'>
+                    <i class="bi bi-calendar-range"></i>
+                    <span>@Localizer["Year"]</span>
+                </button>
+            </div>
+        </div>
+        <div class="stats-grid">
+            <div class="stat-card stat-card--sales">
+                <div class="stat-icon bg-primary">
+                    <i class="bi bi-currency-dollar"></i>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-label">@Localizer["TotalSales"]</div>
+                    <div class="stat-value">RM @totalSales.ToString("N2")</div>
+                    <div class="stat-trend"><i class="bi bi-receipt"></i> @transactionCount transactions at @selectedBranchName</div>
+                </div>
+            </div>
+
+            <div class="stat-card stat-card--appointments">
+                <div class="stat-icon bg-info">
+                    <i class="bi bi-calendar-check"></i>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-label">@Localizer["AppointmentsMade"]</div>
+                    <div class="stat-value">@appointmentsCompleted / @appointmentsTotal</div>
+                    <div class="stat-trend"><i class="bi bi-clock"></i> @appointmentsRemaining remaining</div>
+                </div>
+            </div>
+
+            <div class="stat-card stat-card--customers">
+                <div class="stat-icon bg-success">
+                    <i class="bi bi-people"></i>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-label">@Localizer["NewCustomers"]</div>
+                    <div class="stat-value">@newCustomers</div>
+                    <div class="stat-trend"><i class="bi bi-person-plus"></i> New in selected period</div>
+                </div>
+            </div>
+
+            <div class="stat-card stat-card--items">
+                <div class="stat-icon bg-warning">
+                    <i class="bi bi-box-seam"></i>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-label">@Localizer["ItemsSold"]</div>
+                    <div class="stat-value">@itemsSold</div>
+                    <div class="stat-trend"><i class="bi bi-box-arrow-up"></i> Quantity sold</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-section-heading">
+        <div>
+            <h2>Operational Watchlist</h2>
+            <p>Tasks and exceptions that need staff attention.</p>
+        </div>
+    </div>
+
+    <div class="main-alerts-grid">
+
+        <!-- Low Stock Alert -->
+        <div class="alert-card">
+            <div class="card-header-section" @onclick="ToggleLowStock" style="cursor: pointer;">
+                <div class="header-left">
+                    <div class="icon-badge bg-danger">
+                        <i class="bi bi-exclamation-triangle"></i>
+                    </div>
+                    <div>
+                        <h3 class="card-title">@Localizer["LowStockAlert"]</h3>
+                        <p class="card-subtitle">@string.Format(Localizer["ItemsLowCount"].Value, lowStockItems.Count)</p>
+                    </div>
+                </div>
+                <div class="header-right-actions">
+                    <a href="/inventory" class="btn-link" @onclick:stopPropagation="true">@Localizer["ViewAll"]</a>
+                    <i class="bi @(isLowStockExpanded ? "bi-chevron-up" : "bi-chevron-down") toggle-chevron"></i>
+                </div>
+            </div>
+            @if (isLowStockExpanded)
+            {
+                <div class="card-content">
+                    @if (lowStockItems.Any())
+                    {
+                        @foreach (var item in lowStockItems)
+                        {
+                            <div class="list-item">
+                                <div class="stock-badge">@item.CurrentStock @item.Unit</div>
+                                <div class="item-info">
+                                    <div class="item-title">@item.Name</div>
+                                    <div class="item-subtitle">@Localizer["RestockNeeded"]</div>
+                                </div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="empty-state">
+                            <i class="bi bi-box-seam-fill"></i>
+                            <p>@Localizer["StockGood"]</p>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Upcoming Appointments -->
+        <div class="alert-card">
+            <div class="card-header-section" @onclick="ToggleAppointments" style="cursor: pointer;">
+                <div class="header-left">
+                    <div class="icon-badge bg-primary">
+                        <i class="bi bi-calendar-event"></i>
+                    </div>
+                    <div>
+                        <h3 class="card-title">@Localizer["UpcomingAppt"]</h3>
+                        <p class="card-subtitle">@string.Format(Localizer["ScheduledToday"].Value, upcomingAppointments.Count)</p>
+                    </div>
+                </div>
+                <div class="header-right-actions">
+                    <a href="/appointments" class="btn-link" @onclick:stopPropagation="true">@Localizer["ViewAll"]</a>
+                    <i class="bi @(isAppointmentsExpanded ? "bi-chevron-up" : "bi-chevron-down") toggle-chevron"></i>
+                </div>
+            </div>
+            @if (isAppointmentsExpanded)
+            {
+                <div class="card-content">
+                    @if (upcomingAppointments.Any())
+                    {
+                        @foreach (var apt in upcomingAppointments)
+                        {
+                            <div class="list-item">
+                                <div class="time-badge">@apt.Time</div>
+                                <div class="item-info">
+                                    <div class="item-title">@apt.CustomerName</div>
+                                    <div class="item-subtitle">@apt.Service</div>
+                                </div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="empty-state">
+                            <i class="bi bi-calendar-x"></i>
+                            <p>@Localizer["NoAppt"]</p>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Birthday Members -->
+        <div class="alert-card">
+            <div class="card-header-section" @onclick="ToggleBirthdays" style="cursor: pointer;">
+                <div class="header-left">
+                    <div class="icon-badge bg-success">
+                        <i class="bi bi-gift"></i>
+                    </div>
+                    <div>
+                        <h3 class="card-title">@Localizer["BirthdayMembers"]</h3>
+                        <p class="card-subtitle">@string.Format(Localizer["ThisWeekCount"].Value, birthdayMembers.Count)</p>
+                    </div>
+                </div>
+                <div class="header-right-actions">
+                    <a href="/members" class="btn-link" @onclick:stopPropagation="true">@Localizer["ViewAll"]</a>
+                    <i class="bi @(isBirthdaysExpanded ? "bi-chevron-up" : "bi-chevron-down") toggle-chevron"></i>
+                </div>
+            </div>
+            @if (isBirthdaysExpanded)
+            {
+                <div class="card-content">
+                    @if (birthdayMembers.Any())
+                    {
+                        @foreach (var member in birthdayMembers)
+                        {
+                            <div class="list-item">
+                                <div class="birthday-badge">@member.Date</div>
+                                <div class="item-info">
+                                    <div class="item-title">@member.Name</div>
+                                    <div class="item-subtitle">@member.Phone</div>
+                                </div>
+                                <button type="button" class="btn-icon-small">
+                                    <i class="bi bi-whatsapp"></i>
+                                </button>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="empty-state">
+                            <i class="bi bi-calendar-heart"></i>
+                            <p>@Localizer["NoBirthdays"]</p>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Expiring Packages -->
+        <div class="alert-card">
+            <div class="card-header-section" @onclick="ToggleExpiring" style="cursor: pointer;">
+                <div class="header-left">
+                    <div class="icon-badge bg-warning">
+                        <i class="bi bi-clock-history"></i>
+                    </div>
+                    <div>
+                        <h3 class="card-title">@Localizer["ExpiringPackages"]</h3>
+                        <p class="card-subtitle">@string.Format(Localizer["NeedAttentionCount"].Value, expiringPackages.Count)</p>
+                    </div>
+                </div>
+                <div class="header-right-actions">
+                    <a href="/packages" class="btn-link" @onclick:stopPropagation="true">@Localizer["ViewAll"]</a>
+                    <i class="bi @(isExpiringExpanded ? "bi-chevron-up" : "bi-chevron-down") toggle-chevron"></i>
+                </div>
+            </div>
+            @if (isExpiringExpanded)
+            {
+                <div class="card-content">
+                    @if (expiringPackages.Any())
+                    {
+                        @foreach (var pkg in expiringPackages)
+                        {
+                            <div class="list-item">
+                                <div class="expire-badge">@pkg.DaysLeft @Localizer["DaysLeft"]</div>
+                                <div class="item-info">
+                                    <div class="item-title">@pkg.MemberName</div>
+                                    <div class="item-subtitle">@pkg.PackageName</div>
+                                </div>
+                                <button type="button" class="btn-icon-small">
+                                    <i class="bi bi-whatsapp"></i>
+                                </button>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="empty-state">
+                            <i class="bi bi-check-circle"></i>
+                            <p>@Localizer["PackagesValid"]</p>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Appointment Follow Up -->
+        <div class="alert-card">
+            <div class="card-header-section" @onclick="ToggleFollowUp" style="cursor: pointer;">
+                <div class="header-left">
+                    <div class="icon-badge bg-info">
+                        <i class="bi bi-journals"></i>
+                    </div>
+                    <div>
+                        <h3 class="card-title">@Localizer["ApptFollowUp"]</h3>
+                        <p class="card-subtitle">@string.Format(Localizer["NeedFollowUpCount"].Value, appointmentFollowUps.Count)</p>
+                    </div>
+                </div>
+                <div class="header-right-actions">
+                    <a href="/appointments" class="btn-link" @onclick:stopPropagation="true">@Localizer["ViewAll"]</a>
+                    <i class="bi @(isFollowUpExpanded ? "bi-chevron-up" : "bi-chevron-down") toggle-chevron"></i>
+                </div>
+            </div>
+            @if (isFollowUpExpanded)
+            {
+                <div class="card-content">
+                    @if (appointmentFollowUps.Any())
+                    {
+                        @foreach (var followUp in appointmentFollowUps)
+                        {
+                            <div class="list-item">
+                                <div class="time-badge">@followUp.Date</div>
+                                <div class="item-info">
+                                    <div class="item-title">@followUp.CustomerName</div>
+                                    <div class="item-subtitle">@followUp.Service</div>
+                                </div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="empty-state">
+                            <i class="bi bi-check-circle"></i>
+                            <p>@Localizer["FollowUpDone"]</p>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<AppErrorPopup Title="Unable to load dashboard" Message="@dashboardError" />
+
+

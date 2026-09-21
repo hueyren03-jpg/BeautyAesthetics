@@ -18,7 +18,7 @@ public sealed class StockGrnService : IStockGrnService
     }
 
     public async Task<ApiCallResult<IReadOnlyList<StockGrnViewModel>>> LoadGrnsAsync(
-        string branchId = "HQ",
+        string branchId,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(branchId))
