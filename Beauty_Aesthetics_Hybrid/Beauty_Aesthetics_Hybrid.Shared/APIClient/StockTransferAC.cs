@@ -20,15 +20,14 @@ public sealed class StockTransferAC
         this.authService = authService;
     }
 
-    public Task<ApiCallResult<List<StockTransferDocumentDTO>>> LoadProxyAsync(
+    public async Task<ApiCallResult<List<StockTransferDocumentDTO>>> LoadProxyAsync(
         StockTransferProxyRequestDTO requestDto,
-        CancellationToken cancellationToken = default) =>
-        SendAsync<List<StockTransferDocumentDTO>>(
-            HttpMethod.Post,
-            "/api/Doc_StockTransfer/LoadProxy",
-            requestDto,
-            "Stock transfer list response was invalid.",
-            cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        using var request = CreateRequest(HttpMethod.Post, "/api/Doc_StockTransfer/LoadProxy", requestDto);
+        using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+        return await ReadTransferListResponseAsync(response, cancellationToken);
+    }
 
     public Task<ApiCallResult<StockTransferEnvelopeDTO>> LoadRecordAsync(
         string id,
@@ -171,6 +170,262 @@ public sealed class StockTransferAC
         {
             return ApiCallResult<T>.Failure(response.StatusCode, invalidResponseMessage);
         }
+    }
+
+    private static async Task<ApiCallResult<List<StockTransferDocumentDTO>>> ReadTransferListResponseAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            return ApiCallResult<List<StockTransferDocumentDTO>>.Unauthorized(response.StatusCode);
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return ApiCallResult<List<StockTransferDocumentDTO>>.Failure(
+                response.StatusCode,
+                BuildApiErrorMessage(response.StatusCode, body, "Unable to load stock transfer records."));
+        }
+
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return ApiCallResult<List<StockTransferDocumentDTO>>.Failure(
+                response.StatusCode,
+                "Stock transfer list response was empty.");
+        }
+
+        try
+        {
+            using var json = JsonDocument.Parse(body);
+            var root = json.RootElement;
+
+            if (TryGet(root, "statusCode", out var status) &&
+                ReadInt(status) is var apiStatus &&
+                apiStatus > 0 &&
+                apiStatus is < 200 or >= 300)
+            {
+                return ApiCallResult<List<StockTransferDocumentDTO>>.Failure(
+                    response.StatusCode,
+                    FindString(root, "message") ?? "Unable to load stock transfer records.");
+            }
+
+            var payload = TryGet(root, "result", out var result) ? result : root;
+            var documents = new List<StockTransferDocumentDTO>();
+            ExtractTransferDocuments(payload, documents);
+
+            return ApiCallResult<List<StockTransferDocumentDTO>>.Ok(response.StatusCode, documents);
+        }
+        catch (JsonException)
+        {
+            return ApiCallResult<List<StockTransferDocumentDTO>>.Failure(
+                response.StatusCode,
+                "Stock transfer list response was invalid.");
+        }
+    }
+
+    private static void ExtractTransferDocuments(
+        JsonElement element,
+        List<StockTransferDocumentDTO> documents)
+    {
+        if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object) continue;
+
+                var document = TryMapTransferDocument(item);
+                if (document is not null)
+                {
+                    documents.Add(document);
+                    continue;
+                }
+
+                ExtractTransferDocuments(item, documents);
+            }
+            return;
+        }
+
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        var mapped = TryMapTransferDocument(element);
+        if (mapped is not null)
+        {
+            documents.Add(mapped);
+            return;
+        }
+
+        foreach (var property in element.EnumerateObject())
+        {
+            if (property.Name.Contains("line", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (property.Value.ValueKind is JsonValueKind.Array or JsonValueKind.Object)
+            {
+                ExtractTransferDocuments(property.Value, documents);
+            }
+        }
+    }
+
+    private static StockTransferDocumentDTO? TryMapTransferDocument(JsonElement element)
+    {
+        if (!LooksLikeTransferDocument(element)) return null;
+
+        var knownNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "isLoading", "documentID", "documentTypeID", "friendlyDocumentName", "alphaCode",
+            "numericCode", "branchID", "editBranchID", "displayCode", "financialDate",
+            "referenceNumber", "totalBeforeTax", "taxableAmount", "taxAmount", "roundingAmount",
+            "totalAfterTax", "localTotalBeforeTax", "localTaxableAmount", "localTaxAmount",
+            "localRoundingAmount", "localTotalAfterTax", "exchangeRate", "isLocked", "isVoid",
+            "orderBranchID", "fromBranchID", "toBranchID", "remarks", "fromBranch", "toBranch",
+            "isConsignment", "stockTransferBranchGroupID", "saveAction", "isDirty"
+        };
+
+        var extensionData = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in element.EnumerateObject())
+        {
+            if (!knownNames.Contains(property.Name))
+            {
+                extensionData[property.Name] = property.Value.Clone();
+            }
+        }
+
+        return new StockTransferDocumentDTO
+        {
+            IsLoading = ReadBool(element, "isLoading"),
+            DocumentID = ReadString(element, "documentID"),
+            DocumentTypeID = ReadInt(element, "documentTypeID"),
+            FriendlyDocumentName = ReadString(element, "friendlyDocumentName"),
+            AlphaCode = ReadString(element, "alphaCode"),
+            NumericCode = ReadInt(element, "numericCode"),
+            BranchID = ReadString(element, "branchID"),
+            EditBranchID = ReadString(element, "editBranchID"),
+            DisplayCode = ReadString(element, "displayCode"),
+            FinancialDate = ReadDate(element, "financialDate") ?? DateTime.Today,
+            ReferenceNumber = ReadString(element, "referenceNumber"),
+            TotalBeforeTax = ReadDecimal(element, "totalBeforeTax"),
+            TaxableAmount = ReadDecimal(element, "taxableAmount"),
+            TaxAmount = ReadDecimal(element, "taxAmount"),
+            RoundingAmount = ReadDecimal(element, "roundingAmount"),
+            TotalAfterTax = ReadDecimal(element, "totalAfterTax"),
+            LocalTotalBeforeTax = ReadDecimal(element, "localTotalBeforeTax"),
+            LocalTaxableAmount = ReadDecimal(element, "localTaxableAmount"),
+            LocalTaxAmount = ReadDecimal(element, "localTaxAmount"),
+            LocalRoundingAmount = ReadDecimal(element, "localRoundingAmount"),
+            LocalTotalAfterTax = ReadDecimal(element, "localTotalAfterTax"),
+            ExchangeRate = Math.Max(1m, ReadDecimal(element, "exchangeRate")),
+            IsLocked = ReadBool(element, "isLocked"),
+            IsVoid = ReadBool(element, "isVoid"),
+            OrderBranchID = ReadString(element, "orderBranchID"),
+            FromBranchID = ReadString(element, "fromBranchID"),
+            ToBranchID = ReadString(element, "toBranchID"),
+            Remarks = ReadString(element, "remarks"),
+            FromBranch = ReadString(element, "fromBranch"),
+            ToBranch = ReadString(element, "toBranch"),
+            IsConsignment = ReadBool(element, "isConsignment"),
+            StockTransferBranchGroupID = ReadString(element, "stockTransferBranchGroupID"),
+            ExtensionData = extensionData.Count == 0 ? null : extensionData
+        };
+    }
+
+    private static bool LooksLikeTransferDocument(JsonElement element) =>
+        TryGet(element, "documentID", out _) ||
+        TryGet(element, "displayCode", out _) ||
+        TryGet(element, "documentTypeID", out _) ||
+        TryGet(element, "financialDate", out _) ||
+        TryGet(element, "fromBranchID", out _) ||
+        TryGet(element, "toBranchID", out _);
+
+    private static bool TryGet(JsonElement element, string name, out JsonElement value)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = property.Value;
+                    return true;
+                }
+            }
+        }
+
+        value = default;
+        return false;
+    }
+
+    private static string? ReadString(JsonElement element, string name)
+    {
+        if (!TryGet(element, name, out var value) ||
+            value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return null;
+        }
+
+        return value.ValueKind == JsonValueKind.String ? value.GetString() : value.ToString();
+    }
+
+    private static int ReadInt(JsonElement element, string name) =>
+        TryGet(element, name, out var value) ? ReadInt(value) : 0;
+
+    private static int ReadInt(JsonElement value)
+    {
+        if (value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return 0;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number)) return number;
+        return int.TryParse(value.ToString(), out var parsed) ? parsed : 0;
+    }
+
+    private static decimal ReadDecimal(JsonElement element, string name)
+    {
+        if (!TryGet(element, name, out var value) ||
+            value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return 0;
+        }
+
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number)) return number;
+        return decimal.TryParse(
+            value.ToString(),
+            System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var parsed) ? parsed : 0;
+    }
+
+    private static bool ReadBool(JsonElement element, string name)
+    {
+        if (!TryGet(element, name, out var value) ||
+            value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return false;
+        }
+
+        if (value.ValueKind == JsonValueKind.True) return true;
+        if (value.ValueKind == JsonValueKind.False) return false;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number)) return number != 0;
+        return bool.TryParse(value.ToString(), out var parsed) && parsed;
+    }
+
+    private static DateTime? ReadDate(JsonElement element, string name)
+    {
+        if (!TryGet(element, name, out var value) ||
+            value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.String && value.TryGetDateTime(out var date)) return date;
+        return DateTime.TryParse(
+            value.ToString(),
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AllowWhiteSpaces,
+            out var parsed) ? parsed : null;
     }
 
     private static async Task<ApiCallResult<string>> ReadMutationResponseAsync(
