@@ -9,6 +9,7 @@
 @inject IJSRuntime JS
 @inject NavigationManager NavigationManager
 @inject CaseNotePageViewModel ViewModel
+@inject AppFeedbackService Feedback
 @implements IAsyncDisposable
 
 <PageTitle>Case Notes - Beauty Aesthetics</PageTitle>
@@ -952,6 +953,7 @@
         {
             _statusMessage = ViewModel.SelectedPatient == null ? "Please select a patient" : "Editor not ready";
             _isSuccess = false;
+            Feedback.Warning(_statusMessage, "Case note not saved");
             StateHasChanged();
             return;
         }
@@ -973,6 +975,7 @@
             {
                 _statusMessage = "Please write some notes";
                 _isSuccess = false;
+                Feedback.Warning(_statusMessage, "Case note not saved");
                 _isSaving = false;
                 _showSavingOverlay = false;
                 await InvokeAsync(StateHasChanged);
@@ -1002,6 +1005,9 @@
             _currentlyViewingNoteId = null;
             _isSuccess = true;
             _statusMessage = isUpdate ? "Note updated successfully!" : "Note saved successfully!";
+            Feedback.Success(
+                _statusMessage,
+                isUpdate ? "Case note updated" : "Case note saved");
             
             // Clear editor for new notes (non-blocking)
             if (!isUpdate)
@@ -1030,6 +1036,7 @@
             Console.WriteLine($"[BLAZOR] Error saving note: {ex.Message}");
             _statusMessage = "Error saving note. Please try again.";
             _isSuccess = false;
+            Feedback.Error(_statusMessage, "Case note not saved");
         }
         finally
         {
@@ -1061,6 +1068,7 @@
             
             _statusMessage = $"Loaded: {note.Date.ToString("MMM dd, yyyy")}";
             _isSuccess = true;
+            Feedback.Info(_statusMessage, "Edit case note", 2200);
             
             _hideMessageCts?.Cancel();
             _hideMessageCts?.Dispose();
@@ -1089,6 +1097,7 @@
             _currentlyViewingNoteId = null;
             _statusMessage = "Editor cleared";
             _isSuccess = true;
+            Feedback.Info("The case note editor was cleared.", "Editor cleared", 1800);
             
             _hideMessageCts?.Cancel();
             _hideMessageCts?.Dispose();
@@ -1118,6 +1127,7 @@
     {
         _showDeleteModal = false;
         _noteToDelete = null;
+        Feedback.Info("Case note deletion cancelled.", "Delete cancelled", 1800);
         StateHasChanged();
     }
 
@@ -1140,6 +1150,7 @@
             
             _statusMessage = "Note deleted successfully";
             _isSuccess = true;
+            Feedback.Success(_statusMessage, "Case note deleted");
             StateHasChanged();
             
             // Auto-hide success message after delay (in background)
