@@ -3845,18 +3845,39 @@
     private int ProductsPageSize { get; set; } = 10;
     private bool IsSortAscending { get; set; } = true;
 
-    private void SetActiveTab(string tab)
+    private async Task SetActiveTab(string tab)
     {
         ActiveTab = tab;
         SelectedItem = null;
+
+        // A branch can be selected/changed outside this page after Inventory was first
+        // rendered. Refresh branch-scoped history when its tab is opened so the table
+        // cannot remain stuck with an earlier HQ/branch request.
+        await BranchSession.InitializeAsync();
+
+        switch (tab)
+        {
+            case "GRN":
+                await LoadGRNsAsync();
+                break;
+            case "ReturnedStock":
+                await LoadGINsAsync();
+                break;
+            case "TransferOrders":
+                await Task.WhenAll(
+                    LoadStockTransfersAsync(),
+                    LoadPendingStockReceiptsAsync());
+                ReconcileStockTransferStatuses();
+                break;
+        }
     }
 
-    private void OnTabSelectChanged(ChangeEventArgs e)
+    private async Task OnTabSelectChanged(ChangeEventArgs e)
     {
         var tab = e.Value?.ToString();
         if (!string.IsNullOrEmpty(tab))
         {
-            SetActiveTab(tab);
+            await SetActiveTab(tab);
         }
     }
 
