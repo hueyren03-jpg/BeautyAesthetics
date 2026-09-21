@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.ViewModels;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.Inventory;
@@ -11,10 +12,12 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.Inventory;
 public sealed class StockGrnService : IStockGrnService
 {
     private readonly StockGrnAC stockGrnAC;
+    private readonly AppFeedbackService feedback;
 
-    public StockGrnService(StockGrnAC stockGrnAC)
+    public StockGrnService(StockGrnAC stockGrnAC, AppFeedbackService feedback)
     {
         this.stockGrnAC = stockGrnAC;
+        this.feedback = feedback;
     }
 
     public async Task<ApiCallResult<IReadOnlyList<StockGrnViewModel>>> LoadGrnsAsync(
@@ -63,9 +66,9 @@ public sealed class StockGrnService : IStockGrnService
         var templateResult = await stockGrnAC.LoadRecordAsync(string.Empty, cancellationToken);
         if (!templateResult.Success || templateResult.Value is null)
         {
-            return ApiCallResult<bool>.Failure(
-                templateResult.StatusCode,
-                templateResult.ErrorMessage ?? "Unable to prepare a new GRN.");
+            var message = templateResult.ErrorMessage ?? "Unable to prepare a new GRN.";
+            feedback.Error(message, "Stock In failed");
+            return ApiCallResult<bool>.Failure(templateResult.StatusCode, message);
         }
 
         Apply(templateResult.Value.Document, grn, branchId);
@@ -73,8 +76,20 @@ public sealed class StockGrnService : IStockGrnService
         templateResult.Value.Document.SaveAction = "Added";
         templateResult.Value.Document.IsDirty = true;
 
-        var result = await stockGrnAC.CreateRecordAsync(templateResult.Value, cancellationToken);
-        return ToBoolean(result, "Unable to create GRN.");
+        var result = ToBoolean(
+            await stockGrnAC.CreateRecordAsync(templateResult.Value, cancellationToken),
+            "Unable to create GRN.");
+
+        if (result.Success)
+        {
+            feedback.Success("Stock In completed and GRN created successfully.", "Stock In completed");
+        }
+        else
+        {
+            feedback.Error(result.ErrorMessage ?? "Unable to create GRN.", "Stock In failed");
+        }
+
+        return result;
     }
 
     public async Task<ApiCallResult<StockGrnViewModel>> LoadGrnAsync(
@@ -104,15 +119,17 @@ public sealed class StockGrnService : IStockGrnService
     {
         if (string.IsNullOrWhiteSpace(grn.DocumentId))
         {
-            return ApiCallResult<bool>.Failure(HttpStatusCode.BadRequest, "GRN document ID is missing.");
+            const string message = "GRN document ID is missing.";
+            feedback.Warning(message, "GRN not updated");
+            return ApiCallResult<bool>.Failure(HttpStatusCode.BadRequest, message);
         }
 
         var loadResult = await stockGrnAC.LoadRecordAsync(grn.DocumentId, cancellationToken);
         if (!loadResult.Success || loadResult.Value is null)
         {
-            return ApiCallResult<bool>.Failure(
-                loadResult.StatusCode,
-                loadResult.ErrorMessage ?? "Unable to load GRN before updating.");
+            var message = loadResult.ErrorMessage ?? "Unable to load GRN before updating.";
+            feedback.Error(message, "GRN not updated");
+            return ApiCallResult<bool>.Failure(loadResult.StatusCode, message);
         }
 
         Apply(loadResult.Value.Document, grn, branchId);
@@ -121,8 +138,20 @@ public sealed class StockGrnService : IStockGrnService
         loadResult.Value.Document.SaveAction = "Changed";
         loadResult.Value.Document.IsDirty = true;
 
-        var result = await stockGrnAC.UpdateRecordAsync(loadResult.Value, cancellationToken);
-        return ToBoolean(result, "Unable to update GRN.");
+        var result = ToBoolean(
+            await stockGrnAC.UpdateRecordAsync(loadResult.Value, cancellationToken),
+            "Unable to update GRN.");
+
+        if (result.Success)
+        {
+            feedback.Success("GRN updated successfully.", "GRN updated");
+        }
+        else
+        {
+            feedback.Error(result.ErrorMessage ?? "Unable to update GRN.", "GRN not updated");
+        }
+
+        return result;
     }
 
     public async Task<ApiCallResult<bool>> DeleteGrnAsync(
@@ -131,11 +160,25 @@ public sealed class StockGrnService : IStockGrnService
     {
         if (string.IsNullOrWhiteSpace(documentId))
         {
-            return ApiCallResult<bool>.Failure(HttpStatusCode.BadRequest, "GRN document ID is missing.");
+            const string message = "GRN document ID is missing.";
+            feedback.Warning(message, "GRN not deleted");
+            return ApiCallResult<bool>.Failure(HttpStatusCode.BadRequest, message);
         }
 
-        var result = await stockGrnAC.DeleteAsync(documentId, cancellationToken);
-        return ToBoolean(result, "Unable to delete GRN.");
+        var result = ToBoolean(
+            await stockGrnAC.DeleteAsync(documentId, cancellationToken),
+            "Unable to delete GRN.");
+
+        if (result.Success)
+        {
+            feedback.Success("GRN deleted successfully.", "GRN deleted");
+        }
+        else
+        {
+            feedback.Error(result.ErrorMessage ?? "Unable to delete GRN.", "GRN not deleted");
+        }
+
+        return result;
     }
 
     private static void Apply(StockGrnDocumentDTO document, StockGrnViewModel grn, string branchId)
