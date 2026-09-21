@@ -1,5 +1,6 @@
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.Inventory;
@@ -10,10 +11,12 @@ public sealed class InventoryOptionService : IInventoryOptionService
     private const string DefaultBranchId = "HQ";
 
     private readonly SupportingTableAC supportingTableAC;
+    private readonly AppFeedbackService feedback;
 
-    public InventoryOptionService(SupportingTableAC supportingTableAC)
+    public InventoryOptionService(SupportingTableAC supportingTableAC, AppFeedbackService feedback)
     {
         this.supportingTableAC = supportingTableAC;
+        this.feedback = feedback;
     }
 
     public async Task<ApiCallResult<IReadOnlyList<SupportingTableDM>>> GetCategoriesAsync(
@@ -35,7 +38,7 @@ public sealed class InventoryOptionService : IInventoryOptionService
         return ApiCallResult<IReadOnlyList<SupportingTableDM>>.Ok(result.StatusCode, categories);
     }
 
-    public Task<ApiCallResult<SupportingTableSaveResultDTO>> CreateCategoryAsync(
+    public async Task<ApiCallResult<SupportingTableSaveResultDTO>> CreateCategoryAsync(
         string categoryName,
         string externalCode,
         CancellationToken cancellationToken = default)
@@ -56,23 +59,45 @@ public sealed class InventoryOptionService : IInventoryOptionService
             LstExchangeRate = new()
         };
 
-        return supportingTableAC.CreateAsync(payload, cancellationToken);
+        var result = await supportingTableAC.CreateAsync(payload, cancellationToken);
+        if (result.Success)
+        {
+            feedback.Success("Category created successfully.", "Category created");
+        }
+        else
+        {
+            feedback.Error(result.ErrorMessage ?? "Unable to create category.", "Category not created");
+        }
+
+        return result;
     }
 
-    public Task<ApiCallResult<SupportingTableSaveResultDTO>> DeleteCategoryAsync(
+    public async Task<ApiCallResult<SupportingTableSaveResultDTO>> DeleteCategoryAsync(
         string categoryId,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(categoryId))
         {
-            return Task.FromResult(ApiCallResult<SupportingTableSaveResultDTO>.Failure(
+            const string message = "The selected category has no record ID.";
+            feedback.Warning(message, "Category not deleted");
+            return ApiCallResult<SupportingTableSaveResultDTO>.Failure(
                 System.Net.HttpStatusCode.BadRequest,
-                "The selected category has no record ID."));
+                message);
         }
 
-        return supportingTableAC.DeleteAsync(categoryId.Trim(), cancellationToken);
+        var result = await supportingTableAC.DeleteAsync(categoryId.Trim(), cancellationToken);
+        if (result.Success)
+        {
+            feedback.Success("Category deleted successfully.", "Category deleted");
+        }
+        else
+        {
+            feedback.Error(result.ErrorMessage ?? "Unable to delete category.", "Category not deleted");
+        }
+
+        return result;
     }
-    public Task<ApiCallResult<SupportingTableSaveResultDTO>> UpdateCategoryAsync(
+    public async Task<ApiCallResult<SupportingTableSaveResultDTO>> UpdateCategoryAsync(
         string categoryId,
         string categoryName,
         string externalCode,
@@ -94,6 +119,16 @@ public sealed class InventoryOptionService : IInventoryOptionService
             LstExchangeRate = new()
         };
 
-        return supportingTableAC.UpdateAsync(payload, cancellationToken);
+        var result = await supportingTableAC.UpdateAsync(payload, cancellationToken);
+        if (result.Success)
+        {
+            feedback.Success("Category updated successfully.", "Category updated");
+        }
+        else
+        {
+            feedback.Error(result.ErrorMessage ?? "Unable to update category.", "Category not updated");
+        }
+
+        return result;
     }
 }
