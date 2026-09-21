@@ -584,40 +584,44 @@
                 </table>
             </div>
             <div class="inventory__table-wrapper table-scroll inventory-products-mobile-compact mobile-view">
-                <table class="inventory__table products__table resizable-table">
+                <table class="inventory__table products__table products__table--mobile-priority resizable-table">
                     <colgroup>
                         @if (IsDeleteMode)
                         {
-                            <col class="product-col-select" />
+                            <col class="product-mobile-col product-mobile-col--select" />
                         }
-                        <col class="product-col-sku" />
-                        <col class="product-col-name" />
-                        <col class="product-compact-col-actions" />
+                        <col class="product-mobile-col product-mobile-col--name" />
+                        <col class="product-mobile-col product-mobile-col--stock" />
+                        <col class="product-mobile-col product-mobile-col--price" />
+                        <col class="product-mobile-col product-mobile-col--actions" />
                     </colgroup>
                     <thead>
                         <tr>
                             @if (IsDeleteMode)
                             {
-                                <th class="inventory__checkbox-col">
+                                <th class="inventory__checkbox-col product-mobile-field product-mobile-field--select">
                                     <input type="checkbox"
                                            checked="@IsAllSelected"
                                            @onchange="ToggleSelectAll" />
                                 </th>
                             }
-                            <th class='@GetSortHeaderClass(SortColumn, SortAscending, "Sku")' @onclick="@(() => ToggleSort("Sku"))">
-                                SKU <span class="resize-handle"></span>
+                            <th class='product-mobile-field product-mobile-field--name @GetSortHeaderClass(SortColumn, SortAscending, "Type")' @onclick="@(() => ToggleSort("Type"))">
+                                Product <span class="resize-handle"></span>
                             </th>
-                            <th class='@GetSortHeaderClass(SortColumn, SortAscending, "Type")' @onclick="@(() => ToggleSort("Type"))">
-                                Product Name <span class="resize-handle"></span>
+                            <th class='product-mobile-field product-mobile-field--stock @GetSortHeaderClass(SortColumn, SortAscending, "StockQuantity")' @onclick="@(() => ToggleSort("StockQuantity"))">
+                                Stock
                             </th>
-                            <th class="product-actions-heading">Actions</th>
+                            <th class='product-mobile-field product-mobile-field--price @GetSortHeaderClass(SortColumn, SortAscending, "Price")' @onclick="@(() => ToggleSort("Price"))">
+                                Price
+                            </th>
+                            <th class="product-actions-heading product-mobile-field product-mobile-field--actions">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         @if (!PaginatedItems.Any())
                         {
                             <tr>
-                                <td colspan="@(IsDeleteMode ? 4 : 3)" style="text-align: center; padding: 2rem; color: #6b7280;">
+                                <td colspan="@(IsDeleteMode ? 5 : 4)" style="text-align: center; padding: 2rem; color: #6b7280;">
                                     No products found. Click the + button to add a new product.
                                 </td>
                             </tr>
@@ -629,14 +633,13 @@
                                 <tr @onclick="() => OpenMobileProductDetails(item)" class="@(SelectedItem == item && !IsDeleteMode ? "selected" : string.Empty)">
                                     @if (IsDeleteMode)
                                     {
-                                        <td class="inventory__checkbox-col" @onclick:stopPropagation="true">
+                                        <td class="inventory__checkbox-col product-mobile-field product-mobile-field--select" @onclick:stopPropagation="true">
                                             <input type="checkbox"
                                                    checked="@SelectedItemsForDeletion.Contains(item)"
                                                    @onchange="() => ToggleItemSelection(item)" />
                                         </td>
                                     }
-                                    <td>@item.Sku</td>
-                                    <td>
+                                    <td class="product-mobile-field product-mobile-field--name">
                                         <div class="product-table-product product-table-product--mobile">
                                             <div class="product-table-image product-table-image--mobile" aria-hidden="true">
                                                 @if (HasInventoryImage(item))
@@ -648,10 +651,15 @@
                                                     <i class="bi bi-image"></i>
                                                 }
                                             </div>
-                                            <strong title="@item.Type">@DisplayProductValue(item.Type)</strong>
+                                            <span class="product-mobile-name-copy">
+                                                <strong title="@item.Type">@DisplayProductValue(item.Type)</strong>
+                                                <small>@DisplayProductValue(item.Sku)</small>
+                                            </span>
                                         </div>
                                     </td>
-                                    <td class="product-row-actions" @onclick:stopPropagation="true">
+                                    <td class="product-mobile-field product-mobile-field--stock">@GetProductStockDisplay(item)</td>
+                                    <td class="product-mobile-field product-mobile-field--price">MYR @item.Price.ToString("N2")</td>
+                                    <td class="product-row-actions product-mobile-field product-mobile-field--actions" @onclick:stopPropagation="true">
                                         <button type="button"
                                                 class="product-row-action"
                                                 title="View product details"
@@ -668,7 +676,6 @@
                                         </button>
                                     </td>
                                 </tr>
-
                             }
                         }
                     </tbody>
