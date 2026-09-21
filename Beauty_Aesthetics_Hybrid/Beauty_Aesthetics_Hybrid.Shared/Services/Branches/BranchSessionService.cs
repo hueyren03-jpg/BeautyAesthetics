@@ -17,7 +17,7 @@ public sealed class BranchSessionService(
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        if (CurrentBranch is not null || AvailableBranches.Count > 0)
+        if (CurrentBranch is not null)
         {
             return;
         }
@@ -25,26 +25,39 @@ public sealed class BranchSessionService(
         await initializeLock.WaitAsync(cancellationToken);
         try
         {
-            if (CurrentBranch is not null || AvailableBranches.Count > 0)
+            if (CurrentBranch is not null)
             {
                 return;
             }
 
             ErrorMessage = null;
-            var result = await branchLookupService.LoadBranchesAsync(cancellationToken);
-            if (!result.Success || result.Value is null)
+
+            IReadOnlyList<BranchLookupItem> branches;
+            if (AvailableBranches.Count > 0)
             {
-                ErrorMessage = result.ErrorMessage ?? "Unable to load branches.";
-                appState.SetAvailableBranches([]);
-                return;
+                // Another page/service may already have populated the branch list.
+                // We still need to restore/select the working branch instead of
+                // returning with CurrentBranch == null.
+                branches = AvailableBranches;
+            }
+            else
+            {
+                var result = await branchLookupService.LoadBranchesAsync(cancellationToken);
+                if (!result.Success || result.Value is null)
+                {
+                    ErrorMessage = result.ErrorMessage ?? "Unable to load branches.";
+                    appState.SetAvailableBranches([]);
+                    return;
+                }
+
+                var allowedIds = GetAllowedBranchIds(appState.CurrentUserJson);
+                branches = allowedIds.Count == 0
+                    ? result.Value
+                    : result.Value.Where(branch => allowedIds.Contains(branch.Id)).ToList();
+
+                appState.SetAvailableBranches(branches);
             }
 
-            var allowedIds = GetAllowedBranchIds(appState.CurrentUserJson);
-            var branches = allowedIds.Count == 0
-                ? result.Value
-                : result.Value.Where(branch => allowedIds.Contains(branch.Id)).ToList();
-
-            appState.SetAvailableBranches(branches);
             if (branches.Count == 0)
             {
                 ErrorMessage = "No branch is available for this account.";
@@ -53,6 +66,7 @@ public sealed class BranchSessionService(
 
             var savedBranchId = await branchStore.GetBranchIdAsync();
             var branchToSelect = FindBranch(branches, savedBranchId);
+
             if (branchToSelect is null && branches.Count == 1)
             {
                 branchToSelect = branches[0];
