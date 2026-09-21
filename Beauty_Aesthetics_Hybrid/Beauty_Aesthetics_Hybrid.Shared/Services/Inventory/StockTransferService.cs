@@ -12,11 +12,16 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.Inventory;
 public sealed class StockTransferService : IStockTransferService
 {
     private readonly StockTransferAC stockTransferAC;
+    private readonly IInventoryPendingAcceptService pendingAcceptService;
     private readonly AppFeedbackService feedback;
 
-    public StockTransferService(StockTransferAC stockTransferAC, AppFeedbackService feedback)
+    public StockTransferService(
+        StockTransferAC stockTransferAC,
+        IInventoryPendingAcceptService pendingAcceptService,
+        AppFeedbackService feedback)
     {
         this.stockTransferAC = stockTransferAC;
+        this.pendingAcceptService = pendingAcceptService;
         this.feedback = feedback;
     }
 
@@ -57,6 +62,11 @@ public sealed class StockTransferService : IStockTransferService
             .ThenByDescending(transfer => transfer.DisplayCode)
             .ToList();
 
+        foreach (var transfer in transfers)
+        {
+            ApplyAcceptedReceiptStatus(transfer);
+        }
+
         return ApiCallResult<IReadOnlyList<StockTransferViewModel>>.Ok(result.StatusCode, transfers);
     }
 
@@ -81,6 +91,7 @@ public sealed class StockTransferService : IStockTransferService
 
         var transfer = ToViewModel(result.Value.Document);
         transfer.Lines = result.Value.DocumentLines.Select(ToLineViewModel).ToList();
+        ApplyAcceptedReceiptStatus(transfer);
         return ApiCallResult<StockTransferViewModel>.Ok(result.StatusCode, transfer);
     }
 
@@ -416,6 +427,19 @@ public sealed class StockTransferService : IStockTransferService
         TotalAmount = document.TotalAfterTax != 0 ? document.TotalAfterTax : document.LocalTotalAfterTax,
         Status = ResolveTransferStatus(document)
     };
+
+    private void ApplyAcceptedReceiptStatus(StockTransferViewModel transfer)
+    {
+        if (string.Equals(transfer.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (pendingAcceptService.WasAcceptedTransfer(transfer.DocumentId, transfer.DisplayCode))
+        {
+            transfer.Status = "Completed";
+        }
+    }
 
     private static string ResolveTransferStatus(StockTransferDocumentDTO document)
     {
