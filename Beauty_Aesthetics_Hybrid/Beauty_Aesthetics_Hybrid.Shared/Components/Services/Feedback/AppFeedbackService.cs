@@ -22,7 +22,7 @@ public sealed record AppFeedbackMessage(
 
 public sealed class AppFeedbackService : IDisposable
 {
-    private const int MaxMessages = 5;
+    private const int MaxMessages = 4;
     private readonly object sync = new();
     private readonly List<AppFeedbackMessage> messages = [];
     private readonly Dictionary<Guid, CancellationTokenSource> dismissTimers = [];
@@ -108,7 +108,10 @@ public sealed class AppFeedbackService : IDisposable
 
             while (messages.Count > MaxMessages)
             {
-                var removable = messages.FirstOrDefault(existing => existing.Kind != AppFeedbackKind.Loading)
+                var removable = messages.FirstOrDefault(existing =>
+                        existing.Id != item.Id &&
+                        existing.Kind != AppFeedbackKind.Loading)
+                    ?? messages.FirstOrDefault(existing => existing.Id != item.Id)
                     ?? messages[0];
 
                 removedIds.Add(removable.Id);
