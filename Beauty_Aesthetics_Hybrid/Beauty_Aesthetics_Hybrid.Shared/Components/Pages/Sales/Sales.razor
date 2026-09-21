@@ -2844,10 +2844,12 @@
             BuildTotalsAndLine(newSale);
             newSalePaidAmount = Math.Max(newSalePaidAmount, newSale.Amount);
 
+            var feedbackId = Feedback.Loading("Saving cash sale...", "Saving sale");
             var result = await CashSalesService.CreateTransactionAsync(newSale);
             if (!result.Success)
             {
                 apiError = result.ErrorMessage ?? "Unable to create the cash sale.";
+                Feedback.Fail(feedbackId, apiError, "Sale not created");
                 return;
             }
 
@@ -2858,6 +2860,10 @@
             newSaleStep = 4;
             await LoadDataAsync();
             await InitializeCharts();
+            Feedback.Resolve(
+                feedbackId,
+                $"Sale {savedNewSale.InvoiceNumber} created successfully.",
+                "Sale created");
         }
         finally
         {
