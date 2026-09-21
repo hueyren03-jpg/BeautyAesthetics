@@ -11,12 +11,10 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.Inventory;
 public sealed class StockTransferService : IStockTransferService
 {
     private readonly StockTransferAC stockTransferAC;
-    private readonly StockGinAC stockGinAC;
 
-    public StockTransferService(StockTransferAC stockTransferAC, StockGinAC stockGinAC)
+    public StockTransferService(StockTransferAC stockTransferAC)
     {
         this.stockTransferAC = stockTransferAC;
-        this.stockGinAC = stockGinAC;
     }
 
     public async Task<ApiCallResult<IReadOnlyList<StockTransferViewModel>>> LoadTransfersAsync(
@@ -190,23 +188,7 @@ public sealed class StockTransferService : IStockTransferService
         {
             return ApiCallResult<bool>.Failure(
                 HttpStatusCode.Conflict,
-                "Stock Transfer was created, but its document ID could not be resolved safely, so the related GIN was not generated.");
-        }
-
-        var ginResult = await EnsureTransferGinAsync(transfer, cancellationToken);
-        if (!ginResult.Success)
-        {
-            var rollback = await stockTransferAC.DeleteAsync(transfer.DocumentId, cancellationToken);
-            if (rollback.Success)
-            {
-                return ApiCallResult<bool>.Failure(
-                    ginResult.StatusCode,
-                    $"GIN creation failed and the new Stock Transfer was rolled back. {ginResult.ErrorMessage ?? "Unable to create GIN."}");
-            }
-
-            return ApiCallResult<bool>.Failure(
-                ginResult.StatusCode,
-                $"Stock Transfer was created, but its GIN could not be generated. Transfer ID: {transfer.DocumentId}. {ginResult.ErrorMessage ?? "Unable to create GIN."}");
+                "Stock Transfer was created, but its document ID could not be resolved safely.");
         }
 
         transfer.Status = "In Transit";
@@ -303,112 +285,6 @@ public sealed class StockTransferService : IStockTransferService
         }
 
         return verifiedCandidates.Count == 1 ? verifiedCandidates[0] : null;
-    }
-
-    private async Task<ApiCallResult<bool>> EnsureTransferGinAsync(
-        StockTransferViewModel transfer,
-        CancellationToken cancellationToken)
-    {
-        var existingResult = await stockGinAC.LoadProxyAsync(new StockGinProxyRequestDTO
-        {
-            BranchID = NormalizeBranchId(transfer.FromBranchId),
-            StartDate = transfer.Date.Date.AddDays(-1),
-            EndDate = transfer.Date.Date.AddDays(2).AddTicks(-1),
-            PageNumber = 1,
-            PageSize = 200
-        }, cancellationToken);
-
-        if (existingResult.Success && existingResult.Value is not null)
-        {
-            var alreadyExists = existingResult.Value.Any(gin =>
-                !gin.IsVoid &&
-                (SameKey(gin.CreatedByDocumentID, transfer.DocumentId) ||
-                 SameKey(gin.CreatedByDocumentDisplayCode, transfer.DisplayCode) ||
-                 (gin.CreatedByDocumentTypeName?.Contains("transfer", StringComparison.OrdinalIgnoreCase) == true &&
-                  SameKey(gin.ReferenceNumber, transfer.DisplayCode))));
-
-            if (alreadyExists)
-            {
-                return ApiCallResult<bool>.Ok(existingResult.StatusCode, true);
-            }
-        }
-
-        var templateResult = await stockGinAC.LoadRecordAsync(string.Empty, cancellationToken);
-        var envelope = templateResult.Success && templateResult.Value?.Document is not null
-            ? templateResult.Value
-            : StockGinEnvelopeDTO.CreateNew();
-
-        var document = envelope.Document ??= new StockGrnDocumentDTO();
-        var date = transfer.Date == default ? DateTime.Today : transfer.Date;
-        var sourceBranch = NormalizeBranchId(transfer.FromBranchId);
-        var destinationBranch = NormalizeBranchId(transfer.ToBranchId);
-
-        document.FriendlyDocumentName = "GIN";
-        document.BranchID = sourceBranch;
-        document.EditBranchID = sourceBranch;
-        document.OrderBranchID = destinationBranch;
-        document.FinancialDate = date;
-        document.PostingDate = date;
-        document.IsPostingDateDifferent = false;
-        document.ReferenceNumber = NullIfWhiteSpace(transfer.DisplayCode);
-        document.Remarks = NullIfWhiteSpace(transfer.Remarks);
-        document.StockActivityType = "Internal Use";
-        document.CreatedByDocumentTypeID = transfer.DocumentTypeId;
-        document.CreatedByDocumentTypeName = "Stock Transfer";
-        document.CreatedByDocumentID = transfer.DocumentId;
-        document.CreatedByDocumentDisplayCode = transfer.DisplayCode;
-        document.ExchangeRate = document.ExchangeRate <= 0 ? 1 : document.ExchangeRate;
-        document.SaveAction = "Added";
-        document.IsDirty = true;
-
-        var existingLines = envelope.DocumentLines.ToList();
-        var blankTemplate = existingLines.FirstOrDefault();
-        var newLines = new List<JsonObject>();
-
-        for (var index = 0; index < transfer.Lines.Count; index++)
-        {
-            var source = transfer.Lines[index];
-            var line = blankTemplate?.DeepClone().AsObject() ?? new JsonObject();
-            var lineId = Guid.NewGuid().ToString();
-
-            Set(line, "documentLineID", lineId);
-            Set(line, "documentID", document.DocumentID);
-            Set(line, "ownerDocumentTypeID", document.DocumentTypeID);
-            Set(line, "lineOrder", index + 1);
-            Set(line, "lineItemID", source.InventoryId);
-            Set(line, "inventoryItemAccountID", source.InventoryId);
-            Set(line, "lineItemDisplayCode", source.Sku);
-            Set(line, "skuName", source.Sku);
-            Set(line, "description", source.ProductName);
-            Set(line, "itemName", source.ProductName);
-            Set(line, "quantity", source.Quantity);
-            Set(line, "adjustedQuantity", source.Quantity);
-            Set(line, "unitOfMeasurementID", string.IsNullOrWhiteSpace(source.UnitOfMeasurementId) ? "UNIT" : source.UnitOfMeasurementId);
-            Set(line, "inventoryTypeID", 1);
-            Set(line, "unitPrice", 0m);
-            Set(line, "cost", 0m);
-            Set(line, "subTotal", 0m);
-            Set(line, "amount", 0m);
-            Set(line, "taxableAmount", 0m);
-            Set(line, "branchID", sourceBranch);
-            Set(line, "editBranchID", sourceBranch);
-            Set(line, "financialDate", date);
-            Set(line, "documentDisplayCode", document.DisplayCode);
-            Set(line, "sourceDocumentLineID", source.DocumentLineId);
-            Set(line, "sourceDocumentDisplayCode", transfer.DisplayCode);
-            Set(line, "saveAction", "Added");
-            Set(line, "isDirty", true);
-            newLines.Add(line);
-        }
-
-        envelope.DocumentLines = newLines;
-
-        var createResult = await stockGinAC.CreateRecordAsync(envelope, cancellationToken);
-        return createResult.Success
-            ? ApiCallResult<bool>.Ok(createResult.StatusCode, true)
-            : ApiCallResult<bool>.Failure(
-                createResult.StatusCode,
-                createResult.ErrorMessage ?? "Unable to automatically create GIN for the Stock Transfer.");
     }
 
     private static void ApplyDocument(StockTransferDocumentDTO document, StockTransferViewModel transfer)
