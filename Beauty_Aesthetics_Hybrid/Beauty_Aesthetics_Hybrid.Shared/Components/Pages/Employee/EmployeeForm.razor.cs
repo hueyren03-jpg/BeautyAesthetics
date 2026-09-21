@@ -86,13 +86,42 @@ public partial class EmployeeFormBase : ComponentBase
     }
     protected async Task SaveAsync()
     {
-        if (ViewModel is not null)
+        if (ViewModel is null || ViewModel.IsSaving)
         {
-            var saveTask = ViewModel.SaveAsync();
-            await InvokeAsync(StateHasChanged);
-            await saveTask;
-            await InvokeAsync(StateHasChanged);
+            return;
         }
+
+        var wasEditing = ViewModel.IsEditMode;
+        var feedbackId = Feedback.Loading(
+            wasEditing ? "Updating employee..." : "Creating employee...",
+            wasEditing ? "Updating employee" : "Creating employee");
+
+        await ViewModel.SaveAsync();
+        await InvokeAsync(StateHasChanged);
+
+        if (!string.IsNullOrWhiteSpace(ViewModel.ErrorMessage))
+        {
+            var message = ViewModel.ErrorMessage;
+            if (message.Contains("required", StringComparison.OrdinalIgnoreCase))
+            {
+                Feedback.Dismiss(feedbackId);
+                Feedback.Warning(message, "Check employee details");
+            }
+            else
+            {
+                Feedback.Fail(
+                    feedbackId,
+                    message,
+                    wasEditing ? "Employee not updated" : "Employee not created");
+            }
+
+            return;
+        }
+
+        Feedback.Resolve(
+            feedbackId,
+            wasEditing ? "Employee updated successfully." : "Employee created successfully.",
+            wasEditing ? "Employee updated" : "Employee created");
     }
 
 }
