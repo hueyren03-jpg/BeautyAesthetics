@@ -382,25 +382,30 @@ public sealed class StockGrnService : IStockGrnService
             .Where(line => !string.Equals(ReadString(line, "saveAction"), "Deleted", StringComparison.OrdinalIgnoreCase))
             .Select(line =>
             {
-                var cost = ReadDecimal(line, "cost");
-                if (cost <= 0)
-                {
-                    cost = ReadDecimal(line, "unitPrice", "UnitPrice");
-                }
+                var cost = ReadDecimal(line, "cost", "unitPrice");
+                var quantity = ReadDecimal(line, "quantity");
 
                 return new StockGrnLineViewModel
                 {
                     DocumentLineId = ReadString(line, "documentLineID"),
-                    InventoryId = ReadString(line, "lineItemID", "inventoryItemAccountID", "inventoryID", "InventoryID"),
-                    ProductName = ReadString(line, "itemName", "description", "Description"),
-                    Sku = ReadString(line, "lineItemDisplayCode", "skuName", "sku", "SKU", "inventoryCode", "InventoryCode"),
-                    Quantity = ReadDecimal(line, "quantity", "Quantity"),
-                    UnitOfMeasurementId = ReadString(line, "unitOfMeasurementID", "uom", "UOM", "uom1", "UOM1"),
+                    InventoryId = ReadString(line, "lineItemID", "inventoryItemAccountID", "inventoryID"),
+                    ProductName = ReadString(line, "description", "itemName", "accountName"),
+                    Sku = ReadString(line, "lineItemDisplayCode", "itemDisplayCode", "skuName", "sku", "inventoryCode", "displayCode"),
+                    Quantity = quantity,
+                    UnitOfMeasurementId = ReadString(line, "unitOfMeasurementID", "uom", "uom1"),
                     InventoryTypeId = Math.Max(1, (int)ReadDecimal(line, "inventoryTypeID")),
                     UnitCost = cost
                 };
             })
-            .Where(line => !string.IsNullOrWhiteSpace(line.InventoryId) || !string.IsNullOrWhiteSpace(line.Sku))
+            // SenangRetails displays the returned DocumentLineTableDM rows directly.
+            // Do not discard a valid GRN line merely because a deployment omits
+            // LineItemID / InventoryItemAccountID / SKU from LoadRecord.
+            .Where(line =>
+                !string.IsNullOrWhiteSpace(line.ProductName) ||
+                !string.IsNullOrWhiteSpace(line.InventoryId) ||
+                !string.IsNullOrWhiteSpace(line.Sku) ||
+                line.Quantity != 0 ||
+                line.UnitCost != 0)
             .ToList();
 
         var firstLine = viewModel.Lines.FirstOrDefault();
@@ -440,12 +445,21 @@ public sealed class StockGrnService : IStockGrnService
     {
         foreach (var name in names)
         {
-            if (line.TryGetPropertyValue(name, out var node) && node is not null)
+            var property = line.FirstOrDefault(item =>
+                string.Equals(item.Key, name, StringComparison.OrdinalIgnoreCase));
+
+            if (property.Value is null)
             {
-                var value = node.ToString().Trim('"');
-                if (!string.IsNullOrWhiteSpace(value)) return value;
+                continue;
+            }
+
+            var value = property.Value.ToString().Trim('"');
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
             }
         }
+
         return string.Empty;
     }
 
