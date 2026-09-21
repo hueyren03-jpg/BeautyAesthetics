@@ -1805,6 +1805,13 @@
                                                     <button type="button" class="product-row-action" title="View transfer details" @onclick="() => ShowTransferHistoryDetailsAsync(history)">
                                                         <i class="bi bi-eye"></i>
                                                     </button>
+                                                    <button type="button"
+                                                            class="product-row-action product-row-action--danger"
+                                                            title="Delete stock transfer"
+                                                            aria-label="Delete stock transfer"
+                                                            @onclick="() => DeleteTransferHistoryAsync(history)">
+                                                        <i class="bi bi-trash3"></i>
+                                                    </button>
                                                 </td>
                                             }
                                         </tr>
@@ -2664,6 +2671,14 @@
                                                     <button type="button" class="product-row-action" title="View GIN details" @onclick="() => ShowGinDetails(returnedStock)">
                                                         <i class="bi bi-eye"></i>
                                                     </button>
+                                                    <button type="button"
+                                                            class="product-row-action product-row-action--danger"
+                                                            title="@(CanEditGin(returnedStock) ? "Delete GIN" : "This GIN is posted/locked and cannot be deleted")"
+                                                            aria-label="Delete GIN"
+                                                            disabled="@(!CanEditGin(returnedStock))"
+                                                            @onclick="() => DeleteGinFromHistoryAsync(returnedStock)">
+                                                        <i class="bi bi-trash3"></i>
+                                                    </button>
                                                 </td>
                                             }
                                         </tr>
@@ -2871,6 +2886,14 @@
                                                 <td class="inventory-row-actions-column grn-row-actions-column" @onclick:stopPropagation="true">
                                                     <button type="button" class="product-row-action" title="View GRN details" @onclick="() => ShowGrnDetails(grn)">
                                                         <i class="bi bi-eye"></i>
+                                                    </button>
+                                                    <button type="button"
+                                                            class="product-row-action product-row-action--danger"
+                                                            title="@(CanEditGrn(grn) ? "Delete GRN" : GetGrnReadOnlyReason(grn))"
+                                                            aria-label="Delete GRN"
+                                                            disabled="@(!CanEditGrn(grn))"
+                                                            @onclick="() => DeleteGrnFromHistoryAsync(grn)">
+                                                        <i class="bi bi-trash3"></i>
                                                     </button>
                                                 </td>
                                             }
@@ -5067,6 +5090,54 @@
         string.IsNullOrWhiteSpace(item.CreatedByDocumentId) &&
         string.IsNullOrWhiteSpace(item.CreatedByDocumentDisplayCode);
 
+    private async Task DeleteGinFromHistoryAsync(ReturnedStockItem item)
+    {
+        if (!CanEditGin(item))
+        {
+            GINApiError = "This GIN is posted/locked and cannot be deleted.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(item.DocumentId))
+        {
+            GINApiError = "This GIN has no API document ID and cannot be deleted.";
+            return;
+        }
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>(
+            "confirm",
+            $"Delete GIN {item.ReturnedStockNo}? This action cannot be undone.");
+
+        if (!confirmed)
+        {
+            Feedback.Info($"Delete cancelled for GIN {item.ReturnedStockNo}.", "Delete cancelled", 2200);
+            return;
+        }
+
+        IsGINApiLoading = true;
+        GINApiError = null;
+        try
+        {
+            var result = await StockGinService.DeleteGinAsync(item.DocumentId);
+            if (!result.Success)
+            {
+                GINApiError = result.ErrorMessage ?? $"Unable to delete GIN {item.ReturnedStockNo}.";
+                return;
+            }
+
+            if (SelectedGinDetails?.DocumentId == item.DocumentId)
+            {
+                CloseGinDetails();
+            }
+
+            await LoadGINsAsync();
+        }
+        finally
+        {
+            IsGINApiLoading = false;
+        }
+    }
+
     private void CloseGinDetails()
     {
         IsGinDetailsVisible = false;
@@ -5091,6 +5162,54 @@
         }
 
         SelectedGrnDetails = ToGRNItem(result.Value);
+    }
+
+    private async Task DeleteGrnFromHistoryAsync(GRNItem item)
+    {
+        if (!CanEditGrn(item))
+        {
+            GRNApiError = GetGrnReadOnlyReason(item);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(item.DocumentId))
+        {
+            GRNApiError = "This GRN has no API document ID and cannot be deleted.";
+            return;
+        }
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>(
+            "confirm",
+            $"Delete GRN {item.DOCNo}? This action cannot be undone.");
+
+        if (!confirmed)
+        {
+            Feedback.Info($"Delete cancelled for GRN {item.DOCNo}.", "Delete cancelled", 2200);
+            return;
+        }
+
+        IsGRNApiLoading = true;
+        GRNApiError = null;
+        try
+        {
+            var result = await StockGrnService.DeleteGrnAsync(item.DocumentId);
+            if (!result.Success)
+            {
+                GRNApiError = result.ErrorMessage ?? $"Unable to delete GRN {item.DOCNo}.";
+                return;
+            }
+
+            if (SelectedGrnDetails?.DocumentId == item.DocumentId)
+            {
+                CloseGrnDetails();
+            }
+
+            await LoadGRNsAsync();
+        }
+        finally
+        {
+            IsGRNApiLoading = false;
+        }
     }
 
     private static bool CanEditGrn(GRNItem item) =>
@@ -8391,6 +8510,53 @@ private void ShowAddBrandForm()
         }
 
         SelectedTransferHistoryDetails = loaded;
+    }
+
+    private async Task DeleteTransferHistoryAsync(CombinedHistoryItem history)
+    {
+        var transfer = TransferHistory.FirstOrDefault(item =>
+            string.Equals(item.TransferNo, history.ReferenceNo, StringComparison.OrdinalIgnoreCase));
+
+        if (transfer is null || string.IsNullOrWhiteSpace(transfer.DocumentId))
+        {
+            StockTransferApiError = "This stock transfer has no API document ID and cannot be deleted.";
+            return;
+        }
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>(
+            "confirm",
+            $"Delete stock transfer {history.ReferenceNo}? This action cannot be undone.");
+
+        if (!confirmed)
+        {
+            Feedback.Info($"Delete cancelled for transfer {history.ReferenceNo}.", "Delete cancelled", 2200);
+            return;
+        }
+
+        IsStockTransferApiLoading = true;
+        StockTransferApiError = null;
+        try
+        {
+            var result = await StockTransferSvc.DeleteTransferAsync(transfer.DocumentId);
+            if (!result.Success)
+            {
+                StockTransferApiError = result.ErrorMessage ?? $"Unable to delete stock transfer {history.ReferenceNo}.";
+                return;
+            }
+
+            if (SelectedTransferHistoryDetails?.DocumentId == transfer.DocumentId)
+            {
+                CloseTransferHistoryDetails();
+            }
+
+            await Task.WhenAll(
+                LoadStockTransfersAsync(),
+                LoadPendingStockReceiptsAsync());
+        }
+        finally
+        {
+            IsStockTransferApiLoading = false;
+        }
     }
 
     private void CloseTransferHistoryDetails()
