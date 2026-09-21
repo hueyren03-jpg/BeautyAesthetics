@@ -144,12 +144,52 @@ internal static class StockRecordResponseReader
 
     private static List<JsonObject> ReadDocumentLines(JsonElement container)
     {
-        if (!TryGet(container, "lstDocumentLine", out var linesElement) ||
-            linesElement.ValueKind != JsonValueKind.Array)
+        if (container.ValueKind == JsonValueKind.Object)
         {
-            return [];
+            if (TryGet(container, "lstDocumentLine", out var linesElement) &&
+                linesElement.ValueKind == JsonValueKind.Array)
+            {
+                var lines = ParseDocumentLines(linesElement);
+                if (lines.Count > 0)
+                {
+                    return lines;
+                }
+            }
+
+            // SenangRetails deserializes the complete Doc_Stock_* aggregate directly.
+            // Some API deployments wrap that aggregate one level deeper, so locate the
+            // line collection recursively instead of assuming it is beside the header.
+            foreach (var property in container.EnumerateObject())
+            {
+                if (property.Value.ValueKind is not (JsonValueKind.Object or JsonValueKind.Array))
+                {
+                    continue;
+                }
+
+                var nested = ReadDocumentLines(property.Value);
+                if (nested.Count > 0)
+                {
+                    return nested;
+                }
+            }
+        }
+        else if (container.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in container.EnumerateArray())
+            {
+                var nested = ReadDocumentLines(item);
+                if (nested.Count > 0)
+                {
+                    return nested;
+                }
+            }
         }
 
+        return [];
+    }
+
+    private static List<JsonObject> ParseDocumentLines(JsonElement linesElement)
+    {
         var lines = new List<JsonObject>();
         foreach (var lineElement in linesElement.EnumerateArray())
         {
