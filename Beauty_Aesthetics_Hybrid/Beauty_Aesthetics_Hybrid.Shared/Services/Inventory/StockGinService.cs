@@ -21,49 +21,61 @@ public sealed class StockGinService : IStockGinService
         string branchId = "HQ",
         CancellationToken cancellationToken = default)
     {
-        var result = await stockGinAC.LoadProxyAsync(new StockGinProxyRequestDTO
-        {
-            BranchID = NormalizeBranchId(branchId),
-            StartDate = DateTime.Today.AddYears(-2),
-            EndDate = DateTime.Today.AddDays(1).AddTicks(-1),
-            PageNumber = 1,
-            PageSize = 200
-        }, cancellationToken);
+        // Match SenangRetails history behavior: LoadProxy is the history source.
+        // Do not fan out LoadRecord calls for every history row; one failed detail
+        // request must not make the entire GIN history disappear.
+        const int pageSize = 500;
+        const int maximumPages = 100;
+        var documents = new List<StockGrnDocumentDTO>();
+        string? previousPageSignature = null;
+        var lastStatusCode = HttpStatusCode.OK;
 
-        if (!result.Success || result.Value is null)
+        for (var pageNumber = 1; pageNumber <= maximumPages; pageNumber++)
         {
-            return ApiCallResult<IReadOnlyList<StockGinViewModel>>.Failure(
-                result.StatusCode,
-                result.ErrorMessage ?? "Unable to load GIN records.");
+            var result = await stockGinAC.LoadProxyAsync(new StockGinProxyRequestDTO
+            {
+                BranchID = string.IsNullOrWhiteSpace(branchId) ? "HQ" : branchId.Trim(),
+                StartDate = new DateTime(1900, 1, 1),
+                EndDate = DateTime.Today.AddDays(1).AddTicks(-1),
+                PageNumber = pageNumber,
+                PageSize = pageSize
+            }, cancellationToken);
+
+            lastStatusCode = result.StatusCode;
+            if (!result.Success || result.Value is null)
+            {
+                return ApiCallResult<IReadOnlyList<StockGinViewModel>>.Failure(
+                    result.StatusCode,
+                    result.ErrorMessage ?? "Unable to load GIN records.");
+            }
+
+            var page = result.Value;
+            var signature = string.Join('|', page.Select(document =>
+                First(document.DocumentID, document.DisplayCode)));
+            if (pageNumber > 1 && string.Equals(signature, previousPageSignature, StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            documents.AddRange(page);
+            previousPageSignature = signature;
+            if (page.Count < pageSize)
+            {
+                break;
+            }
         }
 
-        using var gate = new SemaphoreSlim(6);
-        var detailTasks = result.Value
+        var gins = documents
             .Where(document => !document.IsVoid)
-            .Select(async document =>
-            {
-                if (string.IsNullOrWhiteSpace(document.DocumentID)) return ToViewModel(document);
-
-                await gate.WaitAsync(cancellationToken);
-                try
-                {
-                    var detail = await stockGinAC.LoadRecordAsync(document.DocumentID, cancellationToken);
-                    return detail.Success && detail.Value?.Document is not null
-                        ? ToViewModel(detail.Value)
-                        : ToViewModel(document);
-                }
-                finally
-                {
-                    gate.Release();
-                }
-            });
-
-        var gins = (await Task.WhenAll(detailTasks))
+            .DistinctBy(
+                document => First(document.DocumentID, document.DisplayCode),
+                StringComparer.OrdinalIgnoreCase)
+            .Select(ToViewModel)
             .OrderByDescending(gin => gin.Date)
             .ThenBy(gin => gin.DisplayCode)
             .ToList();
 
-        return ApiCallResult<IReadOnlyList<StockGinViewModel>>.Ok(result.StatusCode, gins);
+        return ApiCallResult<IReadOnlyList<StockGinViewModel>>.Ok(lastStatusCode, gins);
     }
 
     public async Task<ApiCallResult<StockGinViewModel>> LoadGinAsync(
@@ -257,7 +269,8 @@ public sealed class StockGinService : IStockGinService
         CreatedByDocumentId = document.CreatedByDocumentID ?? string.Empty,
         CreatedByDocumentDisplayCode = document.CreatedByDocumentDisplayCode ?? string.Empty,
         IsLocked = document.IsLocked,
-        IsVoid = document.IsVoid
+        IsVoid = document.IsVoid,
+        TotalAmount = document.TotalAfterTax != 0 ? document.TotalAfterTax : document.LocalTotalAfterTax
     };
 
     private static StockGinViewModel ToViewModel(StockGinEnvelopeDTO envelope)
