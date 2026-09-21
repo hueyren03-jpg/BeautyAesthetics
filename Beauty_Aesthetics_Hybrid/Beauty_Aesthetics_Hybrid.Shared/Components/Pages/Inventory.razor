@@ -2300,37 +2300,25 @@
                                     </div>
                                 </div>
 
-                                @{
-                                    var relatedGin = FindRelatedGin(SelectedTransferHistoryDetails);
-                                    var relatedGrn = FindRelatedGrn(SelectedTransferHistoryDetails);
-                                }
                                 <div class="inventory-view-section">
                                     <h3 class="inventory-view-section__title"><i class="bi bi-diagram-3"></i> Transfer Workflow</h3>
                                     <div class="inventory-workflow-links">
                                         <div class="inventory-workflow-card inventory-workflow-card--complete">
                                             <span>Stock Transfer</span>
                                             <strong>@SelectedTransferHistoryItem.ReferenceNo</strong>
-                                            <small>@SelectedTransferHistoryItem.Status</small>
+                                            <small>Created at @SelectedTransferHistoryItem.From</small>
                                         </div>
                                         <i class="bi bi-arrow-right inventory-workflow-arrow"></i>
-                                        <div class="inventory-workflow-card @(relatedGin is null ? "inventory-workflow-card--pending" : "inventory-workflow-card--complete")">
-                                            <span>Generated GIN</span>
-                                            <strong>@(relatedGin?.ReturnedStockNo ?? "Processing")</strong>
-                                            <small>@(relatedGin?.Status ?? "Posted after transfer creation")</small>
-                                            @if (relatedGin is not null)
-                                            {
-                                                <button type="button" @onclick="() => OpenRelatedGin(relatedGin)">View GIN</button>
-                                            }
+                                        <div class="inventory-workflow-card @(SelectedTransferHistoryItem.Status == "Completed" ? "inventory-workflow-card--complete" : "inventory-workflow-card--pending")">
+                                            <span>Incoming Transfer</span>
+                                            <strong>@(SelectedTransferHistoryItem.Status == "Completed" ? "Received" : "Pending receipt")</strong>
+                                            <small>Destination: @SelectedTransferHistoryItem.To</small>
                                         </div>
                                         <i class="bi bi-arrow-right inventory-workflow-arrow"></i>
-                                        <div class="inventory-workflow-card @(relatedGrn is null ? "inventory-workflow-card--pending" : "inventory-workflow-card--complete")">
-                                            <span>Receiving GRN</span>
-                                            <strong>@(relatedGrn?.DOCNo ?? "Pending receipt")</strong>
-                                            <small>@(relatedGrn?.Status ?? "Created when destination receives")</small>
-                                            @if (relatedGrn is not null)
-                                            {
-                                                <button type="button" @onclick="() => OpenRelatedGrn(relatedGrn)">View GRN</button>
-                                            }
+                                        <div class="inventory-workflow-card @(SelectedTransferHistoryItem.Status == "Completed" ? "inventory-workflow-card--complete" : "inventory-workflow-card--pending")">
+                                            <span>AcceptStockIn</span>
+                                            <strong>@SelectedTransferHistoryItem.Status</strong>
+                                            <small>@(SelectedTransferHistoryItem.Status == "Completed" ? "Transfer completed" : "Completed when the destination accepts the transfer")</small>
                                         </div>
                                     </div>
                                 </div>
@@ -3504,21 +3492,6 @@
                         </div>
                     </div>
 
-                    @if (FindRelatedTransfer(SelectedGinDetails) is { } relatedTransfer)
-                    {
-                        <div class="inventory-view-section">
-                            <h3 class="inventory-view-section__title"><i class="bi bi-arrow-left-right"></i> Related Stock Transfer</h3>
-                            <div class="inventory-related-document">
-                                <div>
-                                    <span>Generated automatically from</span>
-                                    <strong>@relatedTransfer.TransferNo</strong>
-                                    <small>@relatedTransfer.IssuedBy → @relatedTransfer.IssuedTo · @relatedTransfer.Status</small>
-                                </div>
-                                <button type="button" class="btn-view-primary" @onclick="() => OpenRelatedTransferAsync(relatedTransfer)">View Transfer</button>
-                            </div>
-                        </div>
-                    }
-
                     <div class="inventory-view-section">
                         <h3 class="inventory-view-section__title"><i class="bi bi-box-arrow-up"></i> Issue Details</h3>
                         <div class="inventory-view-grid inventory-view-grid--3">
@@ -3648,21 +3621,6 @@
                             <strong class="inventory-view-hero__price">@DisplayGrnMoney(SelectedGrnDetails.Amount, SelectedGrnDetails.CurrencyId)</strong>
                         </div>
                     </div>
-
-                    @if (FindRelatedTransfer(SelectedGrnDetails) is { } relatedTransfer)
-                    {
-                        <div class="inventory-view-section">
-                            <h3 class="inventory-view-section__title"><i class="bi bi-arrow-left-right"></i> Related Stock Transfer</h3>
-                            <div class="inventory-related-document">
-                                <div>
-                                    <span>Created automatically when transfer was received</span>
-                                    <strong>@relatedTransfer.TransferNo</strong>
-                                    <small>@relatedTransfer.IssuedBy → @relatedTransfer.IssuedTo · @relatedTransfer.Status</small>
-                                </div>
-                                <button type="button" class="btn-view-primary" @onclick="() => OpenRelatedTransferAsync(relatedTransfer)">View Transfer</button>
-                            </div>
-                        </div>
-                    }
 
                     <div class="inventory-view-section">
                         <h3 class="inventory-view-section__title"><i class="bi bi-journal-text"></i> Receiving Information</h3>
@@ -5309,85 +5267,6 @@
         string.IsNullOrWhiteSpace(item.CreatedByDocumentId) &&
         string.IsNullOrWhiteSpace(item.CreatedByDocumentDisplayCode);
 
-    private ReturnedStockItem? FindRelatedGin(TransferHistoryItem? transfer)
-    {
-        if (transfer is null) return null;
-
-        return ReturnedStockList.FirstOrDefault(gin =>
-            SameDocumentKey(gin.CreatedByDocumentId, transfer.DocumentId) ||
-            SameDocumentKey(gin.CreatedByDocumentId, transfer.TransferNo) ||
-            SameDocumentKey(gin.CreatedByDocumentDisplayCode, transfer.TransferNo) ||
-            (gin.CreatedByDocumentTypeName.Contains("transfer", StringComparison.OrdinalIgnoreCase) &&
-             SameDocumentKey(gin.ReferenceNumber, transfer.TransferNo)));
-    }
-
-    private GRNItem? FindRelatedGrn(TransferHistoryItem? transfer)
-    {
-        if (transfer is null) return null;
-
-        return GRNsForTransferReconciliation.FirstOrDefault(grn =>
-            !grn.IsVoid &&
-            (SameDocumentKey(grn.CreatedByDocumentId, transfer.DocumentId) ||
-             SameDocumentKey(grn.CreatedByDocumentId, transfer.TransferNo) ||
-             SameDocumentKey(grn.CreatedByDocumentDisplayCode, transfer.TransferNo) ||
-             SameDocumentKey(grn.PODocumentId, transfer.DocumentId) ||
-             SameDocumentKey(grn.PONo, transfer.TransferNo)));
-    }
-
-    private TransferHistoryItem? FindRelatedTransfer(ReturnedStockItem? gin)
-    {
-        if (gin is null) return null;
-
-        return TransferHistory.FirstOrDefault(transfer =>
-            SameDocumentKey(gin.CreatedByDocumentId, transfer.DocumentId) ||
-            SameDocumentKey(gin.CreatedByDocumentId, transfer.TransferNo) ||
-            SameDocumentKey(gin.CreatedByDocumentDisplayCode, transfer.TransferNo) ||
-            (gin.CreatedByDocumentTypeName.Contains("transfer", StringComparison.OrdinalIgnoreCase) &&
-             SameDocumentKey(gin.ReferenceNumber, transfer.TransferNo)));
-    }
-
-    private TransferHistoryItem? FindRelatedTransfer(GRNItem? grn)
-    {
-        if (grn is null) return null;
-
-        return TransferHistory.FirstOrDefault(transfer =>
-            SameDocumentKey(grn.CreatedByDocumentId, transfer.DocumentId) ||
-            SameDocumentKey(grn.CreatedByDocumentId, transfer.TransferNo) ||
-            SameDocumentKey(grn.CreatedByDocumentDisplayCode, transfer.TransferNo) ||
-            SameDocumentKey(grn.PODocumentId, transfer.DocumentId) ||
-            SameDocumentKey(grn.PONo, transfer.TransferNo));
-    }
-
-    private void OpenRelatedGin(ReturnedStockItem gin)
-    {
-        CloseTransferHistoryDetails();
-        SetActiveTab("ReturnedStock");
-        ShowGinDetails(gin);
-    }
-
-    private void OpenRelatedGrn(GRNItem grn)
-    {
-        CloseTransferHistoryDetails();
-        SetActiveTab("GRN");
-        ShowGrnDetails(grn);
-    }
-
-    private async Task OpenRelatedTransferAsync(TransferHistoryItem transfer)
-    {
-        CloseGinDetails();
-        CloseGrnDetails();
-        SetActiveTab("TransferOrders");
-        await ShowTransferHistoryDetailsAsync(new CombinedHistoryItem
-        {
-            ReferenceNo = transfer.TransferNo,
-            Type = "Branch Transfer",
-            Date = transfer.DateIssued,
-            From = transfer.IssuedBy,
-            To = transfer.IssuedTo,
-            Status = transfer.Status
-        });
-    }
-
     private void CloseGinDetails()
     {
         IsGinDetailsVisible = false;
@@ -5407,7 +5286,7 @@
         item.IsVoid
             ? "GRN is voided"
             : item.IsGeneratedFromDocument
-                ? "Transfer GRN is posted and view-only"
+                ? "Generated GRN is posted and view-only"
                 : "GRN is locked";
 
     private void CloseGrnDetails()
@@ -5929,7 +5808,7 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
                 : "unit(s)",
             Status = gin.Status,
             Purpose = string.IsNullOrWhiteSpace(gin.IssueType)
-                ? gin.IsGeneratedFromDocument ? "Stock Transfer" : "Stock Issue"
+                ? "Stock Issue"
                 : gin.IssueType,
             ReferenceNumber = gin.ReferenceNumber,
             Reason = gin.Remarks,
@@ -5963,54 +5842,31 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
         IsGRNApiLoading = true;
         GRNApiError = null;
         GRNs = [];
-        GRNsForTransferReconciliation = [];
 
         try
         {
-            var results = await Task.WhenAll(GetInventoryBranchIds().Select(async branchId => new
+            var result = await StockGrnService.LoadGrnsAsync(InventoryBranchId);
+            if (!result.Success || result.Value is null)
             {
-                BranchId = branchId,
-                Result = await StockGrnService.LoadGrnsAsync(branchId)
-            }));
-            var successfulResults = results
-                .Where(load => load.Result.Success && load.Result.Value is not null)
-                .ToList();
-
-            if (successfulResults.Count == 0)
-            {
-                GRNApiError = results
-                    .Select(load => load.Result.ErrorMessage)
-                    .FirstOrDefault(message => !string.IsNullOrWhiteSpace(message))
-                    ?? "Unable to load GRN records.";
+                GRNApiError = result.ErrorMessage ?? "Unable to load GRN records.";
                 return;
             }
 
-            GRNsForTransferReconciliation = successfulResults
-                .SelectMany(load => load.Result.Value!.Select(record =>
+            GRNs = result.Value
+                .Select(ToGRNItem)
+                .Select(item =>
                 {
-                    var item = ToGRNItem(record);
                     if (string.IsNullOrWhiteSpace(item.DOCBranch))
                     {
-                        item.DOCBranch = load.BranchId;
+                        item.DOCBranch = InventoryBranchId;
                     }
 
                     return item;
-                }))
-                .GroupBy(
-                    item => !string.IsNullOrWhiteSpace(item.DocumentId)
-                        ? $"id:{item.DocumentId.Trim()}"
-                        : $"code:{item.DOCBranch.Trim()}:{item.DOCNo.Trim()}",
-                    StringComparer.OrdinalIgnoreCase)
-                .Select(group => group.First())
+                })
+                .Where(item => IsSameBranch(item.DOCBranch, InventoryBranchId))
                 .OrderByDescending(item => item.Date)
                 .ToList();
 
-            // The table is branch-owned. Cross-branch GRNs are retained only for
-            // matching an outgoing transfer to the destination receipt generated by the API.
-            GRNs = GRNsForTransferReconciliation
-                .Where(item => IsSameBranch(item.DOCBranch, InventoryBranchId))
-                .ToList();
-            ReconcileStockTransferStatuses();
             GRNCurrentPage = 1;
             SelectedGRN = null;
             SelectedGRNsForDeletion.Clear();
@@ -8406,7 +8262,6 @@ private void ShowAddBrandForm()
     private bool IsAllGRNsSelected => DeletableGRNs.Any() && SelectedGRNsForDeletion.Count == DeletableGRNs.Count();
 
     private List<GRNItem> GRNs { get; set; } = new();
-    private List<GRNItem> GRNsForTransferReconciliation { get; set; } = new();
     private List<PendingStockReceiptViewModel> PendingStockReceipts { get; set; } = new();
     private bool IsPendingStockReceiptsLoading { get; set; }
     private string? PendingStockReceiptError { get; set; }
