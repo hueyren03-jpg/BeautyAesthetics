@@ -114,14 +114,31 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages.Employee
 
             if (!confirmed)
             {
+                Feedback.Info("Employee deactivation cancelled.", "No changes made", 1800);
                 return;
             }
 
+            var feedbackId = Feedback.Loading($"Deactivating employee {code}...", "Deactivating employee");
             var result = await VM.DeleteEmployeeAsync(code);
-            if (result.Success && SelectedEmployee?.Code == code)
+
+            if (!result.Success)
+            {
+                Feedback.Fail(
+                    feedbackId,
+                    result.ErrorMessage ?? VM.ErrorMessage ?? "Unable to deactivate employee.",
+                    "Employee not deactivated");
+                return;
+            }
+
+            if (SelectedEmployee?.Code == code)
             {
                 SelectedEmployee = null;
             }
+
+            Feedback.Resolve(
+                feedbackId,
+                $"Employee {code} was deactivated successfully.",
+                "Employee deactivated");
         }
     }
 }
