@@ -19,6 +19,7 @@
 @inject Microsoft.JSInterop.IJSRuntime JS
 @inject IStringLocalizer<Customers> L
 @inject NavigationManager Navigation
+@inject Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackService Feedback
 
 <style>
     /* Strict form containment for mobile alignment */
@@ -2683,7 +2684,55 @@
     }
 </div>
 
-@* Toast Notification *@
+@* Add/Edit Review Modal *@
+@if (showReviewModal)
+{
+    <div class="modal-backdrop" @onclick="HideReviewModal"></div>
+    <div style="display: block; position: fixed; z-index: 1000; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 95%; max-width: 500px;">
+        <div class="modal-inner card" style="padding: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 style="margin: 0;">@(isEditingReview ? L["Title_EditReview"] : L["Title_NewReview"])</h3>
+                <button class="btn-close-modal" type="button" @onclick="HideReviewModal">✕</button>
+            </div>
+            <EditForm Model="currentReview" OnValidSubmit="SaveReview">
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <div>
+                        <label style="font-weight: 600; margin-bottom: 6px; display: block; color: var(--color-text-secondary);">@L["Label_Author"]</label>
+                        <InputText @bind-Value="currentReview.Author" class="input" placeholder="Enter author name" />
+                    </div>
+                    <div>
+                        <label style="font-weight: 600; margin-bottom: 6px; display: block; color: var(--color-text-secondary);">@L["Label_Rating"]</label>
+                        <div class="stars-input" style="display: flex; gap: 6px; font-size: 28px; color: #fbbf24; cursor: pointer; user-select: none;">
+                            @for (int i = 1; i <= 5; i++)
+                            {
+                                int starValue = i;
+                                <span @onclick="() => SetRating(starValue)">@(currentReview.Rating >= starValue ? "★" : "☆")</span>
+                            }
+                        </div>
+                    </div>
+                    <div>
+                        <label style="font-weight: 600; margin-bottom: 6px; display: block; color: var(--color-text-secondary);">@L["Label_ReviewText"]</label>
+                        <InputTextArea @bind-Value="currentReview.Text" class="input" rows="4" placeholder="Write review comments..." />
+                    </div>
+                </div>
+                <div class="form-actions" style="margin-top: 24px; display: flex; justify-content: flex-end; gap: 12px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+                    <button class="btn btn-cancel" type="button" @onclick="HideReviewModal">@L["Btn_Cancel"]</button>
+                    <button class="btn btn-primary" type="submit">@L["Btn_Save"]</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@if (showDetailsModal && selectedCustomer != null)
+{
+    <div class="customer-profile-overlay" @onclick="CloseDetailsModal">
+        <section class="customer-profile" @onclick:stopPropagation="true" aria-label="Customer details">
+            <header class="customer-profile__titlebar">
+                <h2>Customer Details</h2>
+                <button type="button" @onclick="CloseDetailsModal" title="Close"><i class="bi bi-x-lg"></i></button>
+            </header>
+
             <div class="customer-profile__body">
                 <div class="customer-profile__breadcrumb">Customers <i class="bi bi-chevron-right"></i> <strong>@(selectedCustomer.FirstName) @(selectedCustomer.LastName)</strong></div>
 
