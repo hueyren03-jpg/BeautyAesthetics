@@ -17,6 +17,7 @@
 @inject IPackageService PackageService
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JS
+@inject AppFeedbackService Feedback
 @implements IDisposable
 
 <PageTitle>New Sale - Pending Orders</PageTitle>
@@ -887,16 +888,6 @@
     </section>
 }
 
-@* Toast message *@
-@if (!string.IsNullOrWhiteSpace(message))
-{
-    <div class="sale-toast">
-        <i class="bi bi-exclamation-circle"></i>
-        <span>@message</span>
-        <button type="button" @onclick="() => message = string.Empty"><i class="bi bi-x"></i></button>
-    </div>
-}
-
 @code {
     private enum SaleStage
     {
@@ -929,7 +920,6 @@
     private bool isCustomerSearchLoading;
     private bool isLoading = true;
     private bool isSaving;
-    private string message = string.Empty;
     private int customerSearchRequestVersion;
     private CancellationTokenSource? customerSearchCts;
 
@@ -1150,7 +1140,7 @@
             customers.Insert(0, customer);
             defaultCustomers.Insert(0, customer);
             isAddingNewCustomer = false;
-            message = $"Customer {CustomerName(customer)} created successfully!";
+            Feedback.Success($"Customer {CustomerName(customer)} created successfully!", "Customer created");
             SelectCustomer(customer);
         }
     }
@@ -1166,6 +1156,7 @@
         PendingOrderService.SaveOrUpdate(currentOrder);
         RefreshPendingOrders();
         stage = SaleStage.PendingOrders;
+        Feedback.Info($"Order {currentOrder.OrderNumber} was placed on hold.", "Order held", 2800);
     }
 
     private void BackToPendingOrdersFromCart()
@@ -1192,9 +1183,11 @@
     {
         if (orderToDelete != null)
         {
+            var orderNumber = orderToDelete.OrderNumber;
             PendingOrderService.Delete(orderToDelete.Id);
             RefreshPendingOrders();
             orderToDelete = null;
+            Feedback.Success($"Order {orderNumber} was deleted.", "Pending order deleted", 3000);
         }
     }
 
@@ -1297,6 +1290,7 @@
         currentOrder.Items.Clear();
         currentOrder.Payments.Clear();
         PendingOrderService.SaveOrUpdate(currentOrder);
+        Feedback.Info("All items were removed from the cart.", "Cart cleared", 2400);
     }
 
     private void SelectType(string type) => selectedType = type;
@@ -1340,7 +1334,7 @@
 
             if (!result.Success)
             {
-                message = result.ErrorMessage ?? "Unable to search customers.";
+                Feedback.Error(result.ErrorMessage ?? "Unable to search customers.", "Customer search failed");
             }
         }
         catch (OperationCanceledException)
@@ -1365,7 +1359,7 @@
     {
         if (!currentOrder.Items.Any())
         {
-            message = "Please add at least one item before proceeding to payment.";
+            Feedback.Warning("Please add at least one item before proceeding to payment.", "Cart is empty");
             return;
         }
 
@@ -1436,7 +1430,7 @@
         if (isSaving) return;
         if (Remaining > 0)
         {
-            message = $"Add MYR {Remaining:N2} more before completing the sale.";
+            Feedback.Warning($"Add MYR {Remaining:N2} more before completing the sale.", "Payment incomplete");
             return;
         }
 
@@ -1488,7 +1482,7 @@
             var result = await CashSalesService.CreateTransactionAsync(saleTransaction);
             if (!result.Success)
             {
-                message = result.ErrorMessage ?? "Unable to save the transaction.";
+                // CashSalesService owns the mutation failure feedback.
                 return;
             }
 
@@ -1592,6 +1586,7 @@
             """;
 
         await JS.InvokeVoidAsync("printDocument", html, $"Receipt {ReceiptNumber}");
+        Feedback.Success($"Receipt {ReceiptNumber} was sent to print.", "Receipt ready", 2800);
     }
 
     private static string EncodeReceiptText(string? value) =>
