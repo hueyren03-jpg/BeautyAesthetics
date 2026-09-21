@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 using EBI.Enum;
 
@@ -12,10 +13,12 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.MembershipTypes;
 public sealed class MembershipTypeService : IMembershipTypeService
 {
     private readonly MembershipTypeAC membershipTypeAC;
+    private readonly AppFeedbackService feedback;
 
-    public MembershipTypeService(MembershipTypeAC membershipTypeAC)
+    public MembershipTypeService(MembershipTypeAC membershipTypeAC, AppFeedbackService feedback)
     {
         this.membershipTypeAC = membershipTypeAC;
+        this.feedback = feedback;
     }
 
     // ── Queries ────────────────────────────────────────────
@@ -67,8 +70,16 @@ public sealed class MembershipTypeService : IMembershipTypeService
             LstMembershipTypeDiscount = discounts ?? new()
         };
 
-        var result = await membershipTypeAC.CreateRecordAsync(payload, cancellationToken);
-        return ToSaveResult(result, "Unable to create membership type.");
+        var result = ToSaveResult(
+            await membershipTypeAC.CreateRecordAsync(payload, cancellationToken),
+            "Unable to create membership type.");
+
+        if (result.Success)
+            feedback.Success("Membership type created successfully.", "Membership type created");
+        else
+            feedback.Error(result.ErrorMessage ?? "Unable to create membership type.", "Membership type not created");
+
+        return result;
     }
 
     public async Task<ApiCallResult<bool>> UpdateAsync(
@@ -92,16 +103,32 @@ public sealed class MembershipTypeService : IMembershipTypeService
             LstMembershipTypeDiscount = discounts ?? new()
         };
 
-        var result = await membershipTypeAC.UpdateRecordAsync(payload, cancellationToken);
-        return ToSaveResult(result, "Unable to update membership type.");
+        var result = ToSaveResult(
+            await membershipTypeAC.UpdateRecordAsync(payload, cancellationToken),
+            "Unable to update membership type.");
+
+        if (result.Success)
+            feedback.Success("Membership type updated successfully.", "Membership type updated");
+        else
+            feedback.Error(result.ErrorMessage ?? "Unable to update membership type.", "Membership type not updated");
+
+        return result;
     }
 
     public async Task<ApiCallResult<bool>> DeleteAsync(
         string memberTypeId,
         CancellationToken cancellationToken = default)
     {
-        var result = await membershipTypeAC.DeleteRecordAsync(memberTypeId, cancellationToken);
-        return ToSaveResult(result, "Unable to delete membership type.");
+        var result = ToSaveResult(
+            await membershipTypeAC.DeleteRecordAsync(memberTypeId, cancellationToken),
+            "Unable to delete membership type.");
+
+        if (result.Success)
+            feedback.Success("Membership type deleted successfully.", "Membership type deleted");
+        else
+            feedback.Error(result.ErrorMessage ?? "Unable to delete membership type.", "Membership type not deleted");
+
+        return result;
     }
 
     // ── Helpers ────────────────────────────────────────────
