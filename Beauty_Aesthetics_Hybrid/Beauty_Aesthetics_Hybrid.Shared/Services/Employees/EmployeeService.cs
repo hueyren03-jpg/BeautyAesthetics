@@ -66,12 +66,10 @@ public sealed class EmployeeService : IEmployeeService
         if (!result.Success)
         {
             var message = ToEmployeeError(result.ErrorMessage);
-            feedback.Error(message, "Employee not created");
             return EmployeeOperationResult<Employee>.Fail(message);
         }
 
         var created = MapAndCache(record);
-        feedback.Success("Employee created successfully.", "Employee created");
         return EmployeeOperationResult<Employee>.Ok(created);
     }
 
@@ -90,12 +88,10 @@ public sealed class EmployeeService : IEmployeeService
         if (!result.Success)
         {
             var message = ToEmployeeError(result.ErrorMessage);
-            feedback.Error(message, "Employee not updated");
             return EmployeeOperationResult<Employee>.Fail(message);
         }
 
         var updated = MapAndCache(record);
-        feedback.Success("Employee details updated successfully.", "Employee updated");
         return EmployeeOperationResult<Employee>.Ok(updated);
     }
 
@@ -129,12 +125,10 @@ public sealed class EmployeeService : IEmployeeService
         if (!result.Success)
         {
             var message = ToEmployeeError(result.ErrorMessage);
-            feedback.Error(message, "Employee not deactivated");
             return EmployeeOperationResult<Employee>.Fail(message);
         }
 
         var deactivated = MapAndCache(record);
-        feedback.Success("Employee was deactivated successfully.", "Employee deactivated");
         return EmployeeOperationResult<Employee>.Ok(deactivated);
     }
 
