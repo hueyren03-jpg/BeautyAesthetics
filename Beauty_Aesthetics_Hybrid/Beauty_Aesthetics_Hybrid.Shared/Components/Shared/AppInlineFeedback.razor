@@ -1,0 +1,61 @@
+@if (!string.IsNullOrWhiteSpace(Message))
+{
+    <div class="app-inline-feedback @GetKindClass()"
+         role="@GetRole()"
+         aria-live="@GetAriaLive()">
+        <i class="@GetIconClass()" aria-hidden="true"></i>
+
+        <div class="app-inline-feedback__content">
+            @if (!string.IsNullOrWhiteSpace(Title))
+            {
+                <strong>@Title</strong>
+            }
+            <span>@Message</span>
+        </div>
+
+        @if (Dismissible)
+        {
+            <button type="button"
+                    class="app-inline-feedback__dismiss"
+                    aria-label="Dismiss message"
+                    title="Dismiss"
+                    @onclick="OnDismiss">
+                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            </button>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public AppFeedbackKind Kind { get; set; } = AppFeedbackKind.Info;
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Message { get; set; }
+    [Parameter] public bool Dismissible { get; set; }
+    [Parameter] public EventCallback OnDismiss { get; set; }
+
+    private string GetKindClass() => Kind switch
+    {
+        AppFeedbackKind.Success => "app-inline-feedback--success",
+        AppFeedbackKind.Error => "app-inline-feedback--error",
+        AppFeedbackKind.Warning => "app-inline-feedback--warning",
+        AppFeedbackKind.Info => "app-inline-feedback--info",
+        AppFeedbackKind.Loading => "app-inline-feedback--info",
+        _ => "app-inline-feedback--info"
+    };
+
+    private string GetIconClass() => Kind switch
+    {
+        AppFeedbackKind.Success => "fa-solid fa-circle-check",
+        AppFeedbackKind.Error => "fa-solid fa-circle-xmark",
+        AppFeedbackKind.Warning => "fa-solid fa-triangle-exclamation",
+        AppFeedbackKind.Info => "fa-solid fa-circle-info",
+        AppFeedbackKind.Loading => "fa-solid fa-spinner fa-spin",
+        _ => "fa-solid fa-circle-info"
+    };
+
+    private string GetRole() =>
+        Kind is AppFeedbackKind.Error or AppFeedbackKind.Warning ? "alert" : "status";
+
+    private string GetAriaLive() =>
+        Kind == AppFeedbackKind.Error ? "assertive" : "polite";
+}
