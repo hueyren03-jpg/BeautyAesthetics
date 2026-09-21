@@ -26,5 +26,6 @@ public sealed class StockTransferLineViewModel
     public string ProductName { get; set; } = string.Empty;
     public decimal Quantity { get; set; }
     public decimal UnitCost { get; set; }
+    public int InventoryTypeId { get; set; } = 1;
     public string UnitOfMeasurementId { get; set; } = string.Empty;
 }
