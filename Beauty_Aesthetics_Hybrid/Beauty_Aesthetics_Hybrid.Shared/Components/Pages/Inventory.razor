@@ -1753,8 +1753,7 @@
                         </div>
                     </div>
                 }
-
-                <!-- Stock transfer document history. Product lines are shown in transfer details. -->
+                <!-- Stock Transfer History — SenangRetails fields -->
                 <div class="inventory__table-wrapper table-scroll stock-history-table-scroll">
                     <div class="table-scroll__inner stock-history-table-scroll__inner">
                         <table class="stock-transfer__table resizable-table inventory-mobile-compact-table inventory-mobile-compact-table--stock @(IsTransferHistoryPrintModeActive ? "purchase-orders__table" : string.Empty)">
@@ -1764,24 +1763,14 @@
                                     {
                                         <th class="purchase-orders__checkbox-col">Select</th>
                                     }
-                                    <th class='@GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "ReferenceNo")' @onclick='() => ToggleTransferHistorySort("ReferenceNo")'>
-                                        Reference No<span class="resize-handle"></span>
-                                    </th>
-                                    <th class='@GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "Type")' @onclick='() => ToggleTransferHistorySort("Type")'>
-                                        Type<span class="resize-handle"></span>
-                                    </th>
-                                    <th class='@GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "Date")' @onclick='() => ToggleTransferHistorySort("Date")'>
-                                        Date<span class="resize-handle"></span>
-                                    </th>
-                                    <th class='@GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "From")' @onclick='() => ToggleTransferHistorySort("From")'>
-                                        From<span class="resize-handle"></span>
-                                    </th>
-                                    <th class='@GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "To")' @onclick='() => ToggleTransferHistorySort("To")'>
-                                        To<span class="resize-handle"></span>
-                                    </th>
-                                    <th class='@GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "Status")' @onclick='() => ToggleTransferHistorySort("Status")'>
-                                        Status<span class="resize-handle"></span>
-                                    </th>
+                                    <th class='@GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "ReferenceNo")' @onclick='() => ToggleTransferHistorySort("ReferenceNo")'>Transfer No. <span class="resize-handle"></span></th>
+                                    <th class='@GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "Date")' @onclick='() => ToggleTransferHistorySort("Date")'>Date <span class="resize-handle"></span></th>
+                                    <th class='@GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "From")' @onclick='() => ToggleTransferHistorySort("From")'>From Branch <span class="resize-handle"></span></th>
+                                    <th class='@GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "To")' @onclick='() => ToggleTransferHistorySort("To")'>To Branch <span class="resize-handle"></span></th>
+                                    <th>Remarks <span class="resize-handle"></span></th>
+                                    <th class='@GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "TotalQuantity")' @onclick='() => ToggleTransferHistorySort("TotalQuantity")'>Total Qty <span class="resize-handle"></span></th>
+                                    <th class='@GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "TotalCost")' @onclick='() => ToggleTransferHistorySort("TotalCost")'>Total Cost <span class="resize-handle"></span></th>
+                                    <th class='@GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "Status")' @onclick='() => ToggleTransferHistorySort("Status")'>Status <span class="resize-handle"></span></th>
                                     @if (!IsTransferHistoryPrintModeActive)
                                     {
                                         <th class="inventory-row-actions-column stock-row-actions-column">Actions</th>
@@ -1791,9 +1780,7 @@
                             <tbody>
                                 @if (!PaginatedCombinedHistory.Any())
                                 {
-                                    <tr>
-                                        <td colspan="7" class="inventory__empty-state">No stock transfer history found.</td>
-                                    </tr>
+                                    <tr><td colspan="10" class="inventory__empty-state">No stock transfer history found.</td></tr>
                                 }
                                 else
                                 {
@@ -1808,24 +1795,20 @@
                                                            @onchange="() => ToggleTransferHistoryPrintSelection(history.ReferenceNo)" />
                                                 </td>
                                             }
-                                            <td>@history.ReferenceNo</td>
-                                            <td>@history.Type</td>
-                                            <td>@history.Date.ToString("dd/MM/yyyy")</td>
+                                            <td><strong>@history.ReferenceNo</strong></td>
+                                            <td>@history.Date.ToString("dd/MM/yyyy HH:mm")</td>
                                             <td>@history.From</td>
                                             <td>@history.To</td>
-                                            <td>
-                                                <span class="stock-transfer__status stock-transfer__status--@history.Status.ToLowerInvariant().Replace(" ", "-")">
-                                                    @history.Status
-                                                </span>
-                                            </td>
+                                            <td>@(string.IsNullOrWhiteSpace(history.Remarks) ? "—" : history.Remarks)</td>
+                                            <td>@(history.TotalQuantity > 0 ? history.TotalQuantity.ToString("0.##") : "—")</td>
+                                            <td><span class="inventory-money-value">MYR @history.TotalCost.ToString("N2")</span></td>
+                                            <td><span class="stock-transfer__status stock-transfer__status--@history.Status.ToLowerInvariant().Replace(" ", "-")">@history.Status</span></td>
                                             @if (!IsTransferHistoryPrintModeActive)
                                             {
                                                 <td class="inventory-row-actions-column stock-row-actions-column" @onclick:stopPropagation="true">
-                                                    <div class="stock-row-actions">
-                                                        <button type="button" class="product-row-action" title="View transfer details" aria-label="View transfer details" @onclick="() => ShowTransferHistoryDetailsAsync(history)">
-                                                            <i class="bi bi-eye"></i>
-                                                        </button>
-                                                    </div>
+                                                    <button type="button" class="product-row-action" title="View transfer details" @onclick="() => ShowTransferHistoryDetailsAsync(history)">
+                                                        <i class="bi bi-eye"></i>
+                                                    </button>
                                                 </td>
                                             }
                                         </tr>
@@ -3883,18 +3866,15 @@
         {
             var start = filter.StartDate?.Date ?? DateTime.MinValue.Date;
             var end = filter.EndDate?.Date ?? DateTime.MaxValue.Date;
-            return items.Where(x => x.Date.Date >= start && x.Date.Date <= end);
+            return items.Where(item => item.Date.Date >= start && item.Date.Date <= end);
         }
+
         return filter.Column switch
         {
-            "DOCBranch" => items.Where(x => TextMatches(x.DOCBranch, filter)),
-            "DOCNo" => items.Where(x => TextMatches(x.DOCNo, filter)),
-            "SupplierName" => items.Where(x => TextMatches(x.SupplierName, filter)),
-            "PONo" => items.Where(x => TextMatches(x.PONo, filter)),
-            "ReferenceNumber" => items.Where(x => TextMatches(x.ReferenceNumber, filter)),
-            "TaxAmount" => items.Where(x => InRange(x.TaxAmount, filter)),
-            "Amount" => items.Where(x => InRange(x.Amount, filter)),
-            "Status" => items.Where(x => TextMatches(x.Status, filter)),
+            "DOCNo" => items.Where(item => TextMatches(item.DOCNo, filter)),
+            "Activity" => items.Where(item => TextMatches(item.Activity, filter)),
+            "Remarks" => items.Where(item => TextMatches(item.Remarks, filter)),
+            "Amount" => items.Where(item => InRange(item.Amount, filter)),
             _ => items
         };
     }
@@ -4153,11 +4133,12 @@
 
     private List<MultiTableFilter.FilterColumn> TransferHistoryMultiFilterColumns => new()
     {
-        new() { Value = "ReferenceNo", Label = "Reference No.", ControlType = "Text" },
-        new() { Value = "Type", Label = "Transfer Type", ControlType = "Chips", IsQuick = true, Options = CountOptions(CombinedHistory.Select(x => x.Type)) },
-        new() { Value = "Date", Label = "Transfer Date", ControlType = "DateRange", IsDate = true },
-        new() { Value = "From", Label = "From", ControlType = "MultiSelect", Options = CountOptions(CombinedHistory.Select(x => x.From)) },
-        new() { Value = "To", Label = "To", ControlType = "MultiSelect", Options = CountOptions(CombinedHistory.Select(x => x.To)) },
+        new() { Value = "ReferenceNo", Label = "Transfer No.", ControlType = "Text" },
+        new() { Value = "Date", Label = "Date", ControlType = "DateRange", IsDate = true },
+        new() { Value = "From", Label = "From Branch", ControlType = "MultiSelect", Options = CountOptions(CombinedHistory.Select(x => x.From)) },
+        new() { Value = "To", Label = "To Branch", ControlType = "MultiSelect", Options = CountOptions(CombinedHistory.Select(x => x.To)) },
+        new() { Value = "Remarks", Label = "Remarks", ControlType = "Text" },
+        new() { Value = "TotalCost", Label = "Total Cost", ControlType = "NumberRange", IsNumeric = true },
         new() { Value = "Status", Label = "Status", ControlType = "Chips", Options = CountOptions(CombinedHistory.Select(x => x.Status)) }
     };
 
@@ -7751,6 +7732,11 @@ private void ShowAddBrandForm()
                     Date = transfer.DateIssued,
                     From = transfer.IssuedBy,
                     To = transfer.IssuedTo,
+                    Remarks = transfer.Notes,
+                    TotalQuantity = transfer.Products.Sum(line => line.CurrentQty),
+                    TotalCost = transfer.TotalAmount > 0
+                        ? transfer.TotalAmount
+                        : transfer.Products.Sum(line => line.LineAmount),
                     Status = transfer.Status
                 });
             }
@@ -7775,66 +7761,43 @@ private void ShowAddBrandForm()
             {
                 var search = TransferHistorySearch.Trim();
                 history = history.Where(item =>
-                    (item.ReferenceNo ?? string.Empty).Contains(search, StringComparison.OrdinalIgnoreCase) ||
-                    (item.Type ?? string.Empty).Contains(search, StringComparison.OrdinalIgnoreCase) ||
-                    (item.From ?? string.Empty).Contains(search, StringComparison.OrdinalIgnoreCase) ||
-                    (item.To ?? string.Empty).Contains(search, StringComparison.OrdinalIgnoreCase) ||
-                    (item.Status ?? string.Empty).Contains(search, StringComparison.OrdinalIgnoreCase));
+                    item.ReferenceNo.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    item.From.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    item.To.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    item.Remarks.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    item.Status.Contains(search, StringComparison.OrdinalIgnoreCase));
             }
 
-            // Apply new MultiTableFilter filters first
             foreach (var filter in ActiveTransferHistoryFilters)
             {
                 history = ApplyTransferHistoryFilter(history, filter);
             }
 
-            // Apply existing filters (Type, Status, From, To dropdowns)
-            if (!string.IsNullOrWhiteSpace(TransferTypeFilter) && TransferTypeFilter != "All")
-            {
-                history = history.Where(h => string.Equals(h.Type, TransferTypeFilter, StringComparison.OrdinalIgnoreCase));
-            }
-            if (!string.IsNullOrWhiteSpace(TransferStatusFilter) && TransferStatusFilter != "All")
-            {
-                history = history.Where(h => string.Equals(h.Status, TransferStatusFilter, StringComparison.OrdinalIgnoreCase));
-            }
-            if (!string.IsNullOrWhiteSpace(TransferFromFilter) && TransferFromFilter != "All")
-            {
-                history = history.Where(h => string.Equals(h.From, TransferFromFilter, StringComparison.OrdinalIgnoreCase));
-            }
-            if (!string.IsNullOrWhiteSpace(TransferToFilter) && TransferToFilter != "All")
-            {
-                history = history.Where(h => string.Equals(h.To, TransferToFilter, StringComparison.OrdinalIgnoreCase));
-            }
-            // Date range from existing filters (keep for backward compatibility)
             if (TransferStartDate.HasValue)
             {
-                var start = TransferStartDate.GetValueOrDefault().Date;
-                history = history.Where(h => h.Date.Date >= start);
+                var start = TransferStartDate.Value.Date;
+                history = history.Where(item => item.Date.Date >= start);
             }
+
             if (TransferEndDate.HasValue)
             {
-                var end = TransferEndDate.GetValueOrDefault().Date;
-                history = history.Where(h => h.Date.Date <= end);
+                var end = TransferEndDate.Value.Date;
+                history = history.Where(item => item.Date.Date <= end);
             }
 
-            if (!string.IsNullOrEmpty(TransferHistorySortColumn))
+            return TransferHistorySortColumn switch
             {
-                history = TransferHistorySortColumn switch
-                {
-                    "ReferenceNo" => TransferHistorySortAscending ? history.OrderBy(h => h.ReferenceNo) : history.OrderByDescending(h => h.ReferenceNo),
-                    "Type" => TransferHistorySortAscending ? history.OrderBy(h => h.Type) : history.OrderByDescending(h => h.Type),
-                    "Date" => TransferHistorySortAscending ? history.OrderBy(h => h.Date) : history.OrderByDescending(h => h.Date),
-                    "From" => TransferHistorySortAscending ? history.OrderBy(h => h.From) : history.OrderByDescending(h => h.From),
-                    "To" => TransferHistorySortAscending ? history.OrderBy(h => h.To) : history.OrderByDescending(h => h.To),
-                    "Status" => TransferHistorySortAscending ? history.OrderBy(h => h.Status) : history.OrderByDescending(h => h.Status),
-                    _ => history
-                };
-            }
-
-            return history;
+                "ReferenceNo" => TransferHistorySortAscending ? history.OrderBy(item => item.ReferenceNo) : history.OrderByDescending(item => item.ReferenceNo),
+                "Date" => TransferHistorySortAscending ? history.OrderBy(item => item.Date) : history.OrderByDescending(item => item.Date),
+                "From" => TransferHistorySortAscending ? history.OrderBy(item => item.From) : history.OrderByDescending(item => item.From),
+                "To" => TransferHistorySortAscending ? history.OrderBy(item => item.To) : history.OrderByDescending(item => item.To),
+                "TotalQuantity" => TransferHistorySortAscending ? history.OrderBy(item => item.TotalQuantity) : history.OrderByDescending(item => item.TotalQuantity),
+                "TotalCost" => TransferHistorySortAscending ? history.OrderBy(item => item.TotalCost) : history.OrderByDescending(item => item.TotalCost),
+                "Status" => TransferHistorySortAscending ? history.OrderBy(item => item.Status) : history.OrderByDescending(item => item.Status),
+                _ => history
+            };
         }
     }
-
 
 
     private void HandleTransferHistoryMultiFiltersApplied(List<MultiTableFilter.FilterData> filters)
@@ -7862,13 +7825,15 @@ private void ShowAddBrandForm()
         return filter.Column switch
         {
             "ReferenceNo" => items.Where(item => TextMatches(item.ReferenceNo, filter)),
-            "Type" => items.Where(item => TextMatches(item.Type, filter)),
             "From" => items.Where(item => TextMatches(item.From, filter)),
             "To" => items.Where(item => TextMatches(item.To, filter)),
+            "Remarks" => items.Where(item => TextMatches(item.Remarks, filter)),
+            "TotalCost" => items.Where(item => InRange(item.TotalCost, filter)),
             "Status" => items.Where(item => TextMatches(item.Status, filter)),
             _ => items
         };
     }
+
     private IEnumerable<StockTransferProduct> FilteredRestockProducts
     {
         get
