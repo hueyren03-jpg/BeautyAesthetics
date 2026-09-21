@@ -5,12 +5,14 @@
 @using Beauty_Aesthetics_WebPos.Components.Services.Inventory
 @using Beauty_Aesthetics_WebPos.Components.Services.Sales
 @using Beauty_Aesthetics_WebPos.Components.Services.Customers
+@using Beauty_Aesthetics_WebPos.Components.Services.Feedback
 @using Beauty_Aesthetics_WebPos.Models.DTOs
 @inject ICashSalesService CashSalesService
 @inject IBranchLookupService BranchLookupService
 @inject ICustomerService CustomerService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject AppFeedbackService Feedback
 
 <PageTitle>Transaction History</PageTitle>
 
@@ -418,11 +420,16 @@
         if (endDate < startDate)
         {
             errorMessage = "The end date must be on or after the start date.";
+            Feedback.Warning(errorMessage, "Check date range");
             return;
         }
 
         currentPage = 1;
         await LoadTransactionsAsync();
+        if (string.IsNullOrWhiteSpace(errorMessage))
+        {
+            Feedback.Info($"{FilteredTransactions.Count} transaction{(FilteredTransactions.Count == 1 ? string.Empty : "s")} matched the filters.", "Filters applied", 2200);
+        }
     }
 
     private async Task LoadTransactionsAsync()
@@ -508,6 +515,10 @@
         maximumAmount = null;
         currentPage = 1;
         await LoadTransactionsAsync();
+        if (string.IsNullOrWhiteSpace(errorMessage))
+        {
+            Feedback.Info("Transaction filters were cleared.", "Filters cleared", 1800);
+        }
     }
 
     private void PreviousPage()
@@ -526,7 +537,11 @@
         selectedTransaction = await LoadFullTransactionAsync(transaction);
     }
 
-    private async Task EditTransactionAsync(Transaction transaction) => editingTransaction = CloneTransaction(await LoadFullTransactionAsync(transaction));
+    private async Task EditTransactionAsync(Transaction transaction)
+    {
+        editingTransaction = CloneTransaction(await LoadFullTransactionAsync(transaction));
+        Feedback.Info($"Editing transaction {Display(transaction.InvoiceNumber)}.", "Edit transaction", 2000);
+    }
 
     private async Task<Transaction> LoadFullTransactionAsync(Transaction transaction)
     {
@@ -540,15 +555,34 @@
     private async Task SaveEditAsync()
     {
         if (editingTransaction is null || isMutating) return;
+
+        var invoice = Display(editingTransaction.InvoiceNumber);
+        var feedbackId = Feedback.Loading($"Saving transaction {invoice}...", "Saving transaction");
         isMutating = true;
+
         try
         {
             var result = await CashSalesService.UpdateTransactionAsync(editingTransaction);
-            if (!result.Success) { errorMessage = result.ErrorMessage ?? "Unable to update the transaction."; return; }
+            if (!result.Success)
+            {
+                errorMessage = result.ErrorMessage ?? "Unable to update the transaction.";
+                Feedback.Fail(feedbackId, errorMessage, "Transaction not updated");
+                return;
+            }
+
             CloseEdit();
             await LoadTransactionsAsync();
+            Feedback.Resolve(feedbackId, $"Transaction {invoice} updated successfully.", "Transaction updated");
         }
-        finally { isMutating = false; }
+        catch (Exception ex)
+        {
+            errorMessage = $"Unable to update the transaction. {ex.Message}";
+            Feedback.Fail(feedbackId, errorMessage, "Transaction not updated");
+        }
+        finally
+        {
+            isMutating = false;
+        }
     }
 
     private void ApplyCustomerSelection()
@@ -590,7 +624,11 @@
 
     private void CloseDetails() => selectedTransaction = null;
     private void CloseEdit() => editingTransaction = null;
-    private Task PrintDetailsAsync() => JS.InvokeVoidAsync("window.print").AsTask();
+    private async Task PrintDetailsAsync()
+    {
+        await JS.InvokeVoidAsync("window.print");
+        Feedback.Success("The transaction receipt was sent to print.", "Receipt ready", 2600);
+    }
 
     private void RequestDelete(Transaction transaction)
     {
@@ -604,21 +642,37 @@
         if (string.IsNullOrWhiteSpace(deletionReason))
         {
             errorMessage = "Enter a deletion reason.";
+            Feedback.Warning(errorMessage, "Deletion reason required");
             return;
         }
+
+        var invoice = Display(deletingTransaction.InvoiceNumber);
+        var feedbackId = Feedback.Loading($"Deleting transaction {invoice}...", "Deleting transaction");
         isMutating = true;
+
         try
         {
             var result = await CashSalesService.DeleteTransactionAsync(deletingTransaction, deletionReason.Trim());
             if (!result.Success)
             {
                 errorMessage = result.ErrorMessage ?? "Unable to delete the transaction.";
+                Feedback.Fail(feedbackId, errorMessage, "Transaction not deleted");
                 return;
             }
+
             CloseDelete();
             await LoadTransactionsAsync();
+            Feedback.Resolve(feedbackId, $"Transaction {invoice} deleted successfully.", "Transaction deleted");
         }
-        finally { isMutating = false; }
+        catch (Exception ex)
+        {
+            errorMessage = $"Unable to delete the transaction. {ex.Message}";
+            Feedback.Fail(feedbackId, errorMessage, "Transaction not deleted");
+        }
+        finally
+        {
+            isMutating = false;
+        }
     }
 
     private void CloseDelete() { deletingTransaction = null; deletionReason = string.Empty; }
