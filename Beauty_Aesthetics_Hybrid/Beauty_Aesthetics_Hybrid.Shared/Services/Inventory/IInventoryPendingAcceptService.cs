@@ -20,4 +20,8 @@ public interface IInventoryPendingAcceptService
     Task<ApiCallResult<string>> AcceptAsync(
         PendingStockReceiptViewModel receipt,
         CancellationToken cancellationToken = default);
+
+    bool WasAcceptedTransfer(string? documentId, string? displayCode = null);
+
+    void RememberAcceptedTransfer(string? documentId, string? displayCode = null);
 }
