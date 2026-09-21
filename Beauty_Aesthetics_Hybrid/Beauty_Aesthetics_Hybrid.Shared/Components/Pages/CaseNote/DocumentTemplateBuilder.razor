@@ -6,6 +6,7 @@
 @using Microsoft.AspNetCore.Components.Web
 @inject NavigationManager NavigationManager
 @inject DocumentTemplateViewModel TemplateViewModel
+@inject AppFeedbackService Feedback
 
 <PageTitle>Template Builder - Beauty Aesthetics</PageTitle>
 
@@ -499,6 +500,7 @@
                                !string.IsNullOrEmpty(_fieldDefaultValue) || 
                                !string.IsNullOrEmpty(_fieldHelpText);
         _showFieldEditor = true;
+        Feedback.Info($"Editing field {field.Label}.", "Edit template field", 2000);
         StateHasChanged();
     }
 
@@ -571,7 +573,10 @@
     private void SaveField()
     {
         if (!CanSaveField())
+        {
+            Feedback.Warning("Enter a field label and complete any required options before saving.", "Field not saved");
             return;
+        }
 
         var options = (_fieldType == DocumentTemplateViewModel.FieldType.Dropdown || 
                        _fieldType == DocumentTemplateViewModel.FieldType.Radio ||
@@ -600,15 +605,20 @@
             string.IsNullOrWhiteSpace(_fieldHelpText) ? null : _fieldHelpText.Trim()
         );
 
-        if (_editingField != null)
+        var wasEditing = _editingField != null;
+        if (wasEditing)
         {
-            ViewModel.UpdateField(_editingField.Id, field);
+            ViewModel.UpdateField(_editingField!.Id, field);
         }
         else
         {
             ViewModel.AddField(field);
         }
 
+        Feedback.Success(
+            wasEditing ? $"Field '{field.Label}' updated." : $"Field '{field.Label}' added.",
+            wasEditing ? "Field updated" : "Field added",
+            2600);
         CloseFieldEditor();
         StateHasChanged();
     }
@@ -643,6 +653,7 @@
             }
             _showDeleteConfirm = false;
             _fieldToDelete = null;
+            Feedback.Success("Template field deleted.", "Field deleted", 2400);
             StateHasChanged();
         }
     }
@@ -686,6 +697,7 @@
         {
             _errorMessage = "Template name is required.";
             _showError = true;
+            Feedback.Warning(_errorMessage, "Template not saved");
             StateHasChanged();
             return;
         }
@@ -695,6 +707,7 @@
         {
             _errorMessage = "Please add at least one field to the template.";
             _showError = true;
+            Feedback.Warning(_errorMessage, "Template not saved");
             StateHasChanged();
             return;
         }
@@ -712,6 +725,7 @@
             {
                 _errorMessage = "Failed to save template. Please try again.";
                 _showError = true;
+                Feedback.Error(_errorMessage, "Template not saved");
                 StateHasChanged();
                 return;
             }
@@ -722,11 +736,12 @@
             {
                 _errorMessage = "Template saved but not found in list. Please check the templates page.";
                 _showError = true;
+                Feedback.Warning(_errorMessage, "Template requires attention");
                 StateHasChanged();
                 return;
             }
             
-            // Success - navigate to documents page after a brief delay
+            Feedback.Success($"Template '{template.Name}' saved successfully.", "Template saved");
             await Task.Delay(300);
             NavigationManager.NavigateTo("/documents");
         }
@@ -735,6 +750,7 @@
             // Show validation error to user
             _errorMessage = ex.Message;
             _showError = true;
+            Feedback.Warning(_errorMessage, "Template not saved");
             StateHasChanged();
         }
         catch (Exception ex)
@@ -742,6 +758,7 @@
             // Show error to user
             _errorMessage = $"Error saving template: {ex.Message}";
             _showError = true;
+            Feedback.Error(_errorMessage, "Template not saved");
             StateHasChanged();
         }
     }
