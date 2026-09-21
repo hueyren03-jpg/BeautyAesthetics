@@ -8943,7 +8943,8 @@ private async Task ShowAddTransferForm()
                     ? product.Uom1
                     : product.UnitOfMeasurementId,
                 UomDisplay = product.Uom1,
-                InventoryTypeId = product.InventoryTypeId
+                InventoryTypeId = product.InventoryTypeId,
+                UnitCost = Math.Max(0, product.Price)
             };
         }
     }
@@ -8965,20 +8966,14 @@ private async Task ShowAddTransferForm()
         IsGINSaving = true;
         try
         {
-            var isSupplierReturn = string.Equals(
-                NewReturnedStock.IssueType,
-                "Supplier Return",
-                StringComparison.OrdinalIgnoreCase);
             var gin = new StockGinViewModel
             {
                 DocumentId = NewReturnedStock.DocumentId,
                 DisplayCode = NewReturnedStock.ReturnedStockNo,
-                BranchId = NewReturnedStock.BranchId,
-                Date = NewReturnedStock.DateIssued,
+                BranchId = string.IsNullOrWhiteSpace(NewReturnedStock.BranchId) ? InventoryBranchId : NewReturnedStock.BranchId,
+                Date = NewReturnedStock.DateIssued == default ? DateTime.Today : NewReturnedStock.DateIssued,
                 IssueType = NewReturnedStock.IssueType,
-                AccountId = isSupplierReturn ? NewReturnedStock.AccountId : string.Empty,
-                AccountName = isSupplierReturn ? NewReturnedStock.IssuedTo : string.Empty,
-                ReferenceNumber = NewReturnedStock.ReferenceNumber,
+                ReferenceNumber = string.Empty,
                 Remarks = NewReturnedStock.Reason,
                 Lines = NewReturnedStock.SelectedProducts.Values.Select(product => new StockGinLineViewModel
                 {
@@ -8989,7 +8984,7 @@ private async Task ShowAddTransferForm()
                     Quantity = product.Quantity,
                     UnitOfMeasurementId = product.UomId,
                     InventoryTypeId = product.InventoryTypeId,
-                    UnitCost = product.UnitCost
+                    UnitCost = Math.Max(0, product.UnitCost)
                 }).ToList()
             };
 
@@ -9013,26 +9008,18 @@ private async Task ShowAddTransferForm()
 
     private string? ValidateGINForm()
     {
-        if (string.IsNullOrWhiteSpace(NewReturnedStock.IssueType)) return "Select why the stock is being issued.";
-        var isSupplierReturn = string.Equals(
-            NewReturnedStock.IssueType,
-            "Supplier Return",
-            StringComparison.OrdinalIgnoreCase);
-        if (isSupplierReturn && string.IsNullOrWhiteSpace(NewReturnedStock.AccountId))
-            return "Select the supplier receiving the stock.";
-        if (NewReturnedStock.SelectedProducts.Count == 0) return "Select at least one product.";
+        if (string.IsNullOrWhiteSpace(NewReturnedStock.IssueType))
+            return "Select a stock out action.";
+        if (NewReturnedStock.SelectedProducts.Count == 0)
+            return "Select at least one product.";
         if (NewReturnedStock.SelectedProducts.Values.Any(product => product.Quantity <= 0))
             return "Every selected product needs a quantity greater than zero.";
+        if (NewReturnedStock.SelectedProducts.Values.Any(product => product.UnitCost < 0))
+            return "Product cost cannot be negative.";
 
         foreach (var selected in NewReturnedStock.SelectedProducts.Values)
         {
             var product = FindGinProduct(selected.InventoryId, selected.Sku);
-            if (isSupplierReturn && product is not null &&
-                !string.IsNullOrWhiteSpace(product.SupplierAccountId) &&
-                !string.Equals(product.SupplierAccountId, NewReturnedStock.AccountId, StringComparison.OrdinalIgnoreCase))
-            {
-                return $"{selected.ProductName} belongs to a different supplier.";
-            }
             if (product?.StockCount is null) continue;
             var available = GetGinMaximumQuantity(product);
             if (selected.Quantity > available)
@@ -9041,8 +9028,6 @@ private async Task ShowAddTransferForm()
             }
         }
 
-        if (string.Equals(NewReturnedStock.IssueType, "Other", StringComparison.OrdinalIgnoreCase) &&
-            string.IsNullOrWhiteSpace(NewReturnedStock.Reason)) return "Add a short note for the selected purpose.";
         return null;
     }
 
@@ -9224,16 +9209,17 @@ private async Task ShowAddTransferForm()
     private string? GINApiError { get; set; }
     private string ReturnedStockProductSearch { get; set; } = string.Empty;
     private NewReturnedStockModel NewReturnedStock { get; set; } = new();
+    private decimal GINSelectedTotalQuantity => NewReturnedStock.SelectedProducts.Values.Sum(item => item.Quantity);
+    private decimal GINSelectedTotalCost => NewReturnedStock.SelectedProducts.Values.Sum(item => item.Quantity * item.UnitCost);
 
     private static readonly string[] GINIssueTypes =
     [
-        "Internal Use",
-        "Damaged",
+        "Broken",
         "Expired",
-        "Wastage",
-        "Supplier Return",
-        "Sample / Promotion",
-        "Other"
+        "Missing",
+        "Shop Used",
+        "Gift / Present",
+        "Adjustment"
     ];
 
     public class NewReturnedStockModel
