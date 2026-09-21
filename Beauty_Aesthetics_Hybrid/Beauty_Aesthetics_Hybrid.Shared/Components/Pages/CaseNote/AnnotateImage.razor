@@ -5,6 +5,7 @@
 @using Microsoft.AspNetCore.Components.Forms
 @inject IJSRuntime JS
 @inject NavigationManager NavigationManager
+@inject AppFeedbackService Feedback
 @implements IAsyncDisposable
 <PageTitle>Annotation Images</PageTitle>
 
@@ -1200,7 +1201,7 @@
             
             if (string.IsNullOrEmpty(base64Image))
             {
-                ViewModel.SetError("Failed to export image");
+                SetAnnotationError("Failed to export image");
                 Console.WriteLine("✗ Failed to export canvas");
                 return;
             }
@@ -1228,7 +1229,7 @@
         {
             Console.WriteLine($"✗ JavaScript error inserting annotation: {jsEx.Message}");
             Console.Error.WriteLine($"[ERROR] JS error during annotation insertion: {jsEx.Message}");
-            ViewModel.SetError("Failed to insert annotation. The image may be too large.");
+            SetAnnotationError("Failed to insert annotation. The image may be too large.");
             StateHasChanged();
         }
         catch (InvalidOperationException ioEx)
@@ -1240,11 +1241,11 @@
             try
             {
                 await JS.InvokeVoidAsync("localStorage.setItem", "pendingAnnotationImage", "error");
-                ViewModel.SetError("Connection interrupted. Please refresh and try again.");
+                SetAnnotationError("Connection interrupted. Please refresh and try again.");
             }
             catch
             {
-                ViewModel.SetError("Connection lost. Please refresh the page.");
+                SetAnnotationError("Connection lost. Please refresh the page.");
             }
             StateHasChanged();
         }
@@ -1252,7 +1253,7 @@
         {
             Console.WriteLine($"✗ Error inserting annotation: {ex.Message}");
             Console.Error.WriteLine($"[ERROR] Annotation insertion failed: {ex.GetType().Name} - {ex.Message}");
-            ViewModel.SetError("Failed to insert annotation. Please try again.");
+            SetAnnotationError("Failed to insert annotation. Please try again.");
             StateHasChanged();
         }
     }
@@ -1333,7 +1334,7 @@
         catch (Exception ex)
         {
             Console.WriteLine($"Error triggering file input: {ex.Message}");
-            ViewModel.SetError("Failed to open file dialog");
+            SetAnnotationError("Failed to open file dialog");
         }
     }
     
@@ -1387,17 +1388,18 @@
             
             await JS.InvokeVoidAsync("startCamera");
             _isCameraActive = true;
+            Feedback.Success("Camera is ready.", "Camera started", 1800);
             Console.WriteLine("Camera started successfully");
         }
         catch (JSException jsEx)
         {
             Console.WriteLine($"JavaScript error starting camera: {jsEx.Message}");
-            ViewModel.SetError("Failed to access camera. Please ensure camera permissions are granted and try again.");
+            SetAnnotationError("Failed to access camera. Please ensure camera permissions are granted and try again.");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error starting camera: {ex.Message}");
-            ViewModel.SetError($"Failed to access camera: {ex.Message}");
+            SetAnnotationError($"Failed to access camera: {ex.Message}");
         }
     }
     
@@ -1443,13 +1445,14 @@
         {
             _capturedImageDataUrl = await JS.InvokeAsync<string>("captureImage");
             _previousCapturedImageDataUrl = _capturedImageDataUrl; // Track that we have a captured image
+            Feedback.Success("Image captured successfully.", "Image captured", 2000);
             Console.WriteLine($"Image captured, size: {(_capturedImageDataUrl?.Length ?? 0) / 1024} KB");
             StateHasChanged();
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error capturing image: {ex.Message}");
-            ViewModel.SetError("Failed to capture image. Please try again.");
+            SetAnnotationError("Failed to capture image. Please try again.");
         }
     }
     
@@ -1570,7 +1573,7 @@
     {
         if (string.IsNullOrEmpty(_capturedImageDataUrl))
         {
-            ViewModel.SetError("No image captured");
+            SetAnnotationError("No image captured");
             return;
         }
         
@@ -1594,12 +1597,14 @@
             
             _configuringSide = null;
             await CloseAddImageModal();
+            Feedback.Success($"{imageName} added to the comparison.", "Image added", 2200);
             StateHasChanged();
             return;
         }
         
         // Add image to the list (standard mode)
         ViewModel.AddImage(imageName, "Captured", _capturedImageDataUrl, _capturedImageDataUrl);
+        Feedback.Success($"{imageName} added to the annotation library.", "Image added", 2200);
         
         // Close modal and select the new image
         await CloseAddImageModal();
@@ -1618,7 +1623,7 @@
             // Validate file type
             if (!file.ContentType.StartsWith("image/"))
             {
-                ViewModel.SetError("Please select an image file");
+                SetAnnotationError("Please select an image file");
                 return;
             }
             
@@ -1626,7 +1631,7 @@
             const int maxFileSize = 5 * 1024 * 1024;
             if (file.Size > maxFileSize)
             {
-                ViewModel.SetError("Image size must be less than 5MB");
+                SetAnnotationError("Image size must be less than 5MB");
                 return;
             }
             
@@ -1654,14 +1659,16 @@
                 }
                 
                 _configuringSide = null;
+                Feedback.Success($"{imageName} uploaded to the comparison.", "Image uploaded", 2200);
                 StateHasChanged();
-                Console.WriteLine($"Image uploaded to {_configuringSide} side: {imageName}, size: {file.Size / 1024} KB");
+                Console.WriteLine($"Image uploaded: {imageName}, size: {file.Size / 1024} KB");
                 return;
             }
             
             // Add image to the list (standard mode)
             var imageName2 = Path.GetFileNameWithoutExtension(file.Name);
             ViewModel.AddImage(imageName2, "Uploaded", dataUrl, dataUrl);
+            Feedback.Success($"{imageName2} uploaded to the annotation library.", "Image uploaded", 2200);
             
             // Close modal and select the new image
             await CloseAddImageModal();
@@ -1674,7 +1681,7 @@
         catch (Exception ex)
         {
             Console.WriteLine($"Error uploading image: {ex.Message}");
-            ViewModel.SetError($"Failed to upload image: {ex.Message}");
+            SetAnnotationError($"Failed to upload image: {ex.Message}");
         }
     }
     
@@ -1708,7 +1715,7 @@
         catch (Exception ex)
         {
             Console.WriteLine($"Error triggering file input: {ex.Message}");
-            ViewModel.SetError("Failed to open file dialog");
+            SetAnnotationError("Failed to open file dialog");
             _configuringSide = null;
         }
     }
@@ -2086,7 +2093,7 @@
                     Console.Error.WriteLine($"[ERROR] Tool selection failed - JSException: {jsEx.Message}");
                     
                     // Graceful degradation - tool state is updated in ViewModel even if JS fails
-                    ViewModel.SetError($"Failed to activate {tool} tool. Drawing may not work properly.");
+                    SetAnnotationError($"Failed to activate {tool} tool. Drawing may not work properly.");
                 }
                 catch (InvalidOperationException invOpEx)
                 {
@@ -2094,7 +2101,7 @@
                     Console.Error.WriteLine($"[ERROR] Tool selection failed - Function not available: {invOpEx.Message}");
                     
                     // Graceful degradation
-                    ViewModel.SetError("Drawing tools are temporarily unavailable. Please refresh the page.");
+                    SetAnnotationError("Drawing tools are temporarily unavailable. Please refresh the page.");
                 }
                 catch (Exception ex)
                 {
@@ -2102,7 +2109,7 @@
                     Console.Error.WriteLine($"[ERROR] Tool selection failed - Unexpected error: {ex.GetType().Name} - {ex.Message}");
                     
                     // Graceful degradation
-                    ViewModel.SetError("An error occurred while selecting the tool. Please try again.");
+                    SetAnnotationError("An error occurred while selecting the tool. Please try again.");
                 }
             }
         );
@@ -2228,7 +2235,7 @@
             Console.Error.WriteLine($"[ERROR] Undo operation failed - JSException: {jsEx.Message}");
             
             // User-facing error message
-            ViewModel.SetError("Failed to undo. The drawing canvas may not be ready.");
+            SetAnnotationError("Failed to undo. The drawing canvas may not be ready.");
         }
         catch (InvalidOperationException invOpEx)
         {
@@ -2236,7 +2243,7 @@
             Console.Error.WriteLine($"[ERROR] Undo operation failed - Function not available: {invOpEx.Message}");
             
             // Graceful degradation
-            ViewModel.SetError("Undo is temporarily unavailable. Please try again.");
+            SetAnnotationError("Undo is temporarily unavailable. Please try again.");
         }
         catch (Exception ex)
         {
@@ -2260,7 +2267,7 @@
             Console.Error.WriteLine($"[ERROR] Redo operation failed - JSException: {jsEx.Message}");
             
             // User-facing error message
-            ViewModel.SetError("Failed to redo. The drawing canvas may not be ready.");
+            SetAnnotationError("Failed to redo. The drawing canvas may not be ready.");
         }
         catch (InvalidOperationException invOpEx)
         {
@@ -2268,13 +2275,19 @@
             Console.Error.WriteLine($"[ERROR] Redo operation failed - Function not available: {invOpEx.Message}");
             
             // Graceful degradation
-            ViewModel.SetError("Redo is temporarily unavailable. Please try again.");
+            SetAnnotationError("Redo is temporarily unavailable. Please try again.");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Unexpected error during redo: {ex.GetType().Name} - {ex.Message}");
             Console.Error.WriteLine($"[ERROR] Redo operation failed - Unexpected error: {ex.GetType().Name} - {ex.Message}");
         }
+    }
+
+    private void SetAnnotationError(string message)
+    {
+        ViewModel.SetError(message);
+        Feedback.Error(message, "Annotation action failed");
     }
 
     private async Task HandleReset()
@@ -2287,6 +2300,7 @@
             _hasUnsavedChanges = false; // Reset unsaved changes flag
             Console.WriteLine("Reset operation completed successfully");
             ViewModel.ClearError();
+            Feedback.Success("Annotation canvas reset successfully.", "Canvas reset", 2200);
         }
         catch (JSException jsEx)
         {
@@ -2294,7 +2308,7 @@
             Console.Error.WriteLine($"[ERROR] Reset operation failed - JSException: {jsEx.Message}");
             
             // User-facing error message
-            ViewModel.SetError("Failed to reset canvas. Please refresh the page.");
+            SetAnnotationError("Failed to reset canvas. Please refresh the page.");
         }
         catch (InvalidOperationException invOpEx)
         {
@@ -2304,7 +2318,7 @@
             // Graceful degradation - still reset ViewModel
             ViewModel.ResetCanvas();
             _hasUnsavedChanges = false; // Reset unsaved changes flag
-            ViewModel.SetError("Canvas reset partially completed. Please refresh the page for full reset.");
+            SetAnnotationError("Canvas reset partially completed. Please refresh the page for full reset.");
         }
         catch (Exception ex)
         {
@@ -2547,7 +2561,7 @@
             _canvasInitialized = false;
             
             // User-facing error message
-            ViewModel.SetError("Failed to initialize drawing canvas. Please refresh the page and try again.");
+            SetAnnotationError("Failed to initialize drawing canvas. Please refresh the page and try again.");
             
             // Trigger re-render to show error
             StateHasChanged();
@@ -2559,7 +2573,7 @@
             _canvasInitialized = false;
             
             // User-facing error message
-            ViewModel.SetError("Drawing tools are not available. Please ensure JavaScript is enabled and refresh the page.");
+            SetAnnotationError("Drawing tools are not available. Please ensure JavaScript is enabled and refresh the page.");
             
             // Trigger re-render to show error
             StateHasChanged();
@@ -2571,7 +2585,7 @@
             _canvasInitialized = false;
             
             // User-facing error message
-            ViewModel.SetError("An unexpected error occurred while initializing the drawing canvas. Please try again.");
+            SetAnnotationError("An unexpected error occurred while initializing the drawing canvas. Please try again.");
             
             // Trigger re-render to show error
             StateHasChanged();
