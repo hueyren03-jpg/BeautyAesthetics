@@ -5344,25 +5344,18 @@
 
         try
         {
-            var results = await Task.WhenAll(
-                GetInventoryBranchIds().Select(branchId => StockTransferSvc.LoadTransfersAsync(branchId)));
-            var successfulResults = results
-                .Where(result => result.Success && result.Value is not null)
-                .ToList();
-
-            if (successfulResults.Count == 0)
+            // SenangRetails loads Stock Transfer history for the active branch with one
+            // Doc_StockTransfer/LoadProxy request. Do not query every branch and then
+            // re-filter the combined rows on the client.
+            var result = await StockTransferSvc.LoadTransfersAsync(InventoryBranchId);
+            if (!result.Success || result.Value is null)
             {
-                StockTransferApiError = results
-                    .Select(result => result.ErrorMessage)
-                    .FirstOrDefault(message => !string.IsNullOrWhiteSpace(message))
-                    ?? "Unable to load stock transfers.";
+                StockTransferApiError = result.ErrorMessage ?? "Unable to load stock transfers.";
                 return;
             }
 
-            TransferHistory = successfulResults
-                .SelectMany(result => result.Value!)
+            TransferHistory = result.Value
                 .Select(ToTransferHistoryItem)
-                .Where(IsTransferVisibleToCurrentBranch)
                 .GroupBy(
                     item => !string.IsNullOrWhiteSpace(item.DocumentId)
                         ? $"id:{item.DocumentId.Trim()}"
@@ -5371,10 +5364,9 @@
                 .Select(group => group.First())
                 .OrderByDescending(item => item.DateIssued)
                 .ToList();
+
             ReconcileStockTransferStatuses();
             StockTransferHistoryCurrentPage = 1;
-            SelectedTransferHistoryItem = null;
-            SelectedTransferHistoryDetails = null;
         }
         finally
         {
