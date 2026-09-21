@@ -3126,6 +3126,12 @@
             return;
         }
 
+        Feedback.Info(
+            string.IsNullOrWhiteSpace(customer.FirstName)
+                ? "Opening customer for editing."
+                : $"Opening {customer.FirstName} for editing.",
+            "Edit customer",
+            2200);
         Navigation.NavigateTo($"/customers/edit/{Uri.EscapeDataString(customerId)}");
     }
 
@@ -3676,6 +3682,7 @@
 
         model.PhotoPath = upload.Value;
         PreviewImageUrl = upload.Value;
+        await ShowToast("Customer image uploaded successfully.");
         await InvokeAsync(StateHasChanged);
     }
 
@@ -3919,6 +3926,8 @@
     // ========== TOAST METHODS ==========
     async Task ShowToast(string message)
     {
+        ShowGlobalFeedback(message);
+
         toastCts?.Cancel();
         toastMessage = message;
         StateHasChanged();
