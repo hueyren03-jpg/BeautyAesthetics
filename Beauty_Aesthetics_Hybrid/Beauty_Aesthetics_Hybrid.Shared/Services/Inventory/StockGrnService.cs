@@ -135,7 +135,8 @@ public sealed class StockGrnService : IStockGrnService
     {
         var normalizedBranch = NormalizeBranchId(string.IsNullOrWhiteSpace(grn.BranchId) ? branchId : grn.BranchId);
         var exchangeRate = grn.ExchangeRate <= 0 ? 1 : grn.ExchangeRate;
-        var subtotal = Math.Max(0, grn.ReceivedQuantity * grn.UnitPrice);
+        var sourceLines = ResolveLines(grn);
+        var subtotal = sourceLines.Sum(line => Math.Max(0, line.Quantity) * Math.Max(0, line.UnitCost));
         var taxAmount = Math.Max(0, grn.TaxAmount);
         var totalBeforeTax = grn.IsTaxInclusive ? Math.Max(0, subtotal - taxAmount) : subtotal;
         var totalAfterTax = grn.Amount > 0
@@ -187,105 +188,105 @@ public sealed class StockGrnService : IStockGrnService
         bool isNewDocument)
     {
         var normalizedBranch = NormalizeBranchId(string.IsNullOrWhiteSpace(grn.BranchId) ? branchId : grn.BranchId);
-        var quantity = grn.ReceivedQuantity > 0 ? grn.ReceivedQuantity : 1;
-        var unitPrice = grn.UnitPrice >= 0 ? grn.UnitPrice : 0;
-        var subtotal = Math.Max(0, quantity * unitPrice);
-        var taxAmount = Math.Max(0, grn.TaxAmount);
-        var taxableAmount = grn.IsTaxInclusive ? Math.Max(0, subtotal - taxAmount) : subtotal;
-        var amount = grn.Amount > 0
-            ? grn.Amount
-            : (grn.IsTaxInclusive ? subtotal : subtotal + taxAmount) + grn.RoundingAmount;
-        var lineSaveAction = isNewDocument ? "Added" : "Changed";
+        var sourceLines = ResolveLines(grn);
+        var existingLines = envelope.DocumentLines.ToList();
+        var existingById = existingLines
+            .Where(line => !string.IsNullOrWhiteSpace(ReadString(line, "documentLineID")))
+            .DistinctBy(line => ReadString(line, "documentLineID"), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(line => ReadString(line, "documentLineID"), StringComparer.OrdinalIgnoreCase);
+        var blankTemplate = isNewDocument ? existingLines.FirstOrDefault() : null;
+        var updatedLines = new List<JsonObject>();
 
-        if (envelope.DocumentLines.Count > 0)
+        for (var index = 0; index < sourceLines.Count; index++)
         {
-            var firstLine = envelope.DocumentLines[0];
-            RemoveLegacyLineFields(firstLine);
-            firstLine["documentID"] = envelope.Document.DocumentID;
-            firstLine["ownerDocumentTypeID"] = envelope.Document.DocumentTypeID;
-            firstLine["lineOrder"] = 1;
-            SetLine(firstLine, "description", grn.ItemName);
-            SetLine(firstLine, "itemName", grn.ItemName);
-            SetLine(firstLine, "lineItemID", grn.InventoryId);
-            SetLine(firstLine, "inventoryItemAccountID", grn.InventoryId);
-            SetLine(firstLine, "lineItemDisplayCode", grn.ItemSku);
-            SetLine(firstLine, "skuName", grn.ItemSku);
-            SetLine(firstLine, "unitOfMeasurementID", grn.Uom);
-            SetLine(firstLine, "orderDocumentLineID", grn.OrderDocumentLineId);
-            SetLine(firstLine, "sourceDocumentLineID", grn.SourceDocumentLineId);
-            firstLine["quantity"] = quantity;
-            firstLine["adjustedQuantity"] = quantity;
-            firstLine["unitPrice"] = unitPrice;
-            firstLine["subTotal"] = subtotal;
-            firstLine["amount"] = amount;
-            firstLine["taxableAmount"] = taxableAmount;
-            firstLine["subTotalBeforeGST"] = taxableAmount;
-            firstLine["taxAmount"] = taxAmount;
-            firstLine["taxPercentage"] = Math.Max(0, grn.TaxPercentage);
-            firstLine["isTaxInclusive"] = grn.IsTaxInclusive;
-            firstLine["isPurchaseTax"] = true;
-            SetLine(firstLine, "taxCodeID", grn.TaxCodeId);
-            SetLine(firstLine, "gstTypeID", grn.GstTypeId);
-            SetLine(firstLine, "batchNo", grn.BatchNumber);
-            SetLine(firstLine, "serialNo", grn.SerialNumber);
-            firstLine["branchID"] = normalizedBranch;
-            firstLine["editBranchID"] = normalizedBranch;
-            firstLine["financialDate"] = envelope.Document.FinancialDate;
-            firstLine["documentDisplayCode"] = envelope.Document.DisplayCode;
-            firstLine["inventoryTypeID"] = grn.InventoryTypeId;
-            firstLine["currencyID"] = grn.TransactionCurrencyId;
-            firstLine["exchangeRate"] = grn.ExchangeRate <= 0 ? 1 : grn.ExchangeRate;
-            firstLine["convertedAmount"] = Math.Round(amount * (grn.ExchangeRate <= 0 ? 1 : grn.ExchangeRate), 2);
-            firstLine["saveAction"] = lineSaveAction;
-            firstLine["isDirty"] = true;
+            var source = sourceLines[index];
+            JsonObject? existingLine = null;
+            var hasExistingLine = !string.IsNullOrWhiteSpace(source.DocumentLineId) &&
+                                  existingById.TryGetValue(source.DocumentLineId, out existingLine);
+            var line = hasExistingLine
+                ? existingLine!
+                : blankTemplate?.DeepClone().AsObject() ?? new JsonObject();
+
+            RemoveLegacyLineFields(line);
+            var lineId = hasExistingLine ? source.DocumentLineId : Guid.NewGuid().ToString();
+            var quantity = Math.Max(0, source.Quantity);
+            var unitCost = Math.Max(0, source.UnitCost);
+            var lineAmount = quantity * unitCost;
+
+            line["isLoading"] = false;
+            line["documentID"] = envelope.Document.DocumentID;
+            line["documentLineID"] = lineId;
+            line["ownerDocumentTypeID"] = envelope.Document.DocumentTypeID;
+            line["lineOrder"] = index + 1;
+            SetLine(line, "description", source.ProductName);
+            SetLine(line, "itemName", source.ProductName);
+            SetLine(line, "lineItemID", source.InventoryId);
+            SetLine(line, "inventoryItemAccountID", source.InventoryId);
+            SetLine(line, "lineItemDisplayCode", source.Sku);
+            SetLine(line, "skuName", source.Sku);
+            SetLine(line, "unitOfMeasurementID", source.UnitOfMeasurementId);
+            line["quantity"] = quantity;
+            line["adjustedQuantity"] = quantity;
+            line["unitPrice"] = unitCost;
+            line["cost"] = unitCost;
+            line["subTotal"] = lineAmount;
+            line["subTotalBeforeGST"] = lineAmount;
+            line["amount"] = lineAmount;
+            line["taxableAmount"] = lineAmount;
+            line["taxAmount"] = 0;
+            line["inventoryTypeID"] = source.InventoryTypeId <= 0 ? 1 : source.InventoryTypeId;
+            line["branchID"] = normalizedBranch;
+            line["editBranchID"] = normalizedBranch;
+            line["financialDate"] = envelope.Document.FinancialDate;
+            line["documentDisplayCode"] = envelope.Document.DisplayCode;
+            line["currencyID"] = string.IsNullOrWhiteSpace(grn.TransactionCurrencyId) ? "MYR" : grn.TransactionCurrencyId;
+            line["exchangeRate"] = grn.ExchangeRate <= 0 ? 1 : grn.ExchangeRate;
+            line["convertedAmount"] = Math.Round(lineAmount * (grn.ExchangeRate <= 0 ? 1 : grn.ExchangeRate), 2);
+            line["saveAction"] = isNewDocument || !hasExistingLine ? "Added" : "Changed";
+            line["isDirty"] = true;
+            updatedLines.Add(line);
         }
-        else
+
+        foreach (var removedLine in existingLines.Except(updatedLines))
         {
-            var lineId = Guid.NewGuid().ToString();
-            var line = new JsonObject
+            if (isNewDocument && ReferenceEquals(removedLine, blankTemplate))
             {
-                ["isLoading"] = false,
-                ["documentID"] = envelope.Document.DocumentID,
-                ["documentLineID"] = lineId,
-                ["ownerDocumentTypeID"] = envelope.Document.DocumentTypeID,
-                ["lineOrder"] = 1,
-                ["description"] = grn.ItemName,
-                ["itemName"] = grn.ItemName,
-                ["lineItemID"] = grn.InventoryId,
-                ["inventoryItemAccountID"] = grn.InventoryId,
-                ["lineItemDisplayCode"] = grn.ItemSku,
-                ["skuName"] = grn.ItemSku,
-                ["unitOfMeasurementID"] = grn.Uom,
-                ["orderDocumentLineID"] = grn.OrderDocumentLineId,
-                ["sourceDocumentLineID"] = grn.SourceDocumentLineId,
-                ["quantity"] = quantity,
-                ["adjustedQuantity"] = quantity,
-                ["unitPrice"] = unitPrice,
-                ["subTotal"] = subtotal,
-                ["amount"] = amount,
-                ["taxableAmount"] = taxableAmount,
-                ["subTotalBeforeGST"] = taxableAmount,
-                ["taxAmount"] = taxAmount,
-                ["taxPercentage"] = Math.Max(0, grn.TaxPercentage),
-                ["isTaxInclusive"] = grn.IsTaxInclusive,
-                ["isPurchaseTax"] = true,
-                ["taxCodeID"] = grn.TaxCodeId,
-                ["gstTypeID"] = grn.GstTypeId,
-                ["batchNo"] = grn.BatchNumber,
-                ["serialNo"] = grn.SerialNumber,
-                ["branchID"] = normalizedBranch,
-                ["editBranchID"] = normalizedBranch,
-                ["financialDate"] = envelope.Document.FinancialDate,
-                ["documentDisplayCode"] = envelope.Document.DisplayCode,
-                ["inventoryTypeID"] = grn.InventoryTypeId,
-                ["currencyID"] = grn.TransactionCurrencyId,
-                ["exchangeRate"] = grn.ExchangeRate <= 0 ? 1 : grn.ExchangeRate,
-                ["convertedAmount"] = Math.Round(amount * (grn.ExchangeRate <= 0 ? 1 : grn.ExchangeRate), 2),
-                ["saveAction"] = "Added",
-                ["isDirty"] = true
-            };
-            envelope.DocumentLines.Add(line);
+                continue;
+            }
+
+            removedLine["saveAction"] = "Deleted";
+            removedLine["isDirty"] = true;
+            updatedLines.Add(removedLine);
         }
+
+        envelope.DocumentLines = updatedLines;
+    }
+
+    private static IReadOnlyList<StockGrnLineViewModel> ResolveLines(StockGrnViewModel grn)
+    {
+        if (grn.Lines.Count > 0)
+        {
+            return grn.Lines;
+        }
+
+        if (string.IsNullOrWhiteSpace(grn.InventoryId) && string.IsNullOrWhiteSpace(grn.ItemSku))
+        {
+            return Array.Empty<StockGrnLineViewModel>();
+        }
+
+        return new[]
+        {
+            new StockGrnLineViewModel
+            {
+                InventoryId = grn.InventoryId,
+                ProductName = grn.ItemName,
+                Sku = grn.ItemSku,
+                Quantity = grn.ReceivedQuantity,
+                UnitOfMeasurementId = grn.Uom,
+                InventoryTypeId = grn.InventoryTypeId,
+                UnitCost = grn.UnitPrice
+            }
+        };
     }
 
     private static StockGrnViewModel ToViewModel(StockGrnDocumentDTO document)
@@ -327,36 +328,44 @@ public sealed class StockGrnService : IStockGrnService
     private static StockGrnViewModel ToViewModel(StockGrnEnvelopeDTO envelope)
     {
         var viewModel = ToViewModel(envelope.Document);
-        var line = envelope.DocumentLines.FirstOrDefault();
-        if (line is null)
+        viewModel.Lines = envelope.DocumentLines
+            .Where(line => !string.Equals(ReadString(line, "saveAction"), "Deleted", StringComparison.OrdinalIgnoreCase))
+            .Select(line =>
+            {
+                var cost = ReadDecimal(line, "cost");
+                if (cost <= 0)
+                {
+                    cost = ReadDecimal(line, "unitPrice", "UnitPrice");
+                }
+
+                return new StockGrnLineViewModel
+                {
+                    DocumentLineId = ReadString(line, "documentLineID"),
+                    InventoryId = ReadString(line, "lineItemID", "inventoryItemAccountID", "inventoryID", "InventoryID"),
+                    ProductName = ReadString(line, "itemName", "description", "Description"),
+                    Sku = ReadString(line, "lineItemDisplayCode", "skuName", "sku", "SKU", "inventoryCode", "InventoryCode"),
+                    Quantity = ReadDecimal(line, "quantity", "Quantity"),
+                    UnitOfMeasurementId = ReadString(line, "unitOfMeasurementID", "uom", "UOM", "uom1", "UOM1"),
+                    InventoryTypeId = Math.Max(1, (int)ReadDecimal(line, "inventoryTypeID")),
+                    UnitCost = cost
+                };
+            })
+            .Where(line => !string.IsNullOrWhiteSpace(line.InventoryId) || !string.IsNullOrWhiteSpace(line.Sku))
+            .ToList();
+
+        var firstLine = viewModel.Lines.FirstOrDefault();
+        if (firstLine is not null)
         {
-            return viewModel;
+            viewModel.ItemName = firstLine.ProductName;
+            viewModel.ItemSku = firstLine.Sku;
+            viewModel.InventoryId = firstLine.InventoryId;
+            viewModel.Uom = firstLine.UnitOfMeasurementId;
+            viewModel.InventoryTypeId = firstLine.InventoryTypeId;
+            viewModel.ReceivedQuantity = firstLine.Quantity;
+            viewModel.OrderedQuantity = firstLine.Quantity;
+            viewModel.UnitPrice = firstLine.UnitCost;
         }
 
-        viewModel.ItemName = ReadString(line, "itemName", "description", "Description");
-        viewModel.ItemSku = ReadString(line, "lineItemDisplayCode", "skuName", "sku", "SKU", "inventoryCode", "InventoryCode");
-        viewModel.InventoryId = ReadString(line, "lineItemID", "inventoryItemAccountID", "inventoryID", "InventoryID");
-        viewModel.Uom = ReadString(line, "unitOfMeasurementID", "uom", "UOM", "uom1", "UOM1");
-        viewModel.OrderDocumentLineId = ReadString(line, "orderDocumentLineID");
-        viewModel.SourceDocumentLineId = ReadString(line, "sourceDocumentLineID");
-        viewModel.InventoryTypeId = (int)ReadDecimal(line, "inventoryTypeID");
-        viewModel.ReceivedQuantity = ReadDecimal(line, "quantity", "Quantity");
-        viewModel.OrderedQuantity = ReadDecimal(line, "orderedQuantity", "OrderedQuantity");
-        if (viewModel.OrderedQuantity <= 0)
-        {
-            viewModel.OrderedQuantity = viewModel.ReceivedQuantity;
-        }
-        viewModel.UnitPrice = ReadDecimal(line, "unitPrice", "UnitPrice");
-        viewModel.TaxCodeId = ReadString(line, "taxCodeID");
-        viewModel.GstTypeId = ReadString(line, "gstTypeID");
-        viewModel.TaxPercentage = ReadDecimal(line, "taxPercentage");
-        if (viewModel.TaxAmount == 0)
-        {
-            viewModel.TaxAmount = ReadDecimal(line, "taxAmount");
-        }
-        viewModel.IsTaxInclusive = ReadBool(line, "isTaxInclusive");
-        viewModel.BatchNumber = ReadString(line, "batchNo");
-        viewModel.SerialNumber = ReadString(line, "serialNo");
         return viewModel;
     }
 
