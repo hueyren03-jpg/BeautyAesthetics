@@ -13,6 +13,8 @@ public sealed class StockGinAC
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
     private static readonly MediaTypeHeaderValue JsonPatchMediaType =
         MediaTypeHeaderValue.Parse("application/json-patch+json");
+    private static readonly MediaTypeHeaderValue ApplicationJsonMediaType =
+        MediaTypeHeaderValue.Parse("application/json");
     private readonly IAuthService authService;
 
     public StockGinAC(IAuthService authService)
@@ -24,7 +26,7 @@ public sealed class StockGinAC
         StockGinProxyRequestDTO requestDto,
         CancellationToken cancellationToken = default)
     {
-        using var request = CreateRequest(HttpMethod.Post, "/api/Doc_Stock_GIN/LoadProxy", requestDto);
+        using var request = CreateJsonRequest(HttpMethod.Post, "/api/Doc_Stock_GIN/LoadProxy", requestDto);
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
         return await ReadDocumentListAsync(response, cancellationToken);
     }
@@ -121,6 +123,12 @@ public sealed class StockGinAC
         new(method, uri)
         {
             Content = JsonContent.Create(payload, mediaType: JsonPatchMediaType, options: JsonOptions)
+        };
+
+    private static HttpRequestMessage CreateJsonRequest(HttpMethod method, string uri, object payload) =>
+        new(method, uri)
+        {
+            Content = JsonContent.Create(payload, mediaType: ApplicationJsonMediaType, options: JsonOptions)
         };
 
     private static async Task<ApiCallResult<T>> ReadApiResponseAsync<T>(
