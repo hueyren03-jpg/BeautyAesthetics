@@ -1,4 +1,5 @@
 using Beauty_Aesthetics_WebPos.ViewModels;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Microsoft.AspNetCore.Components;
 
 
@@ -8,6 +9,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages.Voucher
     {
         private VoucherFormViewModel ViewModel = new();
         [Inject] private NavigationManager Navigation { get; set; } = default!;
+        [Inject] private AppFeedbackService Feedback { get; set; } = default!;
 
         private bool showSales = true;
         private bool showGenerated = true;
@@ -25,22 +27,41 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages.Voucher
         {
             if (await ViewModel.SaveAsync())
             {
+                Feedback.Success("Voucher campaign saved successfully.", "Voucher saved");
                 Navigation?.NavigateTo("/voucher");
+                return;
             }
+
+            Feedback.Warning(
+                string.IsNullOrWhiteSpace(ViewModel.ErrorMessage) ? "Check the voucher details and try again." : ViewModel.ErrorMessage,
+                "Voucher not saved");
         }
 
         private void Generate()
         {
+            if (ViewModel.Voucher.TotalQuantity <= 0)
+            {
+                Feedback.Warning("Enter a voucher quantity greater than zero before generating codes.", "Nothing generated");
+                return;
+            }
+
             ViewModel.GenerateVouchers();
+            Feedback.Success($"{ViewModel.GeneratedList.Count} voucher code{(ViewModel.GeneratedList.Count == 1 ? string.Empty : "s")} generated.", "Vouchers generated");
         }
 
         private void RemoveAll()
         {
+            var count = ViewModel.GeneratedList.Count;
             ViewModel.RemoveAllGenerated();
+            Feedback.Info(
+                count == 0 ? "There were no generated voucher codes to remove." : $"{count} generated voucher code{(count == 1 ? string.Empty : "s")} removed.",
+                "Generated vouchers cleared",
+                2600);
         }
 
         private void Cancel()
         {
+            Feedback.Info("Voucher changes were not saved.", "Voucher editing cancelled", 2200);
             Navigation.NavigateTo("/voucher");
         }
 
