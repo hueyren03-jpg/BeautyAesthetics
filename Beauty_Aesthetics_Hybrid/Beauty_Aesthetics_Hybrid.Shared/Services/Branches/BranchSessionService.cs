@@ -92,8 +92,19 @@ public sealed class BranchSessionService(
             return false;
         }
 
-        appState.SelectBranch(branch);
+        // Persist first so a clean reload can always restore the selected branch.
         await branchStore.SaveBranchIdAsync(branch.Id);
+
+        try
+        {
+            appState.SelectBranch(branch);
+        }
+        catch
+        {
+            // A stale live component must not break branch switching. The caller
+            // reloads the current route after selection, rebuilding branch-scoped UI.
+        }
+
         return true;
     }
 
