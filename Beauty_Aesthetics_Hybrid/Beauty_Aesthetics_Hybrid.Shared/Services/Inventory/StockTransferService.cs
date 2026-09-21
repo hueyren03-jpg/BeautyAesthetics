@@ -21,56 +21,33 @@ public sealed class StockTransferService : IStockTransferService
         string branchId = "HQ",
         CancellationToken cancellationToken = default)
     {
-        const int pageSize = 200;
-        const int maximumPages = 100;
-        var documents = new List<StockTransferDocumentDTO>();
-        string? previousPageSignature = null;
-        var lastStatusCode = HttpStatusCode.OK;
-
-        for (var pageNumber = 1; pageNumber <= maximumPages; pageNumber++)
+        // Match SenangRetails: one branch-scoped LoadProxy request. Beauty has no
+        // transfer-history date picker, so keep a practical two-year window.
+        var result = await stockTransferAC.LoadProxyAsync(new StockTransferProxyRequestDTO
         {
-            var request = new StockTransferProxyRequestDTO
-            {
-                BranchID = NormalizeBranchId(branchId),
-                StartDate = new DateTime(1900, 1, 1),
-                EndDate = DateTime.Today.AddDays(1).AddTicks(-1),
-                PageNumber = pageNumber,
-                PageSize = pageSize
-            };
+            BranchID = NormalizeBranchId(branchId),
+            StartDate = DateTime.Today.AddYears(-2),
+            EndDate = DateTime.Today.AddDays(1).AddTicks(-1),
+            PageNumber = 1,
+            PageSize = 200
+        }, cancellationToken);
 
-            var result = await stockTransferAC.LoadProxyAsync(request, cancellationToken);
-            lastStatusCode = result.StatusCode;
-            if (!result.Success || result.Value is null)
-            {
-                return ApiCallResult<IReadOnlyList<StockTransferViewModel>>.Failure(
-                    result.StatusCode,
-                    result.ErrorMessage ?? "Unable to load stock transfers.");
-            }
-
-            var page = result.Value;
-            var signature = string.Join('|', page.Select(TransferKey));
-            if (pageNumber > 1 && string.Equals(signature, previousPageSignature, StringComparison.Ordinal))
-            {
-                break;
-            }
-
-            documents.AddRange(page);
-            previousPageSignature = signature;
-            if (page.Count < pageSize)
-            {
-                break;
-            }
+        if (!result.Success || result.Value is null)
+        {
+            return ApiCallResult<IReadOnlyList<StockTransferViewModel>>.Failure(
+                result.StatusCode,
+                result.ErrorMessage ?? "Unable to load stock transfers.");
         }
 
-        var transfers = documents
-            .DistinctBy(document => TransferKey(document), StringComparer.OrdinalIgnoreCase)
+        var transfers = result.Value
             .Where(document => !document.IsVoid)
+            .DistinctBy(document => TransferKey(document), StringComparer.OrdinalIgnoreCase)
             .Select(ToViewModel)
             .OrderByDescending(transfer => transfer.Date)
-            .ThenBy(transfer => transfer.DisplayCode)
+            .ThenByDescending(transfer => transfer.DisplayCode)
             .ToList();
 
-        return ApiCallResult<IReadOnlyList<StockTransferViewModel>>.Ok(lastStatusCode, transfers);
+        return ApiCallResult<IReadOnlyList<StockTransferViewModel>>.Ok(result.StatusCode, transfers);
     }
 
     public async Task<ApiCallResult<StockTransferViewModel>> LoadTransferAsync(
