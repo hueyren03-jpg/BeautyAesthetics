@@ -355,7 +355,8 @@ public sealed class StockTransferService : IStockTransferService
             Set(line, "amount", lineAmount);
             Set(line, "taxableAmount", lineAmount);
             Set(line, "unitOfMeasurementID", source.UnitOfMeasurementId);
-            Set(line, "inventoryTypeID", 1);
+            Set(line, "inventoryTypeID", source.InventoryTypeId <= 0 ? 1 : source.InventoryTypeId);
+            Set(line, "skuQuantity", 1);
             Set(line, "branchID", NormalizeBranchId(transfer.FromBranchId));
             Set(line, "editBranchID", NormalizeBranchId(transfer.FromBranchId));
             Set(line, "financialDate", transfer.Date == default ? DateTime.Today : transfer.Date);
@@ -517,6 +518,7 @@ public sealed class StockTransferService : IStockTransferService
         UnitCost = ReadDecimal(line, "cost") > 0
             ? ReadDecimal(line, "cost")
             : ReadDecimal(line, "unitPrice"),
+        InventoryTypeId = Math.Max(1, (int)ReadDecimal(line, "inventoryTypeID")),
         UnitOfMeasurementId = ReadString(line, "unitOfMeasurementID")
     };
 
