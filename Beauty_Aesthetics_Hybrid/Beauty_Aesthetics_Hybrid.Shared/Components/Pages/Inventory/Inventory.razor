@@ -27,6 +27,7 @@
 @inject IInventoryPendingAcceptService PendingStockReceiptService
 @inject IBranchLookupService BranchLookupService
 @inject IBranchSessionService BranchSession
+@inject AppFeedbackService Feedback
 @inject NavigationManager NavigationManager
 @inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L
 @implements IAsyncDisposable
@@ -3898,11 +3899,13 @@
 
     private async Task HandleImportFileSelected(InputFileChangeEventArgs e)
     {
+        Feedback.Info($"Selected {e.File.Name}. Inventory import processing is not implemented yet.", "Import file selected");
         await Task.CompletedTask;
     }
 
     private async Task HandleUpdateFileSelected(InputFileChangeEventArgs e)
     {
+        Feedback.Info($"Selected {e.File.Name}. Inventory update processing is not implemented yet.", "Update file selected");
         await Task.CompletedTask;
     }
 
@@ -3968,24 +3971,28 @@
     private async Task ImportInventoryItems()
     {
         CloseImportExportDropdown();
+        Feedback.Info("Choose an inventory file to import.", "Import inventory");
         await Task.CompletedTask;
     }
 
     private async Task ExportInventoryItems()
     {
         CloseImportExportDropdown();
+        Feedback.Warning("Inventory export is not implemented yet.", "Export unavailable");
         await Task.CompletedTask;
     }
 
     private async Task GetImportTemplate()
     {
         CloseImportExportDropdown();
+        Feedback.Warning("Inventory import template download is not implemented yet.", "Template unavailable");
         await Task.CompletedTask;
     }
 
     private async Task UpdateFromExcel()
     {
         CloseImportExportDropdown();
+        Feedback.Info("Choose an Excel file to update inventory records.", "Update from Excel");
         await Task.CompletedTask;
     }
 
@@ -4335,6 +4342,7 @@
             }
 
             IsAddGRNFormVisible = true;
+            Feedback.Info($"Editing GRN {grn.DOCNo}.", "Edit GRN", 2200);
         }
         finally
         {
@@ -4745,6 +4753,7 @@
         StartGRNBarcodeScannerAfterRender = false;
         GRNBarcodeScanSucceeded = false;
         GRNBarcodeScanMessage = message;
+        Feedback.Error(message, "Barcode scanner unavailable");
         FocusGRNBarcodeAfterRender = IsGRNScanWorkflowVisible;
         _ = InvokeAsync(StateHasChanged);
     }
@@ -6609,11 +6618,16 @@ private void ShowAddBrandForm()
 
     private void HandleAddBrand()
     {
-        if (!string.IsNullOrWhiteSpace(NewBrandName))
+        if (string.IsNullOrWhiteSpace(NewBrandName))
         {
-            Brands.Add(new BrandItem(NewBrandName, 0));
-            CloseAddBrandForm();
+            Feedback.Warning("Brand name is required.", "Brand not added");
+            return;
         }
+
+        var brandName = NewBrandName.Trim();
+        Brands.Add(new BrandItem(brandName, 0));
+        CloseAddBrandForm();
+        Feedback.Success($"{brandName} was added.", "Brand added");
     }
 
     private void ShowAddCategoryForm()
@@ -6692,6 +6706,7 @@ private void ShowAddBrandForm()
         EditCategoryName = category.Name;
         EditCategoryExternalCode = category.ExternalCode == category.Id || category.ExternalCode == "-" ? string.Empty : category.ExternalCode;
         CategoryApiError = null;
+        Feedback.Info($"Editing category {category.Name}.", "Edit category", 2200);
     }
 
     private void CloseEditCategoryForm(bool force = false)
@@ -6771,19 +6786,23 @@ private void ShowAddBrandForm()
 
     private void HandleAddSupplier()
     {
-        if (!string.IsNullOrWhiteSpace(NewSupplierName) &&
-            !string.IsNullOrWhiteSpace(NewSupplierContactNumber) &&
-            !string.IsNullOrWhiteSpace(NewSupplierAddress))
+        if (string.IsNullOrWhiteSpace(NewSupplierName) ||
+            string.IsNullOrWhiteSpace(NewSupplierContactNumber) ||
+            string.IsNullOrWhiteSpace(NewSupplierAddress))
         {
-            Suppliers.Add(new SupplierItem(NewSupplierName, NewSupplierContactNumber, NewSupplierAddress, NewSupplierDescription, 0));
-            CloseAddSupplierForm();
+            Feedback.Warning("Supplier name, contact number and address are required.", "Supplier not added");
+            return;
         }
+
+        var supplierName = NewSupplierName.Trim();
+        Suppliers.Add(new SupplierItem(supplierName, NewSupplierContactNumber, NewSupplierAddress, NewSupplierDescription, 0));
+        CloseAddSupplierForm();
+        Feedback.Success($"{supplierName} was added.", "Supplier added");
     }
 
     private void ShowAddUomConversionForm()
     {
-        // TODO: Implement UOM Conversion modal and form handling
-        // For now, this is a placeholder to resolve build errors
+        Feedback.Warning("UOM conversion setup is not implemented yet.", "Action unavailable");
     }
 
     private void ShowSupplierDetails(SupplierItem supplier)
@@ -6834,6 +6853,7 @@ private void ShowAddBrandForm()
             }
             IsEditingSupplierDescription = false;
             EditSupplierDescription = string.Empty;
+            Feedback.Success("Supplier description updated successfully.", "Supplier updated");
         }
     }
 
@@ -6887,12 +6907,17 @@ private void ShowAddBrandForm()
 
     private void ConfirmBrandDelete()
     {
+        var count = SelectedBrandsForDeletion.Count;
         foreach (var brand in SelectedBrandsForDeletion.ToList())
         {
             Brands.Remove(brand);
         }
         SelectedBrandsForDeletion.Clear();
         IsBrandDeleteMode = false;
+        if (count > 0)
+        {
+            Feedback.Success($"{count} brand record{(count == 1 ? string.Empty : "s")} deleted.", "Brands deleted");
+        }
     }
 
     // Category delete mode methods
@@ -7014,12 +7039,17 @@ private void ShowAddBrandForm()
 
     private void ConfirmSupplierDelete()
     {
+        var count = SelectedSuppliersForDeletion.Count;
         foreach (var supplier in SelectedSuppliersForDeletion.ToList())
         {
             Suppliers.Remove(supplier);
         }
         SelectedSuppliersForDeletion.Clear();
         IsSupplierDeleteMode = false;
+        if (count > 0)
+        {
+            Feedback.Success($"{count} supplier record{(count == 1 ? string.Empty : "s")} deleted.", "Suppliers deleted");
+        }
     }
 
     private void DeleteBrand(string name)
@@ -7064,6 +7094,7 @@ private void ShowAddBrandForm()
             Remarks = purchaseOrder.Remarks
         };
         IsAddPurchaseOrderFormVisible = true;
+        Feedback.Info($"Editing purchase order {purchaseOrder.PoNo}.", "Edit purchase order", 2200);
     }
 
     private void CloseAddPurchaseOrderForm()
@@ -7083,6 +7114,7 @@ private void ShowAddBrandForm()
             string.IsNullOrWhiteSpace(NewPurchaseOrder.Quantity) ||
             string.IsNullOrWhiteSpace(NewPurchaseOrder.PaymentTerm))
         {
+            Feedback.Warning("Complete all required purchase order fields before saving.", "Purchase order not saved");
             return;
         }
 
@@ -7099,13 +7131,14 @@ private void ShowAddBrandForm()
             NewPurchaseOrder.Status,
             NewPurchaseOrder.Remarks.Trim());
 
-        if (EditingPurchaseOrder is null)
+        var wasEditing = EditingPurchaseOrder is not null;
+        if (!wasEditing)
         {
             PurchaseOrders.Add(savedPurchaseOrder);
         }
         else
         {
-            var index = PurchaseOrders.IndexOf(EditingPurchaseOrder);
+            var index = PurchaseOrders.IndexOf(EditingPurchaseOrder!);
             if (index >= 0)
             {
                 PurchaseOrders[index] = savedPurchaseOrder;
@@ -7114,18 +7147,23 @@ private void ShowAddBrandForm()
 
         SelectedPurchaseOrder = savedPurchaseOrder;
         CloseAddPurchaseOrderForm();
+        Feedback.Success(
+            wasEditing ? "Purchase order updated successfully." : "Purchase order created successfully.",
+            wasEditing ? "Purchase order updated" : "Purchase order created");
     }
 
     private void ActivatePrintMode()
     {
         IsPrintModeActive = true;
         SelectedPurchaseOrdersForPrint.Clear();
+        Feedback.Info("Select one or more purchase orders, then confirm print.", "Print mode", 2600);
     }
 
     private void CancelPrintMode()
     {
         IsPrintModeActive = false;
         SelectedPurchaseOrdersForPrint.Clear();
+        Feedback.Info("Purchase order print selection cancelled.", "Print cancelled", 2200);
     }
 
     private void ConfirmPrint()
@@ -7138,7 +7176,15 @@ private void ShowAddBrandForm()
             // You can implement actual print logic here using JSInterop or a reporting library
         }
 
-        // After printing, exit print mode
+        if (SelectedPurchaseOrdersForPrint.Any())
+        {
+            Feedback.Warning("Purchase order print generation is not implemented yet.", "Print unavailable");
+        }
+        else
+        {
+            Feedback.Warning("Select at least one purchase order to print.", "Nothing selected");
+        }
+
         IsPrintModeActive = false;
         SelectedPurchaseOrdersForPrint.Clear();
     }
@@ -7467,6 +7513,7 @@ private void ShowAddBrandForm()
         };
 
         ShowEditForm = true;
+        Feedback.Info($"Editing product {product.Type}.", "Edit product", 2200);
     }
 
     private void CloseEditProductForm()
@@ -7490,6 +7537,7 @@ private void ShowAddBrandForm()
         if (file is null || !file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
         {
             ProductImageError = "Select a valid JPG, PNG or WEBP image.";
+            Feedback.Warning(ProductImageError, "Invalid image");
             return;
         }
 
@@ -7497,6 +7545,7 @@ private void ShowAddBrandForm()
         if (file.Size > maxImageBytes)
         {
             ProductImageError = "Image must be 5 MB or smaller.";
+            Feedback.Warning(ProductImageError, "Image too large");
             return;
         }
 
@@ -7512,6 +7561,7 @@ private void ShowAddBrandForm()
             if (!upload.Success || string.IsNullOrWhiteSpace(upload.Value))
             {
                 ProductImageError = upload.ErrorMessage ?? "Unable to upload the product image.";
+                Feedback.Error(ProductImageError, "Image upload failed");
                 return;
             }
 
@@ -7529,14 +7579,18 @@ private void ShowAddBrandForm()
                 NewProduct.ImageFileName = imageFileName;
                 NewProductImagePreview = preview;
             }
+
+            Feedback.Success("Product image uploaded and ready to save.", "Image uploaded", 3000);
         }
         catch (IOException)
         {
             ProductImageError = "The selected image could not be read. Please choose another file.";
+            Feedback.Error(ProductImageError, "Image upload failed");
         }
         catch (Exception)
         {
             ProductImageError = "The product image could not be uploaded. Please try again.";
+            Feedback.Error(ProductImageError, "Image upload failed");
         }
         finally
         {
@@ -8350,12 +8404,14 @@ private void ShowAddBrandForm()
     {
         IsTransferHistoryPrintModeActive = true;
         SelectedTransferHistoryReferencesForPrint.Clear();
+        Feedback.Info("Select stock transfer records, then confirm print.", "Transfer print mode", 2400);
     }
 
     private void CancelTransferHistoryPrintMode()
     {
         IsTransferHistoryPrintModeActive = false;
         SelectedTransferHistoryReferencesForPrint.Clear();
+        Feedback.Info("Stock transfer print selection cancelled.", "Print cancelled", 2200);
     }
 
     private void ToggleTransferHistoryPrintSelection(string referenceNo)
@@ -9010,6 +9066,7 @@ private async Task ShowAddTransferForm()
             NewReturnedStock = form;
             IsGINEditMode = true;
             ShowAddReturnedStockModalWindow = true;
+            Feedback.Info($"Editing GIN {returnedStock.ReturnedStockNo}.", "Edit GIN", 2200);
         }
         finally
         {
@@ -9142,6 +9199,7 @@ private async Task ShowAddTransferForm()
         IsReturnedStockPrintModeActive = true;
         SelectedReturnedStocksForPrint.Clear();
         SelectedReturnedStock = null;
+        Feedback.Info("Select GIN records, then confirm print.", "GIN print mode", 2400);
     }
 
     private void CancelReturnedStockPrintMode()
@@ -9149,6 +9207,7 @@ private async Task ShowAddTransferForm()
         IsReturnedStockPrintModeActive = false;
         SelectedReturnedStocksForPrint.Clear();
         SelectedReturnedStock = null;
+        Feedback.Info("GIN print selection cancelled.", "Print cancelled", 2200);
     }
 
     private async Task ConfirmReturnedStockPrint()
@@ -9171,6 +9230,7 @@ private async Task ShowAddTransferForm()
         IsGRNPrintModeActive = true;
         SelectedGRNsForPrint.Clear();
         SelectedGRN = null;
+        Feedback.Info("Select GRN records, then confirm print.", "GRN print mode", 2400);
     }
 
     private void CancelGRNPrintMode()
@@ -9178,6 +9238,7 @@ private async Task ShowAddTransferForm()
         IsGRNPrintModeActive = false;
         SelectedGRNsForPrint.Clear();
         SelectedGRN = null;
+        Feedback.Info("GRN print selection cancelled.", "Print cancelled", 2200);
     }
 
     private async Task ConfirmGRNPrint()
@@ -9223,11 +9284,17 @@ private async Task ShowAddTransferForm()
             if (_inventoryModule != null)
             {
                 await _inventoryModule.InvokeVoidAsync("downloadFile", fileName, base64, "text/csv");
+                Feedback.Success($"{ginList.Count} GIN record{(ginList.Count == 1 ? string.Empty : "s")} exported.", "GIN export complete");
+            }
+            else
+            {
+                Feedback.Error("Download support could not be loaded.", "GIN export failed");
             }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error exporting GIN: {ex.Message}");
+            Feedback.Error("GIN records could not be exported. Please try again.", "GIN export failed");
         }
     }
 
@@ -9259,11 +9326,17 @@ private async Task ShowAddTransferForm()
             if (_inventoryModule != null)
             {
                 await _inventoryModule.InvokeVoidAsync("downloadFile", fileName, base64, "text/csv");
+                Feedback.Success($"{grnList.Count} GRN record{(grnList.Count == 1 ? string.Empty : "s")} exported.", "GRN export complete");
+            }
+            else
+            {
+                Feedback.Error("Download support could not be loaded.", "GRN export failed");
             }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error exporting GRN: {ex.Message}");
+            Feedback.Error("GRN records could not be exported. Please try again.", "GRN export failed");
         }
     }
 
