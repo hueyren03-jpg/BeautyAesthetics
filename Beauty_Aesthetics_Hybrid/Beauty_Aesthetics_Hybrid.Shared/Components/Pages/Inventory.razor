@@ -3721,6 +3721,9 @@
         public string ReferenceNumber { get; set; } = string.Empty;
         public string PaymentTermName { get; set; } = string.Empty;
         public string CurrencyId { get; set; } = string.Empty;
+        public string Activity { get; set; } = string.Empty;
+        public string Remarks { get; set; } = string.Empty;
+        public decimal TotalQuantity { get; set; }
         public string CreatedByDocumentId { get; set; } = string.Empty;
         public string CreatedByDocumentDisplayCode { get; set; } = string.Empty;
         public string VerifyStatus { get; set; } = string.Empty;
@@ -3805,6 +3808,7 @@
         public string IssuedTo { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;
         public string Notes { get; set; } = string.Empty;
+        public decimal TotalAmount { get; set; }
         public List<TransferProductLine> Products { get; set; } = new();
     }
 
@@ -3819,6 +3823,8 @@
         public int AcceptedQuantity { get; set; }
         public int CurrentQty => AcceptedQuantity > 0 ? AcceptedQuantity : TransferQuantity;
         public int Quantity { get => TransferQuantity; set => TransferQuantity = value; }
+        public decimal UnitCost { get; set; }
+        public decimal LineAmount => CurrentQty * UnitCost;
         public string Uom { get => SelectedUom; set => SelectedUom = value; }
         public string Location { get; set; } = string.Empty;
         public string LowAlertCount { get; set; } = string.Empty;
@@ -3842,6 +3848,9 @@
         public DateTime Date { get; set; }
         public string From { get; set; } = string.Empty;
         public string To { get; set; } = string.Empty;
+        public string Remarks { get; set; } = string.Empty;
+        public decimal TotalQuantity { get; set; }
+        public decimal TotalCost { get; set; }
         public string Status { get; set; } = string.Empty;
     }
 
@@ -3876,6 +3885,19 @@
         public string UomDisplay { get; set; } = string.Empty;
         public int InventoryTypeId { get; set; } = 1;
         public decimal UnitCost { get; set; }
+    }
+
+    public class StockInSelectedProductInfo
+    {
+        public string DocumentLineId { get; set; } = string.Empty;
+        public string InventoryId { get; set; } = string.Empty;
+        public string ProductName { get; set; } = string.Empty;
+        public string Sku { get; set; } = string.Empty;
+        public decimal Quantity { get; set; } = 1;
+        public decimal UnitCost { get; set; }
+        public string UomId { get; set; } = string.Empty;
+        public string UomDisplay { get; set; } = string.Empty;
+        public int InventoryTypeId { get; set; } = 1;
     }
 
     public class SelectedProductInfo
@@ -3950,6 +3972,7 @@
         public string IssuedTo { get; set; } = string.Empty;
         public string Notes { get; set; } = string.Empty;
         public Dictionary<string, int> SelectedProducts { get; set; } = new();
+        public Dictionary<string, decimal> SelectedCosts { get; set; } = new();
     }
 
     private List<BranchLookupItem> StockTransferBranches { get; set; } = [];
@@ -5581,6 +5604,7 @@
                 : transfer.ToBranchName,
         Status = NormalizeTransferStatus(transfer.Status),
             Notes = transfer.Remarks,
+            TotalAmount = transfer.TotalAmount,
             Products = transfer.Lines.Select(line => new TransferProductLine
             {
                 InventoryMovementId = line.InventoryMovementId,
@@ -5588,6 +5612,7 @@
                 ProductName = line.ProductName,
                 Sku = line.Sku,
                 Quantity = (int)Math.Max(0, line.Quantity),
+                UnitCost = line.UnitCost,
                 Uom = line.UnitOfMeasurementId
             }).ToList()
     };
@@ -5807,8 +5832,9 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
                 ? lines.FirstOrDefault()?.Uom ?? "unit(s)"
                 : "unit(s)",
             Status = gin.Status,
+            Amount = gin.TotalAmount > 0 ? gin.TotalAmount : lines.Sum(line => line.LineAmount),
             Purpose = string.IsNullOrWhiteSpace(gin.IssueType)
-                ? "Stock Issue"
+                ? "Stock Out"
                 : gin.IssueType,
             ReferenceNumber = gin.ReferenceNumber,
             Reason = gin.Remarks,
@@ -6006,6 +6032,9 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
             ReferenceNumber = grn.ReferenceNumber,
             PaymentTermName = grn.PaymentTermName,
             CurrencyId = grn.TransactionCurrencyId,
+            Activity = string.IsNullOrWhiteSpace(grn.StockActivityType) ? "Stock In" : grn.StockActivityType,
+            Remarks = grn.Remarks,
+            TotalQuantity = grn.TotalQuantity,
             CreatedByDocumentId = grn.CreatedByDocumentId,
             CreatedByDocumentDisplayCode = grn.CreatedByDocumentDisplayCode,
             VerifyStatus = grn.VerifyStatus,
