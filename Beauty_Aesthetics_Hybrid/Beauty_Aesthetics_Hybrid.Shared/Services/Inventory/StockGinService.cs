@@ -25,7 +25,7 @@ public sealed class StockGinService : IStockGinService
         // retaining SenangRetails' single LoadProxy request pattern.
         var result = await stockGinAC.LoadProxyAsync(new StockGinProxyRequestDTO
         {
-            BranchID = string.IsNullOrWhiteSpace(branchId) ? "HQ" : branchId.Trim(),
+            BranchID = NormalizeBranchId(branchId),
             StartDate = DateTime.Today.AddYears(-2),
             EndDate = DateTime.Today.AddDays(1).AddTicks(-1),
             PageNumber = 1,
@@ -39,7 +39,8 @@ public sealed class StockGinService : IStockGinService
                 result.ErrorMessage ?? "Unable to load GIN records.");
         }
 
-        var gins = result.Value
+        using var gate = new SemaphoreSlim(6);
+        var detailTasks = result.Value
             .Where(document => !document.IsVoid)
             .DistinctBy(
                 document => First(
@@ -47,7 +48,29 @@ public sealed class StockGinService : IStockGinService
                     document.DisplayCode,
                     $"{document.NumericCode}|{document.FinancialDate:O}"),
                 StringComparer.OrdinalIgnoreCase)
-            .Select(ToViewModel)
+            .Select(async document =>
+            {
+                if (string.IsNullOrWhiteSpace(document.DocumentID))
+                {
+                    return ToViewModel(document);
+                }
+
+                await gate.WaitAsync(cancellationToken);
+                try
+                {
+                    var detail = await stockGinAC.LoadRecordAsync(document.DocumentID, cancellationToken);
+                    return detail.Success && detail.Value?.Document is not null
+                        ? ToViewModel(detail.Value)
+                        : ToViewModel(document);
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            })
+            .ToList();
+
+        var gins = (await Task.WhenAll(detailTasks))
             .OrderByDescending(gin => gin.Date)
             .ThenByDescending(gin => gin.DisplayCode)
             .ToList();
