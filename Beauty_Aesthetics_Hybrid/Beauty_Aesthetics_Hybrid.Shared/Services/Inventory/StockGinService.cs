@@ -21,61 +21,38 @@ public sealed class StockGinService : IStockGinService
         string branchId = "HQ",
         CancellationToken cancellationToken = default)
     {
-        // Match SenangRetails history behavior: LoadProxy is the history source.
-        // Do not fan out LoadRecord calls for every history row; one failed detail
-        // request must not make the entire GIN history disappear.
-        const int pageSize = 500;
-        const int maximumPages = 100;
-        var documents = new List<StockGrnDocumentDTO>();
-        string? previousPageSignature = null;
-        var lastStatusCode = HttpStatusCode.OK;
-
-        for (var pageNumber = 1; pageNumber <= maximumPages; pageNumber++)
+        // Match SenangRetails exactly: one branch-scoped LoadProxy request for the
+        // recent history window. Do not query an unbounded 1900-present range.
+        var result = await stockGinAC.LoadProxyAsync(new StockGinProxyRequestDTO
         {
-            var result = await stockGinAC.LoadProxyAsync(new StockGinProxyRequestDTO
-            {
-                BranchID = string.IsNullOrWhiteSpace(branchId) ? "HQ" : branchId.Trim(),
-                StartDate = new DateTime(1900, 1, 1),
-                EndDate = DateTime.Today.AddDays(1).AddTicks(-1),
-                PageNumber = pageNumber,
-                PageSize = pageSize
-            }, cancellationToken);
+            BranchID = string.IsNullOrWhiteSpace(branchId) ? "HQ" : branchId.Trim(),
+            StartDate = DateTime.Today.AddDays(-30),
+            EndDate = DateTime.Today.AddDays(1).AddTicks(-1),
+            PageNumber = 1,
+            PageSize = 500
+        }, cancellationToken);
 
-            lastStatusCode = result.StatusCode;
-            if (!result.Success || result.Value is null)
-            {
-                return ApiCallResult<IReadOnlyList<StockGinViewModel>>.Failure(
-                    result.StatusCode,
-                    result.ErrorMessage ?? "Unable to load GIN records.");
-            }
-
-            var page = result.Value;
-            var signature = string.Join('|', page.Select(document =>
-                First(document.DocumentID, document.DisplayCode)));
-            if (pageNumber > 1 && string.Equals(signature, previousPageSignature, StringComparison.Ordinal))
-            {
-                break;
-            }
-
-            documents.AddRange(page);
-            previousPageSignature = signature;
-            if (page.Count < pageSize)
-            {
-                break;
-            }
+        if (!result.Success || result.Value is null)
+        {
+            return ApiCallResult<IReadOnlyList<StockGinViewModel>>.Failure(
+                result.StatusCode,
+                result.ErrorMessage ?? "Unable to load GIN records.");
         }
 
-        var gins = documents
+        var gins = result.Value
             .Where(document => !document.IsVoid)
             .DistinctBy(
-                document => First(document.DocumentID, document.DisplayCode),
+                document => First(
+                    document.DocumentID,
+                    document.DisplayCode,
+                    $"{document.NumericCode}|{document.FinancialDate:O}"),
                 StringComparer.OrdinalIgnoreCase)
             .Select(ToViewModel)
             .OrderByDescending(gin => gin.Date)
-            .ThenBy(gin => gin.DisplayCode)
+            .ThenByDescending(gin => gin.DisplayCode)
             .ToList();
 
-        return ApiCallResult<IReadOnlyList<StockGinViewModel>>.Ok(lastStatusCode, gins);
+        return ApiCallResult<IReadOnlyList<StockGinViewModel>>.Ok(result.StatusCode, gins);
     }
 
     public async Task<ApiCallResult<StockGinViewModel>> LoadGinAsync(
