@@ -5576,7 +5576,14 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
 
         try
         {
-            var result = await StockGinService.LoadGinsAsync(InventoryBranchId);
+            var branchId = BranchSession.CurrentBranch?.Id?.Trim();
+            if (string.IsNullOrWhiteSpace(branchId))
+            {
+                GINApiError = "Select a working branch before loading Stock Out history.";
+                return;
+            }
+
+            var result = await StockGinService.LoadGinsAsync(branchId);
             if (!result.Success || result.Value is null)
             {
                 GINApiError = result.ErrorMessage ?? "Unable to load GIN records.";
@@ -5674,7 +5681,14 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
 
         try
         {
-            var result = await StockGrnService.LoadGrnsAsync(InventoryBranchId);
+            var branchId = BranchSession.CurrentBranch?.Id?.Trim();
+            if (string.IsNullOrWhiteSpace(branchId))
+            {
+                GRNApiError = "Select a working branch before loading Stock In history.";
+                return;
+            }
+
+            var result = await StockGrnService.LoadGrnsAsync(branchId);
             if (!result.Success || result.Value is null)
             {
                 GRNApiError = result.ErrorMessage ?? "Unable to load GRN records.";
