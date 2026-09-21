@@ -187,8 +187,7 @@ public sealed class StockTransferService : IStockTransferService
             return ApiCallResult<bool>.Failure(HttpStatusCode.Conflict, message);
         }
 
-        transfer.Status = "In Transit";
-        feedback.Success("Stock transfer created successfully and is now In Transit.", "Transfer created");
+        feedback.Success("Stock transfer created successfully.", "Transfer created");
         return ApiCallResult<bool>.Ok(createResult.StatusCode, true);
     }
 
