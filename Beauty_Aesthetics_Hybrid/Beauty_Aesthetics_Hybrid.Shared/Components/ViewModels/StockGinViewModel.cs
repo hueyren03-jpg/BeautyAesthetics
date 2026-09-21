@@ -19,6 +19,7 @@ public sealed class StockGinViewModel
     public string CreatedByDocumentDisplayCode { get; set; } = string.Empty;
     public bool IsLocked { get; set; }
     public bool IsVoid { get; set; }
+    public decimal TotalAmount { get; set; }
     public List<StockGinLineViewModel> Lines { get; set; } = new();
 
     public decimal TotalQuantity => Lines.Sum(line => line.Quantity);
