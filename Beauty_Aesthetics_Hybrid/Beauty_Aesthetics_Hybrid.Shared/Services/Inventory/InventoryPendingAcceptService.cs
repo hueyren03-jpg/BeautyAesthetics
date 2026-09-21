@@ -11,6 +11,8 @@ public sealed class InventoryPendingAcceptService : IInventoryPendingAcceptServi
 {
     private readonly InventoryPendingAcceptAC pendingAcceptAC;
     private readonly AppFeedbackService feedback;
+    private readonly object acceptedSync = new();
+    private readonly HashSet<string> acceptedTransferKeys = new(StringComparer.OrdinalIgnoreCase);
 
     public InventoryPendingAcceptService(
         InventoryPendingAcceptAC pendingAcceptAC,
@@ -34,6 +36,7 @@ public sealed class InventoryPendingAcceptService : IInventoryPendingAcceptServi
             .Where(line => !string.IsNullOrWhiteSpace(line.DocumentID))
             .GroupBy(line => line.DocumentID!, StringComparer.OrdinalIgnoreCase)
             .Select(group => MapDocument(group.Key, branchId, group))
+            .Where(document => !WasAcceptedTransfer(document.DocumentId, document.DisplayCode))
             .OrderByDescending(document => document.FinancialDate)
             .ToList();
 
@@ -71,6 +74,7 @@ public sealed class InventoryPendingAcceptService : IInventoryPendingAcceptServi
         var result = await pendingAcceptAC.AcceptStockInAsync(documentId, cancellationToken);
         if (result.Success)
         {
+            RememberAcceptedTransfer(documentId);
             feedback.Success("Incoming stock transfer received successfully.", "Transfer received");
         }
         else
@@ -81,19 +85,52 @@ public sealed class InventoryPendingAcceptService : IInventoryPendingAcceptServi
         return result;
     }
 
-    public Task<ApiCallResult<string>> AcceptAsync(
+    public async Task<ApiCallResult<string>> AcceptAsync(
         PendingStockReceiptViewModel receipt,
         CancellationToken cancellationToken = default)
     {
         if (receipt is null || string.IsNullOrWhiteSpace(receipt.DocumentId))
         {
-            return Task.FromResult(
-                ApiCallResult<string>.Failure(
-                    HttpStatusCode.BadRequest,
-                    "Stock transfer document ID is missing."));
+            return ApiCallResult<string>.Failure(
+                HttpStatusCode.BadRequest,
+                "Stock transfer document ID is missing.");
         }
 
-        return AcceptAsync(receipt.DocumentId, cancellationToken);
+        var result = await AcceptAsync(receipt.DocumentId, cancellationToken);
+        if (result.Success)
+        {
+            RememberAcceptedTransfer(receipt.DocumentId, receipt.DisplayCode);
+        }
+
+        return result;
+    }
+
+    public bool WasAcceptedTransfer(string? documentId, string? displayCode = null)
+    {
+        lock (acceptedSync)
+        {
+            return MatchesAcceptedKey(documentId) || MatchesAcceptedKey(displayCode);
+        }
+    }
+
+    public void RememberAcceptedTransfer(string? documentId, string? displayCode = null)
+    {
+        lock (acceptedSync)
+        {
+            AddAcceptedKey(documentId);
+            AddAcceptedKey(displayCode);
+        }
+    }
+
+    private bool MatchesAcceptedKey(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && acceptedTransferKeys.Contains(value.Trim());
+
+    private void AddAcceptedKey(string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            acceptedTransferKeys.Add(value.Trim());
+        }
     }
 
     private static PendingStockReceiptViewModel MapDocument(
