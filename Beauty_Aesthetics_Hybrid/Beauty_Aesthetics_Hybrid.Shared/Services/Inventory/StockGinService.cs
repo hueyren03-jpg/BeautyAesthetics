@@ -21,49 +21,23 @@ public sealed class StockGinService : IStockGinService
         string branchId = "HQ",
         CancellationToken cancellationToken = default)
     {
-        var normalizedBranch = NormalizeBranchId(branchId);
-        var rawBranch = string.IsNullOrWhiteSpace(branchId) ? "HQ" : branchId.Trim();
-
-        async Task<ApiCallResult<List<StockGrnDocumentDTO>>> LoadProxyAsync(
-            string branch,
-            DateTime startDate,
-            int pageSize)
+        if (string.IsNullOrWhiteSpace(branchId))
         {
-            return await stockGinAC.LoadProxyAsync(new StockGinProxyRequestDTO
-            {
-                BranchID = branch,
-                StartDate = startDate,
-                EndDate = DateTime.Today.AddDays(1).AddTicks(-1),
-                PageNumber = 1,
-                PageSize = pageSize
-            }, cancellationToken);
+            return ApiCallResult<IReadOnlyList<StockGinViewModel>>.Ok(
+                HttpStatusCode.OK,
+                Array.Empty<StockGinViewModel>());
         }
 
-        // First use Beauty's original history window.
-        var result = await LoadProxyAsync(normalizedBranch, DateTime.Today.AddYears(-2), 200);
-
-        // Some deployments return no rows for a very large date window. Retry the
-        // exact SenangRetails history window before declaring the table empty.
-        if (!result.Success || result.Value is null || result.Value.Count == 0)
+        // Same history flow as SenangRetails InventoryStockOut:
+        // one LoadProxy request, 30-day window, page 1, page size 500.
+        var result = await stockGinAC.LoadProxyAsync(new StockGinProxyRequestDTO
         {
-            var recent = await LoadProxyAsync(normalizedBranch, DateTime.Today.AddDays(-30), 500);
-            if (recent.Success && recent.Value is not null)
-            {
-                result = recent;
-            }
-        }
-
-        // If branch IDs are case-sensitive on this deployment, fall back to the
-        // branch ID exactly as selected by the user.
-        if ((!result.Success || result.Value is null || result.Value.Count == 0) &&
-            !string.Equals(rawBranch, normalizedBranch, StringComparison.Ordinal))
-        {
-            var rawBranchResult = await LoadProxyAsync(rawBranch, DateTime.Today.AddDays(-30), 500);
-            if (rawBranchResult.Success && rawBranchResult.Value is not null)
-            {
-                result = rawBranchResult;
-            }
-        }
+            BranchID = branchId.Trim(),
+            StartDate = DateTime.Today.AddDays(-30),
+            EndDate = DateTime.Today.AddDays(1).AddTicks(-1),
+            PageNumber = 1,
+            PageSize = 500
+        }, cancellationToken);
 
         if (!result.Success || result.Value is null)
         {
@@ -72,40 +46,10 @@ public sealed class StockGinService : IStockGinService
                 result.ErrorMessage ?? "Unable to load GIN records.");
         }
 
-        using var gate = new SemaphoreSlim(6);
-        var detailTasks = result.Value
-            .Where(document => !document.IsVoid)
-            .DistinctBy(
-                document => First(
-                    document.DocumentID,
-                    document.DisplayCode,
-                    $"{document.NumericCode}|{document.FinancialDate:O}"),
-                StringComparer.OrdinalIgnoreCase)
-            .Select(async document =>
-            {
-                if (string.IsNullOrWhiteSpace(document.DocumentID))
-                {
-                    return ToViewModel(document);
-                }
-
-                await gate.WaitAsync(cancellationToken);
-                try
-                {
-                    var detail = await stockGinAC.LoadRecordAsync(document.DocumentID, cancellationToken);
-                    return detail.Success && detail.Value?.Document is not null
-                        ? ToViewModel(detail.Value)
-                        : ToViewModel(document);
-                }
-                finally
-                {
-                    gate.Release();
-                }
-            })
-            .ToList();
-
-        var rows = (await Task.WhenAll(detailTasks))
-            .OrderByDescending(item => item.Date)
-            .ThenByDescending(item => item.DisplayCode)
+        var rows = result.Value
+            .Where(record => !record.IsVoid)
+            .OrderByDescending(record => record.FinancialDate)
+            .Select(ToViewModel)
             .ToList();
 
         return ApiCallResult<IReadOnlyList<StockGinViewModel>>.Ok(result.StatusCode, rows);
