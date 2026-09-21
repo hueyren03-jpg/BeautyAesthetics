@@ -312,6 +312,33 @@ public sealed class StockGinService : IStockGinService
         return null;
     }
 
+    public async Task<ApiCallResult<bool>> DeleteGinAsync(
+        string documentId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+        {
+            const string message = "GIN document ID is missing.";
+            feedback.Warning(message, "GIN not deleted");
+            return ApiCallResult<bool>.Failure(HttpStatusCode.BadRequest, message);
+        }
+
+        var result = ToBoolean(
+            await stockGinAC.DeleteAsync(documentId, cancellationToken),
+            "Unable to delete GIN.");
+
+        if (result.Success)
+        {
+            feedback.Success("GIN deleted successfully.", "GIN deleted");
+        }
+        else
+        {
+            feedback.Error(result.ErrorMessage ?? "Unable to delete GIN.", "GIN not deleted");
+        }
+
+        return result;
+    }
+
     private static void Set(JsonObject line, string name, string? value) => line[name] = value;
     private static void Set(JsonObject line, string name, int value) => line[name] = value;
     private static void Set(JsonObject line, string name, decimal value) => line[name] = value;
