@@ -3190,6 +3190,7 @@
     private async Task SaveEditTransaction()
     {
         if (editingTransaction is null || isSaving) return;
+
         var validation = GetNewSaleValidationMessages(editingTransaction);
         if (validation.Any())
         {
@@ -3199,20 +3200,34 @@
 
         isSaving = true;
         apiError = "";
+        var invoice = string.IsNullOrWhiteSpace(editingTransaction.InvoiceNumber)
+            ? "transaction"
+            : editingTransaction.InvoiceNumber;
+        var feedbackId = Feedback.Loading($"Updating {invoice}...", "Updating sale");
+
         try
         {
             ApplySelections(editingTransaction);
             BuildTotalsAndLine(editingTransaction);
+
             var result = await CashSalesService.UpdateTransactionAsync(editingTransaction);
             if (!result.Success)
             {
                 apiError = result.ErrorMessage ?? "Unable to update the cash sale.";
+                Feedback.Dismiss(feedbackId);
                 return;
             }
+
             showEditModal = false;
             editingTransaction = null;
             await LoadDataAsync();
             await InitializeCharts();
+            Feedback.Resolve(feedbackId, $"{invoice} updated successfully.", "Sale updated");
+        }
+        catch (Exception ex)
+        {
+            apiError = $"Unable to update the cash sale. {ex.Message}";
+            Feedback.Dismiss(feedbackId);
         }
         finally
         {
@@ -3414,30 +3429,46 @@
     private async Task ConfirmCancelTransaction()
     {
         if (cancellingTransaction is null || isSaving) return;
+
         if (string.IsNullOrWhiteSpace(cancellationReason))
         {
-            await JS.InvokeVoidAsync("alert", "Please provide a deletion reason.");
+            Feedback.Warning("Please provide a deletion reason.", "Reason required");
             return;
         }
+
         if (string.IsNullOrWhiteSpace(cancellingTransaction.DocumentId))
         {
             apiError = "This transaction does not contain a server document ID and cannot be deleted.";
             return;
         }
 
+        var invoice = string.IsNullOrWhiteSpace(cancellingTransaction.InvoiceNumber)
+            ? "transaction"
+            : cancellingTransaction.InvoiceNumber;
+        var feedbackId = Feedback.Loading($"Deleting {invoice}...", "Deleting sale");
+
         isSaving = true;
         apiError = "";
+
         try
         {
             var result = await CashSalesService.DeleteTransactionAsync(cancellingTransaction, cancellationReason);
             if (!result.Success)
             {
                 apiError = result.ErrorMessage ?? "Unable to delete the cash sale.";
+                Feedback.Dismiss(feedbackId);
                 return;
             }
+
             HideCancelModal();
             await LoadDataAsync();
             await InitializeCharts();
+            Feedback.Resolve(feedbackId, $"{invoice} deleted successfully.", "Sale deleted");
+        }
+        catch (Exception ex)
+        {
+            apiError = $"Unable to delete the cash sale. {ex.Message}";
+            Feedback.Dismiss(feedbackId);
         }
         finally
         {
