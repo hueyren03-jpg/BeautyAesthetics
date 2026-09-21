@@ -7,6 +7,7 @@ using Beauty_Aesthetics_WebPos.Components.Services;
 using Beauty_Aesthetics_WebPos.Components.Services.Customers;
 using Beauty_Aesthetics_WebPos.Components.Services.Employees;
 using Beauty_Aesthetics_WebPos.Components.Services.Inventory;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.Components.ViewModels;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 using Microsoft.AspNetCore.Components;
@@ -37,6 +38,9 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
 
         [Inject]
         public NavigationManager NavigationManager { get; set; } = null!;
+
+        [Inject]
+        public AppFeedbackService Feedback { get; set; } = null!;
 
         private AppointmentViewModel ViewModel { get; set; } = null!;
 
@@ -305,12 +309,15 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
         {
             if (string.IsNullOrWhiteSpace(newQueueItem.CustomerName))
             {
+                Feedback.Warning("Customer name is required before adding to the queue.", "Queue item not added");
                 return;
             }
 
             newQueueItem.Id = nextQueueId++;
             queueItems.Add(newQueueItem);
+            var customerName = newQueueItem.CustomerName;
             CloseQueueModal();
+            Feedback.Success($"{customerName} was added to the waiting queue.", "Added to queue", 3200);
             StateHasChanged();
         }
 
@@ -367,6 +374,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             item.ServedAt = DateTime.Now;
             item.ServedBy = "Sara";
             CloseQueueItemModalIfNeeded(item);
+            Feedback.Success($"{item.CustomerName} is now marked as served.", "Queue updated", 3000);
             StateHasChanged();
         }
 
@@ -375,6 +383,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             item.Status = QueueStatus.Cancelled;
             item.CancelledAt = DateTime.Now;
             CloseQueueItemModalIfNeeded(item);
+            Feedback.Info($"{item.CustomerName} was removed from the active queue.", "Queue item cancelled", 3000);
             StateHasChanged();
         }
 
@@ -1284,6 +1293,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             if (!IsCancelledAppointment(appointment))
             {
                 appointmentError = "Cancel the appointment before deleting it.";
+                Feedback.Warning(appointmentError, "Appointment not deleted");
                 await InvokeAsync(StateHasChanged);
                 return;
             }
@@ -1309,14 +1319,17 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                 if (!result.Success)
                 {
                     appointmentError = result.ErrorMessage ?? "Unable to delete the appointment.";
+                    Feedback.Error(appointmentError, "Appointment not deleted");
                     return;
                 }
 
                 NormalizeAppointmentDisplayValues();
+                Feedback.Success("Appointment deleted successfully.", "Appointment deleted");
             }
             catch (Exception exception)
             {
                 appointmentError = $"Unable to delete the appointment: {exception.Message}";
+                Feedback.Error(appointmentError, "Appointment not deleted");
             }
             finally
             {
@@ -1708,6 +1721,12 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             ConstrainAppointmentToWorkingHours(editingAppointment, preserveDuration: false);
             appointmentCreateSubmitted = false;
             showModal = true;
+            Feedback.Info(
+                string.IsNullOrWhiteSpace(appt.CustomerName)
+                    ? "Appointment opened for editing."
+                    : $"Editing appointment for {appt.CustomerName}.",
+                "Edit appointment",
+                2400);
         }
 
 
@@ -1772,6 +1791,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             if (!IsCancelledAppointment(mobileActionAppointment))
             {
                 appointmentError = "Cancel the appointment before deleting it.";
+                Feedback.Warning(appointmentError, "Appointment not deleted");
                 return;
             }
 
@@ -1803,6 +1823,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                 if (!result.Success)
                 {
                     appointmentError = result.ErrorMessage ?? "Unable to delete the appointment.";
+                    Feedback.Error(appointmentError, "Appointment not deleted");
                     showMobileDeleteConfirmation = false;
                     return;
                 }
@@ -1812,10 +1833,12 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                 showMobileDeleteConfirmation = false;
                 mobileActionAppointment = null;
                 showModal = false;
+                Feedback.Success("Appointment deleted successfully.", "Appointment deleted");
             }
             catch (Exception exception)
             {
                 appointmentError = exception.Message;
+                Feedback.Error(appointmentError, "Appointment not deleted");
                 showMobileDeleteConfirmation = false;
             }
             finally
@@ -2404,16 +2427,25 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                 {
                     if (isCreate) appointmentCreateSubmitted = false;
                     appointmentError = result.ErrorMessage ?? "Unable to save the appointment.";
+                    Feedback.Error(
+                        appointmentError,
+                        isCreate ? "Appointment not created" : "Appointment not updated");
                     return;
                 }
 
                 NormalizeAppointmentDisplayValues();
+                Feedback.Success(
+                    isCreate ? "Appointment created successfully." : "Appointment updated successfully.",
+                    isCreate ? "Appointment created" : "Appointment updated");
                 CloseModal();
             }
             catch (Exception exception)
             {
                 if (isCreate) appointmentCreateSubmitted = false;
                 appointmentError = $"Unable to save the appointment: {exception.Message}";
+                Feedback.Error(
+                    appointmentError,
+                    isCreate ? "Appointment not created" : "Appointment not updated");
             }
             finally
             {
@@ -2429,11 +2461,16 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             if (!result.Success)
             {
                 appointmentError = result.ErrorMessage ?? "Unable to move the appointment.";
+                Feedback.Error(appointmentError, "Appointment not moved");
                 return false;
             }
 
             appointmentError = null;
             NormalizeAppointmentDisplayValues();
+            Feedback.Success(
+                $"Appointment moved to {appointment.Start:dd/MM/yyyy hh:mm tt}.",
+                "Appointment moved",
+                3200);
             await InvokeAsync(StateHasChanged);
             return true;
         }
@@ -2450,9 +2487,11 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             if (!result.Success)
             {
                 appointmentError = result.ErrorMessage ?? "Unable to cancel the appointment.";
+                Feedback.Error(appointmentError, "Appointment not cancelled");
                 return;
             }
 
+            Feedback.Success("Appointment cancelled successfully.", "Appointment cancelled");
             CloseModal();
             await ReloadAppointmentsAsync();
         }
