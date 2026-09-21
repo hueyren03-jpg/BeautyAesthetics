@@ -3,6 +3,7 @@
 @layout EmptyLayout
 @inject IBranchSessionService BranchSession
 @inject NavigationManager Navigation
+@inject AppFeedbackService Feedback
 
 <PageTitle>Select Branch</PageTitle>
 
@@ -53,6 +54,11 @@
         await BranchSession.InitializeAsync();
         isLoading = false;
 
+        if (!string.IsNullOrWhiteSpace(BranchSession.ErrorMessage))
+        {
+            Feedback.Error(BranchSession.ErrorMessage, "Branches unavailable");
+        }
+
         if (BranchSession.CurrentBranch is not null && BranchSession.AvailableBranches.Count == 1)
         {
             Navigation.NavigateTo(GetSafeReturnUrl(), replace: true);
@@ -61,10 +67,20 @@
 
     private async Task ChooseBranchAsync(string branchId)
     {
+        var branch = BranchSession.AvailableBranches.FirstOrDefault(item =>
+            string.Equals(item.Id, branchId, StringComparison.OrdinalIgnoreCase));
+
         if (await BranchSession.SelectAsync(branchId))
         {
+            Feedback.Success(
+                $"Working branch changed to {branch?.DisplayName ?? branchId}.",
+                "Branch selected",
+                3000);
             Navigation.NavigateTo(GetSafeReturnUrl(), replace: true);
+            return;
         }
+
+        Feedback.Error("The selected branch could not be activated. Please try again.", "Branch not selected");
     }
 
     private string GetSafeReturnUrl()
