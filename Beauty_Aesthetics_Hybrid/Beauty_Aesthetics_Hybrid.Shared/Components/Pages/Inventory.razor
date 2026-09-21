@@ -3979,6 +3979,10 @@
     private bool IsStockTransferBranchApiLoading { get; set; }
     private string? StockTransferBranchApiError { get; set; }
     private NewTransferModel NewTransfer { get; set; } = new();
+    private int NewTransferTotalSku => NewTransfer.SelectedProducts.Count;
+    private int NewTransferTotalQuantity => NewTransfer.SelectedProducts.Values.Sum();
+    private decimal NewTransferTotalCost => NewTransfer.SelectedProducts.Sum(item =>
+        item.Value * (NewTransfer.SelectedCosts.TryGetValue(item.Key, out var cost) ? cost : 0m));
     private bool ShowAddTransferModal { get; set; } = false;
     private string TransferProductSearch { get; set; } = string.Empty;
     private bool ShowTransferHistory { get; set; } = false;
@@ -8655,6 +8659,7 @@ private async Task ShowAddTransferForm()
     {
         NewTransfer.IssuedBy = args.Value?.ToString() ?? string.Empty;
         NewTransfer.SelectedProducts.Clear();
+        NewTransfer.SelectedCosts.Clear();
         await LoadTransferProductsForBranchAsync(NewTransfer.IssuedBy);
     }
 
@@ -8711,10 +8716,12 @@ private async Task ShowAddTransferForm()
         if (NewTransfer.SelectedProducts.ContainsKey(product.Sku))
         {
             NewTransfer.SelectedProducts.Remove(product.Sku);
+            NewTransfer.SelectedCosts.Remove(product.Sku);
         }
         else
         {
             NewTransfer.SelectedProducts[product.Sku] = 1;
+            NewTransfer.SelectedCosts[product.Sku] = Math.Max(0, product.Price);
         }
     }
 
@@ -8801,7 +8808,10 @@ private async Task ShowAddTransferForm()
                 Sku = product.Sku,
                 ProductName = product.ProductName,
                 Quantity = selectedProduct.Value,
-                UnitOfMeasurementId = string.IsNullOrWhiteSpace(product.Uom1) ? "UNIT" : product.Uom1
+                UnitCost = NewTransfer.SelectedCosts.TryGetValue(selectedProduct.Key, out var unitCost) ? Math.Max(0, unitCost) : Math.Max(0, product.Price),
+                UnitOfMeasurementId = string.IsNullOrWhiteSpace(product.UnitOfMeasurementId)
+                    ? (string.IsNullOrWhiteSpace(product.Uom1) ? "UNIT" : product.Uom1)
+                    : product.UnitOfMeasurementId
             });
         }
 
