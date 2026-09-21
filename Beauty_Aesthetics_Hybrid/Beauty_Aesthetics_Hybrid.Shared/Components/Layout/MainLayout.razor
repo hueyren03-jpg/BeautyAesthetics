@@ -7,6 +7,7 @@
 @inject IAuthService AuthService
 @inject Beauty_Aesthetics_WebPos.Components.Services.AppState AppState
 @inject IBranchSessionService BranchSession
+@inject AppFeedbackService Feedback
 @inject Microsoft.JSInterop.IJSRuntime JSRuntime
 
 <div class="MainLayout">
@@ -273,9 +274,18 @@
 
     private async Task LogoutAsync()
     {
-        await BranchSession.ClearAsync();
-        await AuthService.LogoutAsync();
-        NavigationManager.NavigateTo("/login", replace: true);
+        var feedbackId = Feedback.Loading("Signing out securely...", "Signing out");
+        try
+        {
+            await BranchSession.ClearAsync();
+            await AuthService.LogoutAsync();
+            Feedback.Resolve(feedbackId, "You have been signed out successfully.", "Signed out", 2600);
+            NavigationManager.NavigateTo("/login", replace: true);
+        }
+        catch (Exception ex)
+        {
+            Feedback.Fail(feedbackId, $"Unable to sign out. {ex.Message}", "Sign out failed");
+        }
     }
 
     private string GetSidebarItemClass(string matchPrefix)
