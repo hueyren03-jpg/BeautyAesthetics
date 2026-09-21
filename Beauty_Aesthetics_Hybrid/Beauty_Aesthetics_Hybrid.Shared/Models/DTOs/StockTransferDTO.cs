@@ -12,7 +12,8 @@ public sealed class StockTransferLookupDTO
 
 public sealed class StockTransferProxyRequestDTO
 {
-    [JsonPropertyName("branchID")]
+    // StockTransfer/LoadProxy uses branchId in the SenangRetails contract.
+    [JsonPropertyName("branchId")]
     public string BranchID { get; set; } = "HQ";
 
     [JsonPropertyName("startDate")]
