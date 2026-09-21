@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.ViewModels;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.Inventory;
@@ -11,10 +12,12 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.Inventory;
 public sealed class StockGinService : IStockGinService
 {
     private readonly StockGinAC stockGinAC;
+    private readonly AppFeedbackService feedback;
 
-    public StockGinService(StockGinAC stockGinAC)
+    public StockGinService(StockGinAC stockGinAC, AppFeedbackService feedback)
     {
         this.stockGinAC = stockGinAC;
+        this.feedback = feedback;
     }
 
     public async Task<ApiCallResult<IReadOnlyList<StockGinViewModel>>> LoadGinsAsync(
@@ -82,6 +85,7 @@ public sealed class StockGinService : IStockGinService
         var validationError = Validate(gin);
         if (validationError is not null)
         {
+            feedback.Warning(validationError, "Check Stock Out");
             return ApiCallResult<bool>.Failure(HttpStatusCode.BadRequest, validationError);
         }
 
@@ -96,9 +100,20 @@ public sealed class StockGinService : IStockGinService
         envelope.Document!.SaveAction = "Added";
         envelope.Document.IsDirty = true;
 
-        return ToBoolean(
+        var result = ToBoolean(
             await stockGinAC.CreateRecordAsync(envelope, cancellationToken),
             "Unable to create GIN.");
+
+        if (result.Success)
+        {
+            feedback.Success("Stock Out completed and GIN created successfully.", "Stock Out completed");
+        }
+        else
+        {
+            feedback.Error(result.ErrorMessage ?? "Unable to create GIN.", "Stock Out failed");
+        }
+
+        return result;
     }
 
     public async Task<ApiCallResult<bool>> UpdateGinAsync(
@@ -107,21 +122,24 @@ public sealed class StockGinService : IStockGinService
     {
         if (string.IsNullOrWhiteSpace(gin.DocumentId))
         {
-            return ApiCallResult<bool>.Failure(HttpStatusCode.BadRequest, "GIN document ID is missing.");
+            const string message = "GIN document ID is missing.";
+            feedback.Warning(message, "GIN not updated");
+            return ApiCallResult<bool>.Failure(HttpStatusCode.BadRequest, message);
         }
 
         var validationError = Validate(gin);
         if (validationError is not null)
         {
+            feedback.Warning(validationError, "Check GIN changes");
             return ApiCallResult<bool>.Failure(HttpStatusCode.BadRequest, validationError);
         }
 
         var loadResult = await stockGinAC.LoadRecordAsync(gin.DocumentId, cancellationToken);
         if (!loadResult.Success || loadResult.Value?.Document is null)
         {
-            return ApiCallResult<bool>.Failure(
-                loadResult.StatusCode,
-                loadResult.ErrorMessage ?? "Unable to load the GIN before updating.");
+            var message = loadResult.ErrorMessage ?? "Unable to load the GIN before updating.";
+            feedback.Error(message, "GIN not updated");
+            return ApiCallResult<bool>.Failure(loadResult.StatusCode, message);
         }
 
         ApplyDocument(loadResult.Value.Document, gin);
@@ -130,9 +148,20 @@ public sealed class StockGinService : IStockGinService
         loadResult.Value.Document.SaveAction = "Changed";
         loadResult.Value.Document.IsDirty = true;
 
-        return ToBoolean(
+        var result = ToBoolean(
             await stockGinAC.UpdateRecordAsync(loadResult.Value, cancellationToken),
             "Unable to update GIN.");
+
+        if (result.Success)
+        {
+            feedback.Success("GIN updated successfully.", "GIN updated");
+        }
+        else
+        {
+            feedback.Error(result.ErrorMessage ?? "Unable to update GIN.", "GIN not updated");
+        }
+
+        return result;
     }
 
     private static void ApplyDocument(StockGrnDocumentDTO document, StockGinViewModel gin)
