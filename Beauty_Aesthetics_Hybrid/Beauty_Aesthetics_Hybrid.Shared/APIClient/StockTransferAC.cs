@@ -201,14 +201,15 @@ public sealed class StockTransferAC
             using var json = JsonDocument.Parse(body);
             var root = json.RootElement;
 
-            if (TryGet(root, "statusCode", out var status) &&
-                ReadInt(status) is var apiStatus &&
-                apiStatus > 0 &&
-                apiStatus is < 200 or >= 300)
+            if (TryGet(root, "statusCode", out var status))
             {
-                return ApiCallResult<List<StockTransferDocumentDTO>>.Failure(
-                    response.StatusCode,
-                    FindString(root, "message") ?? "Unable to load stock transfer records.");
+                var apiStatus = ReadInt(status);
+                if (apiStatus > 0 && (apiStatus < 200 || apiStatus >= 300))
+                {
+                    return ApiCallResult<List<StockTransferDocumentDTO>>.Failure(
+                        response.StatusCode,
+                        FindString(root, "message") ?? "Unable to load stock transfer records.");
+                }
             }
 
             var payload = TryGet(root, "result", out var result) ? result : root;
