@@ -77,6 +77,16 @@ public sealed class StockGinAC
             "Update GIN response was invalid.",
             cancellationToken);
 
+    public Task<ApiCallResult<string>> DeleteAsync(
+        string id,
+        CancellationToken cancellationToken = default) =>
+        SendMutationAsync(
+            HttpMethod.Delete,
+            "/api/Doc_Stock_GIN/Delete",
+            new StockGinLookupDTO { Id = id },
+            "Delete GIN response was invalid.",
+            cancellationToken);
+
     private async Task<ApiCallResult<T>> SendAsync<T>(
         HttpMethod method,
         string uri,
