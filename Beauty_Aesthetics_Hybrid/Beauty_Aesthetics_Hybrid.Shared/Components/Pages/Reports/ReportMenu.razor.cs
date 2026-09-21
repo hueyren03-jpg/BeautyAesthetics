@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -7,10 +8,12 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
     public partial class ReportMenu
     {
         private readonly NavigationManager nav;
+        private readonly AppFeedbackService feedback;
 
-        public ReportMenu(NavigationManager nav)
+        public ReportMenu(NavigationManager nav, AppFeedbackService feedback)
         {
             this.nav = nav;
+            this.feedback = feedback;
         }
 
         // ─── SIDEBAR ─────────────────────────────────────────────────────
@@ -76,6 +79,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
         {
             SelectedReport = report;
             isSelectedReportParameterOpen = true;
+            feedback.Info($"Configure parameters for {report.Title}.", "Report selected", 2200);
         }
 
         private void CloseReportParameter()
@@ -86,7 +90,14 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
         // Keep for backward compatibility with existing modals
         private void ToggleReportParameter() => isSelectedReportParameterOpen = !isSelectedReportParameterOpen;
         private void ToggleBranchParameter() => isSelectedGroupParameterOpen = !isSelectedGroupParameterOpen;
-        private void NavigateToMonthlyReport() => nav.NavigateTo("/Report");
+        private void NavigateToMonthlyReport()
+        {
+            feedback.Info(
+                SelectedReport is null ? "Generating report view." : $"Generating {SelectedReport.Title}.",
+                "Generate report",
+                2200);
+            nav.NavigateTo("/Report");
+        }
 
         // ─── SPEED DIAL ──────────────────────────────────────────────────
         private void ToggleSpeedDial() => isSpeedDialOpen = !isSpeedDialOpen;
@@ -113,13 +124,22 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
         private void ToggleFavourite(ReportItem report)
         {
             if (IsFavourite(report))
+            {
                 FavouriteReports.RemoveAll(f => f.Title == report.Title && f.Category == report.Category);
+                feedback.Info($"{report.Title} removed from favourites.", "Favourite removed", 2200);
+            }
             else
+            {
                 FavouriteReports.Add(report);
+                feedback.Success($"{report.Title} added to favourites.", "Favourite added", 2600);
+            }
         }
 
-        private void RemoveFromFavourites(ReportItem report) =>
+        private void RemoveFromFavourites(ReportItem report)
+        {
             FavouriteReports.RemoveAll(f => f.Title == report.Title && f.Category == report.Category);
+            feedback.Info($"{report.Title} removed from favourites.", "Favourite removed", 2200);
+        }
 
         // ─── SHEET HELPERS ────────────────────────────────────────────────
         private void OnFavSheetSearch(ChangeEventArgs e) =>
