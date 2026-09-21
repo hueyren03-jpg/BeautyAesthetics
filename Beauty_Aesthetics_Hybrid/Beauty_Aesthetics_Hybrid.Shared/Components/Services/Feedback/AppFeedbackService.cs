@@ -89,7 +89,13 @@ public sealed class AppFeedbackService : IDisposable
         string? actionLabel = null,
         Func<Task>? action = null)
     {
+        var normalizedTitle = string.IsNullOrWhiteSpace(title) ? DefaultTitle(kind) : title.Trim();
         var normalizedMessage = string.IsNullOrWhiteSpace(message) ? DefaultMessage(kind) : message.Trim();
+
+        if (!ShouldPublishActionFeedback(normalizedTitle, normalizedMessage))
+        {
+            return Guid.Empty;
+        }
 
         lock (sync)
         {
@@ -107,7 +113,7 @@ public sealed class AppFeedbackService : IDisposable
         var item = new AppFeedbackMessage(
             Guid.NewGuid(),
             kind,
-            string.IsNullOrWhiteSpace(title) ? DefaultTitle(kind) : title.Trim(),
+            normalizedTitle,
             normalizedMessage,
             durationMs,
             isDismissible,
@@ -343,6 +349,73 @@ public sealed class AppFeedbackService : IDisposable
     }
 
     private void RaiseChanged() => Changed?.Invoke();
+
+    private static bool ShouldPublishActionFeedback(string title, string message)
+    {
+        // Global policy: only CRUD-style confirmation feedback is shown.
+        // Informational/navigation/system events (open, upload, export, print,
+        // login, branch changes, filters, loading data, etc.) stay silent.
+        var normalizedTitle = title.Trim().ToLowerInvariant();
+        var normalizedMessage = message.Trim().ToLowerInvariant();
+
+        if (!IsGenericTitle(normalizedTitle))
+        {
+            return ContainsAllowedAction(normalizedTitle);
+        }
+
+        if (ContainsSuppressedAction(normalizedMessage))
+        {
+            return false;
+        }
+
+        return ContainsAllowedAction(normalizedMessage);
+    }
+
+    private static bool IsGenericTitle(string title) =>
+        title is
+            "success" or
+            "something went wrong" or
+            "attention needed" or
+            "information" or
+            "working" or
+            "completed" or
+            "notification";
+
+    private static bool ContainsAllowedAction(string text) =>
+        text.Contains("create", StringComparison.Ordinal) ||
+        text.Contains("created", StringComparison.Ordinal) ||
+        text.Contains("creating", StringComparison.Ordinal) ||
+        text.Contains("save", StringComparison.Ordinal) ||
+        text.Contains("saved", StringComparison.Ordinal) ||
+        text.Contains("saving", StringComparison.Ordinal) ||
+        text.Contains("update", StringComparison.Ordinal) ||
+        text.Contains("updated", StringComparison.Ordinal) ||
+        text.Contains("updating", StringComparison.Ordinal) ||
+        text.Contains("delete", StringComparison.Ordinal) ||
+        text.Contains("deleted", StringComparison.Ordinal) ||
+        text.Contains("deleting", StringComparison.Ordinal) ||
+        text.Contains("deactivat", StringComparison.Ordinal) ||
+        text.Contains("cancel", StringComparison.Ordinal);
+
+    private static bool ContainsSuppressedAction(string text) =>
+        text.Contains("upload", StringComparison.Ordinal) ||
+        text.Contains("export", StringComparison.Ordinal) ||
+        text.Contains("print", StringComparison.Ordinal) ||
+        text.Contains("download", StringComparison.Ordinal) ||
+        text.Contains("import", StringComparison.Ordinal) ||
+        text.Contains("sign in", StringComparison.Ordinal) ||
+        text.Contains("signed in", StringComparison.Ordinal) ||
+        text.Contains("login", StringComparison.Ordinal) ||
+        text.Contains("branch selected", StringComparison.Ordinal) ||
+        text.Contains("branch changed", StringComparison.Ordinal) ||
+        text.Contains("filter", StringComparison.Ordinal) ||
+        text.Contains("opening ", StringComparison.Ordinal) ||
+        text.Contains("opened ", StringComparison.Ordinal) ||
+        text.Contains("selected ", StringComparison.Ordinal) ||
+        text.Contains("search", StringComparison.Ordinal) ||
+        text.Contains("refresh", StringComparison.Ordinal) ||
+        text.Contains("copied", StringComparison.Ordinal) ||
+        text.Contains("copy ", StringComparison.Ordinal);
 
     private static string DefaultTitle(AppFeedbackKind kind) => kind switch
     {
