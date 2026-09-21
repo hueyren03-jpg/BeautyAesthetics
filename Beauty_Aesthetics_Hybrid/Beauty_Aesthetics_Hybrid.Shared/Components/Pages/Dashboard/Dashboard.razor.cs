@@ -17,12 +17,8 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
         [Inject]
         private IBranchSessionService BranchSession { get; set; } = null!;
 
-        [Inject]
-        private NavigationManager NavigationManager { get; set; } = null!;
-
         protected string selectedBranchId = string.Empty;
         protected string selectedBranchName = "No branch selected";
-        protected bool canSwitchBranch => BranchSession.AvailableBranches.Count > 1;
         protected string selectedPeriod = "day";
         protected DateTime selectedDate = DateTime.Now;
         private ElementReference dateInputRef;
@@ -73,13 +69,6 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             }
 
             await LoadDashboardAsync();
-        }
-
-        protected void OpenBranchPicker()
-        {
-            var relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
-            var returnUrl = string.IsNullOrWhiteSpace(relativePath) ? "/" : $"/{relativePath}";
-            NavigationManager.NavigateTo($"/select-branch?returnUrl={Uri.EscapeDataString(returnUrl)}");
         }
 
         protected async Task SelectPeriod(string period)
