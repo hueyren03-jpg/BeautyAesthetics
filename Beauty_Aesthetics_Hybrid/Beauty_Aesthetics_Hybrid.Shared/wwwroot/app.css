@@ -736,3 +736,202 @@ nav.desktop-view {
     font-weight: inherit !important;
     line-height: inherit !important;
 }
+
+
+/* ===== UNIFIED RESPONSIVE FEEDBACK SYSTEM ===== */
+:root {
+    --feedback-success: #15803d;
+    --feedback-success-soft: #eefbf3;
+    --feedback-success-border: #b7e4c7;
+    --feedback-error: #c62828;
+    --feedback-error-soft: #fff1f1;
+    --feedback-error-border: #f3b5b5;
+    --feedback-warning: #a15c00;
+    --feedback-warning-soft: #fff8e8;
+    --feedback-warning-border: #f2d49a;
+    --feedback-info: #0d68c7;
+    --feedback-info-soft: #eef6ff;
+    --feedback-info-border: #b9d9f8;
+}
+
+/* Existing Bootstrap/page alerts inherit the same semantic language while pages migrate
+   to AppFeedbackService. Keep this intentionally limited to explicit alert containers. */
+:where(
+    .alert,
+    .inventory__alert,
+    .gin-form-error,
+    .validation-summary-errors,
+    .app-inline-feedback
+) {
+    --inline-feedback-color: var(--feedback-info);
+    --inline-feedback-bg: var(--feedback-info-soft);
+    --inline-feedback-border: var(--feedback-info-border);
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 10px 0;
+    padding: 11px 13px;
+    border: 1px solid var(--inline-feedback-border) !important;
+    border-left: 4px solid var(--inline-feedback-color) !important;
+    border-radius: 10px !important;
+    background: var(--inline-feedback-bg) !important;
+    color: #25364b !important;
+    box-shadow: 0 2px 8px rgba(22, 39, 61, 0.05);
+    font-family: var(--app-font-family);
+    font-size: var(--app-font-size-sm);
+    line-height: 1.45;
+}
+
+:where(
+    .alert,
+    .inventory__alert,
+    .gin-form-error,
+    .validation-summary-errors,
+    .app-inline-feedback
+) > :is(i, svg) {
+    flex: 0 0 auto;
+    margin-top: 2px;
+    color: var(--inline-feedback-color);
+}
+
+:where(.alert-success, .app-inline-feedback--success) {
+    --inline-feedback-color: var(--feedback-success);
+    --inline-feedback-bg: var(--feedback-success-soft);
+    --inline-feedback-border: var(--feedback-success-border);
+}
+
+:where(
+    .alert-danger,
+    .alert-error,
+    .inventory__alert--error,
+    .gin-form-error,
+    .validation-summary-errors,
+    .app-inline-feedback--error
+) {
+    --inline-feedback-color: var(--feedback-error);
+    --inline-feedback-bg: var(--feedback-error-soft);
+    --inline-feedback-border: var(--feedback-error-border);
+}
+
+:where(.alert-warning, .inventory__alert--warning, .app-inline-feedback--warning) {
+    --inline-feedback-color: var(--feedback-warning);
+    --inline-feedback-bg: var(--feedback-warning-soft);
+    --inline-feedback-border: var(--feedback-warning-border);
+}
+
+:where(.alert-info, .inventory__alert--info, .app-inline-feedback--info) {
+    --inline-feedback-color: var(--feedback-info);
+    --inline-feedback-bg: var(--feedback-info-soft);
+    --inline-feedback-border: var(--feedback-info-border);
+}
+
+.validation-message {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 5px;
+    color: var(--feedback-error);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+/* Fatal Blazor errors use the same responsive placement instead of a full-width legacy bar. */
+#blazor-error-ui {
+    position: fixed;
+    right: 20px;
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    left: auto;
+    z-index: 20000;
+    width: min(440px, calc(100vw - 40px));
+    box-sizing: border-box;
+    padding: 13px 44px 13px 46px;
+    border: 1px solid var(--feedback-error-border);
+    border-left: 4px solid var(--feedback-error);
+    border-radius: 12px;
+    background: #ffffff;
+    color: #27384c;
+    box-shadow: 0 16px 42px rgba(34, 40, 52, 0.22);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+#blazor-error-ui::before {
+    content: "\f06a";
+    position: absolute;
+    top: 13px;
+    left: 15px;
+    color: var(--feedback-error);
+    font: var(--fa-font-solid);
+    font-size: 18px;
+}
+
+#blazor-error-ui .reload {
+    margin-left: 6px;
+    color: #0d68c7;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+#blazor-error-ui .dismiss {
+    position: absolute;
+    top: 8px;
+    right: 9px;
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    color: #708096;
+    cursor: pointer;
+}
+
+#blazor-error-ui .dismiss:hover {
+    background: #f3f5f7;
+    color: #24384e;
+}
+
+@media (max-width: 768px) {
+    :where(
+        .alert,
+        .inventory__alert,
+        .gin-form-error,
+        .validation-summary-errors,
+        .app-inline-feedback
+    ) {
+        gap: 9px;
+        margin: 8px 0;
+        padding: 10px 11px;
+        border-radius: 9px !important;
+        font-size: 13px;
+    }
+
+    #blazor-error-ui {
+        right: 10px;
+        bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+        left: 10px;
+        width: auto;
+        padding: 12px 42px 12px 43px;
+        border-radius: 11px;
+    }
+}
+
+@media (max-width: 430px) {
+    :where(
+        .alert,
+        .inventory__alert,
+        .gin-form-error,
+        .validation-summary-errors,
+        .app-inline-feedback
+    ) {
+        padding: 9px 10px;
+    }
+
+    #blazor-error-ui {
+        right: 8px;
+        bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+        left: 8px;
+    }
+}
