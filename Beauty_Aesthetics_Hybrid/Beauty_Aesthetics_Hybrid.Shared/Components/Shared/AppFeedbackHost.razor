@@ -1,0 +1,120 @@
+@implements IDisposable
+@inject Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackService Feedback
+
+@if (Feedback.Messages.Count > 0)
+{
+    <section class="app-feedback-viewport"
+             aria-label="Application notifications"
+             aria-live="polite"
+             aria-relevant="additions removals">
+        @foreach (var item in Feedback.Messages)
+        {
+            <article @key="item.Id"
+                     class="app-feedback-card @GetKindClass(item.Kind)"
+                     role="@GetRole(item.Kind)"
+                     aria-live="@GetAriaLive(item.Kind)"
+                     style="@GetDurationStyle(item)">
+                <div class="app-feedback-accent" aria-hidden="true"></div>
+
+                <div class="app-feedback-icon" aria-hidden="true">
+                    <i class="@GetIconClass(item.Kind)"></i>
+                </div>
+
+                <div class="app-feedback-content">
+                    <div class="app-feedback-heading">
+                        <strong>@item.Title</strong>
+                        @if (item.Kind == Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackKind.Loading)
+                        {
+                            <span class="app-feedback-state">In progress</span>
+                        }
+                    </div>
+
+                    <p>@item.Message</p>
+
+                    @if (!string.IsNullOrWhiteSpace(item.ActionLabel) && item.Action is not null)
+                    {
+                        <button type="button"
+                                class="app-feedback-action"
+                                @onclick="() => RunActionAsync(item)">
+                            @item.ActionLabel
+                        </button>
+                    }
+                </div>
+
+                @if (item.IsDismissible)
+                {
+                    <button type="button"
+                            class="app-feedback-dismiss"
+                            title="Dismiss notification"
+                            aria-label="Dismiss notification"
+                            @onclick="() => Feedback.Dismiss(item.Id)">
+                        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                    </button>
+                }
+
+                @if (item.DurationMs is > 0)
+                {
+                    <span class="app-feedback-timer" aria-hidden="true"></span>
+                }
+            </article>
+        }
+    </section>
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        Feedback.Changed += HandleFeedbackChanged;
+    }
+
+    private void HandleFeedbackChanged()
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private Task RunActionAsync(Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackMessage item) =>
+        Feedback.ExecuteActionAsync(item.Id);
+
+    private static string GetKindClass(Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackKind kind) =>
+        kind switch
+        {
+            Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackKind.Success => "app-feedback-card--success",
+            Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackKind.Error => "app-feedback-card--error",
+            Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackKind.Warning => "app-feedback-card--warning",
+            Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackKind.Info => "app-feedback-card--info",
+            Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackKind.Loading => "app-feedback-card--loading",
+            _ => "app-feedback-card--info"
+        };
+
+    private static string GetIconClass(Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackKind kind) =>
+        kind switch
+        {
+            Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackKind.Success => "fa-solid fa-circle-check",
+            Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackKind.Error => "fa-solid fa-circle-xmark",
+            Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackKind.Warning => "fa-solid fa-triangle-exclamation",
+            Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackKind.Info => "fa-solid fa-circle-info",
+            Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackKind.Loading => "fa-solid fa-spinner fa-spin",
+            _ => "fa-solid fa-circle-info"
+        };
+
+    private static string GetRole(Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackKind kind) =>
+        kind is Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackKind.Error
+            or Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackKind.Warning
+            ? "alert"
+            : "status";
+
+    private static string GetAriaLive(Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackKind kind) =>
+        kind == Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackKind.Error
+            ? "assertive"
+            : "polite";
+
+    private static string? GetDurationStyle(Beauty_Aesthetics_WebPos.Components.Services.Feedback.AppFeedbackMessage item) =>
+        item.DurationMs is > 0
+            ? $"--feedback-duration: {item.DurationMs.Value}ms;"
+            : null;
+
+    public void Dispose()
+    {
+        Feedback.Changed -= HandleFeedbackChanged;
+    }
+}
