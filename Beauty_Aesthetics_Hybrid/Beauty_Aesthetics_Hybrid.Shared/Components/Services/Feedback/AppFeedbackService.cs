@@ -89,11 +89,26 @@ public sealed class AppFeedbackService : IDisposable
         string? actionLabel = null,
         Func<Task>? action = null)
     {
+        var normalizedMessage = string.IsNullOrWhiteSpace(message) ? DefaultMessage(kind) : message.Trim();
+
+        lock (sync)
+        {
+            var duplicate = messages.LastOrDefault(existing =>
+                existing.Kind == kind &&
+                string.Equals(existing.Message, normalizedMessage, StringComparison.OrdinalIgnoreCase) &&
+                DateTimeOffset.UtcNow - existing.CreatedAt < TimeSpan.FromSeconds(2));
+
+            if (duplicate is not null)
+            {
+                return duplicate.Id;
+            }
+        }
+
         var item = new AppFeedbackMessage(
             Guid.NewGuid(),
             kind,
             string.IsNullOrWhiteSpace(title) ? DefaultTitle(kind) : title.Trim(),
-            string.IsNullOrWhiteSpace(message) ? DefaultMessage(kind) : message.Trim(),
+            normalizedMessage,
             durationMs,
             isDismissible,
             string.IsNullOrWhiteSpace(actionLabel) ? null : actionLabel.Trim(),
