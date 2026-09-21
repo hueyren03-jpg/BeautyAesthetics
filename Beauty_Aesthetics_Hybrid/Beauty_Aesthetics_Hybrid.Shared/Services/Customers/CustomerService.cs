@@ -1,5 +1,6 @@
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.Components.Models;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using EBI.DM;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.Customers;
@@ -10,11 +11,13 @@ public sealed class CustomerService : ICustomerService
     private static readonly DateTime SqlMinDate = new(1753, 1, 1);
 
     private readonly CustomerAC customerAC;
+    private readonly AppFeedbackService feedback;
     private readonly Dictionary<Guid, CustomerDM> customerRecords = new();
 
-    public CustomerService(CustomerAC customerAC)
+    public CustomerService(CustomerAC customerAC, AppFeedbackService feedback)
     {
         this.customerAC = customerAC;
+        this.feedback = feedback;
     }
 
     public async Task<CustomerOperationResult<IReadOnlyList<Customer>>> SearchCustomersAsync(
@@ -97,7 +100,9 @@ public sealed class CustomerService : ICustomerService
 
         if (!result.Success)
         {
-            return CustomerOperationResult<Customer>.Fail(ToCustomerError(result.ErrorMessage));
+            var message = ToCustomerError(result.ErrorMessage);
+            feedback.Error(message, "Customer not created");
+            return CustomerOperationResult<Customer>.Fail(message);
         }
 
         if (result.Value is not null)
@@ -110,7 +115,9 @@ public sealed class CustomerService : ICustomerService
                 : result.Value.DisplayCode;
         }
 
-        return CustomerOperationResult<Customer>.Ok(MapAndCache(record));
+        var created = MapAndCache(record);
+        feedback.Success("Customer created successfully.", "Customer created");
+        return CustomerOperationResult<Customer>.Ok(created);
     }
 
     public async Task<CustomerOperationResult<Customer>> UpdateCustomerAsync(
@@ -127,10 +134,14 @@ public sealed class CustomerService : ICustomerService
         var result = await customerAC.UpdateRecordAsync(record, cancellationToken);
         if (!result.Success)
         {
-            return CustomerOperationResult<Customer>.Fail(ToCustomerError(result.ErrorMessage));
+            var message = ToCustomerError(result.ErrorMessage);
+            feedback.Error(message, "Customer not updated");
+            return CustomerOperationResult<Customer>.Fail(message);
         }
 
-        return CustomerOperationResult<Customer>.Ok(MapAndCache(record, customer.Id));
+        var updated = MapAndCache(record, customer.Id);
+        feedback.Success("Customer details updated successfully.", "Customer updated");
+        return CustomerOperationResult<Customer>.Ok(updated);
     }
 
     public async Task<CustomerOperationResult<Customer>> DeactivateCustomerAsync(
@@ -150,10 +161,14 @@ public sealed class CustomerService : ICustomerService
         var result = await customerAC.UpdateRecordAsync(record, cancellationToken);
         if (!result.Success)
         {
-            return CustomerOperationResult<Customer>.Fail(ToCustomerError(result.ErrorMessage));
+            var message = ToCustomerError(result.ErrorMessage);
+            feedback.Error(message, "Customer not deactivated");
+            return CustomerOperationResult<Customer>.Fail(message);
         }
 
-        return CustomerOperationResult<Customer>.Ok(MapAndCache(record, customerId));
+        var deactivated = MapAndCache(record, customerId);
+        feedback.Success("Customer was deactivated successfully.", "Customer deactivated");
+        return CustomerOperationResult<Customer>.Ok(deactivated);
     }
 
     private Customer MapAndCache(CustomerDM record)
