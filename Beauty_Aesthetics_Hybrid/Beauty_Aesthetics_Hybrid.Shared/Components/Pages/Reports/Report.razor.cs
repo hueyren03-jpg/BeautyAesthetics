@@ -25,6 +25,15 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
         private void OpenSetupModal()
         {
             SetupModalIsOpen = !SetupModalIsOpen;
+            Feedback.Info(
+                SetupModalIsOpen ? "Page setup opened." : "Page setup closed.",
+                "Report page setup",
+                1800);
+        }
+
+        private void ShowUnavailableReportAction(string action)
+        {
+            Feedback.Warning($"{action} is not implemented for this report viewer yet.", $"{action} unavailable");
         }
 
         protected override void OnInitialized()
