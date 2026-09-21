@@ -92,5 +92,23 @@ public sealed class StockGrnViewModel
 
     public bool IsVoid { get; set; }
 
+    public List<StockGrnLineViewModel> Lines { get; set; } = new();
+
+    public decimal TotalQuantity => Lines.Count > 0
+        ? Lines.Sum(line => line.Quantity)
+        : ReceivedQuantity;
+
     public string Status => IsVoid ? "Voided" : (IsLocked ? "Completed" : "Pending");
+}
+
+public sealed class StockGrnLineViewModel
+{
+    public string DocumentLineId { get; set; } = string.Empty;
+    public string InventoryId { get; set; } = string.Empty;
+    public string ProductName { get; set; } = string.Empty;
+    public string Sku { get; set; } = string.Empty;
+    public decimal Quantity { get; set; }
+    public string UnitOfMeasurementId { get; set; } = string.Empty;
+    public int InventoryTypeId { get; set; } = 1;
+    public decimal UnitCost { get; set; }
 }
