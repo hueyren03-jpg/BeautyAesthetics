@@ -38,6 +38,20 @@
         return "desktop";
     }
 
+    function useCompactWebLayout() {
+        var width = getViewportWidth();
+        var coarsePointer = false;
+
+        try {
+            coarsePointer = window.matchMedia &&
+                window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+        } catch (_) {
+            coarsePointer = false;
+        }
+
+        return width <= 768 || (width <= 1180 && coarsePointer);
+    }
+
     function syncHeaderMetrics() {
         var root = document.documentElement;
         if (!root) return;
@@ -69,6 +83,7 @@
     window.posResponsive = {
         getViewportWidth: getViewportWidth,
         getViewportKind: getViewportKind,
+        useCompactWebLayout: useCompactWebLayout,
         syncHeaderMetrics: syncHeaderMetrics,
         refresh: applyViewportClass
     };
