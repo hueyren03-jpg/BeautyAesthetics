@@ -26,9 +26,30 @@ public sealed class StockGinAC
         StockGinProxyRequestDTO requestDto,
         CancellationToken cancellationToken = default)
     {
-        using var request = CreateJsonRequest(HttpMethod.Post, "/api/Doc_Stock_GIN/LoadProxy", requestDto);
-        using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
-        return await ReadDocumentListAsync(response, cancellationToken);
+        ApiCallResult<List<StockGrnDocumentDTO>> primary;
+        using (var request = CreateJsonRequest(HttpMethod.Post, "/api/Doc_Stock_GIN/LoadProxy", requestDto))
+        using (var response = await authService.SendAuthorizedAsync(request, cancellationToken))
+        {
+            primary = await ReadDocumentListAsync(response, cancellationToken);
+        }
+
+        if (primary.Success && primary.Value is { Count: > 0 })
+        {
+            return primary;
+        }
+
+        // Beauty's older integration used application/json-patch+json successfully.
+        // Retry that transport if the normal JSON request returns no rows or fails.
+        using var fallbackRequest = CreateRequest(HttpMethod.Post, "/api/Doc_Stock_GIN/LoadProxy", requestDto);
+        using var fallbackResponse = await authService.SendAuthorizedAsync(fallbackRequest, cancellationToken);
+        var fallback = await ReadDocumentListAsync(fallbackResponse, cancellationToken);
+
+        if (fallback.Success)
+        {
+            return fallback;
+        }
+
+        return primary;
     }
 
     public Task<ApiCallResult<StockGinEnvelopeDTO>> LoadRecordAsync(
