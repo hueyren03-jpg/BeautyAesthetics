@@ -31,41 +31,21 @@ public sealed class StockGrnAC
         StockGrnProxyRequestDTO requestDto,
         CancellationToken cancellationToken = default)
     {
-        ApiCallResult<List<StockGrnDocumentDTO>> primary;
-        using (var request = CreateJsonPostRequest("/api/Doc_Stock_GRN/LoadProxy", requestDto))
-        using (var response = await authService.SendAuthorizedAsync(request, cancellationToken))
-        {
-            primary = await ReadGrnListResponseAsync(
-                response,
-                "GRN list response was invalid.",
-                cancellationToken);
-        }
-
-        if (primary.Success && primary.Value is { Count: > 0 })
-        {
-            return primary;
-        }
-
-        using var fallbackRequest = CreatePostRequest("/api/Doc_Stock_GRN/LoadProxy", requestDto);
-        using var fallbackResponse = await authService.SendAuthorizedAsync(fallbackRequest, cancellationToken);
-        var fallback = await ReadGrnListResponseAsync(
-            fallbackResponse,
+        using var request = CreateJsonPostRequest(
+            "/api/Doc_Stock_GRN/LoadProxy",
+            requestDto);
+        using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+        return await ReadGrnListResponseAsync(
+            response,
             "GRN list response was invalid.",
             cancellationToken);
-
-        if (fallback.Success)
-        {
-            return fallback;
-        }
-
-        return primary;
     }
 
     public async Task<ApiCallResult<StockGrnEnvelopeDTO>> LoadRecordAsync(
         string id,
         CancellationToken cancellationToken = default)
     {
-        using var request = CreatePostRequest("/api/Doc_Stock_GRN/LoadRecord", new StockGrnLookupDTO
+        using var request = CreateJsonPostRequest("/api/Doc_Stock_GRN/LoadRecord", new StockGrnLookupDTO
         {
             Id = id
         });
