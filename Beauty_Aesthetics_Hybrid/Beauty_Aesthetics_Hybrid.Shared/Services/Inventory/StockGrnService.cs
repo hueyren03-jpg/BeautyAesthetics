@@ -26,10 +26,10 @@ public sealed class StockGrnService : IStockGrnService
         var result = await stockGrnAC.LoadProxyAsync(new StockGrnProxyRequestDTO
         {
             BranchID = string.IsNullOrWhiteSpace(branchId) ? "HQ" : branchId.Trim(),
-            StartDate = DateTime.Today.AddDays(-30),
+            StartDate = DateTime.Today.AddYears(-2),
             EndDate = DateTime.Today.AddDays(1).AddTicks(-1),
             PageNumber = 1,
-            PageSize = 500
+            PageSize = 200
         }, cancellationToken);
 
         if (!result.Success || result.Value is null)
