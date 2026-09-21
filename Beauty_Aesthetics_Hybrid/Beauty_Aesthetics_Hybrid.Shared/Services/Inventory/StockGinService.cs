@@ -21,15 +21,15 @@ public sealed class StockGinService : IStockGinService
         string branchId = "HQ",
         CancellationToken cancellationToken = default)
     {
-        // Match SenangRetails exactly: one branch-scoped LoadProxy request for the
-        // recent history window. Do not query an unbounded 1900-present range.
+        // Beauty has no history date picker, so keep the original two-year window while
+        // retaining SenangRetails' single LoadProxy request pattern.
         var result = await stockGinAC.LoadProxyAsync(new StockGinProxyRequestDTO
         {
             BranchID = string.IsNullOrWhiteSpace(branchId) ? "HQ" : branchId.Trim(),
-            StartDate = DateTime.Today.AddDays(-30),
+            StartDate = DateTime.Today.AddYears(-2),
             EndDate = DateTime.Today.AddDays(1).AddTicks(-1),
             PageNumber = 1,
-            PageSize = 500
+            PageSize = 200
         }, cancellationToken);
 
         if (!result.Success || result.Value is null)
