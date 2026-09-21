@@ -2,6 +2,7 @@ using System.Net;
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.ViewModels;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.Inventory;
@@ -9,10 +10,14 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.Inventory;
 public sealed class InventoryPendingAcceptService : IInventoryPendingAcceptService
 {
     private readonly InventoryPendingAcceptAC pendingAcceptAC;
+    private readonly AppFeedbackService feedback;
 
-    public InventoryPendingAcceptService(InventoryPendingAcceptAC pendingAcceptAC)
+    public InventoryPendingAcceptService(
+        InventoryPendingAcceptAC pendingAcceptAC,
+        AppFeedbackService feedback)
     {
         this.pendingAcceptAC = pendingAcceptAC;
+        this.feedback = feedback;
     }
 
     public async Task<ApiCallResult<IReadOnlyList<PendingStockReceiptViewModel>>> LoadPendingAsync(
@@ -50,22 +55,30 @@ public sealed class InventoryPendingAcceptService : IInventoryPendingAcceptServi
             result.Value.Select(MapLine).ToList());
     }
 
-    public Task<ApiCallResult<string>> AcceptAsync(
+    public async Task<ApiCallResult<string>> AcceptAsync(
         string documentId,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(documentId))
         {
-            return Task.FromResult(
-                ApiCallResult<string>.Failure(
-                    HttpStatusCode.BadRequest,
-                    "Stock transfer document ID is missing."));
+            const string message = "Stock transfer document ID is missing.";
+            feedback.Warning(message, "Transfer not received");
+            return ApiCallResult<string>.Failure(HttpStatusCode.BadRequest, message);
         }
 
         // Stock Transfer is its own document workflow.
         // AcceptStockIn receives the pending transfer at the destination branch.
-        // It must not create, verify, or wait for a GRN or GIN.
-        return pendingAcceptAC.AcceptStockInAsync(documentId, cancellationToken);
+        var result = await pendingAcceptAC.AcceptStockInAsync(documentId, cancellationToken);
+        if (result.Success)
+        {
+            feedback.Success("Incoming stock transfer received successfully.", "Transfer received");
+        }
+        else
+        {
+            feedback.Error(result.ErrorMessage ?? "Unable to receive the stock transfer.", "Transfer not received");
+        }
+
+        return result;
     }
 
     public Task<ApiCallResult<string>> AcceptAsync(
