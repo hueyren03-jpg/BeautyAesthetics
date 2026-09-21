@@ -20,4 +20,8 @@ public interface IStockGinService
     Task<ApiCallResult<bool>> UpdateGinAsync(
         StockGinViewModel gin,
         CancellationToken cancellationToken = default);
+
+    Task<ApiCallResult<bool>> DeleteGinAsync(
+        string documentId,
+        CancellationToken cancellationToken = default);
 }
