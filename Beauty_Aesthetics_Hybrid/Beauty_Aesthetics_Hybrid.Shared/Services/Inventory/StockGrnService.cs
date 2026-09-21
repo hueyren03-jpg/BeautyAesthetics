@@ -25,7 +25,7 @@ public sealed class StockGrnService : IStockGrnService
         // range, one LoadProxy call, 500-row page.
         var result = await stockGrnAC.LoadProxyAsync(new StockGrnProxyRequestDTO
         {
-            BranchID = string.IsNullOrWhiteSpace(branchId) ? "HQ" : branchId.Trim(),
+            BranchID = NormalizeBranchId(branchId),
             StartDate = DateTime.Today.AddYears(-2),
             EndDate = DateTime.Today.AddDays(1).AddTicks(-1),
             PageNumber = 1,
@@ -39,7 +39,8 @@ public sealed class StockGrnService : IStockGrnService
                 result.ErrorMessage ?? "Unable to load GRN records.");
         }
 
-        var grns = result.Value
+        using var gate = new SemaphoreSlim(6);
+        var detailTasks = result.Value
             .Where(document => !document.IsVoid)
             .DistinctBy(
                 document => First(
@@ -47,7 +48,29 @@ public sealed class StockGrnService : IStockGrnService
                     document.DisplayCode,
                     $"{document.NumericCode}|{document.FinancialDate:O}"),
                 StringComparer.OrdinalIgnoreCase)
-            .Select(ToViewModel)
+            .Select(async document =>
+            {
+                if (string.IsNullOrWhiteSpace(document.DocumentID))
+                {
+                    return ToViewModel(document);
+                }
+
+                await gate.WaitAsync(cancellationToken);
+                try
+                {
+                    var detail = await stockGrnAC.LoadRecordAsync(document.DocumentID, cancellationToken);
+                    return detail.Success && detail.Value is not null
+                        ? ToViewModel(detail.Value)
+                        : ToViewModel(document);
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            })
+            .ToList();
+
+        var grns = (await Task.WhenAll(detailTasks))
             .OrderByDescending(grn => grn.Date)
             .ThenByDescending(grn => grn.DisplayCode)
             .ToList();
