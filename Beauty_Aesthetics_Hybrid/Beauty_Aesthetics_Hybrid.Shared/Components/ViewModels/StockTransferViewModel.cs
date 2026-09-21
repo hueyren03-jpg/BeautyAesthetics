@@ -13,6 +13,7 @@ public sealed class StockTransferViewModel
     public string ToBranchName { get; set; } = string.Empty;
     public string Remarks { get; set; } = string.Empty;
     public string Status { get; set; } = "Pending";
+    public decimal TotalAmount { get; set; }
     public List<StockTransferLineViewModel> Lines { get; set; } = new();
 }
 
@@ -24,5 +25,6 @@ public sealed class StockTransferLineViewModel
     public string Sku { get; set; } = string.Empty;
     public string ProductName { get; set; } = string.Empty;
     public decimal Quantity { get; set; }
+    public decimal UnitCost { get; set; }
     public string UnitOfMeasurementId { get; set; } = string.Empty;
 }
