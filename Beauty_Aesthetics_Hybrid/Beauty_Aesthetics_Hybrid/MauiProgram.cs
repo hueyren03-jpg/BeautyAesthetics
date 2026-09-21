@@ -1,3 +1,4 @@
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_Hybrid.Services;
 using Beauty_Aesthetics_Hybrid.Shared.Services;
 using Microsoft.Extensions.Logging;
@@ -44,6 +45,7 @@ namespace Beauty_Aesthetics_Hybrid
 		builder.Services.AddScoped<IBranchSessionStore, MauiBranchSessionStore>();
 		builder.Services.AddScoped<IBranchSessionService, BranchSessionService>();
             builder.Services.AddScoped<AppState>();
+            builder.Services.AddScoped<AppFeedbackService>();
             builder.Services.AddSingleton(new AuthApiOptions
             {
                 BaseUrl = Environment.GetEnvironmentVariable("BEAUTY_AESTHETICS_API_BASE_URL") ?? AuthApiOptions.DefaultBaseUrl
