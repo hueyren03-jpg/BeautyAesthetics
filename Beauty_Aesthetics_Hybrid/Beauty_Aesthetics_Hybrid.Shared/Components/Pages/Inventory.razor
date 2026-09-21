@@ -4248,25 +4248,20 @@
 
     private List<MultiTableFilter.FilterColumn> GRNFilterColumns => new()
     {
-        new() { Value = "DOCBranch", Label = "Branch", ControlType = "Text" },
         new() { Value = "DOCNo", Label = "GRN No.", ControlType = "Text" },
-        new() { Value = "SupplierName", Label = "Supplier", ControlType = "Text" },
-        new() { Value = "PONo", Label = "PO No.", ControlType = "Text" },
-        new() { Value = "ReferenceNumber", Label = "Reference", ControlType = "Text" },
-        new() { Value = "TaxAmount", Label = "Tax", ControlType = "NumberRange", IsNumeric = true },
-        new() { Value = "Amount", Label = "Total", ControlType = "NumberRange", IsNumeric = true },
-        new() { Value = "Status", Label = "Status", ControlType = "Text" },
-        new() { Value = "Date", Label = "Receipt Date", ControlType = "DateRange", IsDate = true }
+        new() { Value = "Activity", Label = "Activity", ControlType = "Chips", IsQuick = true, Options = CountOptions(GRNs.Select(x => x.Activity)) },
+        new() { Value = "Remarks", Label = "Remarks", ControlType = "Text" },
+        new() { Value = "Amount", Label = "Total Cost", ControlType = "NumberRange", IsNumeric = true },
+        new() { Value = "Date", Label = "Date", ControlType = "DateRange", IsDate = true }
     };
 
     private List<MultiTableFilter.FilterColumn> GINFilterColumns => new()
     {
         new() { Value = "ReturnedStockNo", Label = "GIN No.", ControlType = "Text" },
-        new() { Value = "IssuedBy", Label = "Branch", ControlType = "Text" },
-        new() { Value = "Purpose", Label = "Purpose", ControlType = "Text" },
-        new() { Value = "IssuedTo", Label = "Issued To", ControlType = "Text" },
-        new() { Value = "Quantity", Label = "Quantity", ControlType = "NumberRange", IsNumeric = true },
-        new() { Value = "DateIssued", Label = "Date Issued", ControlType = "DateRange", IsDate = true }
+        new() { Value = "Purpose", Label = "Activity", ControlType = "Chips", IsQuick = true, Options = CountOptions(ReturnedStockList.Select(x => x.Purpose)) },
+        new() { Value = "Reason", Label = "Remarks", ControlType = "Text" },
+        new() { Value = "Amount", Label = "Total Cost", ControlType = "NumberRange", IsNumeric = true },
+        new() { Value = "DateIssued", Label = "Date", ControlType = "DateRange", IsDate = true }
     };
 
     private List<MultiTableFilter.FilterColumn> StockTransferFilterColumns => new()
@@ -4351,38 +4346,17 @@
         NewGRNDate = DateTime.Today;
         NewGRNPostingDate = DateTime.Today;
         NewGRNDOCNo = string.Empty;
-        NewGRNName = string.Empty;
-        NewGRNPONo = string.Empty;
-        NewGRNPODocumentId = string.Empty;
-        NewGRNOrderDocumentLineId = string.Empty;
-        NewGRNSourceDocumentLineId = string.Empty;
-        NewGRNOrderBranchId = string.Empty;
-        NewGRNAccountId = string.Empty;
-        NewGRNSupplier = string.Empty;
-        NewGRNPODate = null;
-        NewGRNPaymentTermId = string.Empty;
-        NewGRNPaymentTermName = string.Empty;
-        NewGRNReference = string.Empty;
         NewGRNRemarks = string.Empty;
-        NewGRNItemSku = string.Empty;
-        NewGRNInventoryId = string.Empty;
-        NewGRNUom = string.Empty;
-        NewGRNInventoryTypeId = 1;
-        NewGRNReceivedQuantity = 1m;
-        NewGRNUnitPrice = 0m;
+        NewGRNStockActivityType = "Stock In";
         NewGRNTransactionCurrencyId = "MYR";
         NewGRNLocalCurrencyId = "MYR";
         NewGRNExchangeRate = 1m;
-        NewGRNTaxTypeId = string.Empty;
-        NewGRNTaxCodeId = string.Empty;
-        NewGRNGstTypeId = string.Empty;
-        NewGRNTaxPercentage = 0m;
-        NewGRNTaxAmount = 0m;
-        NewGRNRoundingAmount = 0m;
-        NewGRNIsTaxInclusive = false;
-        NewGRNBatchNumber = string.Empty;
-        NewGRNSerialNumber = string.Empty;
-        NewGRNStockActivityType = string.Empty;
+        NewGRNSelectedProducts.Clear();
+        GRNItemProductSearch = string.Empty;
+        SelectedGRN = null;
+        IsGRNEditMode = false;
+        GRNApiError = null;
+
         GRNBarcodeScanValue = string.Empty;
         GRNBarcodeScanMessage = null;
         GRNBarcodeScanSucceeded = false;
@@ -4394,9 +4368,6 @@
         IsGRNBarcodeScannerVisible = false;
         IsGRNBarcodeScannerStarting = false;
         StartGRNBarcodeScannerAfterRender = false;
-        SelectedGRN = null;
-        IsGRNEditMode = false;
-        GRNApiError = null;
     }
 
     private void OpenIncomingStockTransfers()
@@ -4408,119 +4379,73 @@
     {
         GRNApiError = null;
 
-        if (string.IsNullOrWhiteSpace(NewGRNPONo))
+        if (string.IsNullOrWhiteSpace(NewGRNStockActivityType))
         {
-            GRNApiError = "Select a purchase order.";
+            GRNApiError = "Select a stock in action.";
             return;
         }
 
-        if (!IsGRNEditMode && !AvailableGRNPurchaseOrders.Any(po =>
-                string.Equals(po.PoNo, NewGRNPONo, StringComparison.OrdinalIgnoreCase)))
+        if (NewGRNSelectedProducts.Count == 0)
         {
-            GRNApiError = "Select an approved purchase order.";
+            GRNApiError = "Select at least one product.";
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(NewGRNName))
+        if (NewGRNSelectedProducts.Values.Any(item => item.Quantity <= 0))
         {
-            GRNApiError = "Select an inventory item.";
+            GRNApiError = "Every selected product needs a quantity greater than zero.";
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(NewGRNInventoryId))
+        if (NewGRNSelectedProducts.Values.Any(item => item.UnitCost < 0))
         {
-            GRNApiError = "The PO item is not linked to an inventory record. Ask an administrator to check the item setup.";
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(NewGRNUom))
-        {
-            GRNApiError = "The PO item does not have a unit of measure. Ask an administrator to check the item setup.";
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(NewGRNDOCBranch))
-        {
-            GRNApiError = "Select a receiving branch.";
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(NewGRNTransactionCurrencyId) || NewGRNExchangeRate <= 0)
-        {
-            GRNApiError = "The PO has incomplete currency information. Ask an administrator to check the purchase order.";
-            return;
-        }
-
-        if (NewGRNReceivedQuantity <= 0)
-        {
-            GRNApiError = "Received quantity must be greater than zero.";
+            GRNApiError = "Product cost cannot be negative.";
             return;
         }
 
         IsGRNApiLoading = true;
-
         try
         {
-            if (!IsGRNEditMode)
-            {
-                NewGRNPostingDate = NewGRNDate;
-            }
-
+            var branchId = string.IsNullOrWhiteSpace(NewGRNDOCBranch) ? InventoryBranchId : NewGRNDOCBranch;
+            var total = NewGRNSelectedProducts.Values.Sum(item => item.Quantity * item.UnitCost);
             var grn = new StockGrnViewModel
             {
                 DocumentId = SelectedGRN?.DocumentId ?? string.Empty,
-                BranchId = NewGRNDOCBranch,
-                Date = NewGRNDate,
-                PostingDate = NewGRNPostingDate,
-                IsPostingDateDifferent = NewGRNPostingDate.Date != NewGRNDate.Date,
+                BranchId = branchId,
+                Date = NewGRNDate == default ? DateTime.Today : NewGRNDate,
+                PostingDate = NewGRNDate == default ? DateTime.Today : NewGRNDate,
                 DisplayCode = NewGRNDOCNo,
-                AccountId = NewGRNAccountId,
-                AccountName = NewGRNSupplier,
-                PODisplayCode = NewGRNPONo,
-                PODocumentId = NewGRNPODocumentId,
-                OrderBranchId = NewGRNOrderBranchId,
-                PaymentTermId = NewGRNPaymentTermId,
-                PaymentTermName = NewGRNPaymentTermName,
-                ReferenceNumber = NewGRNReference,
-                PODate = NewGRNPODate,
                 Remarks = NewGRNRemarks,
-                ItemName = NewGRNName,
-                ItemSku = NewGRNItemSku,
-                InventoryId = NewGRNInventoryId,
-                Uom = NewGRNUom,
-                OrderDocumentLineId = NewGRNOrderDocumentLineId,
-                SourceDocumentLineId = NewGRNSourceDocumentLineId,
-                InventoryTypeId = NewGRNInventoryTypeId,
-                ReceivedQuantity = NewGRNReceivedQuantity,
-                UnitPrice = NewGRNUnitPrice,
-                Amount = CalculatedGRNAmount,
-                TransactionCurrencyId = NewGRNTransactionCurrencyId,
-                LocalCurrencyId = NewGRNLocalCurrencyId,
-                ExchangeRate = NewGRNExchangeRate,
-                TaxTypeId = NewGRNTaxTypeId,
-                TaxCodeId = NewGRNTaxCodeId,
-                GstTypeId = NewGRNGstTypeId,
-                TaxPercentage = NewGRNTaxPercentage,
-                TaxAmount = CalculatedGRNTaxAmount,
-                RoundingAmount = NewGRNRoundingAmount,
-                IsTaxInclusive = NewGRNIsTaxInclusive,
-                BatchNumber = NewGRNBatchNumber,
-                SerialNumber = NewGRNSerialNumber,
-                StockActivityType = NewGRNStockActivityType
+                StockActivityType = NewGRNStockActivityType,
+                Amount = total,
+                TransactionCurrencyId = "MYR",
+                LocalCurrencyId = "MYR",
+                ExchangeRate = 1m,
+                Lines = NewGRNSelectedProducts.Values.Select(item => new StockGrnLineViewModel
+                {
+                    DocumentLineId = item.DocumentLineId,
+                    InventoryId = item.InventoryId,
+                    ProductName = item.ProductName,
+                    Sku = item.Sku,
+                    Quantity = item.Quantity,
+                    UnitOfMeasurementId = item.UomId,
+                    InventoryTypeId = item.InventoryTypeId,
+                    UnitCost = item.UnitCost
+                }).ToList()
             };
 
             var result = IsGRNEditMode
-                ? await StockGrnService.UpdateGrnAsync(grn)
-                : await StockGrnService.CreateGrnAsync(grn);
+                ? await StockGrnService.UpdateGrnAsync(grn, branchId)
+                : await StockGrnService.CreateGrnAsync(grn, branchId);
 
             if (!result.Success)
             {
-                GRNApiError = result.ErrorMessage ?? "Unable to save GRN.";
+                GRNApiError = result.ErrorMessage ?? "Unable to save Stock In / GRN.";
                 return;
             }
 
             await CloseAddGRNForm();
-            await LoadGRNsAsync();
+            await Task.WhenAll(LoadGRNsAsync(), LoadProductsAsync());
         }
         finally
         {
@@ -8252,7 +8177,12 @@ private void ShowAddBrandForm()
     private bool NewGRNIsTaxInclusive { get; set; }
     private string NewGRNBatchNumber { get; set; } = string.Empty;
     private string NewGRNSerialNumber { get; set; } = string.Empty;
-    private string NewGRNStockActivityType { get; set; } = string.Empty;
+    private string NewGRNStockActivityType { get; set; } = "Stock In";
+    private Dictionary<string, StockInSelectedProductInfo> NewGRNSelectedProducts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    private int NewGRNTotalSku => NewGRNSelectedProducts.Count;
+    private decimal NewGRNTotalQuantity => NewGRNSelectedProducts.Values.Sum(item => item.Quantity);
+    private decimal NewGRNTotalCost => NewGRNSelectedProducts.Values.Sum(item => item.Quantity * item.UnitCost);
+    private static readonly string[] GRNStockInActions = ["Adjustment", "Stock In", "Recover"];
     private decimal CalculatedGRNSubtotal => Math.Round(NewGRNReceivedQuantity * NewGRNUnitPrice, 2);
     private decimal CalculatedGRNTaxAmount => NewGRNTaxPercentage > 0
         ? Math.Round(
@@ -8319,6 +8249,53 @@ private void ShowAddBrandForm()
             }
             return items;
         }
+    }
+
+    private IEnumerable<StockTransferProduct> FilteredGRNStockInProducts
+    {
+        get
+        {
+            var products = StockTransferProducts.AsEnumerable();
+            if (!string.IsNullOrWhiteSpace(GRNItemProductSearch))
+            {
+                var search = GRNItemProductSearch.Trim();
+                products = products.Where(item =>
+                    item.ProductName.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    item.Sku.Contains(search, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return products;
+        }
+    }
+
+    private void ToggleGRNStockInProductSelection(StockTransferProduct product)
+    {
+        var key = product.MasterAccountId;
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            GRNApiError = $"{product.ProductName} is missing its inventory ID.";
+            return;
+        }
+
+        if (NewGRNSelectedProducts.ContainsKey(key))
+        {
+            NewGRNSelectedProducts.Remove(key);
+            return;
+        }
+
+        NewGRNSelectedProducts[key] = new StockInSelectedProductInfo
+        {
+            InventoryId = key,
+            ProductName = product.ProductName,
+            Sku = product.Sku,
+            Quantity = 1,
+            UnitCost = Math.Max(0, product.Price),
+            UomId = string.IsNullOrWhiteSpace(product.UnitOfMeasurementId)
+                ? (string.IsNullOrWhiteSpace(product.Uom1) ? "UNIT" : product.Uom1)
+                : product.UnitOfMeasurementId,
+            UomDisplay = string.IsNullOrWhiteSpace(product.Uom1) ? "UNIT" : product.Uom1,
+            InventoryTypeId = product.InventoryTypeId
+        };
     }
 
     private void SelectGRNItem(InventoryViewModel.InventoryItem item)
