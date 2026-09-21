@@ -89,29 +89,33 @@
                     <i class="fa-solid fa-bars"></i>
                 </button>
                 <div class="header">
+                    <button type="button"
+                            class="HeaderBranchSwitch"
+                            @onclick="OpenBranchPicker"
+                            disabled="@(BranchSession.AvailableBranches.Count <= 1)"
+                            title="@(BranchSession.AvailableBranches.Count > 1 ? "Switch working branch" : "Current working branch")"
+                            aria-label="@(BranchSession.AvailableBranches.Count > 1 ? $"Switch branch. Current branch: {BranchSession.CurrentBranch?.DisplayName ?? "Not selected"}" : $"Current branch: {BranchSession.CurrentBranch?.DisplayName ?? "Not selected"}")">
+                        <span class="HeaderBranchSwitch__icon">
+                            <i class="fa-solid fa-building"></i>
+                        </span>
+                        <span class="HeaderBranchSwitch__copy">
+                            <small>Working branch</small>
+                            <strong>@(BranchSession.CurrentBranch?.DisplayName ?? "Not selected")</strong>
+                        </span>
+                        @if (BranchSession.AvailableBranches.Count > 1)
+                        {
+                            <span class="HeaderBranchSwitch__action" aria-hidden="true">
+                                <i class="fa-solid fa-arrow-right-arrow-left"></i>
+                            </span>
+                        }
+                    </button>
+
                     <div @onclick="ToggleProfile" class="profile">
                         <i class="fa-solid fa-user ProfileIcon"></i>
                         <i class="fa-solid fa-caret-down ProfileDropdown"></i>
                         <div class="ProfileSelection @(isProfileOpen ? "" : "isProfileClose")">
                             <p class="ProfileUserName">Tay Keng Aik</p>
                             <p class="ProfileEmail">taykengaik@gmail.com</p>
-                            <div class="ProfileBranchSummary">
-                                <i class="fa-solid fa-building"></i>
-                                <span>
-                                    <small>Working branch</small>
-                                    <strong>@(BranchSession.CurrentBranch?.DisplayName ?? "Not selected")</strong>
-                                </span>
-                            </div>
-                            @if (BranchSession.AvailableBranches.Count > 1)
-                            {
-                                <button type="button"
-                                        class="ProfileBranchSwitch"
-                                        @onclick="OpenBranchPicker"
-                                        @onclick:stopPropagation="true">
-                                    <i class="fa-solid fa-arrow-right-arrow-left"></i>
-                                    Switch branch
-                                </button>
-                            }
                             <div class="ProfileSelectionItemGroup" @onclick='() => NavigateToRoute("/profile")'>
                                 <i class="fa-solid fa-user-gear ProfileSelectionIcon"></i>
                                 <p class="ProfileSelectionItem">@L["Profile"]</p>
