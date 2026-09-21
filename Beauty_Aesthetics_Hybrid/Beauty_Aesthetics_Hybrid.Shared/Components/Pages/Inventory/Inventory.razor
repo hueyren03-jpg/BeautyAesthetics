@@ -34,7 +34,7 @@
 
 <PageTitle>@L["Inventory"]</PageTitle>
 
-<section class="inventory inventory-mobile-v2">
+<section class="inventory">
     <header class="inventory__header">
         <h1>
             @L["Inventory"]
@@ -584,44 +584,40 @@
                 </table>
             </div>
             <div class="inventory__table-wrapper table-scroll inventory-products-mobile-compact mobile-view">
-                <table class="inventory__table products__table products__table--mobile-priority resizable-table">
+                <table class="inventory__table products__table resizable-table">
                     <colgroup>
                         @if (IsDeleteMode)
                         {
-                            <col class="product-mobile-col product-mobile-col--select" />
+                            <col class="product-col-select" />
                         }
-                        <col class="product-mobile-col product-mobile-col--name" />
-                        <col class="product-mobile-col product-mobile-col--stock" />
-                        <col class="product-mobile-col product-mobile-col--price" />
-                        <col class="product-mobile-col product-mobile-col--actions" />
+                        <col class="product-col-sku" />
+                        <col class="product-col-name" />
+                        <col class="product-compact-col-actions" />
                     </colgroup>
                     <thead>
                         <tr>
                             @if (IsDeleteMode)
                             {
-                                <th class="inventory__checkbox-col product-mobile-field product-mobile-field--select">
+                                <th class="inventory__checkbox-col">
                                     <input type="checkbox"
                                            checked="@IsAllSelected"
                                            @onchange="ToggleSelectAll" />
                                 </th>
                             }
-                            <th class='product-mobile-field product-mobile-field--name @GetSortHeaderClass(SortColumn, SortAscending, "Type")' @onclick="@(() => ToggleSort("Type"))">
-                                Product <span class="resize-handle"></span>
+                            <th class='@GetSortHeaderClass(SortColumn, SortAscending, "Sku")' @onclick="@(() => ToggleSort("Sku"))">
+                                SKU <span class="resize-handle"></span>
                             </th>
-                            <th class='product-mobile-field product-mobile-field--stock @GetSortHeaderClass(SortColumn, SortAscending, "StockQuantity")' @onclick="@(() => ToggleSort("StockQuantity"))">
-                                Stock
+                            <th class='@GetSortHeaderClass(SortColumn, SortAscending, "Type")' @onclick="@(() => ToggleSort("Type"))">
+                                Product Name <span class="resize-handle"></span>
                             </th>
-                            <th class='product-mobile-field product-mobile-field--price @GetSortHeaderClass(SortColumn, SortAscending, "Price")' @onclick="@(() => ToggleSort("Price"))">
-                                Price
-                            </th>
-                            <th class="product-actions-heading product-mobile-field product-mobile-field--actions">Actions</th>
+                            <th class="product-actions-heading">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         @if (!PaginatedItems.Any())
                         {
                             <tr>
-                                <td colspan="@(IsDeleteMode ? 5 : 4)" style="text-align: center; padding: 2rem; color: #6b7280;">
+                                <td colspan="@(IsDeleteMode ? 4 : 3)" style="text-align: center; padding: 2rem; color: #6b7280;">
                                     No products found. Click the + button to add a new product.
                                 </td>
                             </tr>
@@ -633,13 +629,14 @@
                                 <tr @onclick="() => OpenMobileProductDetails(item)" class="@(SelectedItem == item && !IsDeleteMode ? "selected" : string.Empty)">
                                     @if (IsDeleteMode)
                                     {
-                                        <td class="inventory__checkbox-col product-mobile-field product-mobile-field--select" @onclick:stopPropagation="true">
+                                        <td class="inventory__checkbox-col" @onclick:stopPropagation="true">
                                             <input type="checkbox"
                                                    checked="@SelectedItemsForDeletion.Contains(item)"
                                                    @onchange="() => ToggleItemSelection(item)" />
                                         </td>
                                     }
-                                    <td class="product-mobile-field product-mobile-field--name">
+                                    <td>@item.Sku</td>
+                                    <td>
                                         <div class="product-table-product product-table-product--mobile">
                                             <div class="product-table-image product-table-image--mobile" aria-hidden="true">
                                                 @if (HasInventoryImage(item))
@@ -651,15 +648,10 @@
                                                     <i class="bi bi-image"></i>
                                                 }
                                             </div>
-                                            <span class="product-mobile-name-copy">
-                                                <strong title="@item.Type">@DisplayProductValue(item.Type)</strong>
-                                                <small>@DisplayProductValue(item.Sku)</small>
-                                            </span>
+                                            <strong title="@item.Type">@DisplayProductValue(item.Type)</strong>
                                         </div>
                                     </td>
-                                    <td class="product-mobile-field product-mobile-field--stock">@GetProductStockDisplay(item)</td>
-                                    <td class="product-mobile-field product-mobile-field--price">MYR @item.Price.ToString("N2")</td>
-                                    <td class="product-row-actions product-mobile-field product-mobile-field--actions" @onclick:stopPropagation="true">
+                                    <td class="product-row-actions" @onclick:stopPropagation="true">
                                         <button type="button"
                                                 class="product-row-action"
                                                 title="View product details"
@@ -696,7 +688,7 @@
             <div class="inventory-options">
                 <div class="inventory-options__grid">
                     <!-- Brands Card -->
-                    <div class="inventory-options__card inventory-options__card--brands">
+                    <div class="inventory-options__card">
                         <div class="inventory-options__card-header">
                             <h3>Brands</h3>
                             <div class="inventory-options__header-actions">
@@ -731,22 +723,22 @@
                             <div class="inventory-options__search">
                                 <input type="text" placeholder="Search..." value="@BrandSearch" @oninput="(ChangeEventArgs e) => { BrandSearch = e.Value?.ToString() ?? string.Empty; BrandsCurrentPage = 1; }" />
                             </div>
-                            <table class="inventory-options__table inventory-options__table--brands">
+                            <table class="inventory-options__table">
                                 <thead>
                                     <tr>
                                         @if (IsBrandDeleteMode)
                                         {
-                                            <th class="inventory-options__checkbox-col io-col io-col--select">
+                                            <th class="inventory-options__checkbox-col">
                                                 <input type="checkbox" @onchange="ToggleSelectAllBrands" checked="@IsAllBrandsSelected" />
                                             </th>
                                         }
-                                        <th class='io-col io-col--name @GetSortHeaderClass(BrandSortColumn, BrandSortAscending, "Name")' @onclick="@(() => ToggleBrandSort("Name"))">
+                                        <th class='@GetSortHeaderClass(BrandSortColumn, BrandSortAscending, "Name")' @onclick="@(() => ToggleBrandSort("Name"))">
                                             Name
                                         </th>
-                                        <th class='io-col io-col--count @GetSortHeaderClass(BrandSortColumn, BrandSortAscending, "ProductCount")' @onclick="@(() => ToggleBrandSort("ProductCount"))">
+                                        <th class='@GetSortHeaderClass(BrandSortColumn, BrandSortAscending, "ProductCount")' @onclick="@(() => ToggleBrandSort("ProductCount"))">
                                             Product Count
                                         </th>
-                                        <th class="inventory-option-actions-column io-col io-col--actions">Actions</th>
+                                        <th class="inventory-option-actions-column">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -755,15 +747,15 @@
                                         <tr>
                                             @if (IsBrandDeleteMode)
                                             {
-                                                <td class="inventory-options__checkbox-col io-col io-col--select">
+                                                <td class="inventory-options__checkbox-col">
                                                     <input type="checkbox"
                                                            checked="@SelectedBrandsForDeletion.Contains(brand)"
                                                            @onchange="@(() => ToggleBrandSelection(brand))" />
                                                 </td>
                                             }
-                                            <td class="io-col io-col--name">@brand.Name</td>
-                                            <td class="inventory-plain-value io-col io-col--count">@brand.ProductCount</td>
-                                            <td class="inventory-option-actions-column io-col io-col--actions" @onclick:stopPropagation="true">
+                                            <td>@brand.Name</td>
+                                            <td class="inventory-plain-value">@brand.ProductCount</td>
+                                            <td class="inventory-option-actions-column" @onclick:stopPropagation="true">
                                                 <button type="button" class="product-row-action" title="View brand details" aria-label="View brand details" @onclick="() => ShowBrandDetails(brand)">
                                                     <i class="bi bi-eye"></i>
                                                 </button>
@@ -783,7 +775,7 @@
                     </div>
 
                     <!-- Categories Card -->
-                    <div class="inventory-options__card inventory-options__card--categories">
+                    <div class="inventory-options__card">
                         <div class="inventory-options__card-header">
                             <h3>Categories</h3>
                             <div class="inventory-options__header-actions">
@@ -818,22 +810,22 @@
                             <div class="inventory-options__search">
                                 <input type="text" placeholder="Search..." value="@CategorySearch" @oninput="(ChangeEventArgs e) => { CategorySearch = e.Value?.ToString() ?? string.Empty; CategoriesCurrentPage = 1; }" />
                             </div>
-                            <table class="inventory-options__table inventory-options__table--categories">
+                            <table class="inventory-options__table">
                                 <thead>
                                     <tr>
                                         @if (IsCategoryDeleteMode)
                                         {
-                                            <th class="inventory-options__checkbox-col io-col io-col--select">
+                                            <th class="inventory-options__checkbox-col">
                                                 <input type="checkbox" @onchange="ToggleSelectAllCategories" checked="@IsAllCategoriesSelected" />
                                             </th>
                                         }
-                                        <th class='io-col io-col--name @GetSortHeaderClass(CategorySortColumn, CategorySortAscending, "Name")' @onclick="@(() => ToggleCategorySort("Name"))">
+                                        <th class='@GetSortHeaderClass(CategorySortColumn, CategorySortAscending, "Name")' @onclick="@(() => ToggleCategorySort("Name"))">
                                             Name
                                         </th>
-                                        <th class='io-col io-col--code @GetSortHeaderClass(CategorySortColumn, CategorySortAscending, "ExternalCode")' @onclick="@(() => ToggleCategorySort("ExternalCode"))">
+                                        <th class='@GetSortHeaderClass(CategorySortColumn, CategorySortAscending, "ExternalCode")' @onclick="@(() => ToggleCategorySort("ExternalCode"))">
                                             External Code
                                         </th>
-                                        <th class="inventory-option-actions-column io-col io-col--actions">Actions</th>
+                                        <th class="inventory-option-actions-column">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -842,16 +834,16 @@
                                         <tr>
                                             @if (IsCategoryDeleteMode)
                                             {
-                                                <td class="inventory-options__checkbox-col io-col io-col--select">
+                                                <td class="inventory-options__checkbox-col">
                                                     <input type="checkbox"
                                                            checked="@SelectedCategoriesForDeletion.Contains(category)"
                                                            @onchange="@(() => ToggleCategorySelection(category))" />
                                                 </td>
                                             }
-                                            <td class="io-col io-col--name">@category.Name</td>
-                                            <td class="inventory-plain-value io-col io-col--code">@category.ExternalCode</td>
+                                            <td>@category.Name</td>
+                                            <td class="inventory-plain-value">@category.ExternalCode</td>
 
-                                            <td class="inventory-option-actions-column io-col io-col--actions">
+                                            <td class="inventory-option-actions-column">
                                                 <button type="button"
                                                         class="product-row-action"
                                                         title="View Category"
@@ -883,7 +875,7 @@
                     </div>
 
                     <!-- Suppliers Card -->
-                    <div class="inventory-options__card inventory-options__card--suppliers">
+                    <div class="inventory-options__card">
                         <div class="inventory-options__card-header">
                             <h3>Suppliers</h3>
                             <div class="inventory-options__header-actions">
@@ -918,25 +910,25 @@
                             <div class="inventory-options__search">
                                 <input type="text" placeholder="Search..." value="@SupplierSearch" @oninput="(ChangeEventArgs e) => { SupplierSearch = e.Value?.ToString() ?? string.Empty; SuppliersCurrentPage = 1; }" />
                             </div>
-                            <table class="inventory-options__table inventory-options__table--suppliers">
+                            <table class="inventory-options__table">
                                 <thead>
                                     <tr>
                                         @if (IsSupplierDeleteMode)
                                         {
-                                            <th class="inventory-options__checkbox-col io-col io-col--select">
+                                            <th class="inventory-options__checkbox-col">
                                                 <input type="checkbox" @onchange="ToggleSelectAllSuppliers" checked="@IsAllSuppliersSelected" />
                                             </th>
                                         }
-                                        <th class='io-col io-col--name @GetSortHeaderClass(SupplierSortColumn, SupplierSortAscending, "Name")' @onclick="@(() => ToggleSupplierSort("Name"))">
+                                        <th class='@GetSortHeaderClass(SupplierSortColumn, SupplierSortAscending, "Name")' @onclick="@(() => ToggleSupplierSort("Name"))">
                                             Name
                                         </th>
-                                        <th class='io-col io-col--contact @GetSortHeaderClass(SupplierSortColumn, SupplierSortAscending, "ContactNumber")' @onclick="@(() => ToggleSupplierSort("ContactNumber"))">
+                                        <th class='@GetSortHeaderClass(SupplierSortColumn, SupplierSortAscending, "ContactNumber")' @onclick="@(() => ToggleSupplierSort("ContactNumber"))">
                                             Contact Number
                                         </th>
-                                        <th class='io-col io-col--count @GetSortHeaderClass(SupplierSortColumn, SupplierSortAscending, "ProductCount")' @onclick="@(() => ToggleSupplierSort("ProductCount"))">
+                                        <th class='@GetSortHeaderClass(SupplierSortColumn, SupplierSortAscending, "ProductCount")' @onclick="@(() => ToggleSupplierSort("ProductCount"))">
                                             Product Count
                                         </th>
-                                        <th class="inventory-option-actions-column io-col io-col--actions">Actions</th>
+                                        <th class="inventory-option-actions-column">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -945,16 +937,16 @@
                                         <tr @onclick="() => ShowSupplierDetails(supplier)">
                                             @if (IsSupplierDeleteMode)
                                             {
-                                                <td class="inventory-options__checkbox-col io-col io-col--select" @onclick:stopPropagation="true">
+                                                <td class="inventory-options__checkbox-col" @onclick:stopPropagation="true">
                                                     <input type="checkbox"
                                                            checked="@SelectedSuppliersForDeletion.Contains(supplier)"
                                                            @onchange="@(() => ToggleSupplierSelection(supplier))" />
                                                 </td>
                                             }
-                                            <td class="io-col io-col--name">@supplier.Name</td>
-                                            <td class="inventory-plain-value io-col io-col--contact">@supplier.ContactNumber</td>
-                                            <td class="inventory-plain-value io-col io-col--count">@supplier.ProductCount</td>
-                                            <td class="inventory-option-actions-column io-col io-col--actions" @onclick:stopPropagation="true">
+                                            <td>@supplier.Name</td>
+                                            <td class="inventory-plain-value">@supplier.ContactNumber</td>
+                                            <td class="inventory-plain-value">@supplier.ProductCount</td>
+                                            <td class="inventory-option-actions-column" @onclick:stopPropagation="true">
                                                 <button type="button" class="product-row-action" title="View supplier details" aria-label="View supplier details" @onclick="() => ShowSupplierDetails(supplier)">
                                                     <i class="bi bi-eye"></i>
                                                 </button>
@@ -974,7 +966,7 @@
                     </div>
 
                     <!-- UOM Conversion Card -->
-                    <div class="inventory-options__card inventory-options__card--uom">
+                    <div class="inventory-options__card">
                         <div class="inventory-options__card-header">
                             <h3>UOM Conversion</h3>
                             <div class="inventory-options__header-actions">
@@ -984,29 +976,29 @@
                             <div class="inventory-options__search">
                                 <input type="text" placeholder="Search..." value="@UomConversionSearch" @oninput="(ChangeEventArgs e) => { UomConversionSearch = e.Value?.ToString() ?? string.Empty; UomConversionsCurrentPage = 1; }" />
                             </div>
-                            <table class="inventory-options__table inventory-options__table--uom">
+                            <table class="inventory-options__table">
                                 <thead>
                                     <tr>
-                                        <th class='io-col io-col--from @GetSortHeaderClass(UomConversionSortColumn, UomConversionSortAscending, "FromUom")' @onclick="@(() => ToggleUomConversionSort("FromUom"))">
+                                        <th class='@GetSortHeaderClass(UomConversionSortColumn, UomConversionSortAscending, "FromUom")' @onclick="@(() => ToggleUomConversionSort("FromUom"))">
                                             From UOM
                                         </th>
-                                        <th class='io-col io-col--to @GetSortHeaderClass(UomConversionSortColumn, UomConversionSortAscending, "ToUom")' @onclick="@(() => ToggleUomConversionSort("ToUom"))">
+                                        <th class='@GetSortHeaderClass(UomConversionSortColumn, UomConversionSortAscending, "ToUom")' @onclick="@(() => ToggleUomConversionSort("ToUom"))">
                                             To UOM
                                         </th>
-                                        <th class='io-col io-col--factor @GetSortHeaderClass(UomConversionSortColumn, UomConversionSortAscending, "ConversionFactor")' @onclick="@(() => ToggleUomConversionSort("ConversionFactor"))">
+                                        <th class='@GetSortHeaderClass(UomConversionSortColumn, UomConversionSortAscending, "ConversionFactor")' @onclick="@(() => ToggleUomConversionSort("ConversionFactor"))">
                                             Conversion Factor
                                         </th>
-                                        <th class="inventory-option-actions-column io-col io-col--actions">Actions</th>
+                                        <th class="inventory-option-actions-column">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @foreach (var uom in PaginatedUomConversions)
                                     {
                                         <tr>
-                                            <td class="io-col io-col--from">@uom.FromUom</td>
-                                            <td class="io-col io-col--to">@uom.ToUom</td>
-                                            <td class="inventory-plain-value io-col io-col--factor">@uom.ConversionFactor</td>
-                                            <td class="inventory-option-actions-column io-col io-col--actions" @onclick:stopPropagation="true">
+                                            <td>@uom.FromUom</td>
+                                            <td>@uom.ToUom</td>
+                                            <td class="inventory-plain-value">@uom.ConversionFactor</td>
+                                            <td class="inventory-option-actions-column" @onclick:stopPropagation="true">
                                                 <button type="button" class="product-row-action" title="View UOM conversion details" aria-label="View UOM conversion details" @onclick="() => ShowUomConversionDetails(uom)">
                                                     <i class="bi bi-eye"></i>
                                                 </button>
@@ -1798,7 +1790,6 @@
                                             }
                                             <td class="transfer-col transfer-col--number">
                                                 <strong>@history.ReferenceNo</strong>
-                                                <small class="inventory-mobile-subline mobile-view">To: @history.To</small>
                                             </td>
                                             <td class="transfer-col transfer-col--date">@history.Date.ToString("dd/MM/yyyy HH:mm")</td>
                                             <td class="transfer-col transfer-col--from">@history.From</td>
@@ -2677,10 +2668,7 @@
                                                            @onchange="() => ToggleReturnedStockForPrintSelection(returnedStock)" />
                                                 </td>
                                             }
-                                            <td class="gin-col gin-col--number">
-                                                <strong>@(string.IsNullOrWhiteSpace(returnedStock.ReturnedStockNo) ? "—" : returnedStock.ReturnedStockNo)</strong>
-                                                <small class="inventory-mobile-subline mobile-view">@returnedStock.DateIssued.ToString("dd/MM/yy") · @returnedStock.DateIssued.ToString("HH:mm")</small>
-                                            </td>
+                                            <td class="gin-col gin-col--number"><strong>@(string.IsNullOrWhiteSpace(returnedStock.ReturnedStockNo) ? "—" : returnedStock.ReturnedStockNo)</strong></td>
                                             <td class="gin-col gin-col--date">@returnedStock.DateIssued.ToString("dd/MM/yyyy HH:mm")</td>
                                             <td class="gin-col gin-col--activity"><span class="history-badge">@returnedStock.Purpose</span></td>
                                             <td class="gin-col gin-col--remarks">@(string.IsNullOrWhiteSpace(returnedStock.Reason) ? "—" : returnedStock.Reason)</td>
@@ -2896,10 +2884,7 @@
                                                            @onchange="() => ToggleGRNForPrintSelection(grn)" />
                                                 </td>
                                             }
-                                            <td class="grn-col grn-col--docno">
-                                                <strong>@grn.DOCNo</strong>
-                                                <small class="inventory-mobile-subline mobile-view">@grn.Date.ToString("dd/MM/yy") · @grn.Date.ToString("HH:mm")</small>
-                                            </td>
+                                            <td class="grn-col grn-col--docno"><strong>@grn.DOCNo</strong></td>
                                             <td class="grn-col grn-col--date">@grn.Date.ToString("dd/MM/yyyy HH:mm")</td>
                                             <td class="grn-col grn-col--activity"><span class="history-badge">@grn.Activity</span></td>
                                             <td class="grn-col grn-col--remarks">@(string.IsNullOrWhiteSpace(grn.Remarks) ? "—" : grn.Remarks)</td>
