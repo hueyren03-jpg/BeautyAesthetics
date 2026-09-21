@@ -250,16 +250,21 @@
 
         try
         {
+            var viewportWidth = await JSRuntime.InvokeAsync<int>("posResponsive.getViewportWidth");
+
             var isWeb =
                 detectedFormFactor.Equals("Web", StringComparison.OrdinalIgnoreCase);
 
             var isDesktopDevice =
                 detectedFormFactor.Equals("Desktop", StringComparison.OrdinalIgnoreCase);
 
-            // The browser/web app has one canonical shell: the full desktop sidebar
-            // layout. Do not switch Web into the MAUI compact shell based on viewport
-            // width; that produced two different interfaces before/after navigation.
-            var useCompactLayout = !isWeb && !isDesktopDevice;
+            // Web desktop keeps the canonical full sidebar shell. Only an actual
+            // phone-width browser switches to the compact/mobile shell. The old
+            // 1180px cutoff incorrectly treated scaled desktop browsers as mobile.
+            const int WebPhoneBreakpoint = 768;
+            var useCompactLayout = isWeb
+                ? viewportWidth <= WebPhoneBreakpoint
+                : !isDesktopDevice;
 
             if (isMobileLayout != useCompactLayout ||
                 (useCompactLayout && isSidebarOpen) ||
@@ -272,7 +277,7 @@
         }
         catch
         {
-            // Keep the form-factor fallback when interop is unavailable.
+            // Keep the form-factor fallback when viewport interop is unavailable.
         }
     }
 
