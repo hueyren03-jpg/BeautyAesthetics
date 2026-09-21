@@ -2388,9 +2388,9 @@
                 <div class="inventory__toolbar">
                     <div class="inventory__toolbar-primary inventory__toolbar-primary--left">
                         <div class="stock-transfer__actions">
-                            <button class="tab-btn stock-transfer__btn-with-text" title="Issue stock" @onclick="ShowAddReturnedStockModal">
+                            <button class="tab-btn stock-transfer__btn-with-text" title="Create Stock Out / GIN" @onclick="ShowAddReturnedStockModal">
                                 <i class="bi bi-box-arrow-up"></i>
-                                <span>Issue Stock</span>
+                                <span>Stock Out</span>
                             </button>
                             @if (!IsReturnedStockPrintModeActive)
                             {
@@ -2435,8 +2435,7 @@
                         </div>
                     </div>
                 }
-
-                <!-- GIN Add/Edit Modal -->
+                <!-- Stock Out / GIN Modal — mirrors SenangRetails Stock Out workflow -->
                 @if (ShowAddReturnedStockModalWindow)
                 {
                     <div class="returned-modal-overlay" @onclick="CloseAddReturnedStockModal">
@@ -2445,16 +2444,16 @@
                                 <div class="returned-modal__title">
                                     <i class="bi bi-box-arrow-up"></i>
                                     <div>
-                                        <h2>@(IsGINEditMode ? "Edit Goods Issue" : "Issue Stock")</h2>
-                                        <p>@(IsGINEditMode ? NewReturnedStock.ReturnedStockNo : "GIN number will be generated after saving")</p>
+                                        <h2>Stock Out</h2>
+                                        <p>Creates a GIN record</p>
                                     </div>
                                 </div>
                                 <div class="returned-modal__actions">
                                     <button type="button"
                                             class="returned-modal__btn returned-modal__btn--save"
-                                            disabled="@IsGINSaving"
+                                            disabled="@(IsGINSaving || NewReturnedStock.SelectedProducts.Count == 0)"
                                             @onclick="HandleAddReturnedStock">
-                                        @(IsGINSaving ? "Saving..." : IsGINEditMode ? "Save Changes" : "Issue Stock")
+                                        @(IsGINSaving ? "Saving..." : "Confirm Stock Out")
                                     </button>
                                     <button type="button"
                                             class="returned-modal__btn returned-modal__btn--cancel"
@@ -2466,80 +2465,42 @@
                             </div>
                             <div class="returned-modal__body">
                                 <form class="returned-form" @onsubmit:preventDefault>
-                                    <div class="stock-transfer__form-section">
-                                        <h3>Issue Details</h3>
-                                        <div class="inventory__form-row">
-                                            <div class="inventory__form-group">
-                                                <label for="gin-issue-date">Issue Date</label>
-                                                <input id="gin-issue-date" type="date" @bind="NewReturnedStock.DateIssued" required />
-                                            </div>
-                                            <div class="inventory__form-group">
-                                                <label>Issuing Branch</label>
-                                                <div class="gin-readonly-field">
-                                                    <i class="bi bi-shop"></i>
-                                                    <span>@ResolveGINBranchName(NewReturnedStock.BranchId)</span>
-                                                </div>
-                                            </div>
+                                    @if (!string.IsNullOrWhiteSpace(GINApiError))
+                                    {
+                                        <div class="gin-form-error" role="alert">
+                                            <i class="bi bi-exclamation-circle"></i>
+                                            <span>@GINApiError</span>
                                         </div>
+                                    }
+
+                                    <div class="stock-transfer__form-section">
+                                        <h3>Stock Out Details</h3>
                                         <div class="inventory__form-row">
                                             <div class="inventory__form-group">
-                                                <label for="gin-purpose">Purpose</label>
-                                                <select id="gin-purpose" value="@NewReturnedStock.IssueType" @onchange="HandleGINPurposeChanged" required>
-                                                    <option value="">Select purpose</option>
+                                                <label for="gin-purpose">Action <span class="inventory__required">*</span></label>
+                                                <select id="gin-purpose" @bind="NewReturnedStock.IssueType" required>
+                                                    <option value="">Select action</option>
                                                     @foreach (var purpose in GINIssueTypes)
                                                     {
                                                         <option value="@purpose">@purpose</option>
                                                     }
                                                 </select>
                                             </div>
-                                            @if (string.Equals(NewReturnedStock.IssueType, "Supplier Return", StringComparison.OrdinalIgnoreCase))
-                                            {
-                                                <div class="inventory__form-group">
-                                                    <label for="gin-supplier">Issued To</label>
-                                                    <select id="gin-supplier" value="@NewReturnedStock.AccountId" @onchange="HandleGINSupplierChanged" required>
-                                                        <option value="">Select supplier</option>
-                                                        @foreach (var supplier in GINSupplierOptions)
-                                                        {
-                                                            <option value="@supplier.SupplierAccountId">@supplier.SupplierName</option>
-                                                        }
-                                                    </select>
-                                                </div>
-                                            }
-                                            else
-                                            {
-                                                <div class="inventory__form-group">
-                                                    <label for="gin-reference">Reference <span class="gin-optional">(optional)</span></label>
-                                                    <input id="gin-reference"
-                                                           type="text"
-                                                           @bind="NewReturnedStock.ReferenceNumber"
-                                                           placeholder="Job, request, or ticket no." />
-                                                </div>
-                                            }
-                                        </div>
-                                        @if (string.Equals(NewReturnedStock.IssueType, "Supplier Return", StringComparison.OrdinalIgnoreCase))
-                                        {
                                             <div class="inventory__form-group">
-                                                <label for="gin-reference-return">Reference <span class="gin-optional">(optional)</span></label>
-                                                <input id="gin-reference-return"
-                                                       type="text"
-                                                       @bind="NewReturnedStock.ReferenceNumber"
-                                                       placeholder="Return authorization or supplier reference" />
+                                                <label for="gin-notes">Remarks <span class="gin-optional">(optional)</span></label>
+                                                <textarea id="gin-notes"
+                                                          @bind="NewReturnedStock.Reason"
+                                                          rows="2"
+                                                          placeholder="Remarks"></textarea>
                                             </div>
-                                        }
-                                        <div class="inventory__form-group">
-                                            <label for="gin-notes">Remarks <span class="gin-optional">(optional)</span></label>
-                                            <textarea id="gin-notes"
-                                                      @bind="NewReturnedStock.Reason"
-                                                      rows="2"
-                                                      placeholder="Add a short note only when needed"></textarea>
                                         </div>
                                     </div>
 
                                     <div class="stock-transfer__form-section">
                                         <div class="gin-section-heading">
                                             <div>
-                                                <h3>Products</h3>
-                                                <p>Select each product and enter only the quantity to issue.</p>
+                                                <h3>Add Product</h3>
+                                                <p>Select products, then enter quantity and cost.</p>
                                             </div>
                                             <span>@NewReturnedStock.SelectedProducts.Count selected</span>
                                         </div>
@@ -2557,16 +2518,15 @@
                                                         <th class="gin-product-table__select">Select</th>
                                                         <th class="product-picker-table__image-heading">Image</th>
                                                         <th>Product</th>
-                                                        <th>SKU</th>
-                                                        <th>Available</th>
-                                                        <th>Issue Quantity</th>
+                                                        <th>Qty</th>
+                                                        <th>Cost (MYR)</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     @if (!FilteredReturnedStockProducts.Any())
                                                     {
                                                         <tr>
-                                                            <td colspan="6" class="gin-product-table__empty">No matching products found.</td>
+                                                            <td colspan="5" class="gin-product-table__empty">No matching products found.</td>
                                                         </tr>
                                                     }
                                                     else
@@ -2577,47 +2537,45 @@
                                                             var cannotSelect = string.IsNullOrWhiteSpace(product.MasterAccountId) ||
                                                                 (!isSelected && product.StockCount.HasValue && product.StockCount.Value <= 0);
                                                             <tr class="product-picker-row @(isSelected ? "gin-product-row--selected product-picker-row--selected" : string.Empty) @(cannotSelect ? "product-picker-row--disabled" : string.Empty)"
-                                                                role="checkbox"
-                                                                aria-label="@($"Select {product.ProductName}")"
-                                                                aria-checked="@isSelected"
-                                                                aria-disabled="@cannotSelect"
-                                                                tabindex="@(cannotSelect ? -1 : 0)"
-                                                                @onclick="() => ToggleReturnedStockProductSelection(product)"
-                                                                @onkeydown="args => HandleGinProductRowKeyDown(args, product)">
-                                                                <td @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
+                                                                @onclick="() => ToggleReturnedStockProductSelection(product)">
+                                                                <td @onclick:stopPropagation="true">
                                                                     <input type="checkbox"
-                                                                           aria-label="@($"Select {product.ProductName}")"
                                                                            checked="@isSelected"
                                                                            disabled="@cannotSelect"
                                                                            @onchange="() => ToggleReturnedStockProductSelection(product)" />
                                                                 </td>
                                                                 <td class="product-picker-table__image-cell">
-                                                                    <img src="@GetProductPickerImage(product)"
-                                                                         alt="@product.ProductName"
-                                                                         loading="lazy" />
+                                                                    <img src="@GetProductPickerImage(product)" alt="@product.ProductName" loading="lazy" />
                                                                 </td>
                                                                 <td class="product-picker-table__product-cell">
                                                                     <strong>@product.ProductName</strong>
+                                                                    <small>@product.Sku · Stock: @FormatStockCount(product.StockCount) @product.Uom1</small>
                                                                 </td>
-                                                                <td><code class="inventory-code-badge">@product.Sku</code></td>
-                                                                <td>
-                                                                    <strong>@FormatStockCount(product.StockCount)</strong>
-                                                                    <span>@product.Uom1</span>
-                                                                </td>
-                                                                <td @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
+                                                                <td @onclick:stopPropagation="true">
                                                                     @if (isSelected)
                                                                     {
-                                                                        <div class="gin-quantity-control">
-                                                                            <input type="number"
-                                                                                   min="1"
-                                                                                   max="@GetGinMaximumQuantityAttribute(product)"
-                                                                                   inputmode="numeric"
-                                                                                   aria-label="@($"Issue quantity for {product.ProductName}")"
-                                                                                   @bind="NewReturnedStock.SelectedProducts[product.MasterAccountId].Quantity"
-                                                                                   @bind:event="oninput"
-                                                                                   required />
-                                                                            <span>@NewReturnedStock.SelectedProducts[product.MasterAccountId].UomDisplay</span>
-                                                                        </div>
+                                                                        <input type="number"
+                                                                               min="1"
+                                                                               max="@GetGinMaximumQuantityAttribute(product)"
+                                                                               step="1"
+                                                                               class="stock-transfer__quantity-input"
+                                                                               @bind="NewReturnedStock.SelectedProducts[product.MasterAccountId].Quantity"
+                                                                               @bind:event="oninput" />
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <span class="text-muted">—</span>
+                                                                    }
+                                                                </td>
+                                                                <td @onclick:stopPropagation="true">
+                                                                    @if (isSelected)
+                                                                    {
+                                                                        <input type="number"
+                                                                               min="0"
+                                                                               step="0.01"
+                                                                               class="stock-transfer__quantity-input"
+                                                                               @bind="NewReturnedStock.SelectedProducts[product.MasterAccountId].UnitCost"
+                                                                               @bind:event="oninput" />
                                                                     }
                                                                     else
                                                                     {
@@ -2630,20 +2588,28 @@
                                                 </tbody>
                                             </table>
                                         </div>
-                                    </div>
 
-                                    @if (!string.IsNullOrWhiteSpace(GINApiError))
-                                    {
-                                        <div class="gin-form-error" role="alert">
-                                            <i class="bi bi-exclamation-circle"></i>
-                                            <span>@GINApiError</span>
+                                        <div class="delivery-order-total summary-card-container">
+                                            <div class="side-by-side summary-line">
+                                                <span class="summary-text">Total SKU</span>
+                                                <span class="summary-value">@NewReturnedStock.SelectedProducts.Count</span>
+                                            </div>
+                                            <div class="side-by-side summary-line">
+                                                <span class="summary-text">Total Quantity</span>
+                                                <span class="summary-value">@GINSelectedTotalQuantity.ToString("0.##")</span>
+                                            </div>
+                                            <div class="side-by-side summary-total-line">
+                                                <span class="summary-total-text">Total Cost</span>
+                                                <span class="summary-total-value">MYR @GINSelectedTotalCost.ToString("N2")</span>
+                                            </div>
                                         </div>
-                                    }
+                                    </div>
                                 </form>
                             </div>
                         </div>
                     </div>
                 }
+
                 <div class="inventory__table-wrapper table-scroll gin-table-scroll">
                     <div class="table-scroll__inner gin-table-scroll__inner">
 <table class="stock-transfer__table resizable-table inventory-mobile-compact-table inventory-mobile-compact-table--gin @(IsReturnedStockPrintModeActive ? "inventory-mobile-compact-table--selecting purchase-orders__table" : string.Empty)">
