@@ -21,16 +21,49 @@ public sealed class StockGrnService : IStockGrnService
         string branchId = "HQ",
         CancellationToken cancellationToken = default)
     {
-        // Same history request used by SenangRetails: branch scoped, recent date
-        // range, one LoadProxy call, 500-row page.
-        var result = await stockGrnAC.LoadProxyAsync(new StockGrnProxyRequestDTO
+        var normalizedBranch = NormalizeBranchId(branchId);
+        var rawBranch = string.IsNullOrWhiteSpace(branchId) ? "HQ" : branchId.Trim();
+
+        async Task<ApiCallResult<List<StockGrnDocumentDTO>>> LoadProxyAsync(
+            string branch,
+            DateTime startDate,
+            int pageSize)
         {
-            BranchID = NormalizeBranchId(branchId),
-            StartDate = DateTime.Today.AddYears(-2),
-            EndDate = DateTime.Today.AddDays(1).AddTicks(-1),
-            PageNumber = 1,
-            PageSize = 200
-        }, cancellationToken);
+            return await stockGrnAC.LoadProxyAsync(new StockGrnProxyRequestDTO
+            {
+                BranchID = branch,
+                StartDate = startDate,
+                EndDate = DateTime.Today.AddDays(1).AddTicks(-1),
+                PageNumber = 1,
+                PageSize = pageSize
+            }, cancellationToken);
+        }
+
+        // First use Beauty's original history window.
+        var result = await LoadProxyAsync(normalizedBranch, DateTime.Today.AddYears(-2), 200);
+
+        // Some deployments return no rows for a very large date window. Retry the
+        // exact SenangRetails history window before declaring the table empty.
+        if (!result.Success || result.Value is null || result.Value.Count == 0)
+        {
+            var recent = await LoadProxyAsync(normalizedBranch, DateTime.Today.AddDays(-30), 500);
+            if (recent.Success && recent.Value is not null)
+            {
+                result = recent;
+            }
+        }
+
+        // If branch IDs are case-sensitive on this deployment, fall back to the
+        // branch ID exactly as selected by the user.
+        if ((!result.Success || result.Value is null || result.Value.Count == 0) &&
+            !string.Equals(rawBranch, normalizedBranch, StringComparison.Ordinal))
+        {
+            var rawBranchResult = await LoadProxyAsync(rawBranch, DateTime.Today.AddDays(-30), 500);
+            if (rawBranchResult.Success && rawBranchResult.Value is not null)
+            {
+                result = rawBranchResult;
+            }
+        }
 
         if (!result.Success || result.Value is null)
         {
@@ -70,12 +103,12 @@ public sealed class StockGrnService : IStockGrnService
             })
             .ToList();
 
-        var grns = (await Task.WhenAll(detailTasks))
-            .OrderByDescending(grn => grn.Date)
-            .ThenByDescending(grn => grn.DisplayCode)
+        var rows = (await Task.WhenAll(detailTasks))
+            .OrderByDescending(item => item.Date)
+            .ThenByDescending(item => item.DisplayCode)
             .ToList();
 
-        return ApiCallResult<IReadOnlyList<StockGrnViewModel>>.Ok(result.StatusCode, grns);
+        return ApiCallResult<IReadOnlyList<StockGrnViewModel>>.Ok(result.StatusCode, rows);
     }
 
     public async Task<ApiCallResult<bool>> CreateGrnAsync(
