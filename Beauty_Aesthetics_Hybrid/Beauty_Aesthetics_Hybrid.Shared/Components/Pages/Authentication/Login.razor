@@ -3,6 +3,7 @@
 @layout EmptyLayout
 @inject NavigationManager Navigation
 @inject IAuthService AuthService
+@inject AppFeedbackService Feedback
 
 <main class="login-page">
     <section class="login-shell" aria-labelledby="login-title">
@@ -60,7 +61,10 @@
                                        type="checkbox" />
                                 <span>Remember me</span>
                             </label>
-                            <button type="button" class="forgot-link" disabled="@isSigningIn">Forgot password?</button>
+                            <button type="button"
+                                    class="forgot-link"
+                                    disabled="@isSigningIn"
+                                    @onclick="ShowForgotPasswordInfo">Forgot password?</button>
                         </div>
 
                         <button type="submit" class="sign-in-button @(isSigningIn ? "loading" : null)" disabled="@isSigningIn">
@@ -87,9 +91,9 @@
         <footer class="login-footer">
             <p>&copy; 2024 Beauty Aesthetics Clinic Management. Secure Professional Portal.</p>
             <div class="footer-links">
-                <button type="button">Privacy Policy</button>
-                <button type="button">Terms of Service</button>
-                <button type="button">Support</button>
+                <button type="button" @onclick='() => ShowLinkUnavailable("Privacy Policy")'>Privacy Policy</button>
+                <button type="button" @onclick='() => ShowLinkUnavailable("Terms of Service")'>Terms of Service</button>
+                <button type="button" @onclick='() => ShowLinkUnavailable("Support")'>Support</button>
             </div>
         </footer>
     </section>
@@ -125,19 +129,40 @@
 
         loginError = null;
         isSigningIn = true;
+        var feedbackId = Feedback.Loading("Signing in securely...", "Signing in");
 
-        var result = await AuthService.LoginAsync(loginModel.Email, loginModel.Password, loginModel.RememberMe);
-        if (result.Success)
+        try
+        {
+            var result = await AuthService.LoginAsync(loginModel.Email, loginModel.Password, loginModel.RememberMe);
+            if (result.Success)
+            {
+                loginModel.Password = string.Empty;
+                Feedback.Resolve(feedbackId, "Sign in successful. Welcome back.", "Signed in", 3000);
+                Navigation.NavigateTo(GetSafeReturnUrl(), replace: true);
+                return;
+            }
+
+            loginModel.Password = string.Empty;
+            loginError = result.ErrorMessage ?? "Login failed. Please try again.";
+            Feedback.Fail(feedbackId, loginError, "Sign in failed");
+        }
+        catch (Exception ex)
         {
             loginModel.Password = string.Empty;
-            Navigation.NavigateTo(GetSafeReturnUrl(), replace: true);
-            return;
+            loginError = $"Login failed. {ex.Message}";
+            Feedback.Fail(feedbackId, loginError, "Sign in failed");
         }
-
-        loginModel.Password = string.Empty;
-        loginError = result.ErrorMessage ?? "Login failed. Please try again.";
-        isSigningIn = false;
+        finally
+        {
+            isSigningIn = false;
+        }
     }
+
+    private void ShowForgotPasswordInfo() =>
+        Feedback.Info("Password recovery is not configured yet. Contact your administrator for access assistance.", "Forgot password");
+
+    private void ShowLinkUnavailable(string name) =>
+        Feedback.Info($"{name} is not available in the app yet.", name);
 
     private string GetSafeReturnUrl()
     {
