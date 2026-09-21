@@ -250,20 +250,17 @@
 
         try
         {
-            var viewportWidth = await JSRuntime.InvokeAsync<int>("posResponsive.getViewportWidth");
-
             var isWeb =
                 detectedFormFactor.Equals("Web", StringComparison.OrdinalIgnoreCase);
 
             var isDesktopDevice =
                 detectedFormFactor.Equals("Desktop", StringComparison.OrdinalIgnoreCase);
 
-            // Web desktop keeps the canonical full sidebar shell. Only an actual
-            // phone-width browser switches to the compact/mobile shell. The old
-            // 1180px cutoff incorrectly treated scaled desktop browsers as mobile.
-            const int WebPhoneBreakpoint = 768;
+            // Keep Razor's shell decision aligned with the Web stylesheet media rule:
+            // phone width always uses compact UI; touch/coarse-pointer tablets up to
+            // 1180px also use compact UI; mouse/desktop Web keeps the full sidebar.
             var useCompactLayout = isWeb
-                ? viewportWidth <= WebPhoneBreakpoint
+                ? await JSRuntime.InvokeAsync<bool>("posResponsive.useCompactWebLayout")
                 : !isDesktopDevice;
 
             if (isMobileLayout != useCompactLayout ||
