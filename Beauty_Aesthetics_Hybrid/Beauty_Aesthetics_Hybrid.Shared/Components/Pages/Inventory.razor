@@ -1687,8 +1687,20 @@
                 <div class="stock-transfer__header">
                     <div class="inventory__toolbar-primary inventory__toolbar-primary--left">
                         <div class="stock-transfer__actions">
-                            <button class="tab-btn stock-transfer__action-btn" title="Create Stock Transfer" @onclick="ShowAddTransferForm">
-                                <i class="bi bi-plus-lg"></i>
+                            <button class="tab-btn stock-transfer__btn-with-text" title="Create Stock Transfer" @onclick="ShowAddTransferForm">
+                                <i class="bi bi-arrow-left-right"></i>
+                                <span>Stock Transfer</span>
+                            </button>
+                            <button type="button"
+                                    class="tab-btn stock-transfer__btn-with-text incoming-transfer-link"
+                                    title="View incoming stock transfers"
+                                    @onclick="OpenIncomingStockTransfers">
+                                <i class="bi bi-box-arrow-in-down"></i>
+                                <span>Incoming Transfers</span>
+                                @if (PendingStockReceipts.Count > 0)
+                                {
+                                    <span class="incoming-transfer-link__count">@PendingStockReceipts.Count</span>
+                                }
                             </button>
                             @if (!IsTransferHistoryPrintModeActive)
                             {
@@ -2776,16 +2788,9 @@
                 <div class="inventory__toolbar">
                     <div class="inventory__toolbar-primary inventory__toolbar-primary--left">
                         <div class="stock-transfer__actions">
-                            <button class="tab-btn stock-transfer__btn-with-text grn-scan-action" title="Scan a delivered product to start receiving" @onclick="StartGRNScanWorkflowAsync">
-                                <i class="bi bi-upc-scan"></i>
-                                <span>Scan goods</span>
-                            </button>
-                            <button class="tab-btn stock-transfer__btn-with-text" title="Receive goods from a supplier purchase order" @onclick="ShowAddGRNForm">
+                            <button class="tab-btn stock-transfer__btn-with-text" title="Create Stock In / GRN" @onclick="ShowAddGRNForm">
                                 <i class="bi bi-box-arrow-in-down"></i>
-                                <span>Receive goods</span>
-                            </button>
-                            <button class="btn-delete" title="Delete draft GRN" @onclick="ToggleGRNDeleteMode">
-                                <i class="bi bi-trash3"></i>
+                                <span>Stock In</span>
                             </button>
                             @if (!IsGRNPrintModeActive)
                             {
@@ -2809,17 +2814,7 @@
                                 <i class="bi bi-download"></i>
                                 <span>Export</span>
                             </button>
-                            <button type="button"
-                                    class="tab-btn stock-transfer__btn-with-text incoming-transfer-link"
-                                    title="View incoming stock transfers"
-                                    @onclick="OpenIncomingStockTransfers">
-                                <i class="bi bi-box-arrow-in-down"></i>
-                                <span>Incoming transfers</span>
-                                @if (PendingStockReceipts.Count > 0)
-                                {
-                                    <span class="incoming-transfer-link__count">@PendingStockReceipts.Count</span>
-                                }
-                            </button>
+
                         </div>
                         <div class="inventory__search-container">
                             <input class="inventory__search"
@@ -3061,24 +3056,25 @@
                 <div class="pagination-summary">
                     Total items: @FilteredGRNs.Count()
                 </div>
-
-                @* Add/Edit GRN Modal *@
+                @* Stock In / GRN Modal — mirrors SenangRetails Stock In workflow *@
                 @if (IsAddGRNFormVisible)
                 {
                     <div class="grn-modal-overlay" @onclick="CloseAddGRNForm">
                         <div class="grn-modal" @onclick:stopPropagation="true">
                             <div class="grn-modal__header">
                                 <div class="grn-modal__title">
-                                    <i class="bi @(IsGRNEditMode ? "bi-pencil-square" : "bi-box-arrow-in-down")"></i>
+                                    <i class="bi bi-box-arrow-in-down"></i>
                                     <div>
-                                        <h2>@(IsGRNEditMode ? "Edit Goods Receipt" : "Receive Goods")</h2>
-                                        <p>@(IsGRNEditMode ? NewGRNDOCNo : "Against an approved purchase order")</p>
+                                        <h2>Stock In</h2>
+                                        <p>Creates a GRN record</p>
                                     </div>
                                 </div>
                                 <div class="grn-modal__actions">
-                                    <button class="grn-modal__btn grn-modal__btn--save" @onclick="HandleSaveGRN" disabled="@IsGRNApiLoading">
+                                    <button class="grn-modal__btn grn-modal__btn--save"
+                                            @onclick="HandleSaveGRN"
+                                            disabled="@(IsGRNApiLoading || NewGRNSelectedProducts.Count == 0)">
                                         <i class="bi bi-check-lg"></i>
-                                        @(IsGRNApiLoading ? "Saving..." : (IsGRNEditMode ? "Update receipt" : "Save receipt"))
+                                        @(IsGRNApiLoading ? "Saving..." : "Confirm Stock In")
                                     </button>
                                     <button class="grn-modal__btn grn-modal__btn--cancel" @onclick="CloseAddGRNForm">
                                         Cancel
@@ -3093,113 +3089,141 @@
                                     }
 
                                     <section class="grn-form__section">
-                                        <h3 class="grn-form__section-title">Purchase Order</h3>
-                                        <p class="grn-form__helper">Choose the approved PO for this delivery. Supplier and system IDs are filled automatically.</p>
+                                        <h3 class="grn-form__section-title">Stock In Details</h3>
                                         <div class="grn-form__grid">
-                                            <div class="grn-form__field grn-form__field--wide">
-                                                <label for="grn-po">Purchase Order <span class="inventory__required">*</span></label>
-                                                <select id="grn-po" @ref="GRNPurchaseOrderSelectElement" value="@NewGRNPONo" @onchange="HandleGRNPurchaseOrderChanged" disabled="@IsGRNEditMode">
-                                                    <option value="">Select approved PO</option>
-                                                    @if (!string.IsNullOrWhiteSpace(NewGRNPONo) && !AvailableGRNPurchaseOrders.Any(po => po.PoNo == NewGRNPONo))
+                                            <div class="grn-form__field">
+                                                <label for="grn-action">Action <span class="inventory__required">*</span></label>
+                                                <select id="grn-action" @bind="NewGRNStockActivityType">
+                                                    @foreach (var action in GRNStockInActions)
                                                     {
-                                                        <option value="@NewGRNPONo">@NewGRNPONo</option>
-                                                    }
-                                                    @foreach (var po in AvailableGRNPurchaseOrders)
-                                                    {
-                                                        <option value="@po.PoNo">@po.PoNo — @po.Vendor</option>
+                                                        <option value="@action">@action</option>
                                                     }
                                                 </select>
                                             </div>
-                                            <div class="grn-form__field">
-                                                <label>Supplier</label>
-                                                <input value="@NewGRNSupplier" placeholder="Filled from PO" readonly />
-                                            </div>
-                                            <div class="grn-form__field">
-                                                <label>PO Date</label>
-                                                <input value="@(NewGRNPODate?.ToString("dd/MM/yyyy") ?? "—")" readonly />
+                                            <div class="grn-form__field grn-form__field--wide">
+                                                <label for="grn-remarks">Remarks <span class="grn-form__optional">Optional</span></label>
+                                                <textarea id="grn-remarks"
+                                                          @bind="NewGRNRemarks"
+                                                          rows="2"
+                                                          placeholder="Remarks"></textarea>
                                             </div>
                                         </div>
                                     </section>
 
                                     <section class="grn-form__section">
-                                        <h3 class="grn-form__section-title">Receipt Details</h3>
-                                        <div class="grn-form__grid">
-                                            <div class="grn-form__field">
-                                                <label for="grn-branch">Receiving Branch <span class="inventory__required">*</span></label>
-                                                <select id="grn-branch" @bind="NewGRNDOCBranch">
-                                                    <option value="">Select branch</option>
-                                                    @foreach (var branch in StockTransferBranches)
-                                                    {
-                                                        <option value="@branch.Id">@branch.DisplayName</option>
-                                                    }
-                                                </select>
+                                        <div class="gin-section-heading">
+                                            <div>
+                                                <h3>Add Product</h3>
+                                                <p>Select products, then enter quantity and cost.</p>
                                             </div>
-                                            <div class="grn-form__field">
-                                                <label for="grn-date">Receipt Date <span class="inventory__required">*</span></label>
-                                                <input id="grn-date" type="date" @bind="NewGRNDate" />
-                                            </div>
-                                            <div class="grn-form__field grn-form__field--wide">
-                                                <label for="grn-reference">Supplier Delivery Note / Invoice No.</label>
-                                                <input id="grn-reference" @bind="NewGRNReference" placeholder="Optional supplier reference" />
-                                            </div>
+                                            <span>@NewGRNTotalSku selected</span>
                                         </div>
-                                    </section>
 
-                                    <section class="grn-form__section">
-                                        <h3 class="grn-form__section-title">Item Received</h3>
-                                        <p class="grn-form__helper">@(GRNBarcodeScanSucceeded ? "Review the scanned product and enter the received quantity." : "The item is filled automatically from the selected purchase order.")</p>
-                                        @if (GRNBarcodeScanSucceeded && !string.IsNullOrWhiteSpace(GRNBarcodeScanMessage))
-                                        {
-                                            <p class="grn-form__scan-result" role="status"><i class="bi bi-check-circle-fill"></i> @GRNBarcodeScanMessage</p>
-                                        }
-                                        <div class="grn-form__grid">
-                                            <div class="grn-form__field grn-form__field--wide">
-                                                <label>Item</label>
-                                                <div class="grn-selected-product @(GRNBarcodeScanSucceeded ? "grn-selected-product--scanned" : string.Empty)">
-                                                    <div class="gin-product-option__image">
-                                                        @if (HasInventoryImage(SelectedGRNInventoryProduct))
-                                                        {
-                                                            <img src="@ResolveProductImage(SelectedGRNInventoryProduct)" alt="" loading="lazy" />
-                                                        }
-                                                        else
-                                                        {
-                                                            <i class="bi bi-box-seam"></i>
-                                                        }
-                                                    </div>
-                                                    <div>
-                                                        <strong>@(string.IsNullOrWhiteSpace(NewGRNName) ? "Select a purchase order first" : NewGRNName)</strong>
-                                                        @if (!string.IsNullOrWhiteSpace(NewGRNItemSku))
-                                                        {
-                                                            <span>@NewGRNItemSku</span>
-                                                        }
-                                                        @if (GRNBarcodeScanSucceeded)
-                                                        {
-                                                            <span class="grn-selected-product__scan-status"><i class="bi bi-check-circle-fill"></i> Scanned product</span>
-                                                        }
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="grn-form__field"><label>SKU</label><input value="@(string.IsNullOrWhiteSpace(NewGRNItemSku) ? "—" : NewGRNItemSku)" readonly /></div>
-                                            <div class="grn-form__field"><label>UOM</label><input value="@(string.IsNullOrWhiteSpace(NewGRNUom) ? "—" : NewGRNUom)" readonly /></div>
-                                            <div class="grn-form__field">
-                                                <label for="grn-quantity">Quantity Received <span class="inventory__required">*</span></label>
-                                                <input id="grn-quantity" @ref="GRNQuantityInputElement" type="number" min="0.01" step="0.01" @bind="NewGRNReceivedQuantity" />
-                                            </div>
-                                            <div class="grn-form__field"><label for="grn-batch">Batch No. <span class="grn-form__optional">Optional</span></label><input id="grn-batch" @bind="NewGRNBatchNumber" /></div>
-                                            <div class="grn-form__field"><label for="grn-serial">Serial No. <span class="grn-form__optional">Optional</span></label><input id="grn-serial" @bind="NewGRNSerialNumber" /></div>
-                                            <div class="grn-form__field grn-form__field--wide"><label for="grn-remarks">Remarks <span class="grn-form__optional">Optional</span></label><textarea id="grn-remarks" @bind="NewGRNRemarks" rows="2" placeholder="Damaged cartons, short delivery, or other notes"></textarea></div>
+                                        <div class="stock-transfer__product-search">
+                                            <input type="search"
+                                                   placeholder="Search product name or SKU..."
+                                                   @bind="GRNItemProductSearch"
+                                                   @bind:event="oninput" />
+                                            <i class="bi bi-search"></i>
                                         </div>
-                                        <div class="grn-form__system-note">
-                                            <i class="bi bi-info-circle"></i>
-                                            <span>Accounting fields and API document IDs are handled in the background from the PO and inventory setup.</span>
+
+                                        <div class="stock-transfer__product-list">
+                                            <table class="stock-transfer__selection-table product-picker-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th style="width: 54px;">Select</th>
+                                                        <th class="product-picker-table__image-heading">Image</th>
+                                                        <th>Product</th>
+                                                        <th>Qty</th>
+                                                        <th>Cost (MYR)</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @if (!FilteredGRNStockInProducts.Any())
+                                                    {
+                                                        <tr>
+                                                            <td colspan="5" class="gin-product-table__empty">No matching products found.</td>
+                                                        </tr>
+                                                    }
+                                                    else
+                                                    {
+                                                        @foreach (var product in FilteredGRNStockInProducts)
+                                                        {
+                                                            var isSelected = NewGRNSelectedProducts.ContainsKey(product.MasterAccountId);
+                                                            var cannotSelect = string.IsNullOrWhiteSpace(product.MasterAccountId);
+                                                            <tr class="product-picker-row @(isSelected ? "product-picker-row--selected" : string.Empty) @(cannotSelect ? "product-picker-row--disabled" : string.Empty)"
+                                                                @onclick="() => ToggleGRNStockInProductSelection(product)">
+                                                                <td @onclick:stopPropagation="true">
+                                                                    <input type="checkbox"
+                                                                           checked="@isSelected"
+                                                                           disabled="@cannotSelect"
+                                                                           @onchange="() => ToggleGRNStockInProductSelection(product)" />
+                                                                </td>
+                                                                <td class="product-picker-table__image-cell">
+                                                                    <img src="@GetProductPickerImage(product)" alt="@product.ProductName" loading="lazy" />
+                                                                </td>
+                                                                <td class="product-picker-table__product-cell">
+                                                                    <strong>@product.ProductName</strong>
+                                                                    <small>@product.Sku · Stock: @FormatStockCount(product.StockCount) @product.Uom1</small>
+                                                                </td>
+                                                                <td @onclick:stopPropagation="true">
+                                                                    @if (isSelected)
+                                                                    {
+                                                                        <input type="number"
+                                                                               min="0.01"
+                                                                               step="0.01"
+                                                                               class="stock-transfer__quantity-input"
+                                                                               @bind="NewGRNSelectedProducts[product.MasterAccountId].Quantity"
+                                                                               @bind:event="oninput" />
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <span class="text-muted">—</span>
+                                                                    }
+                                                                </td>
+                                                                <td @onclick:stopPropagation="true">
+                                                                    @if (isSelected)
+                                                                    {
+                                                                        <input type="number"
+                                                                               min="0"
+                                                                               step="0.01"
+                                                                               class="stock-transfer__quantity-input"
+                                                                               @bind="NewGRNSelectedProducts[product.MasterAccountId].UnitCost"
+                                                                               @bind:event="oninput" />
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <span class="text-muted">—</span>
+                                                                    }
+                                                                </td>
+                                                            </tr>
+                                                        }
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        <div class="delivery-order-total summary-card-container">
+                                            <div class="side-by-side summary-line">
+                                                <span class="summary-text">Total SKU</span>
+                                                <span class="summary-value">@NewGRNTotalSku</span>
+                                            </div>
+                                            <div class="side-by-side summary-line">
+                                                <span class="summary-text">Total Quantity</span>
+                                                <span class="summary-value">@NewGRNTotalQuantity.ToString("0.##")</span>
+                                            </div>
+                                            <div class="side-by-side summary-total-line">
+                                                <span class="summary-total-text">Total Cost</span>
+                                                <span class="summary-total-value">MYR @NewGRNTotalCost.ToString("N2")</span>
+                                            </div>
                                         </div>
                                     </section>
                                 </form>
                             </div>
-
                         </div>
                     </div>
                 }
+
 
                 @if (IsGRNBarcodeScannerVisible)
                 {
