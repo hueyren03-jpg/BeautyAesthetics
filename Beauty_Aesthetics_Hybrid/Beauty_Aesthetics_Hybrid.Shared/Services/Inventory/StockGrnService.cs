@@ -21,31 +21,55 @@ public sealed class StockGrnService : IStockGrnService
         string branchId = "HQ",
         CancellationToken cancellationToken = default)
     {
-        var request = new StockGrnProxyRequestDTO
-        {
-            BranchID = NormalizeBranchId(branchId),
-            StartDate = DateTime.Today.AddYears(-2),
-            EndDate = DateTime.Today.AddDays(1).AddTicks(-1),
-            PageNumber = 1,
-            PageSize = 200
-        };
+        const int pageSize = 500;
+        const int maximumPages = 100;
+        var documents = new List<StockGrnDocumentDTO>();
+        string? previousPageSignature = null;
+        var lastStatusCode = HttpStatusCode.OK;
 
-        var result = await stockGrnAC.LoadProxyAsync(request, cancellationToken);
-        if (!result.Success || result.Value is null)
+        for (var pageNumber = 1; pageNumber <= maximumPages; pageNumber++)
         {
-            return ApiCallResult<IReadOnlyList<StockGrnViewModel>>.Failure(
-                result.StatusCode,
-                result.ErrorMessage ?? "Unable to load GRN records.");
+            var result = await stockGrnAC.LoadProxyAsync(new StockGrnProxyRequestDTO
+            {
+                BranchID = string.IsNullOrWhiteSpace(branchId) ? "HQ" : branchId.Trim(),
+                StartDate = new DateTime(1900, 1, 1),
+                EndDate = DateTime.Today.AddDays(1).AddTicks(-1),
+                PageNumber = pageNumber,
+                PageSize = pageSize
+            }, cancellationToken);
+
+            lastStatusCode = result.StatusCode;
+            if (!result.Success || result.Value is null)
+            {
+                return ApiCallResult<IReadOnlyList<StockGrnViewModel>>.Failure(
+                    result.StatusCode,
+                    result.ErrorMessage ?? "Unable to load GRN records.");
+            }
+
+            var page = result.Value;
+            var signature = string.Join('|', page.Select(document => First(document.DocumentID, document.DisplayCode)));
+            if (pageNumber > 1 && string.Equals(signature, previousPageSignature, StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            documents.AddRange(page);
+            previousPageSignature = signature;
+            if (page.Count < pageSize)
+            {
+                break;
+            }
         }
 
-        var grns = result.Value
+        var grns = documents
             .Where(document => !document.IsVoid)
+            .DistinctBy(document => First(document.DocumentID, document.DisplayCode), StringComparer.OrdinalIgnoreCase)
             .Select(ToViewModel)
             .OrderByDescending(grn => grn.Date)
             .ThenBy(grn => grn.DisplayCode)
             .ToList();
 
-        return ApiCallResult<IReadOnlyList<StockGrnViewModel>>.Ok(result.StatusCode, grns);
+        return ApiCallResult<IReadOnlyList<StockGrnViewModel>>.Ok(lastStatusCode, grns);
     }
 
     public async Task<ApiCallResult<bool>> CreateGrnAsync(
