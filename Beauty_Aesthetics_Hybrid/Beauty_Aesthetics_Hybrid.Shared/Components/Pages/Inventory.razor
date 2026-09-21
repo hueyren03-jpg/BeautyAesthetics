@@ -6222,164 +6222,6 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
             Math.Abs(receiptLine.Quantity - transferLine.Quantity) < 0.001m));
     }
 
-    private async Task<bool> RefreshInventoryAfterAcceptanceAsync(
-        PendingStockReceiptViewModel acceptedReceipt,
-        TransferHistoryItem? sourceTransfer,
-        ISet<string> grnKeysBeforeAcceptance,
-        string? acceptedDocumentReference)
-    {
-        var destinationBranch = string.IsNullOrWhiteSpace(acceptedReceipt.DestinationBranchId)
-            ? InventoryBranchId
-            : acceptedReceipt.DestinationBranchId;
-        var retryDelays = new[] { 0, 500, 1000, 1500, 2500, 4000 };
-
-        foreach (var retryDelay in retryDelays)
-        {
-            if (retryDelay > 0)
-            {
-                await Task.Delay(retryDelay);
-            }
-
-        await Task.WhenAll(
-            LoadPendingStockReceiptsAsync(),
-            LoadGRNsAsync(),
-            LoadStockTransfersAsync(),
-            LoadProductsAsync());
-
-        MarkSourceTransferReceived(sourceTransfer);
-
-            GRNItem? persistedAcceptedGrn = null;
-            if (IsLikelyDocumentReference(acceptedDocumentReference))
-            {
-                var acceptedGrnResult = await StockGrnService.LoadGrnAsync(acceptedDocumentReference!);
-                if (acceptedGrnResult.Success &&
-                    acceptedGrnResult.Value is not null &&
-                    !string.IsNullOrWhiteSpace(acceptedGrnResult.Value.DocumentId))
-                {
-                    persistedAcceptedGrn = ToGRNItem(acceptedGrnResult.Value);
-                    MergeAcceptedGrn(
-                        persistedAcceptedGrn,
-                        acceptedReceipt,
-                        sourceTransfer);
-                }
-            }
-
-            GRNItem? destinationMatch = null;
-            var destinationGrnsResult = await StockGrnService.LoadGrnsAsync(destinationBranch);
-            if (destinationGrnsResult.Success && destinationGrnsResult.Value is not null)
-            {
-                destinationMatch = destinationGrnsResult.Value
-                    .Select(record =>
-                    {
-                        var item = ToGRNItem(record);
-                        if (string.IsNullOrWhiteSpace(item.DOCBranch))
-                        {
-                            item.DOCBranch = destinationBranch;
-                        }
-
-                        return item;
-                    })
-                    .FirstOrDefault(item =>
-                        !grnKeysBeforeAcceptance.Contains(GetGrnKey(item)) &&
-                        IsAcceptedTransferGrn(item, acceptedReceipt, sourceTransfer));
-            }
-
-        var matchingNewGrn = persistedAcceptedGrn ?? destinationMatch ??
-            GRNsForTransferReconciliation.FirstOrDefault(item =>
-                !grnKeysBeforeAcceptance.Contains(GetGrnKey(item)) &&
-                IsAcceptedTransferGrn(item, acceptedReceipt, sourceTransfer));
-
-            if (matchingNewGrn is not null)
-            {
-            MergeAcceptedGrn(matchingNewGrn, acceptedReceipt, sourceTransfer);
-            MarkSourceTransferReceived(sourceTransfer);
-            ReconcileStockTransferStatuses();
-            return true;
-        }
-        }
-
-        return false;
-    }
-
-    private static string GetGrnKey(GRNItem item)
-    {
-        if (!string.IsNullOrWhiteSpace(item.DocumentId))
-        {
-            return $"id:{item.DocumentId.Trim()}";
-        }
-
-        return string.IsNullOrWhiteSpace(item.DOCNo)
-            ? string.Empty
-            : $"code:{item.DOCBranch.Trim()}:{item.DOCNo.Trim()}";
-    }
-
-    private static bool IsAcceptedTransferGrn(
-        GRNItem grn,
-        PendingStockReceiptViewModel receipt,
-        TransferHistoryItem? sourceTransfer)
-    {
-        var destinationBranch = receipt.DestinationBranchId;
-        if (!string.IsNullOrWhiteSpace(destinationBranch) && !IsSameBranch(grn.DOCBranch, destinationBranch))
-        {
-            return false;
-        }
-
-        if (sourceTransfer is null)
-        {
-            return true;
-        }
-
-        var hasSourceReference =
-            !string.IsNullOrWhiteSpace(grn.CreatedByDocumentId) ||
-            !string.IsNullOrWhiteSpace(grn.CreatedByDocumentDisplayCode) ||
-            !string.IsNullOrWhiteSpace(grn.PODocumentId) ||
-            !string.IsNullOrWhiteSpace(grn.PONo);
-        if (!hasSourceReference)
-        {
-            return true;
-        }
-
-        return SameDocumentKey(grn.CreatedByDocumentId, sourceTransfer.DocumentId) ||
-               SameDocumentKey(grn.CreatedByDocumentDisplayCode, sourceTransfer.TransferNo) ||
-               SameDocumentKey(grn.PODocumentId, sourceTransfer.DocumentId) ||
-               SameDocumentKey(grn.PONo, sourceTransfer.TransferNo);
-    }
-
-    private void MergeAcceptedGrn(
-        GRNItem acceptedGrn,
-        PendingStockReceiptViewModel acceptedReceipt,
-        TransferHistoryItem? sourceTransfer)
-    {
-        acceptedGrn.DOCBranch = string.IsNullOrWhiteSpace(acceptedGrn.DOCBranch)
-            ? (string.IsNullOrWhiteSpace(acceptedReceipt.DestinationBranchId)
-                ? InventoryBranchId
-                : acceptedReceipt.DestinationBranchId)
-            : acceptedGrn.DOCBranch;
-
-        if (sourceTransfer is not null)
-        {
-            acceptedGrn.CreatedByDocumentId = string.IsNullOrWhiteSpace(acceptedGrn.CreatedByDocumentId)
-                ? sourceTransfer.DocumentId
-                : acceptedGrn.CreatedByDocumentId;
-            acceptedGrn.CreatedByDocumentDisplayCode = string.IsNullOrWhiteSpace(acceptedGrn.CreatedByDocumentDisplayCode)
-                ? sourceTransfer.TransferNo
-                : acceptedGrn.CreatedByDocumentDisplayCode;
-        }
-
-        GRNsForTransferReconciliation.RemoveAll(item =>
-            SameDocumentKey(item.DocumentId, acceptedGrn.DocumentId) ||
-            SameDocumentKey(item.DOCNo, acceptedGrn.DOCNo));
-        GRNsForTransferReconciliation.Add(acceptedGrn);
-
-        if (IsSameBranch(acceptedGrn.DOCBranch, InventoryBranchId))
-        {
-            GRNs.RemoveAll(item =>
-                SameDocumentKey(item.DocumentId, acceptedGrn.DocumentId) ||
-                SameDocumentKey(item.DOCNo, acceptedGrn.DOCNo));
-            GRNs.Add(acceptedGrn);
-        }
-    }
-
     private void MarkSourceTransferReceived(TransferHistoryItem? sourceTransfer)
     {
         if (sourceTransfer is null)
@@ -6393,16 +6235,6 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
         {
             item.Status = "Completed";
         }
-    }
-
-    private static bool IsLikelyDocumentReference(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value) || value.Length > 160 || value.Any(char.IsWhiteSpace))
-        {
-            return false;
-        }
-
-        return !value.Contains("success", StringComparison.OrdinalIgnoreCase);
     }
 
 private void ReconcileStockTransferStatuses()
@@ -9417,7 +9249,7 @@ private async Task ShowAddTransferForm()
     {
         if (!CanEditGin(returnedStock))
         {
-            GINApiError = "Posted or automatically generated GIN records are view-only.";
+            GINApiError = "Posted GIN records are view-only.";
             return;
         }
 
