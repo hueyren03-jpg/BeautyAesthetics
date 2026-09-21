@@ -3859,7 +3859,6 @@
                 await Task.WhenAll(
                     LoadStockTransfersAsync(),
                     LoadPendingStockReceiptsAsync());
-                ReconcileStockTransferStatuses();
                 break;
         }
     }
@@ -5197,8 +5196,6 @@
             LoadGINsAsync(),
             LoadPendingStockReceiptsAsync(),
             LoadCategoriesAsync());
-
-        ReconcileStockTransferStatuses();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -5347,8 +5344,6 @@
                 .Select(group => group.First())
                 .OrderByDescending(item => item.DateIssued)
                 .ToList();
-
-            ReconcileStockTransferStatuses();
             StockTransferHistoryCurrentPage = 1;
         }
         finally
@@ -5714,7 +5709,6 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
             PendingStockReceipts = result.Value
                 .Where(receipt => string.IsNullOrWhiteSpace(receipt.DestinationBranchId) ||
                                   IsSameBranch(receipt.DestinationBranchId, branchId))
-                .Where(receipt => !WasAcceptedLocally(receipt))
                 .ToList();
         }
         finally
@@ -5776,7 +5770,6 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
                 return;
             }
 
-            var sourceTransfer = await ResolveSourceTransferAsync(receipt);
             var result = await PendingStockReceiptService.AcceptAsync(receipt.DocumentId);
             if (!result.Success)
             {
@@ -5784,21 +5777,17 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
                 return;
             }
 
-            RememberAcceptedStockReceipt(receipt, sourceTransfer);
             PendingStockReceipts.RemoveAll(item =>
                 SameDocumentKey(item.DocumentId, receipt.DocumentId) ||
                 SameDocumentKey(item.DisplayCode, receipt.DisplayCode));
 
-            // Stock Transfer is its own flow. AcceptStockIn completes the transfer;
-            // it must not create or verify GRN/GIN documents.
-            MarkSourceTransferReceived(sourceTransfer);
+            // AcceptStockIn changes the backend pending state. Reload every affected
+            // view from the API instead of forcing a client-side Completed status.
             await Task.WhenAll(
                 LoadPendingStockReceiptsAsync(),
                 LoadStockTransfersAsync(),
                 LoadProductsAsync());
 
-            MarkSourceTransferReceived(sourceTransfer);
-            ReconcileStockTransferStatuses();
             StateHasChanged();
         }
         finally
@@ -5899,83 +5888,10 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
             Math.Abs(receiptLine.Quantity - transferLine.Quantity) < 0.001m));
     }
 
-    private void MarkSourceTransferReceived(TransferHistoryItem? sourceTransfer)
-    {
-        if (sourceTransfer is null)
-        {
-            return;
-        }
-
-        foreach (var item in TransferHistory.Where(item =>
-                     SameDocumentKey(item.DocumentId, sourceTransfer.DocumentId) ||
-                     SameDocumentKey(item.TransferNo, sourceTransfer.TransferNo)))
-        {
-            item.Status = "Completed";
-        }
-    }
-
-private void ReconcileStockTransferStatuses()
-{
-    foreach (var transfer in TransferHistory)
-    {
-        if (AcceptedStockReceiptKeys.Contains(transfer.DocumentId) ||
-            AcceptedStockReceiptKeys.Contains(transfer.TransferNo))
-        {
-            transfer.Status = "Completed";
-        }
-    }
-}
-
-    private static void AddDocumentKey(ISet<string> keys, string? value)
-    {
-        if (!string.IsNullOrWhiteSpace(value))
-        {
-            keys.Add(value.Trim());
-        }
-    }
-
     private static bool SameDocumentKey(string? left, string? right) =>
         !string.IsNullOrWhiteSpace(left) &&
         !string.IsNullOrWhiteSpace(right) &&
         string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase);
-
-    private void RememberAcceptedStockReceipt(
-        PendingStockReceiptViewModel receipt,
-        TransferHistoryItem? sourceTransfer)
-    {
-        AddDocumentKey(AcceptedStockReceiptKeys, receipt.DocumentId);
-        AddDocumentKey(AcceptedStockReceiptKeys, receipt.DisplayCode);
-        PendingStockReceiptService.RememberAcceptedTransfer(receipt.DocumentId, receipt.DisplayCode);
-
-        if (sourceTransfer is not null)
-        {
-            AddDocumentKey(AcceptedStockReceiptKeys, sourceTransfer.DocumentId);
-            AddDocumentKey(AcceptedStockReceiptKeys, sourceTransfer.TransferNo);
-            PendingStockReceiptService.RememberAcceptedTransfer(sourceTransfer.DocumentId, sourceTransfer.TransferNo);
-        }
-
-        foreach (var line in receipt.Lines)
-        {
-            AddDocumentKey(AcceptedStockMovementIds, line.InventoryMovementId);
-        }
-    }
-
-    private bool WasAcceptedLocally(PendingStockReceiptViewModel receipt)
-    {
-        if (AcceptedStockReceiptKeys.Any(key =>
-                SameDocumentKey(key, receipt.DocumentId) ||
-                SameDocumentKey(key, receipt.DisplayCode)))
-        {
-            return true;
-        }
-
-        return receipt.Lines.Any(line =>
-            !string.IsNullOrWhiteSpace(line.InventoryMovementId) &&
-            AcceptedStockMovementIds.Contains(line.InventoryMovementId));
-    }
-
-
-    
 
     private string BrandSearch { get; set; } = string.Empty;
     private string CategorySearch { get; set; } = string.Empty;
@@ -8133,8 +8049,6 @@ private void ShowAddBrandForm()
     private bool IsPendingStockReceiptsLoading { get; set; }
     private string? PendingStockReceiptError { get; set; }
     private string? AcceptingStockReceiptDocumentId { get; set; }
-    private HashSet<string> AcceptedStockReceiptKeys { get; } = new(StringComparer.OrdinalIgnoreCase);
-    private HashSet<string> AcceptedStockMovementIds { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     private IEnumerable<InventoryViewModel.InventoryItem> FilteredGRNInventoryItems
     {
@@ -8719,7 +8633,6 @@ private async Task ShowAddTransferForm()
                 LoadStockTransfersAsync(),
                 LoadPendingStockReceiptsAsync(),
                 LoadProductsAsync());
-            ReconcileStockTransferStatuses();
             StockTransferHistoryCurrentPage = 1;
         }
         finally
