@@ -3,6 +3,7 @@ using System.Text.Json;
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.ViewModels;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using EBI.DM;
 using EBI.Enum;
 
@@ -16,10 +17,12 @@ public sealed class ServiceItemService : IServiceItemService
     private static readonly DateTime InventoryAvailableTo = new(2049, 12, 31);
 
     private readonly ServiceInventoryAC serviceInventoryAC;
+    private readonly AppFeedbackService feedback;
 
-    public ServiceItemService(ServiceInventoryAC serviceInventoryAC)
+    public ServiceItemService(ServiceInventoryAC serviceInventoryAC, AppFeedbackService feedback)
     {
         this.serviceInventoryAC = serviceInventoryAC;
+        this.feedback = feedback;
     }
 
     public async Task<ApiCallResult<IReadOnlyList<ServiceViewModel.ServiceItem>>> LoadServiceItemsAsync(
@@ -55,7 +58,17 @@ public sealed class ServiceItemService : IServiceItemService
 
         var result = await serviceInventoryAC.CreateSimpleAsync(record, cancellationToken);
 
-        return ToSaveResult(result, "Unable to create service.");
+        var saveResult = ToSaveResult(result, "Unable to create service.");
+        if (saveResult.Success)
+        {
+            feedback.Success("Service created successfully.", "Service created");
+        }
+        else
+        {
+            feedback.Error(saveResult.ErrorMessage ?? "Unable to create service.", "Service not created");
+        }
+
+        return saveResult;
     }
 
     public async Task<ApiCallResult<bool>> UpdateServiceAsync(
@@ -84,7 +97,17 @@ public sealed class ServiceItemService : IServiceItemService
 
         var result = await serviceInventoryAC.UpdateSimpleAsync(loadResult.Value, cancellationToken);
 
-        return ToSaveResult(result, "Unable to update service.");
+        var saveResult = ToSaveResult(result, "Unable to update service.");
+        if (saveResult.Success)
+        {
+            feedback.Success("Service updated successfully.", "Service updated");
+        }
+        else
+        {
+            feedback.Error(saveResult.ErrorMessage ?? "Unable to update service.", "Service not updated");
+        }
+
+        return saveResult;
     }
 
     public async Task<ApiCallResult<bool>> DeleteServiceAsync(
@@ -98,7 +121,17 @@ public sealed class ServiceItemService : IServiceItemService
                 "The selected service has no record ID.");
         }
 
-        return await serviceInventoryAC.DeleteSimpleAsync(masterAccountId, cancellationToken);
+        var result = await serviceInventoryAC.DeleteSimpleAsync(masterAccountId, cancellationToken);
+        if (result.Success)
+        {
+            feedback.Success("Service deleted successfully.", "Service deleted");
+        }
+        else
+        {
+            feedback.Error(result.ErrorMessage ?? "Unable to delete service.", "Service not deleted");
+        }
+
+        return result;
     }
     private static ServiceViewModel.ServiceItem ToServiceItem(InventoryDM record)
     {
