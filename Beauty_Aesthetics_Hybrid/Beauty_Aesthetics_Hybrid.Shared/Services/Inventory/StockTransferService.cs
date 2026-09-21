@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.ViewModels;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.Inventory;
@@ -11,10 +12,12 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.Inventory;
 public sealed class StockTransferService : IStockTransferService
 {
     private readonly StockTransferAC stockTransferAC;
+    private readonly AppFeedbackService feedback;
 
-    public StockTransferService(StockTransferAC stockTransferAC)
+    public StockTransferService(StockTransferAC stockTransferAC, AppFeedbackService feedback)
     {
         this.stockTransferAC = stockTransferAC;
+        this.feedback = feedback;
     }
 
     public async Task<ApiCallResult<IReadOnlyList<StockTransferViewModel>>> LoadTransfersAsync(
@@ -88,15 +91,16 @@ public sealed class StockTransferService : IStockTransferService
         var validationError = Validate(transfer);
         if (validationError is not null)
         {
+            feedback.Warning(validationError, "Check stock transfer");
             return ApiCallResult<bool>.Failure(HttpStatusCode.BadRequest, validationError);
         }
 
         var templateResult = await stockTransferAC.LoadRecordAsync(string.Empty, cancellationToken);
         if (!templateResult.Success || templateResult.Value is null)
         {
-            return ApiCallResult<bool>.Failure(
-                templateResult.StatusCode,
-                templateResult.ErrorMessage ?? "Unable to prepare a new stock transfer.");
+            var message = templateResult.ErrorMessage ?? "Unable to prepare a new stock transfer.";
+            feedback.Error(message, "Transfer not created");
+            return ApiCallResult<bool>.Failure(templateResult.StatusCode, message);
         }
 
         HashSet<string>? existingTransferIds = null;
@@ -120,9 +124,9 @@ public sealed class StockTransferService : IStockTransferService
         var createResult = await stockTransferAC.CreateRecordAsync(templateResult.Value, cancellationToken);
         if (!createResult.Success)
         {
-            return ApiCallResult<bool>.Failure(
-                createResult.StatusCode,
-                createResult.ErrorMessage ?? "Unable to create stock transfer.");
+            var message = createResult.ErrorMessage ?? "Unable to create stock transfer.";
+            feedback.Error(message, "Transfer not created");
+            return ApiCallResult<bool>.Failure(createResult.StatusCode, message);
         }
 
         transfer.DocumentId = First(
@@ -170,12 +174,13 @@ public sealed class StockTransferService : IStockTransferService
 
         if (string.IsNullOrWhiteSpace(transfer.DocumentId))
         {
-            return ApiCallResult<bool>.Failure(
-                HttpStatusCode.Conflict,
-                "Stock Transfer was created, but its document ID could not be resolved safely.");
+            const string message = "Stock Transfer was created, but its document ID could not be resolved safely.";
+            feedback.Warning(message, "Transfer requires attention");
+            return ApiCallResult<bool>.Failure(HttpStatusCode.Conflict, message);
         }
 
         transfer.Status = "In Transit";
+        feedback.Success("Stock transfer created successfully and is now In Transit.", "Transfer created");
         return ApiCallResult<bool>.Ok(createResult.StatusCode, true);
     }
 
@@ -185,21 +190,24 @@ public sealed class StockTransferService : IStockTransferService
     {
         if (string.IsNullOrWhiteSpace(transfer.DocumentId))
         {
-            return ApiCallResult<bool>.Failure(HttpStatusCode.BadRequest, "Stock transfer document ID is missing.");
+            const string message = "Stock transfer document ID is missing.";
+            feedback.Warning(message, "Transfer not updated");
+            return ApiCallResult<bool>.Failure(HttpStatusCode.BadRequest, message);
         }
 
         var validationError = Validate(transfer);
         if (validationError is not null)
         {
+            feedback.Warning(validationError, "Check transfer changes");
             return ApiCallResult<bool>.Failure(HttpStatusCode.BadRequest, validationError);
         }
 
         var loadResult = await stockTransferAC.LoadRecordAsync(transfer.DocumentId, cancellationToken);
         if (!loadResult.Success || loadResult.Value is null)
         {
-            return ApiCallResult<bool>.Failure(
-                loadResult.StatusCode,
-                loadResult.ErrorMessage ?? "Unable to load stock transfer before updating.");
+            var message = loadResult.ErrorMessage ?? "Unable to load stock transfer before updating.";
+            feedback.Error(message, "Transfer not updated");
+            return ApiCallResult<bool>.Failure(loadResult.StatusCode, message);
         }
 
         ApplyDocument(loadResult.Value.Document, transfer);
@@ -208,9 +216,20 @@ public sealed class StockTransferService : IStockTransferService
         loadResult.Value.Document.SaveAction = "Changed";
         loadResult.Value.Document.IsDirty = true;
 
-        return ToBoolean(
+        var result = ToBoolean(
             await stockTransferAC.UpdateRecordAsync(loadResult.Value, cancellationToken),
             "Unable to update stock transfer.");
+
+        if (result.Success)
+        {
+            feedback.Success("Stock transfer updated successfully.", "Transfer updated");
+        }
+        else
+        {
+            feedback.Error(result.ErrorMessage ?? "Unable to update stock transfer.", "Transfer not updated");
+        }
+
+        return result;
     }
 
     public async Task<ApiCallResult<bool>> DeleteTransferAsync(
@@ -219,12 +238,25 @@ public sealed class StockTransferService : IStockTransferService
     {
         if (string.IsNullOrWhiteSpace(documentId))
         {
-            return ApiCallResult<bool>.Failure(HttpStatusCode.BadRequest, "Stock transfer document ID is missing.");
+            const string message = "Stock transfer document ID is missing.";
+            feedback.Warning(message, "Transfer not deleted");
+            return ApiCallResult<bool>.Failure(HttpStatusCode.BadRequest, message);
         }
 
-        return ToBoolean(
+        var result = ToBoolean(
             await stockTransferAC.DeleteAsync(documentId, cancellationToken),
             "Unable to delete stock transfer.");
+
+        if (result.Success)
+        {
+            feedback.Success("Stock transfer deleted successfully.", "Transfer deleted");
+        }
+        else
+        {
+            feedback.Error(result.ErrorMessage ?? "Unable to delete stock transfer.", "Transfer not deleted");
+        }
+
+        return result;
     }
 
     private async Task<StockTransferViewModel?> ResolveCreatedTransferAsync(
