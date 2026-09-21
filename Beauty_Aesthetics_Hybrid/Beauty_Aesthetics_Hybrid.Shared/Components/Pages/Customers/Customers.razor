@@ -3923,11 +3923,47 @@
         r.isEdittingReply = false;
     }
 
-    // ========== TOAST METHODS ==========
+    // ========== FEEDBACK METHODS ==========
     Task ShowToast(string message)
     {
         ShowGlobalFeedback(message);
         return Task.CompletedTask;
+    }
+
+    private void ShowGlobalFeedback(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        var normalized = message.Trim();
+        if (normalized.Contains("required", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("select ", StringComparison.OrdinalIgnoreCase))
+        {
+            Feedback.Warning(normalized, "Check required information");
+        }
+        else if (normalized.Contains("error", StringComparison.OrdinalIgnoreCase) ||
+                 normalized.Contains("unable", StringComparison.OrdinalIgnoreCase) ||
+                 normalized.Contains("failed", StringComparison.OrdinalIgnoreCase))
+        {
+            Feedback.Error(normalized);
+        }
+        else if (normalized.Contains("success", StringComparison.OrdinalIgnoreCase) ||
+                 normalized.Contains("saved", StringComparison.OrdinalIgnoreCase) ||
+                 normalized.Contains("updated", StringComparison.OrdinalIgnoreCase) ||
+                 normalized.Contains("deleted", StringComparison.OrdinalIgnoreCase) ||
+                 normalized.Contains("converted", StringComparison.OrdinalIgnoreCase) ||
+                 normalized.Contains("exported", StringComparison.OrdinalIgnoreCase) ||
+                 normalized.Contains("inactive", StringComparison.OrdinalIgnoreCase) ||
+                 normalized.Contains("uploaded", StringComparison.OrdinalIgnoreCase))
+        {
+            Feedback.Success(normalized);
+        }
+        else
+        {
+            Feedback.Info(normalized);
+        }
     }
 
     // ========== REPORTS METHODS ==========
