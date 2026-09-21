@@ -1,3 +1,5 @@
+@inject AppFeedbackService Feedback
+
 @if (IsVisible)
 {
     <div class="app-error-backdrop" @onclick="DismissAsync">
@@ -60,6 +62,18 @@
         {
             messageSignature = nextSignature;
             dismissed = false;
+
+            if (!string.IsNullOrWhiteSpace(nextSignature.Replace("|", string.Empty)))
+            {
+                var details = !string.IsNullOrWhiteSpace(Message)
+                    ? Message!.Trim()
+                    : string.Join(" • ", VisibleMessages);
+
+                if (!string.IsNullOrWhiteSpace(details))
+                {
+                    Feedback.Error(details, Title);
+                }
+            }
         }
     }
 
