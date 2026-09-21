@@ -3318,8 +3318,7 @@
             </div>
         </div>
     }
-
-    @* GIN Details Modal *@
+    @* GIN / Stock Out Details — LoadRecord is called only when opened *@
     @if (IsGinDetailsVisible && SelectedGinDetails != null)
     {
         <div class="inventory-view-modal-overlay" @onclick="CloseGinDetails">
@@ -3328,105 +3327,66 @@
                     <div class="inventory-view-modal__header-left">
                         <div class="inventory-view-modal__icon"><i class="bi bi-box-arrow-up"></i></div>
                         <div class="inventory-view-modal__title-group">
-                            <h2>Goods Issue Note (GIN)</h2>
-                            <p class="inventory-view-modal__subtitle">Stock issue and dispatch authorization record</p>
+                            <h2>Stock Out / GIN</h2>
+                            <p class="inventory-view-modal__subtitle">Goods Issue Note</p>
                         </div>
                     </div>
-                    <div class="inventory-view-modal__header-right">
-                        <span class="inventory-view-badge inventory-view-badge--warning">@SelectedGinDetails.Status</span>
-                        <button type="button" class="inventory-view-modal__close" @onclick="CloseGinDetails" aria-label="Close"><i class="bi bi-x-lg"></i></button>
-                    </div>
+                    <button type="button" class="inventory-view-modal__close" @onclick="CloseGinDetails" aria-label="Close"><i class="bi bi-x-lg"></i></button>
                 </div>
                 <div class="inventory-view-modal__body">
                     <div class="inventory-view-hero">
                         <div class="inventory-view-hero__item">
-                            <span class="inventory-view-hero__label">GIN NUMBER</span>
+                            <span class="inventory-view-hero__label">GIN</span>
                             <strong class="inventory-view-hero__value">@SelectedGinDetails.ReturnedStockNo</strong>
                         </div>
                         <div class="inventory-view-hero__divider"></div>
                         <div class="inventory-view-hero__item">
-                            <span class="inventory-view-hero__label">DATE ISSUED</span>
-                            <span class="inventory-view-hero__text"><i class="bi bi-calendar3"></i> @SelectedGinDetails.DateIssued.ToString("dd/MM/yyyy")</span>
+                            <span class="inventory-view-hero__label">DATE</span>
+                            <span class="inventory-view-hero__text">@SelectedGinDetails.DateIssued.ToString("dd/MM/yyyy HH:mm")</span>
                         </div>
                         <div class="inventory-view-hero__divider"></div>
                         <div class="inventory-view-hero__item">
-                            <span class="inventory-view-hero__label">PURPOSE</span>
+                            <span class="inventory-view-hero__label">ACTIVITY</span>
                             <strong class="inventory-view-hero__value">@SelectedGinDetails.Purpose</strong>
                         </div>
+                        <div class="inventory-view-hero__divider"></div>
+                        <div class="inventory-view-hero__item">
+                            <span class="inventory-view-hero__label">TOTAL COST</span>
+                            <strong class="inventory-view-hero__price">MYR @SelectedGinDetails.Amount.ToString("N2")</strong>
+                        </div>
                     </div>
 
                     <div class="inventory-view-section">
-                        <h3 class="inventory-view-section__title"><i class="bi bi-box-arrow-up"></i> Issue Details</h3>
-                        <div class="inventory-view-grid inventory-view-grid--3">
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Branch</span>
-                                <span class="inventory-view-field__value">@SelectedGinDetails.IssuedBy</span>
-                            </div>
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Issued To / Recipient</span>
-                                <span class="inventory-view-field__value">@SelectedGinDetails.IssuedTo</span>
-                            </div>
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Total Quantity</span>
-                                <span class="inventory-view-field__value font-bold">@SelectedGinDetails.Quantity @SelectedGinDetails.Uom</span>
-                            </div>
+                        <h3 class="inventory-view-section__title"><i class="bi bi-card-text"></i> Remarks</h3>
+                        <div class="inventory-view-remarks">
+                            <p>@(string.IsNullOrWhiteSpace(SelectedGinDetails.Reason) ? "—" : SelectedGinDetails.Reason)</p>
                         </div>
-                        @if (!string.IsNullOrWhiteSpace(SelectedGinDetails.ReferenceNumber))
-                        {
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Reference</span>
-                                <span class="inventory-view-field__value">@SelectedGinDetails.ReferenceNumber</span>
-                            </div>
-                        }
                     </div>
 
-                    @if (!string.IsNullOrWhiteSpace(SelectedGinDetails.Reason))
-                    {
-                        <div class="inventory-view-section">
-                            <h3 class="inventory-view-section__title"><i class="bi bi-card-text"></i> Remarks</h3>
-                            <div class="inventory-view-remarks">
-                                <p>@SelectedGinDetails.Reason</p>
-                            </div>
-                        </div>
-                    }
-
                     <div class="inventory-view-section">
-                        <h3 class="inventory-view-section__title"><i class="bi bi-list-check"></i> Issued Product Lines (@SelectedGinDetails.Products.Count)</h3>
+                        <h3 class="inventory-view-section__title"><i class="bi bi-list-check"></i> Products (@SelectedGinDetails.Products.Count)</h3>
                         @if (SelectedGinDetails.Products.Any())
                         {
                             <div class="inventory-view-table-card">
                                 <table class="inventory-view-table">
                                     <thead>
                                         <tr>
-                                            <th>Product Name</th>
+                                            <th>Product</th>
                                             <th>SKU</th>
-                                            <th class="text-right">Quantity</th>
+                                            <th class="text-right">Qty</th>
+                                            <th class="text-right">Cost</th>
+                                            <th class="text-right">Total</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         @foreach (var line in SelectedGinDetails.Products)
                                         {
                                             <tr>
-                                                <td class="font-medium">
-                                                    <div class="gin-product-option">
-                                                        <div class="gin-product-option__image">
-                                                            @{
-                                                                var productImage = FindGinProduct(line.InventoryId, line.Sku)?.ImageUrl ?? EmptyInventoryImage;
-                                                            }
-                                                            @if (!string.Equals(productImage, EmptyInventoryImage, StringComparison.Ordinal))
-                                                            {
-                                                                <img src="@productImage" alt="" loading="lazy" />
-                                                            }
-                                                            else
-                                                            {
-                                                                <i class="bi bi-box-seam"></i>
-                                                            }
-                                                        </div>
-                                                        <span>@line.ProductName</span>
-                                                    </div>
-                                                </td>
+                                                <td class="font-medium">@line.ProductName</td>
                                                 <td><code class="inventory-code-badge">@line.Sku</code></td>
-                                                <td class="text-right font-bold" style="color: #164CA6;">@line.Quantity @line.Uom</td>
+                                                <td class="text-right">@line.Quantity @line.Uom</td>
+                                                <td class="text-right">MYR @line.UnitPrice.ToString("N2")</td>
+                                                <td class="text-right font-bold">MYR @line.LineAmount.ToString("N2")</td>
                                             </tr>
                                         }
                                     </tbody>
@@ -3435,10 +3395,7 @@
                         }
                         else
                         {
-                            <div class="inventory-view-empty">
-                                <i class="bi bi-box"></i>
-                                <p>No item lines recorded for this GIN.</p>
-                            </div>
+                            <div class="inventory-view-empty"><i class="bi bi-box"></i><p>No product lines were returned by the GIN LoadRecord API.</p></div>
                         }
                     </div>
                 </div>
@@ -3448,8 +3405,7 @@
             </div>
         </div>
     }
-
-    @* GRN Details Modal *@
+    @* GRN / Stock In Details — LoadRecord is called only when opened *@
     @if (IsGrnDetailsVisible && SelectedGrnDetails != null)
     {
         <div class="inventory-view-modal-overlay" @onclick="CloseGrnDetails">
@@ -3458,77 +3414,76 @@
                     <div class="inventory-view-modal__header-left">
                         <div class="inventory-view-modal__icon"><i class="bi bi-box-arrow-in-down"></i></div>
                         <div class="inventory-view-modal__title-group">
-                            <h2>Goods Received Note (GRN)</h2>
-                            <p class="inventory-view-modal__subtitle">Stock receiving and supplier shipment receipt</p>
+                            <h2>Stock In / GRN</h2>
+                            <p class="inventory-view-modal__subtitle">Goods Received Note</p>
                         </div>
                     </div>
-                    <div class="inventory-view-modal__header-right">
-                        <span class="inventory-view-badge @(SelectedGrnDetails.IsVoid ? "inventory-view-badge--danger" : "inventory-view-badge--success")">@SelectedGrnDetails.Status</span>
-                        <button type="button" class="inventory-view-modal__close" @onclick="CloseGrnDetails" aria-label="Close"><i class="bi bi-x-lg"></i></button>
-                    </div>
+                    <button type="button" class="inventory-view-modal__close" @onclick="CloseGrnDetails" aria-label="Close"><i class="bi bi-x-lg"></i></button>
                 </div>
                 <div class="inventory-view-modal__body">
                     <div class="inventory-view-hero">
                         <div class="inventory-view-hero__item">
-                            <span class="inventory-view-hero__label">DOCUMENT NUMBER</span>
+                            <span class="inventory-view-hero__label">GRN</span>
                             <strong class="inventory-view-hero__value">@SelectedGrnDetails.DOCNo</strong>
                         </div>
                         <div class="inventory-view-hero__divider"></div>
                         <div class="inventory-view-hero__item">
-                            <span class="inventory-view-hero__label">RECEIVING DATE</span>
-                            <span class="inventory-view-hero__text"><i class="bi bi-calendar3"></i> @SelectedGrnDetails.Date.ToString("dd/MM/yyyy")</span>
+                            <span class="inventory-view-hero__label">DATE</span>
+                            <span class="inventory-view-hero__text">@SelectedGrnDetails.Date.ToString("dd/MM/yyyy HH:mm")</span>
                         </div>
                         <div class="inventory-view-hero__divider"></div>
                         <div class="inventory-view-hero__item">
-                            <span class="inventory-view-hero__label">TOTAL AMOUNT</span>
-                            <strong class="inventory-view-hero__price">@DisplayGrnMoney(SelectedGrnDetails.Amount, SelectedGrnDetails.CurrencyId)</strong>
+                            <span class="inventory-view-hero__label">ACTIVITY</span>
+                            <strong class="inventory-view-hero__value">@SelectedGrnDetails.Activity</strong>
+                        </div>
+                        <div class="inventory-view-hero__divider"></div>
+                        <div class="inventory-view-hero__item">
+                            <span class="inventory-view-hero__label">TOTAL COST</span>
+                            <strong class="inventory-view-hero__price">MYR @SelectedGrnDetails.Amount.ToString("N2")</strong>
                         </div>
                     </div>
 
                     <div class="inventory-view-section">
-                        <h3 class="inventory-view-section__title"><i class="bi bi-journal-text"></i> Receiving Information</h3>
-                        <div class="inventory-view-grid inventory-view-grid--2">
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Receiving Branch</span>
-                                <span class="inventory-view-field__value font-medium">@SelectedGrnDetails.DOCBranch</span>
-                            </div>
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Supplier / Account Name</span>
-                                <span class="inventory-view-field__value font-medium">@(string.IsNullOrWhiteSpace(SelectedGrnDetails.SupplierName) ? "-" : SelectedGrnDetails.SupplierName)</span>
-                            </div>
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Associated PO Number</span>
-                                <span class="inventory-view-field__value"><code class="inventory-code-badge">@(string.IsNullOrWhiteSpace(SelectedGrnDetails.PONo) ? "-" : SelectedGrnDetails.PONo)</code></span>
-                            </div>
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">System Document ID</span>
-                                <span class="inventory-view-field__value" style="color: #64748b; font-size: 0.82rem;">@(string.IsNullOrWhiteSpace(SelectedGrnDetails.DocumentId) ? "-" : SelectedGrnDetails.DocumentId)</span>
-                            </div>
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">PO Document ID</span>
-                                <span class="inventory-view-field__value">@(string.IsNullOrWhiteSpace(SelectedGrnDetails.PODocumentId) ? "-" : SelectedGrnDetails.PODocumentId)</span>
-                            </div>
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Supplier Account ID</span>
-                                <span class="inventory-view-field__value">@(string.IsNullOrWhiteSpace(SelectedGrnDetails.SupplierAccountId) ? "-" : SelectedGrnDetails.SupplierAccountId)</span>
-                            </div>
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Reference</span>
-                                <span class="inventory-view-field__value">@(string.IsNullOrWhiteSpace(SelectedGrnDetails.ReferenceNumber) ? "-" : SelectedGrnDetails.ReferenceNumber)</span>
-                            </div>
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Payment Term</span>
-                                <span class="inventory-view-field__value">@(string.IsNullOrWhiteSpace(SelectedGrnDetails.PaymentTermName) ? "-" : SelectedGrnDetails.PaymentTermName)</span>
-                            </div>
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Currency</span>
-                                <span class="inventory-view-field__value">@(string.IsNullOrWhiteSpace(SelectedGrnDetails.CurrencyId) ? "-" : SelectedGrnDetails.CurrencyId)</span>
-                            </div>
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Tax Amount</span>
-                                <span class="inventory-view-field__value">@DisplayGrnMoney(SelectedGrnDetails.TaxAmount, SelectedGrnDetails.CurrencyId)</span>
-                            </div>
+                        <h3 class="inventory-view-section__title"><i class="bi bi-card-text"></i> Remarks</h3>
+                        <div class="inventory-view-remarks">
+                            <p>@(string.IsNullOrWhiteSpace(SelectedGrnDetails.Remarks) ? "—" : SelectedGrnDetails.Remarks)</p>
                         </div>
+                    </div>
+
+                    <div class="inventory-view-section">
+                        <h3 class="inventory-view-section__title"><i class="bi bi-list-check"></i> Products (@SelectedGrnDetails.Products.Count)</h3>
+                        @if (SelectedGrnDetails.Products.Any())
+                        {
+                            <div class="inventory-view-table-card">
+                                <table class="inventory-view-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Product</th>
+                                            <th>SKU</th>
+                                            <th class="text-right">Qty</th>
+                                            <th class="text-right">Cost</th>
+                                            <th class="text-right">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var line in SelectedGrnDetails.Products)
+                                        {
+                                            <tr>
+                                                <td class="font-medium">@line.ProductName</td>
+                                                <td><code class="inventory-code-badge">@line.Sku</code></td>
+                                                <td class="text-right">@line.Quantity @line.UnitOfMeasurementId</td>
+                                                <td class="text-right">MYR @line.UnitCost.ToString("N2")</td>
+                                                <td class="text-right font-bold">MYR @((line.Quantity * line.UnitCost).ToString("N2"))</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="inventory-view-empty"><i class="bi bi-box"></i><p>No product lines were returned by the GRN LoadRecord API.</p></div>
+                        }
                     </div>
                 </div>
                 <div class="inventory-view-modal__footer">
@@ -3537,6 +3492,7 @@
             </div>
         </div>
     }
+
 
     @if (ShowSelectedDeleteConfirmModal)
     {
