@@ -7,7 +7,6 @@
 @using Microsoft.JSInterop
 @layout MainLayout
 @inject IInventoryPendingAcceptService PendingStockReceiptService
-@inject IStockGrnService StockGrnService
 @inject IBranchSessionService BranchSession
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
@@ -16,14 +15,14 @@
 
 <main class="incoming-page">
     <header class="incoming-header">
-        <button type="button" class="icon-button" title="Back to GRN" @onclick="ReturnToInventory">
+        <button type="button" class="icon-button" title="Back to Stock Transfer" @onclick="ReturnToInventory">
             <i class="bi bi-arrow-left"></i>
         </button>
         <div class="incoming-header__title">
             <span class="incoming-header__icon"><i class="bi bi-box-arrow-in-down"></i></span>
             <div>
                 <h1>Incoming Transfers</h1>
-                <p>Review stock sent to this branch, then receive it to create the GRN.</p>
+                <p>Review stock sent to this branch, then receive it to complete the stock transfer.</p>
             </div>
         </div>
         <div class="incoming-header__actions">
@@ -60,7 +59,7 @@
     {
         <div class="page-message page-message--success" role="status">
             <i class="bi bi-check-circle"></i><span>@SuccessMessage</span>
-            <button type="button" class="message-link" @onclick="ReturnToInventory">View GRN History</button>
+            <button type="button" class="message-link" @onclick="ReturnToInventory">View Stock Transfer History</button>
         </div>
     }
 
@@ -243,7 +242,10 @@
             return;
         }
 
-        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Receive transfer {DisplayCode(receipt)} into {CurrentBranchName}? This creates the GRN and completes the transfer.");
+        var confirmed = await JSRuntime.InvokeAsync<bool>(
+            "confirm",
+            $"Receive transfer {DisplayCode(receipt)} into {CurrentBranchName}? This completes the stock transfer.");
+
         if (!confirmed)
         {
             return;
@@ -257,9 +259,6 @@
 
         try
         {
-            // Preserve the destination branch that was used to load this incoming transfer.
-            // The pending-detail rows may carry a source/movement branch, so passing only
-            // the document ID can cause the generated GRN to be created under the wrong branch.
             receipt.DestinationBranchId = CurrentBranchId;
 
             var result = await PendingStockReceiptService.AcceptAsync(receipt);
@@ -269,22 +268,13 @@
                 return;
             }
 
+            // AcceptStockIn is the transfer-receipt operation. It does not create a GRN.
             Receipts.RemoveAll(item => SameDocument(item.DocumentId, acceptedDocumentId));
             var noLongerPending = await ReconcileReceivedTransferAsync(acceptedDocumentId);
-            var grnConfirmed = await ConfirmTransferGrnAsync(receipt, result.Value);
 
-            if (grnConfirmed)
-            {
-                SuccessMessage = $"{acceptedDisplayCode} was received. The GRN is posted in {CurrentBranchName} and the stock transfer is completed.";
-            }
-            else if (noLongerPending)
-            {
-                ErrorMessage = $"{acceptedDisplayCode} was received, but no GRN could be confirmed in {CurrentBranchName}. The stock receipt was accepted; refresh GRN History and check the transfer document link.";
-            }
-            else
-            {
-                ErrorMessage = $"{acceptedDisplayCode} could not be fully confirmed. The transfer is still pending and no linked GRN was found in {CurrentBranchName}.";
-            }
+            SuccessMessage = noLongerPending
+                ? $"{acceptedDisplayCode} was received and the stock transfer is completed."
+                : $"{acceptedDisplayCode} was accepted. The pending list may take a moment to refresh.";
         }
         catch (Exception ex)
         {
@@ -295,72 +285,6 @@
             ReceivingDocumentId = null;
         }
     }
-
-    private async Task<bool> ConfirmTransferGrnAsync(PendingStockReceiptViewModel receipt, string? returnedReference)
-    {
-        var transferCode = DisplayCode(receipt);
-        var delays = new[] { 0, 350, 700, 1200, 2000 };
-
-        foreach (var delay in delays)
-        {
-            if (delay > 0)
-            {
-                await Task.Delay(delay);
-            }
-
-            if (LooksLikeDocumentReference(returnedReference))
-            {
-                try
-                {
-                    var direct = await StockGrnService.LoadGrnAsync(returnedReference!);
-                    if (direct.Success && direct.Value is not null &&
-                        !direct.Value.IsVoid &&
-                        SameDocument(direct.Value.BranchId, CurrentBranchId) &&
-                        IsLinkedTransferGrn(direct.Value, receipt, transferCode))
-                    {
-                        return true;
-                    }
-                }
-                catch
-                {
-                    // Fall through to the destination-branch GRN lookup.
-                }
-            }
-
-            ApiCallResult<IReadOnlyList<StockGrnViewModel>> branchGrns;
-            try
-            {
-                branchGrns = await StockGrnService.LoadGrnsAsync(CurrentBranchId);
-            }
-            catch
-            {
-                continue;
-            }
-
-            if (!branchGrns.Success || branchGrns.Value is null)
-            {
-                continue;
-            }
-
-            if (branchGrns.Value.Any(grn =>
-                    !grn.IsVoid &&
-                    SameDocument(grn.BranchId, CurrentBranchId) &&
-                    IsLinkedTransferGrn(grn, receipt, transferCode)))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool IsLinkedTransferGrn(
-        StockGrnViewModel grn,
-        PendingStockReceiptViewModel receipt,
-        string transferCode) =>
-        SameDocument(grn.CreatedByDocumentId, receipt.DocumentId) ||
-        SameDocument(grn.CreatedByDocumentDisplayCode, transferCode) ||
-        SameDocument(grn.ReferenceNumber, transferCode);
 
     private async Task<bool> ReconcileReceivedTransferAsync(string acceptedDocumentId)
     {
@@ -397,14 +321,7 @@
         return false;
     }
 
-    private void ReturnToInventory() => NavigationManager.NavigateTo("/inventory?tab=GRN");
-
-    private static bool LooksLikeDocumentReference(string? value) =>
-        !string.IsNullOrWhiteSpace(value) &&
-        value.Length <= 160 &&
-        !value.Any(char.IsWhiteSpace) &&
-        !value.Contains("success", StringComparison.OrdinalIgnoreCase) &&
-        !value.Contains("created", StringComparison.OrdinalIgnoreCase);
+    private void ReturnToInventory() => NavigationManager.NavigateTo("/inventory?tab=TransferOrders");
 
     private static bool SameDocument(string? left, string? right) =>
         !string.IsNullOrWhiteSpace(left) &&
