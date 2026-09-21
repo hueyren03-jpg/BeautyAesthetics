@@ -3594,6 +3594,7 @@
         public decimal Amount { get; set; }
         public bool IsLocked { get; set; }
         public bool IsVoid { get; set; }
+        public List<StockGrnLineViewModel> Products { get; set; } = new();
         public bool IsGeneratedFromDocument =>
             !string.IsNullOrWhiteSpace(CreatedByDocumentId) ||
             !string.IsNullOrWhiteSpace(CreatedByDocumentDisplayCode);
@@ -5064,10 +5065,24 @@
     }
 
 
-    private void ShowGinDetails(ReturnedStockItem item)
+    private async Task ShowGinDetails(ReturnedStockItem item)
     {
         SelectedGinDetails = item;
         IsGinDetailsVisible = true;
+
+        if (string.IsNullOrWhiteSpace(item.DocumentId))
+        {
+            return;
+        }
+
+        var result = await StockGinService.LoadGinAsync(item.DocumentId);
+        if (!result.Success || result.Value is null)
+        {
+            GINApiError = result.ErrorMessage ?? "Unable to load GIN details.";
+            return;
+        }
+
+        SelectedGinDetails = ToReturnedStockItem(result.Value);
     }
 
     private bool CanEditGin(ReturnedStockItem item) =>
@@ -5082,10 +5097,24 @@
         SelectedGinDetails = null;
     }
 
-    private void ShowGrnDetails(GRNItem item)
+    private async Task ShowGrnDetails(GRNItem item)
     {
         SelectedGrnDetails = item;
         IsGrnDetailsVisible = true;
+
+        if (string.IsNullOrWhiteSpace(item.DocumentId))
+        {
+            return;
+        }
+
+        var result = await StockGrnService.LoadGrnAsync(item.DocumentId);
+        if (!result.Success || result.Value is null)
+        {
+            GRNApiError = result.ErrorMessage ?? "Unable to load GRN details.";
+            return;
+        }
+
+        SelectedGrnDetails = ToGRNItem(result.Value);
     }
 
     private static bool CanEditGrn(GRNItem item) =>
@@ -5827,7 +5856,8 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
             TaxAmount = grn.TaxAmount,
             Amount = grn.Amount,
             IsLocked = grn.IsLocked,
-            IsVoid = grn.IsVoid
+            IsVoid = grn.IsVoid,
+            Products = grn.Lines.ToList()
         };
     }
 
