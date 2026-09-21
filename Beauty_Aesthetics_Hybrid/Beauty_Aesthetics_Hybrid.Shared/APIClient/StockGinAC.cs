@@ -219,20 +219,27 @@ public sealed class StockGinAC
         {
             foreach (var item in element.EnumerateArray())
             {
-                if (item.ValueKind == JsonValueKind.Object && LooksLikeDocument(item))
+                if (item.ValueKind != JsonValueKind.Object) continue;
+
+                var document = TryMapDocument(item);
+                if (document is not null)
                 {
-                    var document = item.Deserialize<StockGrnDocumentDTO>(JsonOptions);
-                    if (document is not null) documents.Add(document);
+                    documents.Add(document);
+                    continue;
                 }
+
+                // Some deployments wrap each row one level deeper.
+                ExtractDocuments(item, documents);
             }
             return;
         }
 
         if (element.ValueKind != JsonValueKind.Object) return;
-        if (LooksLikeDocument(element))
+
+        var mapped = TryMapDocument(element);
+        if (mapped is not null)
         {
-            var document = element.Deserialize<StockGrnDocumentDTO>(JsonOptions);
-            if (document is not null) documents.Add(document);
+            documents.Add(mapped);
             return;
         }
 
@@ -246,10 +253,102 @@ public sealed class StockGinAC
         }
     }
 
+    private static StockGrnDocumentDTO? TryMapDocument(JsonElement element)
+    {
+        if (!LooksLikeDocument(element)) return null;
+
+        // LoadProxy rows are not guaranteed to have every nullable EBI field populated.
+        // Map only the history/header fields we need instead of deserializing the whole
+        // server model, which can throw when a nullable server value reaches a non-nullable DTO.
+        return new StockGrnDocumentDTO
+        {
+            DocumentID = ReadString(element, "documentID"),
+            DocumentTypeID = ReadInt(element, "documentTypeID"),
+            FriendlyDocumentName = ReadString(element, "friendlyDocumentName"),
+            AlphaCode = ReadString(element, "alphaCode"),
+            NumericCode = ReadInt(element, "numericCode"),
+            BranchID = ReadString(element, "branchID"),
+            EditBranchID = ReadString(element, "editBranchID"),
+            DisplayCode = ReadString(element, "displayCode"),
+            FinancialDate = ReadDate(element, "financialDate") ?? DateTime.Today,
+            AccountID = ReadString(element, "accountID"),
+            AccountName = ReadString(element, "accountName"),
+            ReferenceNumber = ReadString(element, "referenceNumber"),
+            TotalBeforeTax = ReadDecimal(element, "totalBeforeTax"),
+            TaxableAmount = ReadDecimal(element, "taxableAmount"),
+            TaxAmount = ReadDecimal(element, "taxAmount"),
+            RoundingAmount = ReadDecimal(element, "roundingAmount"),
+            TotalAfterTax = ReadDecimal(element, "totalAfterTax"),
+            LocalTotalAfterTax = ReadDecimal(element, "localTotalAfterTax"),
+            TransactionCurrencyID = ReadString(element, "transactionCurrencyID"),
+            LocalCurrencyID = ReadString(element, "localCurrencyID"),
+            ExchangeRate = Math.Max(1m, ReadDecimal(element, "exchangeRate")),
+            CreatedByDocumentTypeID = ReadInt(element, "createdByDocumentTypeID"),
+            CreatedByDocumentTypeName = ReadString(element, "createdByDocumentTypeName"),
+            CreatedByDocumentID = ReadString(element, "createdByDocumentID"),
+            CreatedByDocumentDisplayCode = ReadString(element, "createdByDocumentDisplayCode"),
+            IsLocked = ReadBool(element, "isLocked"),
+            IsVoid = ReadBool(element, "isVoid"),
+            OrderBranchID = ReadString(element, "orderBranchID"),
+            Remarks = ReadString(element, "remarks"),
+            StockActivityType = ReadString(element, "stockActivityType"),
+            VerifyStatus = ReadString(element, "verifyStatus")
+        };
+    }
+
     private static bool LooksLikeDocument(JsonElement element) =>
         TryGet(element, "documentID", out _) ||
         TryGet(element, "displayCode", out _) ||
-        TryGet(element, "friendlyDocumentName", out _);
+        TryGet(element, "documentTypeID", out _) ||
+        TryGet(element, "financialDate", out _);
+
+    private static string? ReadString(JsonElement element, string name)
+    {
+        if (!TryGet(element, name, out var value) || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return null;
+
+        return value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : value.ToString();
+    }
+
+    private static int ReadInt(JsonElement element, string name)
+    {
+        if (!TryGet(element, name, out var value) || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return 0;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number)) return number;
+        return int.TryParse(value.ToString(), out var parsed) ? parsed : 0;
+    }
+
+    private static decimal ReadDecimal(JsonElement element, string name)
+    {
+        if (!TryGet(element, name, out var value) || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return 0;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number)) return number;
+        return decimal.TryParse(value.ToString(), System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
+    }
+
+    private static bool ReadBool(JsonElement element, string name)
+    {
+        if (!TryGet(element, name, out var value) || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return false;
+        if (value.ValueKind == JsonValueKind.True) return true;
+        if (value.ValueKind == JsonValueKind.False) return false;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number)) return number != 0;
+        return bool.TryParse(value.ToString(), out var parsed) && parsed;
+    }
+
+    private static DateTime? ReadDate(JsonElement element, string name)
+    {
+        if (!TryGet(element, name, out var value) || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return null;
+        if (value.ValueKind == JsonValueKind.String && value.TryGetDateTime(out var date)) return date;
+        return DateTime.TryParse(value.ToString(),
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AllowWhiteSpaces,
+            out var parsed) ? parsed : null;
+    }
 
     private static bool TryGet(JsonElement element, string name, out JsonElement value)
     {
