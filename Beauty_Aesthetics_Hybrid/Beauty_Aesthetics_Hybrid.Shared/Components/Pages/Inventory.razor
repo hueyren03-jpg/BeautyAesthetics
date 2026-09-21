@@ -2643,35 +2643,20 @@
                         </div>
                     </div>
                 }
-
                 <div class="inventory__table-wrapper table-scroll gin-table-scroll">
                     <div class="table-scroll__inner gin-table-scroll__inner">
-<table class="stock-transfer__table resizable-table inventory-mobile-compact-table inventory-mobile-compact-table--gin @(IsReturnedStockPrintModeActive ? "inventory-mobile-compact-table--selecting purchase-orders__table" : string.Empty)">
+                        <table class="stock-transfer__table resizable-table inventory-mobile-compact-table inventory-mobile-compact-table--gin @(IsReturnedStockPrintModeActive ? "inventory-mobile-compact-table--selecting purchase-orders__table" : string.Empty)">
                             <thead>
                                 <tr>
                                     @if (IsReturnedStockPrintModeActive)
                                     {
                                         <th class="purchase-orders__checkbox-col">Select</th>
                                     }
-                                    <th class='@GetSortHeaderClass(GINSortColumn, GINSortAscending, "ReturnedStockNo")' @onclick='() => ToggleGINSort("ReturnedStockNo")'>
-                                        GIN No<span class="resize-handle"></span>
-                                    </th>
-                                    <th class='@GetSortHeaderClass(GINSortColumn, GINSortAscending, "DateIssued")' @onclick='() => ToggleGINSort("DateIssued")'>
-                                        Issue Date<span class="resize-handle"></span>
-                                    </th>
-                                    <th class='@GetSortHeaderClass(GINSortColumn, GINSortAscending, "IssuedBy")' @onclick='() => ToggleGINSort("IssuedBy")'>
-                                        Branch<span class="resize-handle"></span>
-                                    </th>
-                                    <th class='@GetSortHeaderClass(GINSortColumn, GINSortAscending, "Purpose")' @onclick='() => ToggleGINSort("Purpose")'>
-                                        Purpose<span class="resize-handle"></span>
-                                    </th>
-                                    <th class='@GetSortHeaderClass(GINSortColumn, GINSortAscending, "IssuedTo")' @onclick='() => ToggleGINSort("IssuedTo")'>
-                                        Issued To<span class="resize-handle"></span>
-                                    </th>
-                                    <th class='@GetSortHeaderClass(GINSortColumn, GINSortAscending, "Quantity")' @onclick='() => ToggleGINSort("Quantity")'>
-                                        Total Qty<span class="resize-handle"></span>
-                                    </th>
-                                    <th>Status</th>
+                                    <th class='@GetSortHeaderClass(GINSortColumn, GINSortAscending, "ReturnedStockNo")' @onclick='() => ToggleGINSort("ReturnedStockNo")'>GIN <span class="resize-handle"></span></th>
+                                    <th class='@GetSortHeaderClass(GINSortColumn, GINSortAscending, "DateIssued")' @onclick='() => ToggleGINSort("DateIssued")'>Date <span class="resize-handle"></span></th>
+                                    <th class='@GetSortHeaderClass(GINSortColumn, GINSortAscending, "Purpose")' @onclick='() => ToggleGINSort("Purpose")'>Activity <span class="resize-handle"></span></th>
+                                    <th>Remarks <span class="resize-handle"></span></th>
+                                    <th class='@GetSortHeaderClass(GINSortColumn, GINSortAscending, "Amount")' @onclick='() => ToggleGINSort("Amount")'>Total Cost <span class="resize-handle"></span></th>
                                     @if (!IsReturnedStockPrintModeActive)
                                     {
                                         <th class="inventory-row-actions-column gin-row-actions-column">Actions</th>
@@ -2681,25 +2666,17 @@
                             <tbody>
                                 @if (IsGINApiLoading && !ReturnedStockList.Any())
                                 {
-                                    <tr>
-                                        <td colspan="9" class="gin-table-message">
-                                            <i class="bi bi-arrow-repeat"></i> Loading GIN records...
-                                        </td>
-                                    </tr>
+                                    <tr><td colspan="7" class="gin-table-message"><i class="bi bi-arrow-repeat"></i> Loading GIN history...</td></tr>
                                 }
                                 else if (!PaginatedReturnedStock.Any())
                                 {
-                                    <tr>
-                                        <td colspan="9" class="gin-table-message">
-                                            No GIN records found. Use <strong>Issue Stock</strong> to create one.
-                                        </td>
-                                    </tr>
+                                    <tr><td colspan="7" class="gin-table-message">No stock out / GIN history found.</td></tr>
                                 }
                                 else
                                 {
                                     @foreach (var returnedStock in PaginatedReturnedStock)
                                     {
-                                        <tr @onclick="() => ToggleMobileGinRow(returnedStock)" class="@GetReturnedStockRowClass(returnedStock)">
+                                        <tr @onclick="() => ShowGinDetails(returnedStock)" class="@GetReturnedStockRowClass(returnedStock)">
                                             @if (IsReturnedStockPrintModeActive)
                                             {
                                                 <td class="purchase-orders__checkbox-col" @onclick:stopPropagation="true">
@@ -2709,64 +2686,19 @@
                                                 </td>
                                             }
                                             <td><strong>@(string.IsNullOrWhiteSpace(returnedStock.ReturnedStockNo) ? "—" : returnedStock.ReturnedStockNo)</strong></td>
-                                            <td>@returnedStock.DateIssued.ToString("dd/MM/yyyy")</td>
-                                            <td><span class="inventory-branch-chip">@returnedStock.IssuedBy</span></td>
-                                            <td>@returnedStock.Purpose</td>
-                                            <td>@(string.IsNullOrWhiteSpace(returnedStock.IssuedTo) ? "—" : returnedStock.IssuedTo)</td>
-                                            <td><span class="inventory-quantity-value">@returnedStock.Quantity @returnedStock.Uom</span></td>
-                                            <td><span class="gin-status">@returnedStock.Status</span></td>
+                                            <td>@returnedStock.DateIssued.ToString("dd/MM/yyyy HH:mm")</td>
+                                            <td><span class="history-badge">@returnedStock.Purpose</span></td>
+                                            <td>@(string.IsNullOrWhiteSpace(returnedStock.Reason) ? "—" : returnedStock.Reason)</td>
+                                            <td><span class="inventory-money-value">MYR @returnedStock.Amount.ToString("N2")</span></td>
                                             @if (!IsReturnedStockPrintModeActive)
                                             {
                                                 <td class="inventory-row-actions-column gin-row-actions-column" @onclick:stopPropagation="true">
-                                                    <div class="gin-row-actions">
-                                                        <button type="button" class="product-row-action" title="View GIN details" aria-label="View GIN details" @onclick="() => ShowGinDetails(returnedStock)">
-                                                            <i class="bi bi-eye"></i>
-                                                        </button>
-                                                        @if (CanEditGin(returnedStock))
-                                                        {
-                                                            <button type="button" class="product-row-action" title="Edit GIN" aria-label="Edit GIN" @onclick="() => EditReturnedStockFromRow(returnedStock)">
-                                                                <i class="bi bi-pencil"></i>
-                                                            </button>
-                                                        }
-                                                    </div>
+                                                    <button type="button" class="product-row-action" title="View GIN details" @onclick="() => ShowGinDetails(returnedStock)">
+                                                        <i class="bi bi-eye"></i>
+                                                    </button>
                                                 </td>
                                             }
                                         </tr>
-                                        @if (ExpandedMobileGinNo == returnedStock.ReturnedStockNo && !IsReturnedStockPrintModeActive)
-                                        {
-                                            <tr class="inventory-mobile-detail-row">
-                                                <td colspan="8">
-                                                    <div class="inventory-mobile-details">
-                                                        <div class="inventory-mobile-detail"><span>GIN No</span><strong>@returnedStock.ReturnedStockNo</strong></div>
-                                                        <div class="inventory-mobile-detail"><span>Issue Date</span><strong>@returnedStock.DateIssued.ToString("dd/MM/yyyy")</strong></div>
-                                                        <div class="inventory-mobile-detail"><span>Branch</span><strong>@returnedStock.IssuedBy</strong></div>
-                                                        <div class="inventory-mobile-detail"><span>Purpose</span><strong>@returnedStock.Purpose</strong></div>
-                                                        <div class="inventory-mobile-detail"><span>Issued To</span><strong>@(string.IsNullOrWhiteSpace(returnedStock.IssuedTo) ? "—" : returnedStock.IssuedTo)</strong></div>
-                                                        <div class="inventory-mobile-detail"><span>Quantity</span><strong>@returnedStock.Quantity @returnedStock.Uom</strong></div>
-                                                        <div class="inventory-mobile-detail"><span>Status</span><strong>@returnedStock.Status</strong></div>
-                                                        @if (!string.IsNullOrWhiteSpace(returnedStock.ReferenceNumber))
-                                                        {
-                                                            <div class="inventory-mobile-detail"><span>Reference</span><strong>@returnedStock.ReferenceNumber</strong></div>
-                                                        }
-                                                        @if (!string.IsNullOrWhiteSpace(returnedStock.Reason))
-                                                        {
-                                                            <div class="inventory-mobile-detail inventory-mobile-detail--wide"><span>Remarks</span><strong>@returnedStock.Reason</strong></div>
-                                                        }
-                                                        <div class="inventory-mobile-detail-actions">
-                                                            <button type="button" @onclick:stopPropagation="true" @onclick="() => ShowGinDetails(returnedStock)">
-                                                                <i class="bi bi-eye"></i><span>View Details</span>
-                                                            </button>
-                                                            @if (CanEditGin(returnedStock))
-                                                            {
-                                                                <button type="button" @onclick:stopPropagation="true" @onclick="() => EditReturnedStockFromRow(returnedStock)">
-                                                                    <i class="bi bi-pencil"></i><span>Edit GIN</span>
-                                                                </button>
-                                                            }
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        }
                                     }
                                 }
                             </tbody>
@@ -2906,29 +2838,20 @@
                         </div>
                     </div>
                 }
-
                 <div class="grn-history-heading">
                     <div>
-                        <h2>GRN History</h2>
-                        <p>Posted supplier receipts and transfer receipts for this branch.</p>
+                        <h2>Stock In History</h2>
+                        <p>GRN records created by Stock In.</p>
                     </div>
                     <span><i class="bi bi-check-circle"></i> @FilteredGRNs.Count() record@(FilteredGRNs.Count() == 1 ? string.Empty : "s")</span>
                 </div>
 
                 <div class="inventory__table-wrapper table-scroll grn-table-scroll">
                     <div class="table-scroll__inner grn-table-scroll__inner">
-                        <table class="inventory__table resizable-table inventory-mobile-compact-table inventory-mobile-compact-table--grn @((IsGRNDeleteMode || IsGRNPrintModeActive) ? "inventory-mobile-compact-table--selecting" : string.Empty) @(IsGRNPrintModeActive ? "purchase-orders__table" : string.Empty)">
+                        <table class="inventory__table resizable-table inventory-mobile-compact-table inventory-mobile-compact-table--grn @(IsGRNPrintModeActive ? "purchase-orders__table" : string.Empty)">
                             <thead>
                                 <tr>
-                                    @if (IsGRNDeleteMode)
-                                    {
-                                        <th class="inventory__checkbox-col">
-                                            <input type="checkbox"
-                                                   checked="@IsAllGRNsSelected"
-                                                   @onchange="ToggleAllGRNsSelection" />
-                                        </th>
-                                    }
-                                    else if (IsGRNPrintModeActive)
+                                    @if (IsGRNPrintModeActive)
                                     {
                                         <th class="purchase-orders__checkbox-col">Select</th>
                                     }
@@ -2938,7 +2861,7 @@
                                             @column.Label <span class="resize-handle"></span>
                                         </th>
                                     }
-                                    @if (!IsGRNDeleteMode && !IsGRNPrintModeActive)
+                                    @if (!IsGRNPrintModeActive)
                                     {
                                         <th class="inventory-row-actions-column grn-row-actions-column">Actions</th>
                                     }
@@ -2947,28 +2870,14 @@
                             <tbody>
                                 @if (!FilteredGRNs.Any())
                                 {
-                                    <tr>
-                                        <td colspan="7" style="text-align: center; padding: 2rem; color: #6b7280;">
-                                            No supplier receipts found. Use Receive goods when a delivery arrives against an approved purchase order.
-                                        </td>
-                                    </tr>
+                                    <tr><td colspan="7" class="inventory__empty-state">No stock in / GRN history found.</td></tr>
                                 }
                                 else
                                 {
                                     @foreach (var grn in PaginatedGRNs)
                                     {
-                                        <tr @onclick="() => ToggleMobileGrnRow(grn)" class="@GetGrnRowClass(grn)">
-                                            @if (IsGRNDeleteMode)
-                                            {
-                                                <td class="inventory__checkbox-col" @onclick:stopPropagation="true">
-                                                    <input type="checkbox"
-                                                           checked="@SelectedGRNsForDeletion.Contains(grn)"
-                                                           disabled="@(!CanEditGrn(grn))"
-                                                           title="@(CanEditGrn(grn) ? "Select draft GRN" : "Posted GRNs cannot be deleted")"
-                                                           @onchange="() => ToggleGRNForDeletion(grn)" />
-                                                </td>
-                                            }
-                                            else if (IsGRNPrintModeActive)
+                                        <tr @onclick="() => ShowGrnDetails(grn)" class="@GetGRNRowClass(grn)">
+                                            @if (IsGRNPrintModeActive)
                                             {
                                                 <td class="purchase-orders__checkbox-col" @onclick:stopPropagation="true">
                                                     <input type="checkbox"
@@ -2976,73 +2885,20 @@
                                                            @onchange="() => ToggleGRNForPrintSelection(grn)" />
                                                 </td>
                                             }
-                                            <td><span class="inventory-branch-chip">@grn.DOCBranch</span></td>
-                                            <td>@grn.Date.ToString("dd/MM/yyyy")</td>
-                                            <td>@grn.DOCNo</td>
-                                            <td>@grn.SupplierName</td>
-                                            <td class="inventory-plain-value">@grn.PONo</td>
-                                            <td>@(string.IsNullOrWhiteSpace(grn.ReferenceNumber) ? "-" : grn.ReferenceNumber)</td>
-                                            <td><span class="inventory-money-value">@DisplayGrnMoney(grn.TaxAmount, grn.CurrencyId)</span></td>
-                                            <td><span class="inventory-money-value">@DisplayGrnMoney(grn.Amount, grn.CurrencyId)</span></td>
-                                            <td><span class="inventory-status-badge">@grn.Status</span></td>
-                                            @if (!IsGRNDeleteMode && !IsGRNPrintModeActive)
+                                            <td><strong>@grn.DOCNo</strong></td>
+                                            <td>@grn.Date.ToString("dd/MM/yyyy HH:mm")</td>
+                                            <td><span class="history-badge">@grn.Activity</span></td>
+                                            <td>@(string.IsNullOrWhiteSpace(grn.Remarks) ? "—" : grn.Remarks)</td>
+                                            <td><span class="inventory-money-value">MYR @grn.Amount.ToString("N2")</span></td>
+                                            @if (!IsGRNPrintModeActive)
                                             {
                                                 <td class="inventory-row-actions-column grn-row-actions-column" @onclick:stopPropagation="true">
-                                                    <div class="grn-row-actions">
-                                                        <button type="button" class="product-row-action" title="View GRN details" aria-label="View GRN details" @onclick="() => ShowGrnDetails(grn)">
-                                                            <i class="bi bi-eye"></i>
-                                                        </button>
-                                                        @if (CanEditGrn(grn))
-                                                        {
-                                                            <button type="button" class="product-row-action" title="Edit GRN" aria-label="Edit GRN" @onclick="() => EditGRNFromRow(grn)">
-                                                                <i class="bi bi-pencil"></i>
-                                                            </button>
-                                                        }
-                                                        else
-                                                        {
-                                                            <button type="button" class="product-row-action" title="@GetGrnReadOnlyReason(grn)" aria-label="GRN is view-only" disabled>
-                                                                <i class="bi bi-lock"></i>
-                                                            </button>
-                                                        }
-                                                    </div>
+                                                    <button type="button" class="product-row-action" title="View GRN details" @onclick="() => ShowGrnDetails(grn)">
+                                                        <i class="bi bi-eye"></i>
+                                                    </button>
                                                 </td>
                                             }
                                         </tr>
-                                         @if (ExpandedMobileGrnNo == grn.DOCNo && !IsGRNDeleteMode && !IsGRNPrintModeActive)
-                                         {
-                                             <tr class="inventory-mobile-detail-row">
-                                                  <td colspan="10">
-                                                     <div class="inventory-mobile-details">
-                                                         <div class="inventory-mobile-detail"><span>Branch</span><strong>@grn.DOCBranch</strong></div>
-                                                         <div class="inventory-mobile-detail"><span>Date</span><strong>@grn.Date.ToString("dd/MM/yyyy")</strong></div>
-                                                         <div class="inventory-mobile-detail"><span>DOC No</span><strong>@grn.DOCNo</strong></div>
-                                                         <div class="inventory-mobile-detail"><span>PO No</span><strong>@grn.PONo</strong></div>
-                                                         <div class="inventory-mobile-detail inventory-mobile-detail--wide"><span>Supplier</span><strong>@grn.SupplierName</strong></div>
-                                                         <div class="inventory-mobile-detail"><span>Reference</span><strong>@(string.IsNullOrWhiteSpace(grn.ReferenceNumber) ? "-" : grn.ReferenceNumber)</strong></div>
-                                                         <div class="inventory-mobile-detail"><span>Tax</span><strong>@DisplayGrnMoney(grn.TaxAmount, grn.CurrencyId)</strong></div>
-                                                         <div class="inventory-mobile-detail"><span>Amount</span><strong>@DisplayGrnMoney(grn.Amount, grn.CurrencyId)</strong></div>
-                                                         <div class="inventory-mobile-detail"><span>Status</span><strong>@grn.Status</strong></div>
-                                                         <div class="inventory-mobile-detail-actions">
-                                                             <button type="button" @onclick:stopPropagation="true" @onclick="() => ShowGrnDetails(grn)">
-                                                                 <i class="bi bi-eye"></i><span>View Details</span>
-                                                             </button>
-                                                             @if (CanEditGrn(grn))
-                                                             {
-                                                                 <button type="button" @onclick:stopPropagation="true" @onclick="() => EditGRNFromRow(grn)">
-                                                                     <i class="bi bi-pencil"></i><span>Edit GRN</span>
-                                                                 </button>
-                                                             }
-                                                             else
-                                                             {
-                                                                 <button type="button" disabled title="@GetGrnReadOnlyReason(grn)">
-                                                                     <i class="bi bi-lock"></i><span>@grn.Status</span>
-                                                                 </button>
-                                                             }
-                                                         </div>
-                                                     </div>
-                                                 </td>
-                                             </tr>
-                                         }
                                     }
                                 }
                             </tbody>
@@ -5045,15 +4901,11 @@
 
     private static readonly (string Value, string Label)[] GRNHeaderColumns = new[]
     {
-        ("DOCBranch", "Branch"),
-        ("Date", "Receipt Date"),
-        ("DOCNo", "GRN No."),
-        ("SupplierName", "Supplier"),
-        ("PONo", "PO No."),
-        ("ReferenceNumber", "Reference"),
-        ("TaxAmount", "Tax"),
-        ("Amount", "Total"),
-        ("Status", "Status")
+        ("DOCNo", "GRN"),
+        ("Date", "Date"),
+        ("Activity", "Activity"),
+        ("Remarks", "Remarks"),
+        ("Amount", "Total Cost")
     };
 
     private string? InventoryErrorMessage => new[]
@@ -8043,39 +7895,27 @@ private void ShowAddBrandForm()
             if (!string.IsNullOrWhiteSpace(GINSearchQuery))
             {
                 var search = GINSearchQuery.Trim();
-                returnedStock = returnedStock.Where(r =>
-                    (r.ReturnedStockNo?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                    r.DateIssued.ToString("dd/MM/yyyy").Contains(search, StringComparison.OrdinalIgnoreCase) ||
-                    (r.IssuedBy?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                    (r.IssuedTo?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                    (r.Purpose?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                    (r.ReferenceNumber?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                    (r.Status?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                    (r.Reason?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                    r.Quantity.ToString().Contains(search, StringComparison.OrdinalIgnoreCase));
+                returnedStock = returnedStock.Where(item =>
+                    item.ReturnedStockNo.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    item.DateIssued.ToString("dd/MM/yyyy").Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    item.Purpose.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    item.Reason.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    item.Amount.ToString("N2").Contains(search, StringComparison.OrdinalIgnoreCase));
             }
 
-            // Apply multiple filters
             foreach (var filter in ActiveGINFilters)
             {
                 returnedStock = ApplyGINFilter(returnedStock, filter);
             }
 
-            if (!string.IsNullOrEmpty(GINSortColumn))
+            return GINSortColumn switch
             {
-                returnedStock = GINSortColumn switch
-                {
-                    "ReturnedStockNo" => GINSortAscending ? returnedStock.OrderBy(r => r.ReturnedStockNo) : returnedStock.OrderByDescending(r => r.ReturnedStockNo),
-                    "DateIssued" => GINSortAscending ? returnedStock.OrderBy(r => r.DateIssued) : returnedStock.OrderByDescending(r => r.DateIssued),
-                    "IssuedBy" => GINSortAscending ? returnedStock.OrderBy(r => r.IssuedBy) : returnedStock.OrderByDescending(r => r.IssuedBy),
-                    "IssuedTo" => GINSortAscending ? returnedStock.OrderBy(r => r.IssuedTo) : returnedStock.OrderByDescending(r => r.IssuedTo),
-                    "Purpose" => GINSortAscending ? returnedStock.OrderBy(r => r.Purpose) : returnedStock.OrderByDescending(r => r.Purpose),
-                    "Quantity" => GINSortAscending ? returnedStock.OrderBy(r => r.Quantity) : returnedStock.OrderByDescending(r => r.Quantity),
-                    _ => returnedStock
-                };
-            }
-
-            return returnedStock;
+                "ReturnedStockNo" => GINSortAscending ? returnedStock.OrderBy(item => item.ReturnedStockNo) : returnedStock.OrderByDescending(item => item.ReturnedStockNo),
+                "DateIssued" => GINSortAscending ? returnedStock.OrderBy(item => item.DateIssued) : returnedStock.OrderByDescending(item => item.DateIssued),
+                "Purpose" => GINSortAscending ? returnedStock.OrderBy(item => item.Purpose) : returnedStock.OrderByDescending(item => item.Purpose),
+                "Amount" => GINSortAscending ? returnedStock.OrderBy(item => item.Amount) : returnedStock.OrderByDescending(item => item.Amount),
+                _ => returnedStock
+            };
         }
     }
 
@@ -8094,8 +7934,21 @@ private void ShowAddBrandForm()
 
     private IEnumerable<ReturnedStockItem> ApplyGINFilter(IEnumerable<ReturnedStockItem> items, MultiTableFilter.FilterData filter)
     {
-        if(filter.Column=="DateIssued"){var start=filter.StartDate?.Date??DateTime.MinValue.Date;var end=filter.EndDate?.Date??DateTime.MaxValue.Date;return items.Where(x=>x.DateIssued.Date>=start&&x.DateIssued.Date<=end);}
-        return filter.Column switch { "ReturnedStockNo"=>items.Where(x=>TextMatches(x.ReturnedStockNo,filter)), "IssuedBy"=>items.Where(x=>TextMatches(x.IssuedBy,filter)), "IssuedTo"=>items.Where(x=>TextMatches(x.IssuedTo,filter)), "Purpose"=>items.Where(x=>TextMatches(x.Purpose,filter)), "Quantity"=>items.Where(x=>InRange(x.Quantity,filter)), "Status"=>items.Where(x=>TextMatches(x.Status,filter)), "Reason"=>items.Where(x=>TextMatches(x.Reason,filter)), _=>items };
+        if (filter.Column == "DateIssued")
+        {
+            var start = filter.StartDate?.Date ?? DateTime.MinValue.Date;
+            var end = filter.EndDate?.Date ?? DateTime.MaxValue.Date;
+            return items.Where(item => item.DateIssued.Date >= start && item.DateIssued.Date <= end);
+        }
+
+        return filter.Column switch
+        {
+            "ReturnedStockNo" => items.Where(item => TextMatches(item.ReturnedStockNo, filter)),
+            "Purpose" => items.Where(item => TextMatches(item.Purpose, filter)),
+            "Reason" => items.Where(item => TextMatches(item.Reason, filter)),
+            "Amount" => items.Where(item => InRange(item.Amount, filter)),
+            _ => items
+        };
     }
 
     private static bool TextMatches(string? source, MultiTableFilter.FilterData filter)
@@ -8464,28 +8317,22 @@ private void ShowAddBrandForm()
             if (!string.IsNullOrWhiteSpace(GRNSearchQuery))
             {
                 var search = GRNSearchQuery.Trim();
-                grns = grns.Where(g =>
-                    (!string.IsNullOrEmpty(g.DOCNo) && g.DOCNo.Contains(search, StringComparison.OrdinalIgnoreCase)) ||
-                    (!string.IsNullOrEmpty(g.SupplierName) && g.SupplierName.Contains(search, StringComparison.OrdinalIgnoreCase)) ||
-                    (!string.IsNullOrEmpty(g.PONo) && g.PONo.Contains(search, StringComparison.OrdinalIgnoreCase)) ||
-                    (!string.IsNullOrEmpty(g.ReferenceNumber) && g.ReferenceNumber.Contains(search, StringComparison.OrdinalIgnoreCase)) ||
-                    (!string.IsNullOrEmpty(g.Status) && g.Status.Contains(search, StringComparison.OrdinalIgnoreCase)) ||
-                    (!string.IsNullOrEmpty(g.DOCBranch) && g.DOCBranch.Contains(search, StringComparison.OrdinalIgnoreCase))
-                );
+                grns = grns.Where(item =>
+                    item.DOCNo.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    item.Date.ToString("dd/MM/yyyy").Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    item.Activity.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    item.Remarks.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    item.Amount.ToString("N2").Contains(search, StringComparison.OrdinalIgnoreCase));
             }
 
             grns = ApplyGRNFilters(grns);
             return GRNSortColumn switch
             {
-                "DOCBranch" => GRNSortAscending ? grns.OrderBy(g => g.DOCBranch) : grns.OrderByDescending(g => g.DOCBranch),
-                "Date" => GRNSortAscending ? grns.OrderBy(g => g.Date) : grns.OrderByDescending(g => g.Date),
-                "DOCNo" => GRNSortAscending ? grns.OrderBy(g => g.DOCNo) : grns.OrderByDescending(g => g.DOCNo),
-                "SupplierName" => GRNSortAscending ? grns.OrderBy(g => g.SupplierName) : grns.OrderByDescending(g => g.SupplierName),
-                "PONo" => GRNSortAscending ? grns.OrderBy(g => g.PONo) : grns.OrderByDescending(g => g.PONo),
-                "ReferenceNumber" => GRNSortAscending ? grns.OrderBy(g => g.ReferenceNumber) : grns.OrderByDescending(g => g.ReferenceNumber),
-                "TaxAmount" => GRNSortAscending ? grns.OrderBy(g => g.TaxAmount) : grns.OrderByDescending(g => g.TaxAmount),
-                "Amount" => GRNSortAscending ? grns.OrderBy(g => g.Amount) : grns.OrderByDescending(g => g.Amount),
-                "Status" => GRNSortAscending ? grns.OrderBy(g => g.Status) : grns.OrderByDescending(g => g.Status),
+                "DOCNo" => GRNSortAscending ? grns.OrderBy(item => item.DOCNo) : grns.OrderByDescending(item => item.DOCNo),
+                "Date" => GRNSortAscending ? grns.OrderBy(item => item.Date) : grns.OrderByDescending(item => item.Date),
+                "Activity" => GRNSortAscending ? grns.OrderBy(item => item.Activity) : grns.OrderByDescending(item => item.Activity),
+                "Remarks" => GRNSortAscending ? grns.OrderBy(item => item.Remarks) : grns.OrderByDescending(item => item.Remarks),
+                "Amount" => GRNSortAscending ? grns.OrderBy(item => item.Amount) : grns.OrderByDescending(item => item.Amount),
                 _ => grns
             };
         }
