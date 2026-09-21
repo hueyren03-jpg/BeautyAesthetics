@@ -18,6 +18,7 @@
 @inject IPackageService PackageService
 @inject IMembershipTypeService MembershipTypeService
 @inject IPointConversionService PointConversionService
+@inject AppFeedbackService Feedback
 @inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L
 @implements IAsyncDisposable
 
@@ -3405,6 +3406,10 @@
         SelectedItemBrand = SelectedMemberType.ApplicableToItemBrand ?? string.Empty;
         SelectedItemGroup = SelectedMemberType.ApplicableToItemGroup ?? string.Empty;
         SelectedItem = SelectedMemberType.ApplicableToItems ?? string.Empty;
+        Feedback.Info(
+            $"Editing membership type {SelectedMemberType.MemberTypeName ?? SelectedMemberType.MemberTypeID}.",
+            "Edit membership type",
+            2200);
     }
 
     private void CloseAddMemberTypeForm()
@@ -3821,6 +3826,10 @@
         NewMemberCreditPrice = SelectedMemberCredit.Price;
         MemberCreditApiError = null;
         IsAddMemberCreditFormVisible = true;
+        Feedback.Info(
+            SelectedMemberCredit is null ? "Opening member credit editor." : $"Editing member credit {SelectedMemberCredit.Name}.",
+            "Edit member credit",
+            2200);
     }
 
     // Member Credit Form methods
@@ -4372,6 +4381,10 @@
 
         BundleApiError = null;
         IsAddBundleFormVisible = true;
+        Feedback.Info(
+            SelectedBundle is null ? "Opening package editor." : $"Editing package {SelectedBundle.BundleName}.",
+            "Edit package",
+            2200);
     }
 
     // Bundle delete mode methods
@@ -4543,6 +4556,39 @@
         }
     }
 
+    private void ShowServiceFeedback(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        var normalized = message.Trim();
+        if (normalized.Contains("success", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("imported", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("updated", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("downloaded", StringComparison.OrdinalIgnoreCase))
+        {
+            Feedback.Success(normalized);
+        }
+        else if (normalized.Contains("duplicate", StringComparison.OrdinalIgnoreCase) ||
+                 normalized.Contains("does not match", StringComparison.OrdinalIgnoreCase) ||
+                 normalized.Contains("required", StringComparison.OrdinalIgnoreCase))
+        {
+            Feedback.Warning(normalized, "Check service data");
+        }
+        else if (normalized.Contains("unable", StringComparison.OrdinalIgnoreCase) ||
+                 normalized.Contains("error", StringComparison.OrdinalIgnoreCase) ||
+                 normalized.Contains("failed", StringComparison.OrdinalIgnoreCase))
+        {
+            Feedback.Error(normalized);
+        }
+        else
+        {
+            Feedback.Info(normalized);
+        }
+    }
+
     // Import/Export dropdown methods for Services
     private void ToggleServiceImportExportDropdown()
     {
@@ -4561,10 +4607,11 @@
 
         if (_servicesModule == null)
         {
-            await JSRuntime.InvokeVoidAsync("alert", "Unable to load import module. Please try again.");
+            ShowServiceFeedback("Unable to load import module. Please try again.");
             return;
         }
 
+        Feedback.Info("Choose a CSV or Excel service file to import.", "Import services", 2600);
         await _servicesModule.InvokeVoidAsync("openFilePicker", "servicesImportFileInput");
     }
 
@@ -4625,7 +4672,7 @@
 
                 if (worksheet == null)
                 {
-                    await JSRuntime.InvokeVoidAsync("alert", "Unable to read Excel worksheet from the selected file.");
+                    ShowServiceFeedback("Unable to read Excel worksheet from the selected file.");
                     return;
                 }
 
@@ -4642,7 +4689,7 @@
 
                 if (!string.Equals(headerLine.ToString(), ServiceImportExpectedHeader, StringComparison.OrdinalIgnoreCase))
                 {
-                    await JSRuntime.InvokeVoidAsync("alert", "The selected file does not match the Service Import Template header. Please download the latest template and try again.");
+                    ShowServiceFeedback("The selected file does not match the Service Import Template header. Please download the latest template and try again.");
                     return;
                 }
 
@@ -4678,7 +4725,7 @@
                     {
                         if (existingSkus.Contains(sku) || !fileSkus.Add(sku))
                         {
-                            await JSRuntime.InvokeVoidAsync("alert", $"Duplicate SKU '{sku}' found in import file or already exists in services. Import cancelled.");
+                            ShowServiceFeedback($"Duplicate SKU '{sku}' found in import file or already exists in services. Import cancelled.");
                             return;
                         }
                     }
@@ -4718,7 +4765,7 @@
 
                 if (!string.Equals(headerLine.Trim(), ServiceImportExpectedHeader, StringComparison.OrdinalIgnoreCase))
                 {
-                    await JSRuntime.InvokeVoidAsync("alert", "The selected file does not match the Service Import Template header. Please download the latest template and try again.");
+                    ShowServiceFeedback("The selected file does not match the Service Import Template header. Please download the latest template and try again.");
                     return;
                 }
 
@@ -4807,11 +4854,11 @@
                 ServiceItems.AddRange(newItems);
             }
 
-            await JSRuntime.InvokeVoidAsync("alert", $"Successfully imported {importedCount} service(s).");
+            ShowServiceFeedback($"Successfully imported {importedCount} service(s).");
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("alert", $"Error reading import file: {ex.Message}");
+            ShowServiceFeedback($"Error reading import file: {ex.Message}");
         }
     }
 
@@ -4825,7 +4872,7 @@
 
             if (_servicesModule == null)
             {
-                await JSRuntime.InvokeVoidAsync("alert", "Unable to load export module. Please try again.");
+                ShowServiceFeedback("Unable to load export module. Please try again.");
                 return;
             }
 
@@ -4887,10 +4934,11 @@
             var base64 = Convert.ToBase64String(bytes);
 
             await _servicesModule.InvokeVoidAsync("downloadFile", fileName, base64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            Feedback.Success($"{ServiceItems.Count} service record{(ServiceItems.Count == 1 ? string.Empty : "s")} exported.", "Service export complete");
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("alert", $"Error exporting services: {ex.Message}");
+            ShowServiceFeedback($"Error exporting services: {ex.Message}");
         }
     }
 
@@ -4903,7 +4951,7 @@
             await EnsureServicesModuleAsync();
             if (_servicesModule == null)
             {
-                await JSRuntime.InvokeVoidAsync("alert", "Unable to load export module. Please try again.");
+                ShowServiceFeedback("Unable to load export module. Please try again.");
                 return;
             }
 
@@ -4944,10 +4992,11 @@
             var base64 = Convert.ToBase64String(bytes);
 
             await _servicesModule.InvokeVoidAsync("downloadFile", fileName, base64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            Feedback.Success("Service import template downloaded successfully.", "Template downloaded");
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("alert", $"Error generating service import template: {ex.Message}");
+            ShowServiceFeedback($"Error generating service import template: {ex.Message}");
         }
     }
 
@@ -4963,7 +5012,7 @@
 
         if (_servicesModule == null)
         {
-            await JSRuntime.InvokeVoidAsync("alert", "Unable to load import module. Please try again.");
+            ShowServiceFeedback("Unable to load import module. Please try again.");
             return;
         }
 
@@ -5007,7 +5056,7 @@
 
                 if (worksheet == null)
                 {
-                    await JSRuntime.InvokeVoidAsync("alert", "Unable to read Excel worksheet from the selected file.");
+                    ShowServiceFeedback("Unable to read Excel worksheet from the selected file.");
                     return;
                 }
 
@@ -5024,7 +5073,7 @@
 
                 if (!string.Equals(headerLine.ToString(), ServiceImportExpectedHeader, StringComparison.OrdinalIgnoreCase))
                 {
-                    await JSRuntime.InvokeVoidAsync("alert", "The selected file does not match the Service Import Template header. Please download the latest template and try again.");
+                    ShowServiceFeedback("The selected file does not match the Service Import Template header. Please download the latest template and try again.");
                     return;
                 }
 
@@ -5060,7 +5109,7 @@
                     // {
                     //     if (existingSkus.Contains(sku) || !fileSkus.Add(sku))
                     //     {
-                    //         await JSRuntime.InvokeVoidAsync("alert", $"Duplicate SKU '{sku}' found in import file or already exists in services. Import cancelled.");
+                    //         ShowServiceFeedback($"Duplicate SKU '{sku}' found in import file or already exists in services. Import cancelled.");
                     //         return;
                     //     }
                     // }
@@ -5100,7 +5149,7 @@
 
                 if (!string.Equals(headerLine.Trim(), ServiceImportExpectedHeader, StringComparison.OrdinalIgnoreCase))
                 {
-                    await JSRuntime.InvokeVoidAsync("alert", "The selected file does not match the Service Import Template header. Please download the latest template and try again.");
+                    ShowServiceFeedback("The selected file does not match the Service Import Template header. Please download the latest template and try again.");
                     return;
                 }
 
@@ -5187,11 +5236,11 @@
                 ServiceItems = updatedItems;
             }
 
-            await JSRuntime.InvokeVoidAsync("alert", $"Successfully updated {updatedCount} service(s) from Excel.");
+            ShowServiceFeedback($"Successfully updated {updatedCount} service(s) from Excel.");
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("alert", $"Error updating services from Excel: {ex.Message}");
+            ShowServiceFeedback($"Error updating services from Excel: {ex.Message}");
         }
     }
 
