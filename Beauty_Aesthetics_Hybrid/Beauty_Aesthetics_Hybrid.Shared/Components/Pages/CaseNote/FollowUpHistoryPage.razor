@@ -6,6 +6,7 @@
 @using Microsoft.AspNetCore.Components
 
 @inject IJSRuntime JS
+@inject AppFeedbackService Feedback
 @inject NavigationManager NavigationManager
 @inject FollowUpPageViewModel ViewModel
 
@@ -265,17 +266,23 @@
         if (confirmed)
         {
             ViewModel.DeleteFollowUp(followUpId);
+            Feedback.Success("Follow-up record deleted successfully.", "Follow-up deleted");
             if (ViewModel.CurrentlyViewingFollowUpId == followUpId)
             {
                 ViewModel.CurrentlyViewingFollowUpId = null;
             }
             StateHasChanged();
         }
+        else
+        {
+            Feedback.Info("Follow-up deletion cancelled.", "Delete cancelled", 1800);
+        }
     }
 
     private void SelectFollowUp(FollowUpPageViewModel.FollowUp followUp)
     {
         ViewModel.CurrentlyViewingFollowUpId = followUp.Id;
+        Feedback.Info($"Opening follow-up from {followUp.Date:MMM dd, yyyy} for editing.", "Edit follow-up", 2200);
         NavigationManager.NavigateTo("/follow-up");
     }
 
