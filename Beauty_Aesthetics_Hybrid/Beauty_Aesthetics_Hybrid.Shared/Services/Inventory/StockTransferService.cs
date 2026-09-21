@@ -307,6 +307,14 @@ public sealed class StockTransferService : IStockTransferService
         document.ReferenceNumber = NullIfWhiteSpace(transfer.DisplayCode);
         document.Remarks = NullIfWhiteSpace(transfer.Remarks);
         document.ExchangeRate = document.ExchangeRate <= 0 ? 1 : document.ExchangeRate;
+
+        var total = transfer.Lines.Sum(line => Math.Max(0, line.Quantity) * Math.Max(0, line.UnitCost));
+        document.TotalBeforeTax = total;
+        document.TaxableAmount = total;
+        document.TotalAfterTax = total;
+        document.LocalTotalBeforeTax = total;
+        document.LocalTaxableAmount = total;
+        document.LocalTotalAfterTax = total;
     }
 
     private static void ApplyLines(StockTransferEnvelopeDTO envelope, StockTransferViewModel transfer, bool isNew)
@@ -337,8 +345,15 @@ public sealed class StockTransferService : IStockTransferService
             Set(line, "skuName", source.Sku);
             Set(line, "description", source.ProductName);
             Set(line, "itemName", source.ProductName);
+            var lineAmount = Math.Max(0, source.Quantity) * Math.Max(0, source.UnitCost);
             Set(line, "quantity", source.Quantity);
             Set(line, "adjustedQuantity", source.Quantity);
+            Set(line, "unitPrice", Math.Max(0, source.UnitCost));
+            Set(line, "cost", Math.Max(0, source.UnitCost));
+            Set(line, "subTotal", lineAmount);
+            Set(line, "subTotalBeforeGST", lineAmount);
+            Set(line, "amount", lineAmount);
+            Set(line, "taxableAmount", lineAmount);
             Set(line, "unitOfMeasurementID", source.UnitOfMeasurementId);
             Set(line, "inventoryTypeID", 1);
             Set(line, "branchID", NormalizeBranchId(transfer.FromBranchId));
@@ -381,6 +396,7 @@ public sealed class StockTransferService : IStockTransferService
         ToBranchId = First(document.ToBranchID, document.OrderBranchID),
         ToBranchName = First(document.ToBranch, document.ToBranchID, document.OrderBranchID),
         Remarks = document.Remarks ?? string.Empty,
+        TotalAmount = document.TotalAfterTax != 0 ? document.TotalAfterTax : document.LocalTotalAfterTax,
         Status = ResolveTransferStatus(document)
     };
 
@@ -498,6 +514,9 @@ public sealed class StockTransferService : IStockTransferService
         Sku = First(ReadString(line, "lineItemDisplayCode"), ReadString(line, "skuName")),
         ProductName = First(ReadString(line, "description"), ReadString(line, "itemName")),
         Quantity = ReadDecimal(line, "quantity"),
+        UnitCost = ReadDecimal(line, "cost") > 0
+            ? ReadDecimal(line, "cost")
+            : ReadDecimal(line, "unitPrice"),
         UnitOfMeasurementId = ReadString(line, "unitOfMeasurementID")
     };
 
