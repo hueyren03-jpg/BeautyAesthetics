@@ -2360,11 +2360,11 @@
                                             <table class="inventory-view-table">
                                                 <thead>
                                                     <tr>
-                                                        <th>Product Name</th>
+                                                        <th>Product</th>
                                                         <th>SKU</th>
-                                                        <th class="text-right">Quantity</th>
-                                                        <th>UOM Type</th>
-                                                        <th>UOM</th>
+                                                        <th class="text-right">Qty</th>
+                                                        <th class="text-right">Cost</th>
+                                                        <th class="text-right">Total</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -2373,9 +2373,9 @@
                                                         <tr>
                                                             <td class="font-medium">@line.ProductName</td>
                                                             <td><code class="inventory-code-badge">@line.Sku</code></td>
-                                                            <td class="text-right font-bold" style="color: #164CA6;">@line.Quantity</td>
-                                                            <td>@GetTransferLineUomType(line)</td>
-                                                            <td>@line.Uom</td>
+                                                            <td class="text-right">@line.Quantity @line.Uom</td>
+                                                            <td class="text-right">MYR @line.UnitCost.ToString("N2")</td>
+                                                            <td class="text-right font-bold">MYR @line.LineAmount.ToString("N2")</td>
                                                         </tr>
                                                     }
                                                 </tbody>
@@ -9180,42 +9180,30 @@ private async Task ShowAddTransferForm()
         try
         {
             var builder = new StringBuilder();
+            builder.AppendLine("GIN,Date,Activity,Remarks,Total Cost");
 
-            // CSV Header
-            builder.AppendLine("GIN No,Issue Date,Branch,Purpose,Issued To,Reference,Total Quantity,Status,Remarks");
-
-            // CSV Data
             var ginList = FilteredReturnedStock.ToList();
             foreach (var gin in ginList)
             {
                 builder.AppendLine(string.Join(',',
                     CsvEscape(gin.ReturnedStockNo),
-                    $"=\"{gin.DateIssued:dd/MM/yyyy}\"",
-                    CsvEscape(gin.IssuedBy),
+                    $"=\"{gin.DateIssued:dd/MM/yyyy HH:mm}\"",
                     CsvEscape(gin.Purpose),
-                    CsvEscape(gin.IssuedTo),
-                    CsvEscape(gin.ReferenceNumber),
-                    gin.Quantity.ToString(CultureInfo.InvariantCulture),
-                    CsvEscape(gin.Status),
-                    CsvEscape(gin.Reason)));
+                    CsvEscape(gin.Reason),
+                    gin.Amount.ToString("0.00", CultureInfo.InvariantCulture)));
             }
 
-            // Total row
-            builder.AppendLine($",,,,,,,,Total Entries: {ginList.Count}");
+            builder.AppendLine($",,,,Total Entries: {ginList.Count}");
 
             var bytes = Encoding.UTF8.GetBytes(builder.ToString());
             var base64 = Convert.ToBase64String(bytes);
             var fileName = $"GIN_Export_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
 
             await EnsureInventoryModuleAsync();
-
-            if (_inventoryModule == null)
+            if (_inventoryModule != null)
             {
-                Console.WriteLine("Inventory interop module not loaded; unable to export GIN.");
-                return;
+                await _inventoryModule.InvokeVoidAsync("downloadFile", fileName, base64, "text/csv");
             }
-
-            await _inventoryModule.InvokeVoidAsync("downloadFile", fileName, base64, "text/csv");
         }
         catch (Exception ex)
         {
@@ -9228,45 +9216,30 @@ private async Task ShowAddTransferForm()
         try
         {
             var builder = new StringBuilder();
+            builder.AppendLine("GRN,Date,Activity,Remarks,Total Cost");
 
-            // CSV Header
-            builder.AppendLine("Branch,Receipt Date,GRN No,Supplier,Supplier Account ID,PO No,PO Document ID,Reference,Currency,Tax,Total,Status");
-
-            // CSV Data
             var grnList = FilteredGRNs.ToList();
             foreach (var grn in grnList)
             {
                 builder.AppendLine(string.Join(',',
-                    CsvEscape(grn.DOCBranch),
-                    $"=\"{grn.Date:dd/MM/yyyy}\"",
                     CsvEscape(grn.DOCNo),
-                    CsvEscape(grn.SupplierName),
-                    CsvEscape(grn.SupplierAccountId),
-                    CsvEscape(grn.PONo),
-                    CsvEscape(grn.PODocumentId),
-                    CsvEscape(grn.ReferenceNumber),
-                    CsvEscape(grn.CurrencyId),
-                    $"\"{grn.TaxAmount:N2}\"",
-                    $"\"{grn.Amount:N2}\"",
-                    CsvEscape(grn.Status)));
+                    $"=\"{grn.Date:dd/MM/yyyy HH:mm}\"",
+                    CsvEscape(grn.Activity),
+                    CsvEscape(grn.Remarks),
+                    grn.Amount.ToString("0.00", CultureInfo.InvariantCulture)));
             }
 
-            // Total row
-            builder.AppendLine($",,,,,,,,,,,Total Entries: {grnList.Count}");
+            builder.AppendLine($",,,,Total Entries: {grnList.Count}");
 
             var bytes = Encoding.UTF8.GetBytes(builder.ToString());
             var base64 = Convert.ToBase64String(bytes);
             var fileName = $"GRN_Export_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
 
             await EnsureInventoryModuleAsync();
-
-            if (_inventoryModule == null)
+            if (_inventoryModule != null)
             {
-                Console.WriteLine("Inventory interop module not loaded; unable to export GRN.");
-                return;
+                await _inventoryModule.InvokeVoidAsync("downloadFile", fileName, base64, "text/csv");
             }
-
-            await _inventoryModule.InvokeVoidAsync("downloadFile", fileName, base64, "text/csv");
         }
         catch (Exception ex)
         {
