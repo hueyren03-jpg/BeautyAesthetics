@@ -17,6 +17,8 @@ public sealed class StockGrnAC
 
     private static readonly MediaTypeHeaderValue JsonPatchMediaType =
         MediaTypeHeaderValue.Parse("application/json-patch+json");
+    private static readonly MediaTypeHeaderValue ApplicationJsonMediaType =
+        MediaTypeHeaderValue.Parse("application/json");
 
     private readonly IAuthService authService;
 
@@ -29,7 +31,7 @@ public sealed class StockGrnAC
         StockGrnProxyRequestDTO requestDto,
         CancellationToken cancellationToken = default)
     {
-        using var request = CreatePostRequest("/api/Doc_Stock_GRN/LoadProxy", requestDto);
+        using var request = CreateJsonPostRequest("/api/Doc_Stock_GRN/LoadProxy", requestDto);
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
 
         return await ReadGrnListResponseAsync(
@@ -130,6 +132,14 @@ public sealed class StockGrnAC
         return new HttpRequestMessage(HttpMethod.Post, uri)
         {
             Content = JsonContent.Create(payload, mediaType: JsonPatchMediaType, options: JsonOptions)
+        };
+    }
+
+    private static HttpRequestMessage CreateJsonPostRequest<T>(string uri, T payload)
+    {
+        return new HttpRequestMessage(HttpMethod.Post, uri)
+        {
+            Content = JsonContent.Create(payload, mediaType: ApplicationJsonMediaType, options: JsonOptions)
         };
     }
 
