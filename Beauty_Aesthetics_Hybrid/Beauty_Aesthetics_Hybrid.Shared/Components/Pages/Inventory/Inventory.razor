@@ -1761,10 +1761,10 @@
                                     <th class='@GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "Date")' @onclick='() => ToggleTransferHistorySort("Date")'>Date <span class="resize-handle"></span></th>
                                     <th class='@GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "From")' @onclick='() => ToggleTransferHistorySort("From")'>From Branch <span class="resize-handle"></span></th>
                                     <th class='@GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "To")' @onclick='() => ToggleTransferHistorySort("To")'>To Branch <span class="resize-handle"></span></th>
+                                    <th class='stock-transfer-status-column @GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "Status")' @onclick='() => ToggleTransferHistorySort("Status")'>Status <span class="resize-handle"></span></th>
                                     <th>Remarks <span class="resize-handle"></span></th>
                                     <th class='@GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "TotalQuantity")' @onclick='() => ToggleTransferHistorySort("TotalQuantity")'>Total Qty <span class="resize-handle"></span></th>
                                     <th class='@GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "TotalCost")' @onclick='() => ToggleTransferHistorySort("TotalCost")'>Total Cost <span class="resize-handle"></span></th>
-                                    <th class='@GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "Status")' @onclick='() => ToggleTransferHistorySort("Status")'>Status <span class="resize-handle"></span></th>
                                     @if (!IsTransferHistoryPrintModeActive)
                                     {
                                         <th class="inventory-row-actions-column stock-row-actions-column">Actions</th>
@@ -1774,7 +1774,7 @@
                             <tbody>
                                 @if (!PaginatedCombinedHistory.Any())
                                 {
-                                    <tr><td colspan="10" class="inventory__empty-state">No stock transfer history found.</td></tr>
+                                    <tr><td colspan="9" class="inventory__empty-state">No stock transfer history found.</td></tr>
                                 }
                                 else
                                 {
@@ -1793,10 +1793,12 @@
                                             <td>@history.Date.ToString("dd/MM/yyyy HH:mm")</td>
                                             <td>@history.From</td>
                                             <td>@history.To</td>
+                                            <td class="stock-transfer-status-column">
+                                                <span class="stock-transfer__status stock-transfer__status--@GetTransferStatusCssClass(history.Status)">@GetTransferStatusDisplay(history.Status)</span>
+                                            </td>
                                             <td>@(string.IsNullOrWhiteSpace(history.Remarks) ? "—" : history.Remarks)</td>
                                             <td>@(history.TotalQuantity > 0 ? history.TotalQuantity.ToString("0.##") : "—")</td>
                                             <td><span class="inventory-money-value">MYR @history.TotalCost.ToString("N2")</span></td>
-                                            <td><span class="stock-transfer__status stock-transfer__status--@history.Status.ToLowerInvariant().Replace(" ", "-")">@history.Status</span></td>
                                             @if (!IsTransferHistoryPrintModeActive)
                                             {
                                                 <td class="inventory-row-actions-column stock-row-actions-column" @onclick:stopPropagation="true">
@@ -2219,7 +2221,7 @@
                                                     <th class='@GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "To")' @onclick='() => ToggleTransferHistorySort("To")'>
                                                         To
                                                     </th>
-                                                    <th class='@GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "Status")' @onclick='() => ToggleTransferHistorySort("Status")'>
+                                                    <th class='stock-transfer-status-column @GetSortHeaderClass(TransferHistorySortColumn, TransferHistorySortAscending, "Status")' @onclick='() => ToggleTransferHistorySort("Status")'>
                                                         Status
                                                     </th>
                                                     @if (!IsTransferHistoryPrintModeActive)
@@ -2245,9 +2247,9 @@
                                                         <td>@history.Date.ToString("dd/MM/yyyy")</td>
                                                         <td>@history.From</td>
                                                         <td>@history.To</td>
-                                                        <td>
-                                                            <span class="stock-transfer__status stock-transfer__status--@history.Status.ToLowerInvariant().Replace(" ", "-")">
-                                                                @history.Status
+                                                        <td class="stock-transfer-status-column">
+                                                            <span class="stock-transfer__status stock-transfer__status--@GetTransferStatusCssClass(history.Status)">
+                                                                @GetTransferStatusDisplay(history.Status)
                                                             </span>
                                                         </td>
                                                         @if (!IsTransferHistoryPrintModeActive)
@@ -7651,6 +7653,15 @@ private void ShowAddBrandForm()
 
         return string.Join(" ", classes);
     }
+
+    private static string GetTransferStatusDisplay(string? status) =>
+        string.IsNullOrWhiteSpace(status) ? "In Transit" : NormalizeTransferStatus(status);
+
+    private static string GetTransferStatusCssClass(string? status) =>
+        GetTransferStatusDisplay(status)
+            .Trim()
+            .ToLowerInvariant()
+            .Replace(" ", "-");
 
     private List<TransferHistoryItem> TransferHistory { get; set; } = new();
 
