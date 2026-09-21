@@ -5479,10 +5479,16 @@
 
     protected override async Task OnInitializedAsync()
     {
-        if (string.Equals(RequestedTab, "GRN", StringComparison.OrdinalIgnoreCase))
+        ActiveTab = RequestedTab?.Trim().ToLowerInvariant() switch
         {
-            ActiveTab = "GRN";
-        }
+            "grn" => "GRN",
+            "returnedstock" => "ReturnedStock",
+            "transferorders" => "TransferOrders",
+            "purchaseorders" => "PurchaseOrders",
+            "inventoryoptions" => "InventoryOptions",
+            "products" => "Products",
+            _ => ActiveTab
+        };
 
         // Document histories are branch-scoped, so branch IDs must exist first.
         await LoadStockTransferBranchesAsync();
@@ -6081,7 +6087,7 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
     {
         if (!await JSRuntime.InvokeAsync<bool>(
                 "confirm",
-                $"Receive transfer {receipt.DisplayCode} into branch {InventoryBranchId}? This creates the GRN and completes the transfer."))
+                $"Receive transfer {receipt.DisplayCode} into branch {InventoryBranchId}? This completes the stock transfer."))
         {
             return;
         }
@@ -6097,31 +6103,30 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
             }
 
             var sourceTransfer = await ResolveSourceTransferAsync(receipt);
-            var grnKeysBeforeAcceptance = GRNsForTransferReconciliation
-                .Select(GetGrnKey)
-                .Where(key => !string.IsNullOrWhiteSpace(key))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var result = await PendingStockReceiptService.AcceptAsync(receipt.DocumentId);
+            if (!result.Success)
+            {
+                PendingStockReceiptError = result.ErrorMessage ?? "Unable to receive the incoming stock transfer.";
+                return;
+            }
 
-        var result = await PendingStockReceiptService.AcceptAsync(receipt.DocumentId);
-        if (!result.Success)
-        {
-            PendingStockReceiptError = result.ErrorMessage ?? "Unable to receive the incoming stock transfer.";
-            return;
-        }
+            RememberAcceptedStockReceipt(receipt, sourceTransfer);
+            PendingStockReceipts.RemoveAll(item =>
+                SameDocumentKey(item.DocumentId, receipt.DocumentId) ||
+                SameDocumentKey(item.DisplayCode, receipt.DisplayCode));
 
-        RememberAcceptedStockReceipt(receipt, sourceTransfer);
-        PendingStockReceipts.RemoveAll(item =>
-            SameDocumentKey(item.DocumentId, receipt.DocumentId) ||
-            SameDocumentKey(item.DisplayCode, receipt.DisplayCode));
-        MarkSourceTransferReceived(sourceTransfer);
-        ReconcileStockTransferStatuses();
-        StateHasChanged();
+            // Stock Transfer is its own flow. AcceptStockIn completes the transfer;
+            // it must not create or verify GRN/GIN documents.
+            MarkSourceTransferReceived(sourceTransfer);
+            await Task.WhenAll(
+                LoadPendingStockReceiptsAsync(),
+                LoadStockTransfersAsync(),
+                LoadProductsAsync());
 
-        await RefreshInventoryAfterAcceptanceAsync(
-            receipt,
-            sourceTransfer,
-            grnKeysBeforeAcceptance,
-            result.Value);
+            MarkSourceTransferReceived(sourceTransfer);
+            ReconcileStockTransferStatuses();
+            StockTransferSuccessMessage = $"Transfer {receipt.DisplayCode} received successfully.";
+            StateHasChanged();
         }
         finally
         {
@@ -6402,26 +6407,15 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
 
 private void ReconcileStockTransferStatuses()
 {
-    var receivedDocumentKeys = new HashSet<string>(
-        AcceptedStockReceiptKeys,
-        StringComparer.OrdinalIgnoreCase);
-        foreach (var grn in GRNsForTransferReconciliation.Where(item => !item.IsVoid))
+    foreach (var transfer in TransferHistory)
+    {
+        if (AcceptedStockReceiptKeys.Contains(transfer.DocumentId) ||
+            AcceptedStockReceiptKeys.Contains(transfer.TransferNo))
         {
-            AddDocumentKey(receivedDocumentKeys, grn.CreatedByDocumentId);
-            AddDocumentKey(receivedDocumentKeys, grn.CreatedByDocumentDisplayCode);
-            AddDocumentKey(receivedDocumentKeys, grn.PODocumentId);
-            AddDocumentKey(receivedDocumentKeys, grn.PONo);
-        }
-
-        foreach (var transfer in TransferHistory)
-        {
-            if (receivedDocumentKeys.Contains(transfer.DocumentId) ||
-                receivedDocumentKeys.Contains(transfer.TransferNo))
-            {
-                transfer.Status = "Completed";
-            }
+            transfer.Status = "Completed";
         }
     }
+}
 
     private static void AddDocumentKey(ISet<string> keys, string? value)
     {
@@ -9120,11 +9114,10 @@ private async Task ShowAddTransferForm()
             CloseAddTransferModal();
             await Task.WhenAll(
                 LoadStockTransfersAsync(),
-                LoadGINsAsync(),
                 LoadPendingStockReceiptsAsync(),
                 LoadProductsAsync());
             ReconcileStockTransferStatuses();
-            StockTransferSuccessMessage = "Transfer created. The generated GIN is posted and the transfer is now In Transit.";
+            StockTransferSuccessMessage = "Transfer created successfully and is now In Transit.";
             StockTransferHistoryCurrentPage = 1;
         }
         finally
