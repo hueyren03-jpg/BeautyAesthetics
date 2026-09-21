@@ -11,6 +11,7 @@
 @inject IBranchSessionService BranchSession
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
+@inject AppFeedbackService Feedback
 
 <PageTitle>Incoming Transfers</PageTitle>
 
@@ -49,20 +50,6 @@
             <div><small>Loaded line items</small><strong>@Receipts.Sum(item => item.Lines.Count)</strong></div>
         </div>
     </section>
-
-    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
-    {
-        <div class="page-message page-message--error" role="alert">
-            <i class="bi bi-exclamation-circle"></i><span>@ErrorMessage</span>
-        </div>
-    }
-    @if (!string.IsNullOrWhiteSpace(SuccessMessage))
-    {
-        <div class="page-message page-message--success" role="status">
-            <i class="bi bi-check-circle"></i><span>@SuccessMessage</span>
-            <button type="button" class="message-link" @onclick="ReturnToInventory">View Stock Transfer History</button>
-        </div>
-    }
 
     <div class="incoming-toolbar">
         <label class="search-field">
@@ -158,8 +145,6 @@
     private List<PendingStockReceiptViewModel> Receipts { get; set; } = [];
     private string SearchTerm { get; set; } = string.Empty;
     private bool IsLoading { get; set; }
-    private string? ErrorMessage { get; set; }
-    private string? SuccessMessage { get; set; }
     private string? ReceivingDocumentId { get; set; }
 
     private string CurrentBranchId => string.IsNullOrWhiteSpace(BranchSession.CurrentBranch?.Id)
@@ -185,20 +170,19 @@
     private async Task LoadPendingAsync()
     {
         IsLoading = true;
-        ErrorMessage = null;
         Receipts = [];
         try
         {
             if (string.IsNullOrWhiteSpace(CurrentBranchId))
             {
-                ErrorMessage = "Select a working branch before loading incoming transfers.";
+                Feedback.Warning("Select a working branch before loading incoming transfers.", "Working branch required");
                 return;
             }
 
             var result = await PendingStockReceiptService.LoadPendingAsync(CurrentBranchId);
             if (!result.Success || result.Value is null)
             {
-                ErrorMessage = result.ErrorMessage ?? "Unable to load incoming stock transfers.";
+                Feedback.Error(result.ErrorMessage ?? "Unable to load incoming stock transfers.", "Incoming transfers unavailable");
                 return;
             }
 
@@ -206,7 +190,7 @@
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Unable to load incoming stock transfers. {ex.Message}";
+            Feedback.Error($"Unable to load incoming stock transfers. {ex.Message}", "Incoming transfers unavailable");
         }
         finally
         {
@@ -221,15 +205,13 @@
         {
             return;
         }
-
-        ErrorMessage = null;
         try
         {
             var result = await PendingStockReceiptService.LoadDetailsAsync(receipt.DocumentId);
             if (!result.Success || result.Value is null)
             {
                 receipt.IsExpanded = false;
-                ErrorMessage = result.ErrorMessage ?? "Unable to load transfer details.";
+                Feedback.Error(result.ErrorMessage ?? "Unable to load transfer details.", "Transfer details unavailable");
                 return;
             }
 
@@ -239,7 +221,7 @@
         catch (Exception ex)
         {
             receipt.IsExpanded = false;
-            ErrorMessage = $"Unable to load transfer details. {ex.Message}";
+            Feedback.Error($"Unable to load transfer details. {ex.Message}", "Transfer details unavailable");
         }
     }
 
@@ -258,9 +240,6 @@
         {
             return;
         }
-
-        ErrorMessage = null;
-        SuccessMessage = null;
         ReceivingDocumentId = receipt.DocumentId;
         var acceptedDocumentId = receipt.DocumentId;
         var acceptedDisplayCode = DisplayCode(receipt);
@@ -272,7 +251,7 @@
             var result = await PendingStockReceiptService.AcceptAsync(receipt);
             if (!result.Success)
             {
-                ErrorMessage = result.ErrorMessage ?? "Unable to receive the stock transfer.";
+                // AcceptAsync already publishes operation feedback.
                 return;
             }
 
@@ -280,13 +259,16 @@
             Receipts.RemoveAll(item => SameDocument(item.DocumentId, acceptedDocumentId));
             var noLongerPending = await ReconcileReceivedTransferAsync(acceptedDocumentId);
 
-            SuccessMessage = noLongerPending
-                ? $"{acceptedDisplayCode} was received and the stock transfer is completed."
-                : $"{acceptedDisplayCode} was accepted. The pending list may take a moment to refresh.";
+            if (!noLongerPending)
+            {
+                Feedback.Info(
+                    $"{acceptedDisplayCode} was accepted. The pending list may take a moment to refresh.",
+                    "Transfer accepted");
+            }
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Unable to receive the stock transfer. {ex.Message}";
+            Feedback.Error($"Unable to receive the stock transfer. {ex.Message}", "Transfer not received");
         }
         finally
         {
