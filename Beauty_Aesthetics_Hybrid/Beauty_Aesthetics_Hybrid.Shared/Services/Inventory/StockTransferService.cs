@@ -62,10 +62,7 @@ public sealed class StockTransferService : IStockTransferService
             .ThenByDescending(transfer => transfer.DisplayCode)
             .ToList();
 
-        foreach (var transfer in transfers)
-        {
-            ApplyAcceptedReceiptStatus(transfer);
-        }
+        await ApplyPendingApiStatusesAsync(transfers, cancellationToken);
 
         return ApiCallResult<IReadOnlyList<StockTransferViewModel>>.Ok(result.StatusCode, transfers);
     }
@@ -91,7 +88,7 @@ public sealed class StockTransferService : IStockTransferService
 
         var transfer = ToViewModel(result.Value.Document);
         transfer.Lines = result.Value.DocumentLines.Select(ToLineViewModel).ToList();
-        ApplyAcceptedReceiptStatus(transfer);
+        await ApplyPendingApiStatusAsync(transfer, cancellationToken);
         return ApiCallResult<StockTransferViewModel>.Ok(result.StatusCode, transfer);
     }
 
@@ -428,18 +425,67 @@ public sealed class StockTransferService : IStockTransferService
         Status = ResolveTransferStatus(document)
     };
 
-    private void ApplyAcceptedReceiptStatus(StockTransferViewModel transfer)
+    private async Task ApplyPendingApiStatusesAsync(
+        IReadOnlyList<StockTransferViewModel> transfers,
+        CancellationToken cancellationToken)
     {
-        if (string.Equals(transfer.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
+        var groups = transfers
+            .Where(ShouldResolveFromPendingApi)
+            .Where(transfer => !string.IsNullOrWhiteSpace(transfer.ToBranchId))
+            .GroupBy(transfer => transfer.ToBranchId.Trim(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var group in groups)
+        {
+            var pendingResult = await pendingAcceptService.LoadPendingAsync(group.Key, cancellationToken);
+            if (!pendingResult.Success || pendingResult.Value is null)
+            {
+                // Never invent a completion state when the API cannot be checked.
+                continue;
+            }
+
+            foreach (var transfer in group)
+            {
+                transfer.Status = pendingResult.Value.Any(receipt => MatchesPendingTransfer(transfer, receipt))
+                    ? "In Transit"
+                    : "Completed";
+            }
+        }
+    }
+
+    private async Task ApplyPendingApiStatusAsync(
+        StockTransferViewModel transfer,
+        CancellationToken cancellationToken)
+    {
+        if (!ShouldResolveFromPendingApi(transfer) ||
+            string.IsNullOrWhiteSpace(transfer.ToBranchId))
         {
             return;
         }
 
-        if (pendingAcceptService.WasAcceptedTransfer(transfer.DocumentId, transfer.DisplayCode))
+        var pendingResult = await pendingAcceptService.LoadPendingAsync(
+            transfer.ToBranchId.Trim(),
+            cancellationToken);
+
+        if (!pendingResult.Success || pendingResult.Value is null)
         {
-            transfer.Status = "Completed";
+            return;
         }
+
+        transfer.Status = pendingResult.Value.Any(receipt => MatchesPendingTransfer(transfer, receipt))
+            ? "In Transit"
+            : "Completed";
     }
+
+    private static bool ShouldResolveFromPendingApi(StockTransferViewModel transfer) =>
+        !string.Equals(transfer.Status, "Cancelled", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(transfer.Status, "Draft", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(transfer.Status, "Completed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool MatchesPendingTransfer(
+        StockTransferViewModel transfer,
+        PendingStockReceiptViewModel receipt) =>
+        SameKey(transfer.DocumentId, receipt.DocumentId) ||
+        SameKey(transfer.DisplayCode, receipt.DisplayCode);
 
     private static string ResolveTransferStatus(StockTransferDocumentDTO document)
     {
