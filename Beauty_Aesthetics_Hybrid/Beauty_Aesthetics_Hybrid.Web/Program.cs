@@ -1,3 +1,4 @@
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_Hybrid.Shared.Services;
 using Beauty_Aesthetics_Hybrid.Web.Components;
 using Beauty_Aesthetics_Hybrid.Web.Services;
@@ -43,6 +44,7 @@ builder.Services.AddScoped<ITokenStore, WebProtectedTokenStore>();
 builder.Services.AddScoped<IBranchSessionStore, WebBranchSessionStore>();
 builder.Services.AddScoped<IBranchSessionService, BranchSessionService>();
 builder.Services.AddScoped<AppState>();
+builder.Services.AddScoped<AppFeedbackService>();
 builder.Services.AddSingleton(new AuthApiOptions
 {
     BaseUrl = builder.Configuration["Api:BaseUrl"] ?? AuthApiOptions.DefaultBaseUrl
