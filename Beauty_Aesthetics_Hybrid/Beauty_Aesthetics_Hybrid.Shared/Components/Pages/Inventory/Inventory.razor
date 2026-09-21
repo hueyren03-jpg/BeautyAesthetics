@@ -1739,14 +1739,6 @@
                 {
                     <div class="inventory__api-message" role="status">Loading stock transfers...</div>
                 }
-                else if (!string.IsNullOrWhiteSpace(StockTransferSuccessMessage))
-                {
-                    <div class="inventory__api-message inventory__api-message--success" role="status">
-                        <i class="bi bi-check-circle"></i>
-                        <span>@StockTransferSuccessMessage</span>
-                    </div>
-                }
-
                 @if (IsTransferHistoryPrintModeActive)
                 {
                     <div class="inventory__delete-bar">
@@ -3838,7 +3830,6 @@
     private bool IsAddGRNFormVisible { get; set; }
     private bool IsGRNEditMode { get; set; }
     private bool IsStockTransferApiLoading { get; set; }
-    private string? StockTransferSuccessMessage { get; set; }
 
     private string PurchaseOrderSearchQuery { get; set; } = string.Empty;
     private int ProductsPageSize { get; set; } = 10;
@@ -5806,7 +5797,6 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
 
             MarkSourceTransferReceived(sourceTransfer);
             ReconcileStockTransferStatuses();
-            StockTransferSuccessMessage = $"Transfer {receipt.DisplayCode} received successfully.";
             StateHasChanged();
         }
         finally
@@ -8503,7 +8493,6 @@ private void ShowAddBrandForm()
 private async Task ShowAddTransferForm()
 {
         StockTransferApiError = null;
-        StockTransferSuccessMessage = null;
         if (StockTransferBranches.Count == 0)
         {
             await LoadStockTransferBranchesAsync();
@@ -8718,7 +8707,6 @@ private async Task ShowAddTransferForm()
                 LoadPendingStockReceiptsAsync(),
                 LoadProductsAsync());
             ReconcileStockTransferStatuses();
-            StockTransferSuccessMessage = "Transfer created successfully and is now In Transit.";
             StockTransferHistoryCurrentPage = 1;
         }
         finally
