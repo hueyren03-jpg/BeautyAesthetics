@@ -2,6 +2,7 @@ using System.Net;
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.ViewModels;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 using EBI.DM;
 using EBI.Enum;
@@ -17,10 +18,12 @@ public sealed class PackageService : IPackageService
     private static readonly DateTime InventoryAvailableTo = new(2049, 12, 31);
 
     private readonly ServiceInventoryAC serviceInventoryAC;
+    private readonly AppFeedbackService feedback;
 
-    public PackageService(ServiceInventoryAC serviceInventoryAC)
+    public PackageService(ServiceInventoryAC serviceInventoryAC, AppFeedbackService feedback)
     {
         this.serviceInventoryAC = serviceInventoryAC;
+        this.feedback = feedback;
     }
 
     public async Task<ApiCallResult<IReadOnlyList<InventoryPackageSummary>>> LoadPackagesAsync(
@@ -111,9 +114,16 @@ public sealed class PackageService : IPackageService
         var normalizedBranchId = NormalizeBranchId(branchId);
         var record = CreatePackageRecord(package, normalizedBranchId);
         var request = CreatePackageRequest(record, normalizedBranchId, package.Price);
-        var result = await serviceInventoryAC.CreateFullAsync(request, cancellationToken);
+        var result = ToSaveResult(
+            await serviceInventoryAC.CreateFullAsync(request, cancellationToken),
+            "Unable to create package.");
 
-        return ToSaveResult(result, "Unable to create package.");
+        if (result.Success)
+            feedback.Success("Package created successfully.", "Package created");
+        else
+            feedback.Error(result.ErrorMessage ?? "Unable to create package.", "Package not created");
+
+        return result;
     }
 
     public async Task<ApiCallResult<bool>> UpdatePackageAsync(
@@ -159,15 +169,28 @@ public sealed class PackageService : IPackageService
 
         var request = CreatePackageRequest(record, normalizedBranchId, package.Price);
 
-        var result = await serviceInventoryAC.UpdateFullAsync(request, cancellationToken);
-        return ToSaveResult(result, "Unable to update package.");
+        var result = ToSaveResult(
+            await serviceInventoryAC.UpdateFullAsync(request, cancellationToken),
+            "Unable to update package.");
+
+        if (result.Success)
+            feedback.Success("Package updated successfully.", "Package updated");
+        else
+            feedback.Error(result.ErrorMessage ?? "Unable to update package.", "Package not updated");
+
+        return result;
     }
 
-    public Task<ApiCallResult<bool>> DeletePackageAsync(
+    public async Task<ApiCallResult<bool>> DeletePackageAsync(
         string masterAccountId,
         CancellationToken cancellationToken = default)
     {
-        return serviceInventoryAC.DeleteFullAsync(masterAccountId, cancellationToken);
+        var result = await serviceInventoryAC.DeleteFullAsync(masterAccountId, cancellationToken);
+        if (result.Success)
+            feedback.Success("Package deleted successfully.", "Package deleted");
+        else
+            feedback.Error(result.ErrorMessage ?? "Unable to delete package.", "Package not deleted");
+        return result;
     }
 
     private static InventoryDM CreatePackageRecord(
