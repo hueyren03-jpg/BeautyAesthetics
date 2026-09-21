@@ -1,6 +1,5 @@
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.Components.Models;
-using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using EBI.DM;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.Customers;
@@ -11,13 +10,11 @@ public sealed class CustomerService : ICustomerService
     private static readonly DateTime SqlMinDate = new(1753, 1, 1);
 
     private readonly CustomerAC customerAC;
-    private readonly AppFeedbackService feedback;
     private readonly Dictionary<Guid, CustomerDM> customerRecords = new();
 
-    public CustomerService(CustomerAC customerAC, AppFeedbackService feedback)
+    public CustomerService(CustomerAC customerAC)
     {
         this.customerAC = customerAC;
-        this.feedback = feedback;
     }
 
     public async Task<CustomerOperationResult<IReadOnlyList<Customer>>> SearchCustomersAsync(
@@ -101,7 +98,6 @@ public sealed class CustomerService : ICustomerService
         if (!result.Success)
         {
             var message = ToCustomerError(result.ErrorMessage);
-            feedback.Error(message, "Customer not created");
             return CustomerOperationResult<Customer>.Fail(message);
         }
 
@@ -116,7 +112,6 @@ public sealed class CustomerService : ICustomerService
         }
 
         var created = MapAndCache(record);
-        feedback.Success("Customer created successfully.", "Customer created");
         return CustomerOperationResult<Customer>.Ok(created);
     }
 
@@ -135,12 +130,10 @@ public sealed class CustomerService : ICustomerService
         if (!result.Success)
         {
             var message = ToCustomerError(result.ErrorMessage);
-            feedback.Error(message, "Customer not updated");
             return CustomerOperationResult<Customer>.Fail(message);
         }
 
         var updated = MapAndCache(record, customer.Id);
-        feedback.Success("Customer details updated successfully.", "Customer updated");
         return CustomerOperationResult<Customer>.Ok(updated);
     }
 
@@ -162,12 +155,10 @@ public sealed class CustomerService : ICustomerService
         if (!result.Success)
         {
             var message = ToCustomerError(result.ErrorMessage);
-            feedback.Error(message, "Customer not deactivated");
             return CustomerOperationResult<Customer>.Fail(message);
         }
 
         var deactivated = MapAndCache(record, customerId);
-        feedback.Success("Customer was deactivated successfully.", "Customer deactivated");
         return CustomerOperationResult<Customer>.Ok(deactivated);
     }
 
