@@ -8,6 +8,7 @@
 @inject IBranchLookupService BranchLookupService
 @inject IJSRuntime JS
 @inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L
+@inject AppFeedbackService Feedback
 
 <style>
     /* ==================================== MAIN LAYOUT ==================================== */
@@ -1321,6 +1322,12 @@
         startTimeString = "09:00";
         endTimeString = "18:00";
         showEditor = true;
+        Feedback.Info(
+            editingEmployee is null
+                ? $"Creating a shift for {date:dd/MM/yyyy}."
+                : $"Creating a shift for {editingEmployee.Name} on {date:dd/MM/yyyy}.",
+            "New roster shift",
+            2200);
     }
 
     void EditShift(RosterShift s)
@@ -1345,37 +1352,79 @@
         endTimeString = s.EndTime.ToString(@"hh\:mm");
         editingEmployee = employees.FirstOrDefault(e => e.Id == s.EmployeeId);
         showEditor = true;
+        Feedback.Info(
+            editingEmployee is null
+                ? $"Editing shift on {s.Date:dd/MM/yyyy}."
+                : $"Editing {editingEmployee.Name}'s shift on {s.Date:dd/MM/yyyy}.",
+            "Edit roster shift",
+            2200);
     }
 
     async Task SaveEditor()
     {
-        if (TimeSpan.TryParse(startTimeString, out var st))
-            editorModel.StartTime = st;
+        if (!TimeSpan.TryParse(startTimeString, out var st) ||
+            !TimeSpan.TryParse(endTimeString, out var et))
+        {
+            Feedback.Warning("Enter valid start and end times before saving.", "Shift not saved");
+            return;
+        }
 
-        if (TimeSpan.TryParse(endTimeString, out var et))
-            editorModel.EndTime = et;
+        if (editingEmployee is null && string.IsNullOrWhiteSpace(editorModel.EmployeeId))
+        {
+            Feedback.Warning("Select an employee before saving the shift.", "Shift not saved");
+            return;
+        }
 
-        await RosterService.AddOrUpdateShiftAsync(editorModel);
-        showEditor = false;
-        await LoadData();
+        editorModel.StartTime = st;
+        editorModel.EndTime = et;
+        var wasEditing = editing;
+
+        try
+        {
+            await RosterService.AddOrUpdateShiftAsync(editorModel);
+            showEditor = false;
+            await LoadData();
+            Feedback.Success(
+                wasEditing ? "Roster shift updated successfully." : "Roster shift created successfully.",
+                wasEditing ? "Shift updated" : "Shift created");
+        }
+        catch (Exception ex)
+        {
+            Feedback.Error($"Unable to save the roster shift. {ex.Message}", "Shift not saved");
+        }
     }
 
     async Task DeleteEditor()
     {
-        if (editing)
+        if (!editing)
         {
-            bool confirmed = await JS.InvokeAsync<bool>("confirm", "Are you sure you want to delete this shift?");
-            if (confirmed)
-            {
-                await RosterService.DeleteShiftAsync(editorModel.Id);
-                showEditor = false;
-                await LoadData();
-            }
+            Feedback.Warning("Only an existing shift can be deleted.", "Shift not deleted");
+            return;
+        }
+
+        bool confirmed = await JS.InvokeAsync<bool>("confirm", "Are you sure you want to delete this shift?");
+        if (!confirmed)
+        {
+            Feedback.Info("Roster shift deletion cancelled.", "Delete cancelled", 1800);
+            return;
+        }
+
+        try
+        {
+            await RosterService.DeleteShiftAsync(editorModel.Id);
+            showEditor = false;
+            await LoadData();
+            Feedback.Success("Roster shift deleted successfully.", "Shift deleted");
+        }
+        catch (Exception ex)
+        {
+            Feedback.Error($"Unable to delete the roster shift. {ex.Message}", "Shift not deleted");
         }
     }
 
     void CloseEditor()
     {
         showEditor = false;
+        Feedback.Info("Roster changes were not saved.", "Edit cancelled", 1800);
     }
 }
