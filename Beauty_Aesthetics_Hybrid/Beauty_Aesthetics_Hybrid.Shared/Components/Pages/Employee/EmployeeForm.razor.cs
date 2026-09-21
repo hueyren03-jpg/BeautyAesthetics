@@ -1,6 +1,7 @@
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.Components.Services.Employees;
 using Beauty_Aesthetics_WebPos.Components.Services.Inventory;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.ViewModels;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
@@ -19,6 +20,9 @@ public partial class EmployeeFormBase : ComponentBase
     [Inject]
     public FileUploadAC FileUploadAC { get; set; } = default!;
 
+    [Inject]
+    public AppFeedbackService Feedback { get; set; } = default!;
+
     public EmployeeFormViewModel? ViewModel { get; set; }
 
     [Parameter]
@@ -33,11 +37,20 @@ public partial class EmployeeFormBase : ComponentBase
         {
             await ViewModel.LoadEmployeeForEditAsync(EmployeeCode);
             ViewModel.IsEditMode = true;
+            if (string.IsNullOrWhiteSpace(ViewModel.ErrorMessage))
+            {
+                Feedback.Info($"Editing employee {ViewModel.Employee.Name}.", "Edit employee", 2800);
+            }
+            else
+            {
+                Feedback.Error(ViewModel.ErrorMessage, "Employee could not be opened");
+            }
         }
         else
         {
             ViewModel.InitializeNewEmployee();
             ViewModel.IsEditMode = false;
+            Feedback.Info("Enter the employee details and save when ready.", "New employee", 2600);
         }
         var branches = await BranchLookupService.LoadBranchesAsync();
         if (branches.Success && branches.Value is not null)
@@ -47,6 +60,7 @@ public partial class EmployeeFormBase : ComponentBase
         else
         {
             ViewModel.ErrorMessage = branches.ErrorMessage ?? "Unable to load branches.";
+            Feedback.Error(ViewModel.ErrorMessage, "Branches unavailable");
         }
     }
 
@@ -61,11 +75,13 @@ public partial class EmployeeFormBase : ComponentBase
         if (!upload.Success || string.IsNullOrWhiteSpace(upload.Value))
         {
             ViewModel.ErrorMessage = upload.ErrorMessage ?? "Unable to upload employee image.";
+            Feedback.Error(ViewModel.ErrorMessage, "Image upload failed");
             return;
         }
 
         ViewModel.Employee.ImagePath = upload.Value;
         ViewModel.ErrorMessage = null;
+        Feedback.Success("Employee image uploaded and ready to save.", "Image uploaded", 3200);
         await InvokeAsync(StateHasChanged);
     }
     protected async Task SaveAsync()
