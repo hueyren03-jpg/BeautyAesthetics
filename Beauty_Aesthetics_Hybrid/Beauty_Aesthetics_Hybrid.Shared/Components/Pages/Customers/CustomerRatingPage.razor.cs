@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Beauty_Aesthetics_WebPos.Models;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 
 namespace Beauty_Aesthetics_WebPos.Components.Pages
 {
@@ -17,6 +18,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
         private string AccountName { get; set; } = "Test Cust"; // Harcode Customer Name for testing
 
         [Inject] private Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L { get; set; } = default!;
+        [Inject] private AppFeedbackService Feedback { get; set; } = default!;
 
         private void OnRate(int value)
         {
@@ -54,6 +56,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
 
             isSaving = true;
             errorMessage = string.Empty;
+            var feedbackId = Feedback.Loading("Saving your rating...", "Saving rating");
 
             try
             {
@@ -69,6 +72,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                 await RatingService.SaveRatingAsync(ratingModel);
 
                 hasSubmitted = true;
+                Feedback.Resolve(feedbackId, "Your 5-star rating was saved successfully.", "Rating saved");
 
                 // Small delay for better UX
                 await Task.Delay(800);
@@ -79,6 +83,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             catch (Exception ex)
             {
                 errorMessage = L["SaveRatingError"];
+                Feedback.Fail(feedbackId, errorMessage, "Rating not saved");
                 Console.WriteLine($"Error saving rating: {ex.Message}");
             }
             finally
@@ -92,8 +97,15 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             if (string.IsNullOrWhiteSpace(comment) || isSaving)
                 return;
 
+            if (rating <= 0)
+            {
+                Feedback.Warning("Select a rating before submitting your feedback.", "Rating required");
+                return;
+            }
+
             isSaving = true;
             errorMessage = string.Empty;
+            var feedbackId = Feedback.Loading("Submitting your feedback...", "Submitting feedback");
 
             try
             {
@@ -107,10 +119,12 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
 
                 await RatingService.SaveRatingAsync(ratingModel);
                 hasSubmitted = true;
+                Feedback.Resolve(feedbackId, "Thank you. Your feedback was submitted successfully.", "Feedback submitted");
             }
             catch (Exception ex)
             {
                 errorMessage = L["SubmitFeedbackError"];
+                Feedback.Fail(feedbackId, errorMessage, "Feedback not submitted");
                 Console.WriteLine($"Error submitting feedback: {ex.Message}");
             }
             finally
