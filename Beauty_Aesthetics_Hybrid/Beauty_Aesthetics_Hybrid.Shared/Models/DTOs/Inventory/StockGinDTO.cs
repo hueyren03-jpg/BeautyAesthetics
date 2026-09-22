@@ -1,4 +1,3 @@
-using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace Beauty_Aesthetics_WebPos.Models.DTOs;
@@ -25,26 +24,4 @@ public sealed class StockGinProxyRequestDTO
 
     [JsonPropertyName("pageSize")]
     public int PageSize { get; set; } = 200;
-}
-
-public sealed class StockGinEnvelopeDTO
-{
-    [JsonPropertyName("mobjDoc_Stock_GIN")]
-    public StockGrnDocumentDTO? Document { get; set; }
-
-    [JsonPropertyName("lstDocumentLine")]
-    public List<JsonObject> DocumentLines { get; set; } = new();
-
-    public static StockGinEnvelopeDTO CreateNew() => new()
-    {
-        Document = new StockGrnDocumentDTO
-        {
-            DocumentID = Guid.NewGuid().ToString(),
-            DocumentTypeID = 0,
-            FriendlyDocumentName = "GIN",
-            FinancialDate = DateTime.Today,
-            PostingDate = DateTime.Today,
-            ExchangeRate = 1
-        }
-    };
 }

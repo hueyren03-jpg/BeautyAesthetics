@@ -9223,7 +9223,8 @@ private async Task ShowAddTransferForm()
         NewReturnedStock = new NewReturnedStockModel
         {
             DateIssued = DateTime.Today,
-            BranchId = InventoryBranchId
+            BranchId = InventoryBranchId,
+            GroupId = BranchSession.CurrentBranch?.GroupId ?? InventoryBranchId
         };
         ShowAddReturnedStockModalWindow = true;
     }
@@ -9295,6 +9296,9 @@ private async Task ShowAddTransferForm()
                 DocumentId = NewReturnedStock.DocumentId,
                 DisplayCode = NewReturnedStock.ReturnedStockNo,
                 BranchId = string.IsNullOrWhiteSpace(NewReturnedStock.BranchId) ? InventoryBranchId : NewReturnedStock.BranchId,
+                GroupId = string.IsNullOrWhiteSpace(NewReturnedStock.GroupId)
+                    ? BranchSession.CurrentBranch?.GroupId ?? InventoryBranchId
+                    : NewReturnedStock.GroupId,
                 Date = NewReturnedStock.DateIssued == default ? DateTime.Today : NewReturnedStock.DateIssued,
                 IssueType = NewReturnedStock.IssueType,
                 ReferenceNumber = string.Empty,
@@ -9471,6 +9475,7 @@ private async Task ShowAddTransferForm()
                 ReturnedStockNo = gin.DisplayCode,
                 DateIssued = gin.Date,
                 BranchId = string.IsNullOrWhiteSpace(gin.BranchId) ? InventoryBranchId : gin.BranchId,
+                GroupId = gin.GroupId,
                 IssueType = gin.IssueType,
                 AccountId = gin.AccountId,
                 IssuedTo = gin.AccountName,
@@ -9553,6 +9558,7 @@ private async Task ShowAddTransferForm()
         public string ReturnedStockNo { get; set; } = string.Empty;
         public DateTime DateIssued { get; set; } = DateTime.Today;
         public string BranchId { get; set; } = string.Empty;
+        public string GroupId { get; set; } = string.Empty;
         public string IssueType { get; set; } = string.Empty;
         public string AccountId { get; set; } = string.Empty;
         public string IssuedTo { get; set; } = string.Empty;

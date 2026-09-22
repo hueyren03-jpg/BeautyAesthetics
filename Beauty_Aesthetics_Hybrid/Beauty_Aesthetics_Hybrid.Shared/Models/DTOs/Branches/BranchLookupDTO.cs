@@ -27,4 +27,10 @@ public sealed class BranchLookupDTO
 
     [JsonPropertyName("accountStatus")]
     public string? AccountStatus { get; set; }
+
+    [JsonPropertyName("branchGroupID")]
+    public string? BranchGroupID { get; set; }
+
+    [JsonPropertyName("groupID")]
+    public string? GroupID { get; set; }
 }

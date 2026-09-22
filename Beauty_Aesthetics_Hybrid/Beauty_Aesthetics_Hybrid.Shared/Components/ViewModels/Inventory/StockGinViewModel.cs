@@ -5,6 +5,7 @@ public sealed class StockGinViewModel
     public string DocumentId { get; set; } = string.Empty;
     public string DisplayCode { get; set; } = string.Empty;
     public string BranchId { get; set; } = "HQ";
+    public string GroupId { get; set; } = string.Empty;
     public DateTime Date { get; set; } = DateTime.Today;
     public string IssueType { get; set; } = string.Empty;
     public string AccountId { get; set; } = string.Empty;
