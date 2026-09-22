@@ -235,79 +235,75 @@
                     </table>
                 </div>
 
-                <div class="services__table-wrapper services__table-wrapper--simplified mobile-view">
-                    <table class="services__table services__table--simplified resizable-table">
-                        <thead>
-                            <tr>
-                                @if (IsServiceDeleteMode)
-                                {
-                                    <th class="services__checkbox-col"></th>
-                                }
-                                <th class='services-mobile-primary-col @GetServiceSortHeaderClass(SortColumn, SortAscending, "ServiceName")' @onclick='() => ToggleSort("ServiceName")'>
-                                    @L["Services"] <span class="resize-handle"></span>
-                                </th>
-                                <th class='services-mobile-price-col @GetServiceSortHeaderClass(SortColumn, SortAscending, "Price")' @onclick='() => ToggleSort("Price")'>
-                                    @L["Price"]
-                                </th>
-                                <th class="services__actions-col">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @if (!PaginatedServices.Any())
-                            {
-                                <tr>
-                                    <td colspan="@(IsServiceDeleteMode ? 4 : 3)" style="text-align: center; padding: 2rem; color: #6b7280;">
-                                        No services found. Click the + button to add a new service.
-                                    </td>
-                                </tr>
-                            }
-                            else
-                            {
-                                @foreach (var service in PaginatedServices)
-                                {
-                                    <tr class="@(SelectedService == service ? "selected" : "")" @onclick="() => ToggleMobileServiceRow(service)">
-                                        @if (IsServiceDeleteMode)
-                                        {
-                                            <td class="services__checkbox-col" @onclick:stopPropagation="true">
-                                                <input type="checkbox"
-                                                       checked="@SelectedServicesForDeletion.Contains(service)"
-                                                       @onchange="() => ToggleServiceForDeletion(service)" />
-                                            </td>
-                                        }
-                                        <td class="services-mobile-primary-col">
-                                            <strong>@service.ServiceName</strong>
-                                            <small>@service.Sku</small>
-                                        </td>
-                                        <td class="services-mobile-price-col services-money-value">MYR @service.Price.ToString("N2")</td>
-                                        <td class="services__actions-col" @onclick:stopPropagation="true">
-                                            <div class="services__row-actions">
-                                                <button type="button" class="services__action-btn services__action-btn--view" title="View details" @onclick="() => ShowServiceDetails(service)">
-                                                    <i class="bi bi-eye"></i>
-                                                </button>
-                                                <button type="button" class="services__action-btn services__action-btn--edit" title="@L["EditService"]" @onclick="() => EditService(service)">
-                                                    <i class="bi bi-pencil"></i>
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    @if (ExpandedMobileServiceSku == service.Sku && !IsServiceDeleteMode)
+                <div class="service-mobile-records mobile-view">
+                    @if (!PaginatedServices.Any())
+                    {
+                        <div class="service-mobile-records__empty">No services found. Tap the + button to add a new service.</div>
+                    }
+                    else
+                    {
+                        @foreach (var service in PaginatedServices)
+                        {
+                            <article class="service-mobile-record @(SelectedService == service && !IsServiceDeleteMode ? "is-selected" : string.Empty)"
+                                     @onclick="() => HandleMobileServiceCardClick(service)">
+                                <div class="service-mobile-record__header">
+                                    @if (IsServiceDeleteMode)
                                     {
-                                        <tr class="services-mobile-detail-row">
-                                            <td colspan="@(IsServiceDeleteMode ? 4 : 3)">
-                                                <div class="services-mobile-details">
-                                                    <div class="services-mobile-detail"><span>@L["Category"]</span><strong>@service.Category</strong></div>
-                                                    <div class="services-mobile-detail"><span>@L["DurationSpend"]</span><strong>@service.DurationSpend min</strong></div>
-                                                    <div class="services-mobile-detail"><span>@L["BufferTime"]</span><strong>@service.BufferTimeMinutes min</strong></div>
-                                                    <div class="services-mobile-detail"><span>@L["Package"]</span><strong>@(service.IsBundle ? L["Yes"] : L["No"])</strong></div>
-                                                    <div class="services-mobile-detail services-mobile-detail--wide"><span>@L["Price"]</span><strong class="services-money-value">MYR @service.Price.ToString("N2")</strong></div>
-                                                </div>
-                                            </td>
-                                        </tr>
+                                        <label class="service-mobile-record__select" @onclick:stopPropagation="true">
+                                            <input type="checkbox"
+                                                   aria-label="Select @service.ServiceName"
+                                                   checked="@SelectedServicesForDeletion.Contains(service)"
+                                                   @onchange="() => ToggleServiceForDeletion(service)" />
+                                        </label>
                                     }
+                                    <div class="service-mobile-record__icon" aria-hidden="true">
+                                        <i class="bi bi-scissors"></i>
+                                    </div>
+                                    <div class="service-mobile-record__identity">
+                                        <h3>@service.ServiceName</h3>
+                                        <p>SKU: @service.Sku</p>
+                                    </div>
+                                </div>
+                                <div class="service-mobile-record__facts">
+                                    <div class="service-mobile-record__fact service-mobile-record__fact--wide">
+                                        <span>@L["Category"]</span>
+                                        <strong>@service.Category</strong>
+                                    </div>
+                                    <div class="service-mobile-record__fact">
+                                        <span>@L["DurationSpend"]</span>
+                                        <strong>@service.DurationSpend min</strong>
+                                    </div>
+                                    <div class="service-mobile-record__fact">
+                                        <span>@L["BufferTime"]</span>
+                                        <strong>@service.BufferTimeMinutes min</strong>
+                                    </div>
+                                    <div class="service-mobile-record__fact">
+                                        <span>@L["Price"]</span>
+                                        <strong>MYR @service.Price.ToString("N2")</strong>
+                                    </div>
+                                    <div class="service-mobile-record__fact service-mobile-record__fact--package service-mobile-record__fact--@(service.IsBundle ? "success" : "danger")">
+                                        <span>@L["Package"]</span>
+                                        <strong>
+                                            <span class="service-status-indicator service-status-indicator--@(service.IsBundle ? "success" : "danger")">
+                                                @(service.IsBundle ? "Available" : "Not available")
+                                            </span>
+                                        </strong>
+                                    </div>
+                                </div>
+                                @if (!IsServiceDeleteMode)
+                                {
+                                    <div class="service-mobile-record__actions" @onclick:stopPropagation="true">
+                                        <button type="button" class="services__action-btn services__action-btn--view" title="View details" aria-label="View service details" @onclick="() => ShowServiceDetails(service)">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        <button type="button" class="services__action-btn services__action-btn--edit" title="@L["EditService"]" aria-label="@L["EditService"]" @onclick="() => EditService(service)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                    </div>
                                 }
-                            }
-                        </tbody>
-                    </table>
+                            </article>
+                        }
+                    }
                 </div>
 
                 <Pagination CurrentPage="@ServiceCurrentPage"
@@ -504,68 +500,59 @@
                     </table>
                 </div>
 
-                <div class="services__table-wrapper services__table-wrapper--simplified mobile-view">
-                    <table class="services__table services__table--simplified resizable-table">
-                        <thead>
-                            <tr>
-                                @if (IsMemberCreditDeleteMode)
-                                {
-                                    <th class="services__checkbox-col">
-                                        <input type="checkbox" @onchange="ToggleSelectAllMemberCredits" checked="@IsAllMemberCreditsSelected" />
-                                    </th>
-                                }
-                                <th class='services-mobile-primary-col @GetServiceSortHeaderClass(MemberCreditSortColumn, MemberCreditSortAscending, "Name")' @onclick='() => ToggleMemberCreditSort("Name")'>
-                                    @L["CreditName"]
-                                </th>
-                                <th class='services-mobile-price-col @GetServiceSortHeaderClass(MemberCreditSortColumn, MemberCreditSortAscending, "Price")' @onclick='() => ToggleMemberCreditSort("Price")'>
-                                    @L["Price"]
-                                </th>
-                                <th class="services__actions-col">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var memberCredit in PaginatedMemberCredits)
-                            {
-                                var isSelected = SelectedMemberCredit == memberCredit && !IsMemberCreditDeleteMode;
-                                <tr class="@(isSelected ? "selected" : string.Empty)" @onclick="() => ToggleMobileMemberCreditRow(memberCredit)">
+                <div class="service-mobile-records mobile-view">
+                    @if (!PaginatedMemberCredits.Any())
+                    {
+                        <div class="service-mobile-records__empty">No member credits found. Tap the + button to add one.</div>
+                    }
+                    else
+                    {
+                        @foreach (var memberCredit in PaginatedMemberCredits)
+                        {
+                            <article class="service-mobile-record @(SelectedMemberCredit == memberCredit && !IsMemberCreditDeleteMode ? "is-selected" : string.Empty)"
+                                     @onclick="() => HandleMobileMemberCreditCardClick(memberCredit)">
+                                <div class="service-mobile-record__header">
                                     @if (IsMemberCreditDeleteMode)
                                     {
-                                        <td class="services__checkbox-col" @onclick:stopPropagation="true">
-                                            <input type="checkbox" checked="@SelectedMemberCreditsForDeletion.Contains(memberCredit)" @onchange="() => ToggleMemberCreditSelection(memberCredit)" />
-                                        </td>
+                                        <label class="service-mobile-record__select" @onclick:stopPropagation="true">
+                                            <input type="checkbox"
+                                                   aria-label="Select @memberCredit.Name"
+                                                   checked="@SelectedMemberCreditsForDeletion.Contains(memberCredit)"
+                                                   @onchange="() => ToggleMemberCreditSelection(memberCredit)" />
+                                        </label>
                                     }
-                                    <td class="services-mobile-primary-col">
-                                        <strong>@memberCredit.Name</strong>
-                                        <small>@memberCredit.Code</small>
-                                    </td>
-                                    <td class="services-mobile-price-col services-money-value">MYR @memberCredit.Price.ToString("N2")</td>
-                                    <td class="services__actions-col" @onclick:stopPropagation="true">
-                                        <div class="services__row-actions">
-                                            <button type="button" class="services__action-btn services__action-btn--view" title="View details" @onclick="() => ShowMemberCreditDetails(memberCredit)">
-                                                <i class="bi bi-eye"></i>
-                                            </button>
-                                            <button type="button" class="services__action-btn services__action-btn--edit" title="@L["EditMemberCredit"]" @onclick="() => EditMemberCredit(memberCredit)">
-                                                <i class="bi bi-pencil"></i>
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                                @if (ExpandedMobileMemberCreditCode == memberCredit.Code && !IsMemberCreditDeleteMode)
+                                    <div class="service-mobile-record__icon" aria-hidden="true">
+                                        <i class="bi bi-credit-card"></i>
+                                    </div>
+                                    <div class="service-mobile-record__identity">
+                                        <h3>@memberCredit.Name</h3>
+                                        <p>Code: @memberCredit.Code</p>
+                                    </div>
+                                </div>
+                                <div class="service-mobile-record__facts">
+                                    <div class="service-mobile-record__fact">
+                                        <span>@L["CreditValueMyr"]</span>
+                                        <strong>MYR @memberCredit.CreditValue.ToString("N2")</strong>
+                                    </div>
+                                    <div class="service-mobile-record__fact">
+                                        <span>@L["PriceMyr"]</span>
+                                        <strong>MYR @memberCredit.Price.ToString("N2")</strong>
+                                    </div>
+                                </div>
+                                @if (!IsMemberCreditDeleteMode)
                                 {
-                                    <tr class="services-mobile-detail-row">
-                                        <td colspan="@(IsMemberCreditDeleteMode ? 4 : 3)">
-                                            <div class="services-mobile-details">
-                                                <div class="services-mobile-detail"><span>@L["CreditCode"]</span><strong>@memberCredit.Code</strong></div>
-                                                <div class="services-mobile-detail"><span>@L["CreditName"]</span><strong>@memberCredit.Name</strong></div>
-                                                <div class="services-mobile-detail"><span>@L["ValueOfCreditRm"]</span><strong class="services-money-value">MYR @memberCredit.CreditValue.ToString("N2")</strong></div>
-                                                <div class="services-mobile-detail"><span>@L["PriceForThisCreditRm"]</span><strong class="services-money-value">MYR @memberCredit.Price.ToString("N2")</strong></div>
-                                            </div>
-                                        </td>
-                                    </tr>
+                                    <div class="service-mobile-record__actions" @onclick:stopPropagation="true">
+                                        <button type="button" class="services__action-btn services__action-btn--view" title="View details" aria-label="View member credit details" @onclick="() => ShowMemberCreditDetails(memberCredit)">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        <button type="button" class="services__action-btn services__action-btn--edit" title="@L["EditMemberCredit"]" aria-label="@L["EditMemberCredit"]" @onclick="() => EditMemberCredit(memberCredit)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                    </div>
                                 }
-                            }
-                        </tbody>
-                    </table>
+                            </article>
+                        }
+                    }
                 </div>
 
                 <Pagination CurrentPage="@MemberCreditCurrentPage"
@@ -1665,80 +1652,63 @@
                     </table>
                 </div>
 
-                <div class="services__table-wrapper services__table-wrapper--simplified mobile-view">
-                    <table class="services__table services__table--simplified resizable-table">
-                        <thead>
-                            <tr>
-                                @if (IsBundleDeleteMode)
-                                {
-                                    <th class="services__checkbox-col"></th>
-                                }
-                                <th class='services-mobile-primary-col @GetServiceSortHeaderClass(BundleSortColumn, BundleSortAscending, "BundleName")' @onclick='() => ToggleBundleSort("BundleName")'>
-                                    @L["PackageName"]
-                                </th>
-                                <th class='services-mobile-price-col @GetServiceSortHeaderClass(BundleSortColumn, BundleSortAscending, "Price")' @onclick='() => ToggleBundleSort("Price")'>
-                                    @L["Price"]
-                                </th>
-                                <th class="services__actions-col">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @if (!FilteredBundles.Any())
-                            {
-                                <tr>
-                                    <td colspan="@(IsBundleDeleteMode ? 4 : 3)" style="text-align: center; padding: 2rem; color: #6b7280;">
-                                        @L["NoPackagesFoundCreateFirst"]
-                                    </td>
-                                </tr>
-                            }
-                            else
-                            {
-                                @foreach (var bundle in PaginatedBundles)
-                                {
-                                    var isSelected = SelectedBundle == bundle && !IsBundleDeleteMode;
-                                    <tr @onclick="() => ToggleMobileBundleRow(bundle)" class="@(isSelected ? "selected" : "")">
-                                        @if (IsBundleDeleteMode)
-                                        {
-                                            <td class="services__checkbox-col" @onclick:stopPropagation="true">
-                                                <input type="checkbox"
-                                                       checked="@SelectedBundlesForDeletion.Contains(bundle)"
-                                                       @onchange="() => ToggleBundleForDeletion(bundle)" />
-                                            </td>
-                                        }
-                                        <td class="services-mobile-primary-col">
-                                            <strong>@bundle.BundleName</strong>
-                                            <small>@bundle.SKU</small>
-                                        </td>
-                                        <td class="services-mobile-price-col services-money-value">MYR @bundle.Price.ToString("N2")</td>
-                                        <td class="services__actions-col" @onclick:stopPropagation="true">
-                                            <div class="services__row-actions">
-                                                <button type="button" class="services__action-btn services__action-btn--view" title="View details" @onclick="() => ShowBundleDetails(bundle)">
-                                                    <i class="bi bi-eye"></i>
-                                                </button>
-                                                <button type="button" class="services__action-btn services__action-btn--edit" title="@L["EditPackage"]" @onclick="() => EditBundle(bundle)">
-                                                    <i class="bi bi-pencil"></i>
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    @if (ExpandedMobileBundleSku == bundle.SKU && !IsBundleDeleteMode)
+                <div class="service-mobile-records mobile-view">
+                    @if (!PaginatedBundles.Any())
+                    {
+                        <div class="service-mobile-records__empty">@L["NoPackagesFoundCreateFirst"]</div>
+                    }
+                    else
+                    {
+                        @foreach (var bundle in PaginatedBundles)
+                        {
+                            <article class="service-mobile-record @(SelectedBundle == bundle && !IsBundleDeleteMode ? "is-selected" : string.Empty)"
+                                     @onclick="() => HandleMobileBundleCardClick(bundle)">
+                                <div class="service-mobile-record__header">
+                                    @if (IsBundleDeleteMode)
                                     {
-                                        <tr class="services-mobile-detail-row">
-                                            <td colspan="@(IsBundleDeleteMode ? 4 : 3)">
-                                                <div class="services-mobile-details">
-                                                    <div class="services-mobile-detail"><span>@L["SKU"]</span><strong>@bundle.SKU</strong></div>
-                                                    <div class="services-mobile-detail"><span>@L["PackageName"]</span><strong>@bundle.BundleName</strong></div>
-                                                    <div class="services-mobile-detail"><span>@L["ServicesIncluded"]</span><strong>@bundle.ServicesCount @L["Services"]</strong></div>
-                                                    <div class="services-mobile-detail"><span>@L["TotalDuration"]</span><strong>@bundle.TotalDuration @L["Min"]</strong></div>
-                                                    <div class="services-mobile-detail services-mobile-detail--wide"><span>@L["PriceMyr"]</span><strong class="services-money-value">MYR @bundle.Price.ToString("N2")</strong></div>
-                                                </div>
-                                            </td>
-                                        </tr>
+                                        <label class="service-mobile-record__select" @onclick:stopPropagation="true">
+                                            <input type="checkbox"
+                                                   aria-label="Select @bundle.BundleName"
+                                                   checked="@SelectedBundlesForDeletion.Contains(bundle)"
+                                                   @onchange="() => ToggleBundleForDeletion(bundle)" />
+                                        </label>
                                     }
+                                    <div class="service-mobile-record__icon" aria-hidden="true">
+                                        <i class="bi bi-box-seam"></i>
+                                    </div>
+                                    <div class="service-mobile-record__identity">
+                                        <h3>@bundle.BundleName</h3>
+                                        <p>SKU: @bundle.SKU</p>
+                                    </div>
+                                </div>
+                                <div class="service-mobile-record__facts">
+                                    <div class="service-mobile-record__fact">
+                                        <span>@L["ServicesIncluded"]</span>
+                                        <strong>@bundle.ServicesCount @L["Services"]</strong>
+                                    </div>
+                                    <div class="service-mobile-record__fact">
+                                        <span>@L["TotalDuration"]</span>
+                                        <strong>@bundle.TotalDuration @L["Min"]</strong>
+                                    </div>
+                                    <div class="service-mobile-record__fact service-mobile-record__fact--wide">
+                                        <span>@L["PriceMyr"]</span>
+                                        <strong>MYR @bundle.Price.ToString("N2")</strong>
+                                    </div>
+                                </div>
+                                @if (!IsBundleDeleteMode)
+                                {
+                                    <div class="service-mobile-record__actions" @onclick:stopPropagation="true">
+                                        <button type="button" class="services__action-btn services__action-btn--view" title="View details" aria-label="View package details" @onclick="() => ShowBundleDetails(bundle)">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        <button type="button" class="services__action-btn services__action-btn--edit" title="@L["EditPackage"]" aria-label="@L["EditPackage"]" @onclick="() => EditBundle(bundle)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                    </div>
                                 }
-                            }
-                        </tbody>
-                    </table>
+                            </article>
+                        }
+                    }
                 </div>
 
                 <Pagination CurrentPage="@BundleCurrentPage"
@@ -1905,34 +1875,84 @@
     @if (ServiceDetailsItem is not null)
     {
         <div class="service-detail-modal-overlay" @onclick="CloseDetailModals">
-            <div class="service-detail-modal" @onclick:stopPropagation="true">
+            <div class="service-detail-modal service-record-view" role="dialog" aria-modal="true" aria-labelledby="service-details-title" @onclick:stopPropagation="true">
                 <div class="service-detail-modal__header">
-                    <div class="service-detail-modal__title">
-                        <i class="bi bi-eye"></i>
-                        <h2>Service Details</h2>
+                    <div class="service-record-view__identity">
+                        <div class="service-record-view__identity-icon" aria-hidden="true"><i class="bi bi-scissors"></i></div>
+                        <div class="service-record-view__identity-copy">
+                            <span>Service record</span>
+                            <h2 id="service-details-title">@FormatDisplay(ServiceDetailsItem.ServiceName)</h2>
+                            <p>SKU: @FormatDisplay(ServiceDetailsItem.Sku)</p>
+                        </div>
                     </div>
-                    <button type="button" class="service-detail-modal__close" @onclick="CloseDetailModals" title="Close">
-                        <i class="bi bi-x-lg"></i>
-                    </button>
+                    <div class="service-record-view__header-actions">
+                        <span class="service-record-view__status service-record-view__status--@GetServiceDetailStatusTone(ServiceDetailsItem.Status)">
+                            @FormatDisplay(ServiceDetailsItem.Status)
+                        </span>
+                        <button type="button" class="service-detail-modal__close" @onclick="CloseDetailModals" title="Close" aria-label="Close service details">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="service-detail-modal__body">
-                    <div class="service-detail-grid">
-                        <div class="service-detail-item"><span class="detail-label">SKU</span><strong class="detail-value">@FormatDisplay(ServiceDetailsItem.Sku)</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Service Name</span><strong class="detail-value">@FormatDisplay(ServiceDetailsItem.ServiceName)</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Category</span><strong class="detail-value">@FormatDisplay(ServiceDetailsItem.Category)</strong></div>
-                        <div class="service-detail-item service-detail-item--status"><span class="detail-label">Status</span><strong class="detail-value">@FormatDisplay(ServiceDetailsItem.Status)</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Duration</span><strong class="detail-value">@FormatDisplay(ServiceDetailsItem.DurationSpend)</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Buffer Time</span><strong class="detail-value">@ServiceDetailsItem.BufferTimeMinutes min</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Package List</span><strong class="detail-value">@(ServiceDetailsItem.IsBundle ? "Yes" : "No")</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Price</span><strong class="detail-value services-money-value">MYR @ServiceDetailsItem.Price.ToString("N2")</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Record ID</span><strong class="detail-value">@FormatDisplay(ServiceDetailsItem.MasterAccountId)</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Branch</span><strong class="detail-value">@FormatDisplay(ServiceDetailsItem.BranchId)</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Inventory Type</span><strong class="detail-value">@FormatDisplay(ServiceDetailsItem.InventoryTypeName)</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">E-Invoice Code</span><strong class="detail-value">@FormatDisplay(ServiceDetailsItem.EInvoiceClassificationCode)</strong></div>
-                        <div class="service-detail-item service-detail-item--wide service-detail-item--configuration"><span class="detail-label">Sales Description</span><strong class="detail-value">@FormatDisplay(ServiceDetailsItem.SalesDescription)</strong></div>
-                        <div class="service-detail-item service-detail-item--availability service-detail-item--availability-start"><span class="detail-label">Available Date</span><strong class="detail-value">@FormatDateRange(ServiceDetailsItem.AvailableDateFrom, ServiceDetailsItem.AvailableDateTo)</strong></div>
-                        <div class="service-detail-item service-detail-item--availability"><span class="detail-label">Available Time</span><strong class="detail-value">@FormatTimeRange(ServiceDetailsItem.AvailableTimeFrom, ServiceDetailsItem.AvailableTimeTo)</strong></div>
+                    <div class="service-record-view__metrics">
+                        <div class="service-record-view__metric">
+                            <span>Price</span>
+                            <strong>MYR @ServiceDetailsItem.Price.ToString("N2")</strong>
+                        </div>
+                        <div class="service-record-view__metric">
+                            <span>Duration</span>
+                            <strong>@FormatDisplay(ServiceDetailsItem.DurationSpend)</strong>
+                        </div>
+                        <div class="service-record-view__metric">
+                            <span>Buffer time</span>
+                            <strong>@ServiceDetailsItem.BufferTimeMinutes min</strong>
+                        </div>
+                        <div class="service-record-view__metric">
+                            <span>Package list</span>
+                            <strong class="service-record-view__inline-status service-record-view__inline-status--@(ServiceDetailsItem.IsBundle ? "success" : "danger")">
+                                @(ServiceDetailsItem.IsBundle ? "Available" : "Not available")
+                            </strong>
+                        </div>
                     </div>
+
+                    <section class="service-record-view__section">
+                        <div class="service-record-view__section-heading">
+                            <i class="bi bi-card-list" aria-hidden="true"></i>
+                            <h3>Service details</h3>
+                        </div>
+                        <dl class="service-record-view__fields">
+                            <div><dt>Category</dt><dd>@FormatDisplay(ServiceDetailsItem.Category)</dd></div>
+                            <div><dt>Branch</dt><dd>@FormatDisplay(ServiceDetailsItem.BranchId)</dd></div>
+                            <div><dt>Inventory type</dt><dd>@FormatDisplay(ServiceDetailsItem.InventoryTypeName)</dd></div>
+                            <div><dt>E-Invoice code</dt><dd>@FormatDisplay(ServiceDetailsItem.EInvoiceClassificationCode)</dd></div>
+                        </dl>
+                    </section>
+
+                    <section class="service-record-view__section">
+                        <div class="service-record-view__section-heading">
+                            <i class="bi bi-file-text" aria-hidden="true"></i>
+                            <h3>Record information</h3>
+                        </div>
+                        <dl class="service-record-view__fields">
+                            <div class="service-record-view__field--wide"><dt>Sales description</dt><dd>@FormatDisplay(ServiceDetailsItem.SalesDescription)</dd></div>
+                            <div class="service-record-view__field--wide"><dt>Record ID</dt><dd>@FormatDisplay(ServiceDetailsItem.MasterAccountId)</dd></div>
+                        </dl>
+                    </section>
+
+                    <section class="service-record-view__section service-record-view__section--availability">
+                        <div class="service-record-view__section-heading">
+                            <i class="bi bi-calendar3" aria-hidden="true"></i>
+                            <h3>Availability</h3>
+                        </div>
+                        <dl class="service-record-view__fields">
+                            <div><dt>Available date</dt><dd>@FormatDateRange(ServiceDetailsItem.AvailableDateFrom, ServiceDetailsItem.AvailableDateTo)</dd></div>
+                            <div><dt>Available time</dt><dd>@FormatTimeRange(ServiceDetailsItem.AvailableTimeFrom, ServiceDetailsItem.AvailableTimeTo)</dd></div>
+                        </dl>
+                    </section>
+                </div>
+                <div class="service-record-view__footer">
+                    <button type="button" @onclick="CloseDetailModals">Done</button>
                 </div>
             </div>
         </div>
@@ -1941,33 +1961,82 @@
     @if (MemberCreditDetailsItem is not null)
     {
         <div class="service-detail-modal-overlay" @onclick="CloseDetailModals">
-            <div class="service-detail-modal" @onclick:stopPropagation="true">
+            <div class="service-detail-modal service-record-view" role="dialog" aria-modal="true" aria-labelledby="member-credit-details-title" @onclick:stopPropagation="true">
                 <div class="service-detail-modal__header">
-                    <div class="service-detail-modal__title">
-                        <i class="bi bi-eye"></i>
-                        <h2>Member Credit Details</h2>
+                    <div class="service-record-view__identity">
+                        <div class="service-record-view__identity-icon" aria-hidden="true"><i class="bi bi-credit-card"></i></div>
+                        <div class="service-record-view__identity-copy">
+                            <span>Member credit record</span>
+                            <h2 id="member-credit-details-title">@FormatDisplay(MemberCreditDetailsItem.Name)</h2>
+                            <p>Code: @FormatDisplay(MemberCreditDetailsItem.Code)</p>
+                        </div>
                     </div>
-                    <button type="button" class="service-detail-modal__close" @onclick="CloseDetailModals" title="Close">
-                        <i class="bi bi-x-lg"></i>
-                    </button>
+                    <div class="service-record-view__header-actions">
+                        <span class="service-record-view__status service-record-view__status--@GetServiceDetailStatusTone(MemberCreditDetailsItem.Status)">
+                            @FormatDisplay(MemberCreditDetailsItem.Status)
+                        </span>
+                        <button type="button" class="service-detail-modal__close" @onclick="CloseDetailModals" title="Close" aria-label="Close member credit details">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="service-detail-modal__body">
-                    <div class="service-detail-grid">
-                        <div class="service-detail-item"><span class="detail-label">Code</span><strong class="detail-value">@FormatDisplay(MemberCreditDetailsItem.Code)</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Credit Name</span><strong class="detail-value">@FormatDisplay(MemberCreditDetailsItem.Name)</strong></div>
-                        <div class="service-detail-item service-detail-item--status"><span class="detail-label">Status</span><strong class="detail-value">@FormatDisplay(MemberCreditDetailsItem.Status)</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Credit Value</span><strong class="detail-value services-money-value">MYR @MemberCreditDetailsItem.CreditValue.ToString("N2")</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Price</span><strong class="detail-value services-money-value">MYR @MemberCreditDetailsItem.Price.ToString("N2")</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Validity Days</span><strong class="detail-value">@(MemberCreditDetailsItem.ValidityDays > 0 ? MemberCreditDetailsItem.ValidityDays.ToString() : "-")</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Settlement Ratio</span><strong class="detail-value">@MemberCreditDetailsItem.SettlementRatio.ToString("N2")</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Record ID</span><strong class="detail-value">@FormatDisplay(MemberCreditDetailsItem.MasterAccountId)</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Branch</span><strong class="detail-value">@FormatDisplay(MemberCreditDetailsItem.BranchId)</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Inventory Type</span><strong class="detail-value">@FormatDisplay(MemberCreditDetailsItem.InventoryTypeName)</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">E-Invoice Code</span><strong class="detail-value">@FormatDisplay(MemberCreditDetailsItem.EInvoiceClassificationCode)</strong></div>
-                        <div class="service-detail-item service-detail-item--wide service-detail-item--configuration"><span class="detail-label">Sales Description</span><strong class="detail-value">@FormatDisplay(MemberCreditDetailsItem.SalesDescription)</strong></div>
-                        <div class="service-detail-item service-detail-item--availability service-detail-item--availability-start"><span class="detail-label">Available Date</span><strong class="detail-value">@FormatDateRange(MemberCreditDetailsItem.AvailableDateFrom, MemberCreditDetailsItem.AvailableDateTo)</strong></div>
-                        <div class="service-detail-item service-detail-item--availability"><span class="detail-label">Available Time</span><strong class="detail-value">@FormatTimeRange(MemberCreditDetailsItem.AvailableTimeFrom, MemberCreditDetailsItem.AvailableTimeTo)</strong></div>
+                    <div class="service-record-view__metrics">
+                        <div class="service-record-view__metric">
+                            <span>Credit value</span>
+                            <strong>MYR @MemberCreditDetailsItem.CreditValue.ToString("N2")</strong>
+                        </div>
+                        <div class="service-record-view__metric">
+                            <span>Selling price</span>
+                            <strong>MYR @MemberCreditDetailsItem.Price.ToString("N2")</strong>
+                        </div>
+                        <div class="service-record-view__metric">
+                            <span>Validity</span>
+                            <strong>@(MemberCreditDetailsItem.ValidityDays > 0 ? $"{MemberCreditDetailsItem.ValidityDays} days" : "No limit")</strong>
+                        </div>
+                        <div class="service-record-view__metric">
+                            <span>Settlement ratio</span>
+                            <strong>@MemberCreditDetailsItem.SettlementRatio.ToString("N2")</strong>
+                        </div>
                     </div>
+
+                    <section class="service-record-view__section">
+                        <div class="service-record-view__section-heading">
+                            <i class="bi bi-card-list" aria-hidden="true"></i>
+                            <h3>Credit details</h3>
+                        </div>
+                        <dl class="service-record-view__fields">
+                            <div><dt>Branch</dt><dd>@FormatDisplay(MemberCreditDetailsItem.BranchId)</dd></div>
+                            <div><dt>Inventory type</dt><dd>@FormatDisplay(MemberCreditDetailsItem.InventoryTypeName)</dd></div>
+                            <div><dt>E-Invoice code</dt><dd>@FormatDisplay(MemberCreditDetailsItem.EInvoiceClassificationCode)</dd></div>
+                            <div><dt>Code</dt><dd>@FormatDisplay(MemberCreditDetailsItem.Code)</dd></div>
+                        </dl>
+                    </section>
+
+                    <section class="service-record-view__section">
+                        <div class="service-record-view__section-heading">
+                            <i class="bi bi-file-text" aria-hidden="true"></i>
+                            <h3>Record information</h3>
+                        </div>
+                        <dl class="service-record-view__fields">
+                            <div class="service-record-view__field--wide"><dt>Sales description</dt><dd>@FormatDisplay(MemberCreditDetailsItem.SalesDescription)</dd></div>
+                            <div class="service-record-view__field--wide"><dt>Record ID</dt><dd>@FormatDisplay(MemberCreditDetailsItem.MasterAccountId)</dd></div>
+                        </dl>
+                    </section>
+
+                    <section class="service-record-view__section service-record-view__section--availability">
+                        <div class="service-record-view__section-heading">
+                            <i class="bi bi-calendar3" aria-hidden="true"></i>
+                            <h3>Availability</h3>
+                        </div>
+                        <dl class="service-record-view__fields">
+                            <div><dt>Available date</dt><dd>@FormatDateRange(MemberCreditDetailsItem.AvailableDateFrom, MemberCreditDetailsItem.AvailableDateTo)</dd></div>
+                            <div><dt>Available time</dt><dd>@FormatTimeRange(MemberCreditDetailsItem.AvailableTimeFrom, MemberCreditDetailsItem.AvailableTimeTo)</dd></div>
+                        </dl>
+                    </section>
+                </div>
+                <div class="service-record-view__footer">
+                    <button type="button" @onclick="CloseDetailModals">Done</button>
                 </div>
             </div>
         </div>
@@ -1976,33 +2045,88 @@
     @if (BundleDetailsItem is not null)
     {
         <div class="service-detail-modal-overlay" @onclick="CloseDetailModals">
-            <div class="service-detail-modal" @onclick:stopPropagation="true">
+            <div class="service-detail-modal service-record-view" role="dialog" aria-modal="true" aria-labelledby="package-details-title" @onclick:stopPropagation="true">
                 <div class="service-detail-modal__header">
-                    <div class="service-detail-modal__title">
-                        <i class="bi bi-eye"></i>
-                        <h2>Package Details</h2>
+                    <div class="service-record-view__identity">
+                        <div class="service-record-view__identity-icon" aria-hidden="true"><i class="bi bi-box-seam"></i></div>
+                        <div class="service-record-view__identity-copy">
+                            <span>Package record</span>
+                            <h2 id="package-details-title">@FormatDisplay(BundleDetailsItem.BundleName)</h2>
+                            <p>SKU: @FormatDisplay(BundleDetailsItem.SKU)</p>
+                        </div>
                     </div>
-                    <button type="button" class="service-detail-modal__close" @onclick="CloseDetailModals" title="Close">
-                        <i class="bi bi-x-lg"></i>
-                    </button>
+                    <div class="service-record-view__header-actions">
+                        <span class="service-record-view__status service-record-view__status--@GetServiceDetailStatusTone(BundleDetailsItem.Status)">
+                            @FormatDisplay(BundleDetailsItem.Status)
+                        </span>
+                        <button type="button" class="service-detail-modal__close" @onclick="CloseDetailModals" title="Close" aria-label="Close package details">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="service-detail-modal__body">
-                    <div class="service-detail-grid">
-                        <div class="service-detail-item"><span class="detail-label">SKU</span><strong class="detail-value">@FormatDisplay(BundleDetailsItem.SKU)</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Package Name</span><strong class="detail-value">@FormatDisplay(BundleDetailsItem.BundleName)</strong></div>
-                        <div class="service-detail-item service-detail-item--status"><span class="detail-label">Status</span><strong class="detail-value">@FormatDisplay(BundleDetailsItem.Status)</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Services Included</span><strong class="detail-value">@BundleDetailsItem.ServicesCount</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Total Duration</span><strong class="detail-value">@BundleDetailsItem.TotalDuration min</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Price</span><strong class="detail-value services-money-value">MYR @BundleDetailsItem.Price.ToString("N2")</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Record ID</span><strong class="detail-value">@FormatDisplay(BundleDetailsItem.MasterAccountID)</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Branch</span><strong class="detail-value">@FormatDisplay(BundleDetailsItem.BranchId)</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Inventory Type</span><strong class="detail-value">@FormatDisplay(BundleDetailsItem.InventoryTypeName)</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">E-Invoice Code</span><strong class="detail-value">@FormatDisplay(BundleDetailsItem.EInvoiceClassificationCode)</strong></div>
-                        <div class="service-detail-item service-detail-item--wide service-detail-item--configuration"><span class="detail-label">Sales Description</span><strong class="detail-value">@FormatDisplay(BundleDetailsItem.SalesDescription)</strong></div>
-                        <div class="service-detail-item service-detail-item--wide"><span class="detail-label">Included Services</span><strong class="detail-value">@GetBundleServiceNames(BundleDetailsItem)</strong></div>
-                        <div class="service-detail-item service-detail-item--availability service-detail-item--availability-start"><span class="detail-label">Available Date</span><strong class="detail-value">@FormatDateRange(BundleDetailsItem.AvailableDateFrom, BundleDetailsItem.AvailableDateTo)</strong></div>
-                        <div class="service-detail-item service-detail-item--availability"><span class="detail-label">Available Time</span><strong class="detail-value">@FormatTimeRange(BundleDetailsItem.AvailableTimeFrom, BundleDetailsItem.AvailableTimeTo)</strong></div>
+                    <div class="service-record-view__metrics service-record-view__metrics--three">
+                        <div class="service-record-view__metric">
+                            <span>Price</span>
+                            <strong>MYR @BundleDetailsItem.Price.ToString("N2")</strong>
+                        </div>
+                        <div class="service-record-view__metric">
+                            <span>Services included</span>
+                            <strong>@BundleDetailsItem.ServicesCount</strong>
+                        </div>
+                        <div class="service-record-view__metric">
+                            <span>Total duration</span>
+                            <strong>@BundleDetailsItem.TotalDuration min</strong>
+                        </div>
                     </div>
+
+                    <section class="service-record-view__section">
+                        <div class="service-record-view__section-heading">
+                            <i class="bi bi-collection" aria-hidden="true"></i>
+                            <h3>Package contents</h3>
+                        </div>
+                        <dl class="service-record-view__fields">
+                            <div class="service-record-view__field--wide"><dt>Included services</dt><dd>@GetBundleServiceNames(BundleDetailsItem)</dd></div>
+                        </dl>
+                    </section>
+
+                    <section class="service-record-view__section">
+                        <div class="service-record-view__section-heading">
+                            <i class="bi bi-card-list" aria-hidden="true"></i>
+                            <h3>Package details</h3>
+                        </div>
+                        <dl class="service-record-view__fields">
+                            <div><dt>Branch</dt><dd>@FormatDisplay(BundleDetailsItem.BranchId)</dd></div>
+                            <div><dt>Inventory type</dt><dd>@FormatDisplay(BundleDetailsItem.InventoryTypeName)</dd></div>
+                            <div><dt>E-Invoice code</dt><dd>@FormatDisplay(BundleDetailsItem.EInvoiceClassificationCode)</dd></div>
+                            <div><dt>SKU</dt><dd>@FormatDisplay(BundleDetailsItem.SKU)</dd></div>
+                        </dl>
+                    </section>
+
+                    <section class="service-record-view__section">
+                        <div class="service-record-view__section-heading">
+                            <i class="bi bi-file-text" aria-hidden="true"></i>
+                            <h3>Record information</h3>
+                        </div>
+                        <dl class="service-record-view__fields">
+                            <div class="service-record-view__field--wide"><dt>Sales description</dt><dd>@FormatDisplay(BundleDetailsItem.SalesDescription)</dd></div>
+                            <div class="service-record-view__field--wide"><dt>Record ID</dt><dd>@FormatDisplay(BundleDetailsItem.MasterAccountID)</dd></div>
+                        </dl>
+                    </section>
+
+                    <section class="service-record-view__section service-record-view__section--availability">
+                        <div class="service-record-view__section-heading">
+                            <i class="bi bi-calendar3" aria-hidden="true"></i>
+                            <h3>Availability</h3>
+                        </div>
+                        <dl class="service-record-view__fields">
+                            <div><dt>Available date</dt><dd>@FormatDateRange(BundleDetailsItem.AvailableDateFrom, BundleDetailsItem.AvailableDateTo)</dd></div>
+                            <div><dt>Available time</dt><dd>@FormatTimeRange(BundleDetailsItem.AvailableTimeFrom, BundleDetailsItem.AvailableTimeTo)</dd></div>
+                        </dl>
+                    </section>
+                </div>
+                <div class="service-record-view__footer">
+                    <button type="button" @onclick="CloseDetailModals">Done</button>
                 </div>
             </div>
         </div>
@@ -2900,6 +3024,18 @@
         ExpandedMobileServiceSku = ExpandedMobileServiceSku == service.Sku ? null : service.Sku;
     }
 
+    private void HandleMobileServiceCardClick(ServiceViewModel.ServiceItem service)
+    {
+        if (IsServiceDeleteMode)
+        {
+            ToggleServiceForDeletion(service);
+            return;
+        }
+
+        SelectedService = service;
+        ShowServiceDetails(service);
+    }
+
     private static string GetServiceSortHeaderClass(string? activeColumn, bool ascending, string column)
     {
         if (!string.Equals(activeColumn, column, StringComparison.Ordinal))
@@ -3712,6 +3848,18 @@
         ExpandedMobileMemberCreditCode = ExpandedMobileMemberCreditCode == memberCredit.Code ? null : memberCredit.Code;
     }
 
+    private void HandleMobileMemberCreditCardClick(MembershipViewModel.MemberCredit memberCredit)
+    {
+        if (IsMemberCreditDeleteMode)
+        {
+            ToggleMemberCreditSelection(memberCredit);
+            return;
+        }
+
+        SelectedMemberCredit = memberCredit;
+        ShowMemberCreditDetails(memberCredit);
+    }
+
     private void ShowMemberTypeDetails(MembershipTypeDM memberType)
     {
         MemberTypeDetailsItem = memberType;
@@ -3789,6 +3937,36 @@
 
     private static string FormatDisplay(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "-" : value;
+
+    private static string GetServiceDetailStatusTone(string? status)
+    {
+        var normalized = status?.Trim() ?? string.Empty;
+
+        if (normalized.Contains("inactive", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("cancel", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("void", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("disable", StringComparison.OrdinalIgnoreCase))
+        {
+            return "danger";
+        }
+
+        if (normalized.Contains("pending", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("draft", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("hold", StringComparison.OrdinalIgnoreCase))
+        {
+            return "warning";
+        }
+
+        if (normalized.Contains("active", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("approve", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("complete", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("available", StringComparison.OrdinalIgnoreCase))
+        {
+            return "success";
+        }
+
+        return "neutral";
+    }
 
     private static string FormatDateRange(DateTime? from, DateTime? to)
     {
@@ -4480,6 +4658,18 @@
         }
 
         ExpandedMobileBundleSku = ExpandedMobileBundleSku == bundle.SKU ? null : bundle.SKU;
+    }
+
+    private void HandleMobileBundleCardClick(BundleItem bundle)
+    {
+        if (IsBundleDeleteMode)
+        {
+            ToggleBundleForDeletion(bundle);
+            return;
+        }
+
+        SelectedBundle = bundle;
+        ShowBundleDetails(bundle);
     }
 
     private void ToggleBundleSort(string column)

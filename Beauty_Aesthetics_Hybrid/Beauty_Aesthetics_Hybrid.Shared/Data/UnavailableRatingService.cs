@@ -1,5 +1,7 @@
 using Beauty_Aesthetics_WebPos.Models;
+using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Microsoft.Extensions.Logging;
+using System.Net;
 
 namespace Beauty_Aesthetics_WebPos.Data;
 
@@ -12,9 +14,13 @@ public sealed class UnavailableRatingService : IRatingService
         this.logger = logger;
     }
 
-    public Task SaveRatingAsync(CustomerRating rating)
+    public Task<ApiCallResult<bool>> SaveRatingAsync(
+        CustomerRating rating,
+        CancellationToken cancellationToken = default)
     {
-        logger.LogWarning("Customer rating storage is unavailable because no database connection string is configured.");
-        throw new InvalidOperationException("Customer rating storage is not configured.");
+        logger.LogWarning("Customer rating API service is unavailable.");
+        return Task.FromResult(ApiCallResult<bool>.Failure(
+            HttpStatusCode.ServiceUnavailable,
+            "Customer rating service is unavailable."));
     }
 }

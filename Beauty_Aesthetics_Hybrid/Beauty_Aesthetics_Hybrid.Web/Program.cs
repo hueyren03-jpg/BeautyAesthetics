@@ -2,7 +2,6 @@ using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_Hybrid.Shared.Services;
 using Beauty_Aesthetics_Hybrid.Web.Components;
 using Beauty_Aesthetics_Hybrid.Web.Services;
-using Microsoft.EntityFrameworkCore;
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.Components.Services;
 using Beauty_Aesthetics_WebPos.Components.Services.Auth;
@@ -18,7 +17,6 @@ using Beauty_Aesthetics_WebPos.Components.ViewModels;
 using Beauty_Aesthetics_WebPos.Components.Pages;
 using Beauty_Aesthetics_WebPos.Components.Pages.Voucher;
 using Beauty_Aesthetics_WebPos.Data;
-using Beauty_Aesthetic_WebPos.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -63,6 +61,7 @@ builder.Services.AddScoped<AuthAC>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<IAuthService>(sp => sp.GetRequiredService<AuthService>());
 builder.Services.AddScoped<CustomerAC>();
+builder.Services.AddScoped<CustomerRatingAC>();
 builder.Services.AddScoped<CustomerService>();
 builder.Services.AddScoped<ICustomerService>(sp => sp.GetRequiredService<CustomerService>());
 builder.Services.AddScoped<WebDashboardAC>();
@@ -103,17 +102,7 @@ builder.Services.AddScoped<AppointmentService>();
 builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
 builder.Services.AddHttpContextAccessor();
 
-var ratingDbConnectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-if (!string.IsNullOrWhiteSpace(ratingDbConnectionString))
-{
-    builder.Services.AddDbContext<ApplicationDbContext>(options =>
-        options.UseSqlServer(ratingDbConnectionString));
-    builder.Services.AddScoped<IRatingService, RatingService>();
-}
-else
-{
-    builder.Services.AddScoped<IRatingService, UnavailableRatingService>();
-}
+builder.Services.AddScoped<IRatingService, RatingService>();
 
 
 builder.Services.AddSingleton<MockDataService>();

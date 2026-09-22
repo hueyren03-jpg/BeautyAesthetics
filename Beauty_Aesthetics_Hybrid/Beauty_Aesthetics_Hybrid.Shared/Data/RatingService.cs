@@ -1,4 +1,5 @@
-﻿using Beauty_Aesthetic_WebPos.Data;
+using Beauty_Aesthetics_WebPos.APIClient;
+using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Models;
 using Microsoft.Extensions.Logging;
 
@@ -6,37 +7,45 @@ namespace Beauty_Aesthetics_WebPos.Data
 {
     public interface IRatingService
     {
-        Task SaveRatingAsync(CustomerRating rating);
+        Task<ApiCallResult<bool>> SaveRatingAsync(
+            CustomerRating rating,
+            CancellationToken cancellationToken = default);
     }
 
     public class RatingService : IRatingService
     {
-        private readonly ApplicationDbContext _context;
-        private readonly ILogger<RatingService> _logger;
+        private readonly CustomerRatingAC customerRatingAC;
+        private readonly ILogger<RatingService> logger;
 
         public RatingService(
-            ApplicationDbContext context,
+            CustomerRatingAC customerRatingAC,
             ILogger<RatingService> logger)
         {
-            _context = context;
-            _logger = logger;
+            this.customerRatingAC = customerRatingAC;
+            this.logger = logger;
         }
 
-        public async Task SaveRatingAsync(CustomerRating rating)
+        public async Task<ApiCallResult<bool>> SaveRatingAsync(
+            CustomerRating rating,
+            CancellationToken cancellationToken = default)
         {
-            try
+            var result = await customerRatingAC.CreateRecordAsync(rating, cancellationToken);
+            if (result.Success)
             {
-                // Add to context and save
-                _context.CustomerRatings.Add(rating);
-                await _context.SaveChangesAsync();
+                logger.LogInformation(
+                    "Customer rating saved through the API for customer {CustomerID} and document {DocumentID}",
+                    rating.CustomerID,
+                    rating.DocumentID);
+            }
+            else
+            {
+                logger.LogWarning(
+                    "Customer rating API rejected the rating for customer {CustomerID}: {ErrorMessage}",
+                    rating.CustomerID,
+                    result.ErrorMessage);
+            }
 
-                _logger.LogInformation("Rating saved successfully for {AccountName}", rating.AccountName);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error saving rating");
-                throw;
-            }
+            return result;
         }
     }
 }

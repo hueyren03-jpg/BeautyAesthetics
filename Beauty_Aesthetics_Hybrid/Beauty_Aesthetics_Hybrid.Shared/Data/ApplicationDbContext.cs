@@ -19,9 +19,10 @@ namespace Beauty_Aesthetic_WebPos.Data
             modelBuilder.Entity<CustomerRating>(entity =>
             {
                 entity.ToTable("tbl_CustomerRating");
+                entity.HasKey(e => e.RatingID);
                 entity.Property(e => e.Comment).HasMaxLength(500);
-                entity.Property(e => e.MasterAccountID).HasMaxLength(15).IsRequired();
-                entity.Property(e => e.AccountName).HasMaxLength(256).IsRequired();
+                entity.Property(e => e.CustomerID).HasMaxLength(64).IsRequired();
+                entity.Property(e => e.DocumentID).HasMaxLength(64).IsRequired();
             });
         }
     }

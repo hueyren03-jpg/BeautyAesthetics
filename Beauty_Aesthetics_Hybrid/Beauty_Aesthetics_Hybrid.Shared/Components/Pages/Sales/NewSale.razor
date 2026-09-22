@@ -757,6 +757,12 @@
                 <button type="button" class="print-receipt-action" @onclick="PrintReceipt">
                     <i class="bi bi-printer"></i> Print Receipt
                 </button>
+                @if (CanRequestReview)
+                {
+                    <button type="button" class="secondary-action" @onclick="OpenCustomerRating">
+                        <i class="bi bi-star"></i> Customer Review
+                    </button>
+                }
                 <button type="button" class="primary-action" @onclick="StartAnotherSale">
                     <i class="bi bi-plus-lg"></i> New Sale
                 </button>
@@ -946,6 +952,9 @@
     private DateTime ReceiptDate => savedSale?.Date is { Year: > 1 } value ? value : DateTime.Now;
     private string ReceiptCustomer => string.IsNullOrWhiteSpace(savedSale?.CustomerName) ? currentOrder.CustomerName : savedSale.CustomerName;
     private string ReceiptBranch => string.IsNullOrWhiteSpace(savedSale?.Branch) ? currentOrder.BranchName : savedSale.Branch;
+    private bool CanRequestReview =>
+        !string.IsNullOrWhiteSpace(savedSale?.AccountId) &&
+        !string.IsNullOrWhiteSpace(savedSale?.DocumentId);
 
     private static readonly string[] KeypadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
     private IEnumerable<string> ItemTypes => catalog.Select(x => x.Type).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x);
@@ -1609,6 +1618,25 @@
     }
 
     private void GoToSalesDashboard() => NavigationManager.NavigateTo("/sales");
+
+    private void OpenCustomerRating()
+    {
+        if (!CanRequestReview || savedSale is null)
+        {
+            Feedback.Warning("A customer and completed sales document are required before requesting a review.", "Review unavailable");
+            return;
+        }
+
+        var branchId = string.IsNullOrWhiteSpace(savedSale.BranchId)
+            ? BranchSession.CurrentBranch?.Id ?? string.Empty
+            : savedSale.BranchId;
+        var customerId = Uri.EscapeDataString(savedSale.AccountId);
+        var documentId = Uri.EscapeDataString(savedSale.DocumentId);
+        var encodedBranchId = Uri.EscapeDataString(branchId);
+
+        NavigationManager.NavigateTo(
+            $"/CustomerRating?customerId={customerId}&documentId={documentId}&branchId={encodedBranchId}&groupId={encodedBranchId}");
+    }
 
     private static string CustomerName(Customer x) => $"{x.FirstName} {x.LastName}".Trim();
     private static string CustomerMeta(Customer x) => string.Join(" | ", new[] { x.ContactNumber1, x.Email }.Where(v => !string.IsNullOrWhiteSpace(v)));

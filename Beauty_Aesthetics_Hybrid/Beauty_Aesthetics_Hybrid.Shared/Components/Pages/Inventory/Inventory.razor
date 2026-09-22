@@ -583,95 +583,81 @@
                     </tbody>
                 </table>
             </div>
-            <div class="inventory__table-wrapper table-scroll inventory-products-mobile-compact mobile-view">
-                <table class="inventory__table products__table resizable-table">
-                    <colgroup>
-                        @if (IsDeleteMode)
-                        {
-                            <col class="product-col-select" />
-                        }
-                        <col class="product-col-sku" />
-                        <col class="product-col-name" />
-                        <col class="product-compact-col-actions" />
-                    </colgroup>
-                    <thead>
-                        <tr>
-                            @if (IsDeleteMode)
-                            {
-                                <th class="inventory__checkbox-col">
-                                    <input type="checkbox"
-                                           checked="@IsAllSelected"
-                                           @onchange="ToggleSelectAll" />
-                                </th>
-                            }
-                            <th class='@GetSortHeaderClass(SortColumn, SortAscending, "Sku")' @onclick="@(() => ToggleSort("Sku"))">
-                                SKU <span class="resize-handle"></span>
-                            </th>
-                            <th class='@GetSortHeaderClass(SortColumn, SortAscending, "Type")' @onclick="@(() => ToggleSort("Type"))">
-                                Product Name <span class="resize-handle"></span>
-                            </th>
-                            <th class="product-actions-heading">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @if (!PaginatedItems.Any())
-                        {
-                            <tr>
-                                <td colspan="@(IsDeleteMode ? 4 : 3)" style="text-align: center; padding: 2rem; color: #6b7280;">
-                                    No products found. Click the + button to add a new product.
-                                </td>
-                            </tr>
-                        }
-                        else
-                        {
-                            @foreach (var item in PaginatedItems)
-                            {
-                                <tr @onclick="() => OpenMobileProductDetails(item)" class="@(SelectedItem == item && !IsDeleteMode ? "selected" : string.Empty)">
-                                    @if (IsDeleteMode)
+            <div class="inventory-mobile-records mobile-view">
+                @if (!PaginatedItems.Any())
+                {
+                    <div class="inventory-mobile-records__empty">
+                        No products found. Tap the + button to add a new product.
+                    </div>
+                }
+                else
+                {
+                    @foreach (var item in PaginatedItems)
+                    {
+                        <article class="inventory-mobile-record inventory-mobile-record--product @(SelectedItem == item && !IsDeleteMode ? "is-selected" : string.Empty)"
+                                 @onclick="() => OpenMobileProductDetails(item)">
+                            <div class="inventory-mobile-record__header">
+                                @if (IsDeleteMode)
+                                {
+                                    <label class="inventory-mobile-record__select" @onclick:stopPropagation="true">
+                                        <input type="checkbox"
+                                               aria-label="Select @item.Type"
+                                               checked="@SelectedItemsForDeletion.Contains(item)"
+                                               @onchange="() => ToggleItemSelection(item)" />
+                                    </label>
+                                }
+                                <div class="inventory-mobile-record__image" aria-hidden="true">
+                                    @if (HasInventoryImage(item))
                                     {
-                                        <td class="inventory__checkbox-col" @onclick:stopPropagation="true">
-                                            <input type="checkbox"
-                                                   checked="@SelectedItemsForDeletion.Contains(item)"
-                                                   @onchange="() => ToggleItemSelection(item)" />
-                                        </td>
+                                        <img src="@ResolveProductImage(item)" alt="" loading="lazy" />
                                     }
-                                    <td>@item.Sku</td>
-                                    <td>
-                                        <div class="product-table-product product-table-product--mobile">
-                                            <div class="product-table-image product-table-image--mobile" aria-hidden="true">
-                                                @if (HasInventoryImage(item))
-                                                {
-                                                    <img src="@ResolveProductImage(item)" alt="" loading="lazy" />
-                                                }
-                                                else
-                                                {
-                                                    <i class="bi bi-image"></i>
-                                                }
-                                            </div>
-                                            <strong title="@item.Type">@DisplayProductValue(item.Type)</strong>
-                                        </div>
-                                    </td>
-                                    <td class="product-row-actions" @onclick:stopPropagation="true">
-                                        <button type="button"
-                                                class="product-row-action"
-                                                title="View product details"
-                                                aria-label="View product details"
-                                                @onclick="() => ShowProductDetails(item)">
-                                            <i class="bi bi-eye"></i>
-                                        </button>
-                                        <button type="button"
-                                                class="product-row-action"
-                                                title="Edit product"
-                                                aria-label="Edit product"
-                                                @onclick="() => EditProductFromTable(item)">
-                                            <i class="bi bi-pencil"></i>
-                                        </button>
-                                    </td>
-                                </tr>
-                            }
-                        }
-                    </tbody>
-                </table>
+                                    else
+                                    {
+                                        <i class="bi bi-image"></i>
+                                    }
+                                </div>
+                                <div class="inventory-mobile-record__identity">
+                                    <h3>@DisplayProductValue(item.Type)</h3>
+                                    <p>SKU: @DisplayProductValue(item.Sku)</p>
+                                </div>
+                            </div>
+                            <div class="inventory-mobile-record__facts">
+                                <div class="inventory-mobile-record__fact">
+                                    <span>Brand</span>
+                                    <strong>@DisplayProductValue(item.Brand)</strong>
+                                </div>
+                                <div class="inventory-mobile-record__fact">
+                                    <span>Category</span>
+                                    <strong>@DisplayProductValue(item.Category)</strong>
+                                </div>
+                                <div class="inventory-mobile-record__fact">
+                                    <span>Price</span>
+                                    <strong>MYR @item.Price.ToString("N2")</strong>
+                                </div>
+                                <div class="inventory-mobile-record__fact">
+                                    <span>Stock</span>
+                                    <strong>@GetProductStockDisplay(item)</strong>
+                                </div>
+                                <div class="inventory-mobile-record__fact inventory-mobile-record__fact--wide">
+                                    <span>Stock status</span>
+                                    <strong>
+                                        <span class="product-stock-badge product-stock-badge--@GetProductStockStatusClass(item)">
+                                            @GetProductStockStatus(item)
+                                        </span>
+                                    </strong>
+                                </div>
+                            </div>
+                            <div class="inventory-mobile-record__actions" @onclick:stopPropagation="true">
+                                <button type="button" class="product-row-action" title="View product details" aria-label="View product details" @onclick="() => ShowProductDetails(item)">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                                <button type="button" class="product-row-action" title="Edit product" aria-label="Edit product" @onclick="() => EditProductFromTable(item)">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                            </div>
+                        </article>
+                    }
+                }
             </div>
 
             <Pagination CurrentPage="@ProductsCurrentPage"
@@ -1364,7 +1350,7 @@
                      </div>
                  </div>
 
-                 <div class="inventory__table-wrapper po-table-scroll">
+                 <div class="inventory__table-wrapper po-table-scroll desktop-view">
                      <table class="inventory__table purchase-orders__table resizable-table inventory-mobile-compact-table inventory-mobile-compact-table--po @(IsPrintModeActive ? "inventory-mobile-compact-table--selecting" : string.Empty)">
                          <thead>
                              <tr>
@@ -1437,9 +1423,74 @@
                                 </tr>
                             }
                         </tbody>
-                    </table>
-                </div>
-                <Pagination CurrentPage="@PurchaseOrdersCurrentPage"
+                     </table>
+                 </div>
+                 <div class="inventory-mobile-records mobile-view">
+                     @if (!PaginatedPurchaseOrders.Any())
+                     {
+                         <div class="inventory-mobile-records__empty">No purchase orders found.</div>
+                     }
+                     else
+                     {
+                         @foreach (var po in PaginatedPurchaseOrders)
+                         {
+                             <article class="inventory-mobile-record inventory-mobile-record--purchase-order @GetPurchaseOrderRowClass(po)"
+                                      @onclick="() => OpenPurchaseOrderDetails(po)">
+                                 <div class="inventory-mobile-record__header">
+                                     @if (IsPrintModeActive)
+                                     {
+                                         <label class="inventory-mobile-record__select" @onclick:stopPropagation="true">
+                                             <input type="checkbox"
+                                                    aria-label="Select purchase order @po.PoNo"
+                                                    checked="@SelectedPurchaseOrdersForPrint.Contains(po)"
+                                                    @onchange="() => TogglePurchaseOrderForPrintSelection(po)" />
+                                         </label>
+                                     }
+                                     <div class="inventory-mobile-record__icon" aria-hidden="true">
+                                         <i class="bi bi-receipt"></i>
+                                     </div>
+                                     <div class="inventory-mobile-record__identity">
+                                         <h3>@po.PoNo</h3>
+                                         <p>Purchase order</p>
+                                     </div>
+                                     <span class="purchase-orders__status purchase-orders__status--@po.Status.ToLower().Replace(" ", "-") inventory-mobile-record__status">
+                                         @po.Status
+                                     </span>
+                                 </div>
+                                 <div class="inventory-mobile-record__facts">
+                                     <div class="inventory-mobile-record__fact">
+                                         <span>Date</span>
+                                         <strong>@po.Date.ToString("dd/MM/yyyy")</strong>
+                                     </div>
+                                     <div class="inventory-mobile-record__fact">
+                                         <span>Branch</span>
+                                         <strong>@po.Branch</strong>
+                                     </div>
+                                     <div class="inventory-mobile-record__fact inventory-mobile-record__fact--wide">
+                                         <span>Supplier</span>
+                                         <strong>@po.Vendor</strong>
+                                     </div>
+                                     <div class="inventory-mobile-record__fact inventory-mobile-record__fact--wide">
+                                         <span>Remarks</span>
+                                         <strong>@(string.IsNullOrWhiteSpace(po.Remarks) ? "—" : po.Remarks)</strong>
+                                     </div>
+                                 </div>
+                                 @if (!IsPrintModeActive)
+                                 {
+                                     <div class="inventory-mobile-record__actions" @onclick:stopPropagation="true">
+                                         <button type="button" class="product-row-action" title="View purchase order" aria-label="View purchase order" @onclick="() => ShowPurchaseOrderDetails(po)">
+                                             <i class="bi bi-eye"></i>
+                                         </button>
+                                         <button type="button" class="product-row-action" title="Edit purchase order" aria-label="Edit purchase order" @onclick="() => ShowEditPurchaseOrderForm(po)">
+                                             <i class="bi bi-pencil"></i>
+                                         </button>
+                                     </div>
+                                 }
+                             </article>
+                         }
+                     }
+                 </div>
+                 <Pagination CurrentPage="@PurchaseOrdersCurrentPage"
                             ItemsPerPage="5"
                             TotalItems="@FilteredPurchaseOrders.Count()"
                             OnPageChanged="@HandlePurchaseOrdersPageChanged" />
@@ -1747,7 +1798,7 @@
                     </div>
                 }
                 <!-- Stock Transfer History — SenangRetails fields -->
-                <div class="inventory__table-wrapper table-scroll stock-history-table-scroll">
+                <div class="inventory__table-wrapper table-scroll stock-history-table-scroll desktop-view">
                     <div class="table-scroll__inner stock-history-table-scroll__inner">
                         <table class="stock-transfer__table resizable-table inventory-mobile-compact-table inventory-mobile-compact-table--stock @(IsTransferHistoryPrintModeActive ? "purchase-orders__table" : string.Empty)">
                             <thead>
@@ -1821,6 +1872,80 @@
                             </tbody>
                         </table>
                     </div>
+                </div>
+
+                <div class="inventory-mobile-records mobile-view">
+                    @if (!PaginatedCombinedHistory.Any())
+                    {
+                        <div class="inventory-mobile-records__empty">No stock transfer history found.</div>
+                    }
+                    else
+                    {
+                        @foreach (var history in PaginatedCombinedHistory)
+                        {
+                            <article class="inventory-mobile-record inventory-mobile-record--transfer @GetTransferHistoryRowClass(history)"
+                                     @onclick="() => HandleTransferHistoryRowClickAsync(history)">
+                                <div class="inventory-mobile-record__header">
+                                    @if (IsTransferHistoryPrintModeActive)
+                                    {
+                                        <label class="inventory-mobile-record__select" @onclick:stopPropagation="true">
+                                            <input type="checkbox"
+                                                   aria-label="Select transfer @history.ReferenceNo"
+                                                   checked="@SelectedTransferHistoryReferencesForPrint.Contains(history.ReferenceNo)"
+                                                   @onchange="() => ToggleTransferHistoryPrintSelection(history.ReferenceNo)" />
+                                        </label>
+                                    }
+                                    <div class="inventory-mobile-record__icon" aria-hidden="true">
+                                        <i class="bi bi-arrow-left-right"></i>
+                                    </div>
+                                    <div class="inventory-mobile-record__identity">
+                                        <h3>@history.ReferenceNo</h3>
+                                        <p>Stock transfer</p>
+                                    </div>
+                                    <span class="stock-transfer__status stock-transfer__status--@GetTransferStatusCssClass(history.Status) inventory-mobile-record__status">
+                                        @GetTransferStatusDisplay(history.Status)
+                                    </span>
+                                </div>
+                                <div class="inventory-mobile-record__facts">
+                                    <div class="inventory-mobile-record__fact inventory-mobile-record__fact--wide">
+                                        <span>Date</span>
+                                        <strong>@history.Date.ToString("dd/MM/yyyy HH:mm")</strong>
+                                    </div>
+                                    <div class="inventory-mobile-record__fact">
+                                        <span>From branch</span>
+                                        <strong>@history.From</strong>
+                                    </div>
+                                    <div class="inventory-mobile-record__fact">
+                                        <span>To branch</span>
+                                        <strong>@history.To</strong>
+                                    </div>
+                                    <div class="inventory-mobile-record__fact">
+                                        <span>Total quantity</span>
+                                        <strong>@(history.TotalQuantity > 0 ? history.TotalQuantity.ToString("0.##") : "—")</strong>
+                                    </div>
+                                    <div class="inventory-mobile-record__fact">
+                                        <span>Total cost</span>
+                                        <strong>MYR @history.TotalCost.ToString("N2")</strong>
+                                    </div>
+                                    <div class="inventory-mobile-record__fact inventory-mobile-record__fact--wide">
+                                        <span>Remarks</span>
+                                        <strong>@(string.IsNullOrWhiteSpace(history.Remarks) ? "—" : history.Remarks)</strong>
+                                    </div>
+                                </div>
+                                @if (!IsTransferHistoryPrintModeActive)
+                                {
+                                    <div class="inventory-mobile-record__actions" @onclick:stopPropagation="true">
+                                        <button type="button" class="product-row-action" title="View transfer details" aria-label="View transfer details" @onclick="() => ShowTransferHistoryDetailsAsync(history)">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        <button type="button" class="product-row-action product-row-action--danger" title="Delete stock transfer" aria-label="Delete stock transfer" @onclick="() => DeleteTransferHistoryAsync(history)">
+                                            <i class="bi bi-trash3"></i>
+                                        </button>
+                                    </div>
+                                }
+                            </article>
+                        }
+                    }
                 </div>
 
                 <Pagination CurrentPage="@StockTransferHistoryCurrentPage"
@@ -2626,7 +2751,7 @@
                         </div>
                     </div>
                 }
-                <div class="inventory__table-wrapper table-scroll gin-table-scroll">
+                <div class="inventory__table-wrapper table-scroll gin-table-scroll desktop-view">
                     <div class="table-scroll__inner gin-table-scroll__inner">
                         <table class="stock-transfer__table resizable-table inventory-mobile-compact-table inventory-mobile-compact-table--gin @(IsReturnedStockPrintModeActive ? "inventory-mobile-compact-table--selecting purchase-orders__table" : string.Empty)">
                             <thead>
@@ -2695,6 +2820,80 @@
                             </tbody>
                         </table>
                     </div>
+                </div>
+                <div class="inventory-mobile-records mobile-view">
+                    @if (IsGINApiLoading && !ReturnedStockList.Any())
+                    {
+                        <div class="inventory-mobile-records__empty"><i class="bi bi-arrow-repeat"></i> Loading GIN history...</div>
+                    }
+                    else if (!PaginatedReturnedStock.Any())
+                    {
+                        <div class="inventory-mobile-records__empty">No stock out / GIN history found.</div>
+                    }
+                    else
+                    {
+                        @foreach (var returnedStock in PaginatedReturnedStock)
+                        {
+                            <article class="inventory-mobile-record inventory-mobile-record--gin @GetReturnedStockRowClass(returnedStock)"
+                                     @onclick="() => ShowGinDetails(returnedStock)">
+                                <div class="inventory-mobile-record__header">
+                                    @if (IsReturnedStockPrintModeActive)
+                                    {
+                                        <label class="inventory-mobile-record__select" @onclick:stopPropagation="true">
+                                            <input type="checkbox"
+                                                   aria-label="Select GIN @returnedStock.ReturnedStockNo"
+                                                   checked="@SelectedReturnedStocksForPrint.Contains(returnedStock)"
+                                                   @onchange="() => ToggleReturnedStockForPrintSelection(returnedStock)" />
+                                        </label>
+                                    }
+                                    <div class="inventory-mobile-record__icon" aria-hidden="true">
+                                        <i class="bi bi-box-arrow-up-right"></i>
+                                    </div>
+                                    <div class="inventory-mobile-record__identity">
+                                        <h3>@(string.IsNullOrWhiteSpace(returnedStock.ReturnedStockNo) ? "—" : returnedStock.ReturnedStockNo)</h3>
+                                        <p>Goods issue note</p>
+                                    </div>
+                                    <span class="inventory-status-indicator inventory-status-indicator--@GetInventoryStatusTone(GetGinStatusDisplay(returnedStock)) inventory-mobile-record__status">
+                                        @GetGinStatusDisplay(returnedStock)
+                                    </span>
+                                </div>
+                                <div class="inventory-mobile-record__facts">
+                                    <div class="inventory-mobile-record__fact inventory-mobile-record__fact--wide">
+                                        <span>Date</span>
+                                        <strong>@returnedStock.DateIssued.ToString("dd/MM/yyyy HH:mm")</strong>
+                                    </div>
+                                    <div class="inventory-mobile-record__fact inventory-mobile-record__fact--wide">
+                                        <span>Activity</span>
+                                        <strong>@returnedStock.Purpose</strong>
+                                    </div>
+                                    <div class="inventory-mobile-record__fact">
+                                        <span>Total cost</span>
+                                        <strong>MYR @returnedStock.Amount.ToString("N2")</strong>
+                                    </div>
+                                    <div class="inventory-mobile-record__fact inventory-mobile-record__fact--wide">
+                                        <span>Remarks</span>
+                                        <strong>@(string.IsNullOrWhiteSpace(returnedStock.Reason) ? "—" : returnedStock.Reason)</strong>
+                                    </div>
+                                </div>
+                                @if (!IsReturnedStockPrintModeActive)
+                                {
+                                    <div class="inventory-mobile-record__actions" @onclick:stopPropagation="true">
+                                        <button type="button" class="product-row-action" title="View GIN details" aria-label="View GIN details" @onclick="() => ShowGinDetails(returnedStock)">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        <button type="button"
+                                                class="product-row-action product-row-action--danger"
+                                                title="@(CanEditGin(returnedStock) ? "Delete GIN" : "This GIN is posted/locked and cannot be deleted")"
+                                                aria-label="Delete GIN"
+                                                disabled="@(!CanEditGin(returnedStock))"
+                                                @onclick="() => DeleteGinFromHistoryAsync(returnedStock)">
+                                            <i class="bi bi-trash3"></i>
+                                        </button>
+                                    </div>
+                                }
+                            </article>
+                        }
+                    }
                 </div>
                 <Pagination CurrentPage="@GINCurrentPage"
                             ItemsPerPage="5"
@@ -2845,7 +3044,7 @@
                     <span><i class="bi bi-check-circle"></i> @FilteredGRNs.Count() record@(FilteredGRNs.Count() == 1 ? string.Empty : "s")</span>
                 </div>
 
-                <div class="inventory__table-wrapper table-scroll grn-table-scroll">
+                <div class="inventory__table-wrapper table-scroll grn-table-scroll desktop-view">
                     <div class="table-scroll__inner grn-table-scroll__inner">
                         <table class="inventory__table resizable-table inventory-mobile-compact-table inventory-mobile-compact-table--grn @(IsGRNPrintModeActive ? "purchase-orders__table" : string.Empty)">
                             <thead>
@@ -2911,6 +3110,76 @@
                             </tbody>
                         </table>
                     </div>
+                </div>
+                <div class="inventory-mobile-records mobile-view">
+                    @if (!FilteredGRNs.Any())
+                    {
+                        <div class="inventory-mobile-records__empty">No stock in / GRN history found.</div>
+                    }
+                    else
+                    {
+                        @foreach (var grn in PaginatedGRNs)
+                        {
+                            <article class="inventory-mobile-record inventory-mobile-record--grn @GetGRNRowClass(grn)"
+                                     @onclick="() => ShowGrnDetails(grn)">
+                                <div class="inventory-mobile-record__header">
+                                    @if (IsGRNPrintModeActive)
+                                    {
+                                        <label class="inventory-mobile-record__select" @onclick:stopPropagation="true">
+                                            <input type="checkbox"
+                                                   aria-label="Select GRN @grn.DOCNo"
+                                                   checked="@SelectedGRNsForPrint.Contains(grn)"
+                                                   @onchange="() => ToggleGRNForPrintSelection(grn)" />
+                                        </label>
+                                    }
+                                    <div class="inventory-mobile-record__icon" aria-hidden="true">
+                                        <i class="bi bi-box-arrow-in-down"></i>
+                                    </div>
+                                    <div class="inventory-mobile-record__identity">
+                                        <h3>@grn.DOCNo</h3>
+                                        <p>Goods received note</p>
+                                    </div>
+                                    <span class="inventory-status-indicator inventory-status-indicator--@GetInventoryStatusTone(grn.Status) inventory-mobile-record__status">
+                                        @grn.Status
+                                    </span>
+                                </div>
+                                <div class="inventory-mobile-record__facts">
+                                    <div class="inventory-mobile-record__fact inventory-mobile-record__fact--wide">
+                                        <span>Date</span>
+                                        <strong>@grn.Date.ToString("dd/MM/yyyy HH:mm")</strong>
+                                    </div>
+                                    <div class="inventory-mobile-record__fact inventory-mobile-record__fact--wide">
+                                        <span>Activity</span>
+                                        <strong>@grn.Activity</strong>
+                                    </div>
+                                    <div class="inventory-mobile-record__fact">
+                                        <span>Total cost</span>
+                                        <strong>MYR @grn.Amount.ToString("N2")</strong>
+                                    </div>
+                                    <div class="inventory-mobile-record__fact inventory-mobile-record__fact--wide">
+                                        <span>Remarks</span>
+                                        <strong>@(string.IsNullOrWhiteSpace(grn.Remarks) ? "—" : grn.Remarks)</strong>
+                                    </div>
+                                </div>
+                                @if (!IsGRNPrintModeActive)
+                                {
+                                    <div class="inventory-mobile-record__actions" @onclick:stopPropagation="true">
+                                        <button type="button" class="product-row-action" title="View GRN details" aria-label="View GRN details" @onclick="() => ShowGrnDetails(grn)">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        <button type="button"
+                                                class="product-row-action product-row-action--danger"
+                                                title="@(CanEditGrn(grn) ? "Delete GRN" : GetGrnReadOnlyReason(grn))"
+                                                aria-label="Delete GRN"
+                                                disabled="@(!CanEditGrn(grn))"
+                                                @onclick="() => DeleteGrnFromHistoryAsync(grn)">
+                                            <i class="bi bi-trash3"></i>
+                                        </button>
+                                    </div>
+                                }
+                            </article>
+                        }
+                    }
                 </div>
                 <Pagination CurrentPage="@GRNCurrentPage"
                             ItemsPerPage="5"
@@ -7705,6 +7974,88 @@ private void ShowAddBrandForm()
             .Trim()
             .ToLowerInvariant()
             .Replace(" ", "-");
+
+    private static string GetGinStatusDisplay(ReturnedStockItem item)
+    {
+        if (item.IsVoid)
+        {
+            return "Voided";
+        }
+
+        if (item.IsLocked)
+        {
+            return "Posted";
+        }
+
+        var status = string.IsNullOrWhiteSpace(item.VerifyStatus)
+            ? item.Status?.Trim() ?? string.Empty
+            : item.VerifyStatus.Trim();
+
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            return "Pending";
+        }
+
+        if (status.Contains("void", StringComparison.OrdinalIgnoreCase) ||
+            status.Contains("cancel", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Voided";
+        }
+
+        if (status.Contains("post", StringComparison.OrdinalIgnoreCase) ||
+            status.Contains("complete", StringComparison.OrdinalIgnoreCase) ||
+            status.Contains("approve", StringComparison.OrdinalIgnoreCase) ||
+            status.Contains("verify", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Posted";
+        }
+
+        if (status.Contains("draft", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Draft";
+        }
+
+        return status;
+    }
+
+    private static string GetInventoryStatusTone(string? status)
+    {
+        var normalized = status?.Trim() ?? string.Empty;
+
+        if (normalized.Contains("void", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("cancel", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("reject", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("out of stock", StringComparison.OrdinalIgnoreCase))
+        {
+            return "danger";
+        }
+
+        if (normalized.Contains("pending", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("low", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("adjust", StringComparison.OrdinalIgnoreCase))
+        {
+            return "warning";
+        }
+
+        if (normalized.Contains("post", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("complete", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("approve", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("receive", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("available", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("in stock", StringComparison.OrdinalIgnoreCase))
+        {
+            return "success";
+        }
+
+        if (normalized.Contains("progress", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("processing", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("transit", StringComparison.OrdinalIgnoreCase))
+        {
+            return "info";
+        }
+
+        return "neutral";
+    }
 
     private List<TransferHistoryItem> TransferHistory { get; set; } = new();
 

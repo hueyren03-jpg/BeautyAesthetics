@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using Beauty_Aesthetics_WebPos.Models;
 using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
+using Beauty_Aesthetics_WebPos.Components.Services.Branches;
 
 namespace Beauty_Aesthetics_WebPos.Components.Pages
 {
@@ -12,13 +13,27 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
         private bool hasSubmitted = false;
         private bool isSaving = false;
         private string errorMessage = string.Empty;
-        private string GoogleReviewUrl => Configuration["GoogleReviewUrl"]!; // Get from GoogleReviewUrl at appsettings.json
+        private string GoogleReviewUrl => Configuration["GoogleReviewUrl"] ?? string.Empty;
 
-        private string MasterAccountID { get; set; } = "CUST12345"; // Hardcode Customer ID for testing
-        private string AccountName { get; set; } = "Test Cust"; // Harcode Customer Name for testing
+        [Parameter]
+        [SupplyParameterFromQuery(Name = "customerId")]
+        public string? CustomerId { get; set; }
+
+        [Parameter]
+        [SupplyParameterFromQuery(Name = "documentId")]
+        public string? DocumentId { get; set; }
+
+        [Parameter]
+        [SupplyParameterFromQuery(Name = "branchId")]
+        public string? BranchId { get; set; }
+
+        [Parameter]
+        [SupplyParameterFromQuery(Name = "groupId")]
+        public string? GroupId { get; set; }
 
         [Inject] private Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L { get; set; } = default!;
         [Inject] private AppFeedbackService Feedback { get; set; } = default!;
+        [Inject] private IBranchSessionService BranchSession { get; set; } = default!;
 
         private void OnRate(int value)
         {
@@ -60,25 +75,29 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
 
             try
             {
-                // Save 5-star rating to database
-                var ratingModel = new CustomerRating
+                var shouldRedirectToGoogle = !string.IsNullOrWhiteSpace(GoogleReviewUrl);
+                if (!TryCreateRating(5, null, shouldRedirectToGoogle, out var ratingModel))
                 {
-                    MasterAccountID = MasterAccountID,
-                    AccountName = AccountName,
-                    Rating = 5,
-                    IsGoogleReviewRedirected = true
-                };
+                    Feedback.Fail(feedbackId, errorMessage, "Rating not saved");
+                    return;
+                }
 
-                await RatingService.SaveRatingAsync(ratingModel);
+                var result = await RatingService.SaveRatingAsync(ratingModel);
+                if (!result.Success)
+                {
+                    errorMessage = result.ErrorMessage ?? L["SaveRatingError"].Value;
+                    Feedback.Fail(feedbackId, errorMessage, "Rating not saved");
+                    return;
+                }
 
                 hasSubmitted = true;
                 Feedback.Resolve(feedbackId, "Your 5-star rating was saved successfully.", "Rating saved");
 
-                // Small delay for better UX
-                await Task.Delay(800);
-
-                // Redirect to Google Reviews
-                NavigationManager.NavigateTo(GoogleReviewUrl, forceLoad: true);
+                if (shouldRedirectToGoogle)
+                {
+                    await Task.Delay(800);
+                    NavigationManager.NavigateTo(GoogleReviewUrl, forceLoad: true);
+                }
             }
             catch (Exception ex)
             {
@@ -109,15 +128,20 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
 
             try
             {
-                var ratingModel = new CustomerRating
+                if (!TryCreateRating(rating, comment, false, out var ratingModel))
                 {
-                    MasterAccountID = MasterAccountID,
-                    AccountName = AccountName,
-                    Rating = rating,
-                    Comment = comment
-                };
+                    Feedback.Fail(feedbackId, errorMessage, "Feedback not submitted");
+                    return;
+                }
 
-                await RatingService.SaveRatingAsync(ratingModel);
+                var result = await RatingService.SaveRatingAsync(ratingModel);
+                if (!result.Success)
+                {
+                    errorMessage = result.ErrorMessage ?? L["SubmitFeedbackError"].Value;
+                    Feedback.Fail(feedbackId, errorMessage, "Feedback not submitted");
+                    return;
+                }
+
                 hasSubmitted = true;
                 Feedback.Resolve(feedbackId, "Thank you. Your feedback was submitted successfully.", "Feedback submitted");
             }
@@ -172,6 +196,49 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             5 => "rating-5",
             _ => ""
         };
+
+        private bool TryCreateRating(
+            int ratingValue,
+            string? comment,
+            bool isGoogleReviewRedirected,
+            out CustomerRating ratingModel)
+        {
+            var customerId = CustomerId?.Trim() ?? string.Empty;
+            var documentId = DocumentId?.Trim() ?? string.Empty;
+            var branchId = !string.IsNullOrWhiteSpace(BranchId)
+                ? BranchId.Trim()
+                : BranchSession.CurrentBranch?.Id?.Trim() ?? string.Empty;
+            var groupId = !string.IsNullOrWhiteSpace(GroupId)
+                ? GroupId.Trim()
+                : branchId;
+
+            ratingModel = new CustomerRating();
+
+            if (string.IsNullOrWhiteSpace(customerId) ||
+                string.IsNullOrWhiteSpace(documentId) ||
+                string.IsNullOrWhiteSpace(branchId))
+            {
+                errorMessage = "This review is missing its customer, sales document, or branch information. Open it from a completed sale and try again.";
+                return false;
+            }
+
+            ratingModel = new CustomerRating
+            {
+                RatingID = string.Empty,
+                CustomerID = customerId,
+                DocumentID = documentId,
+                Rating = Math.Clamp(ratingValue, 1, 5),
+                Comment = string.IsNullOrWhiteSpace(comment) ? string.Empty : comment.Trim(),
+                SubmissionDate = DateTime.UtcNow,
+                IsGoogleReviewRedirected = isGoogleReviewRedirected,
+                BranchID = branchId,
+                GroupID = groupId,
+                SaveAction = "Added",
+                IsDirty = true
+            };
+
+            return true;
+        }
 
         private void ResetForm()
         {
