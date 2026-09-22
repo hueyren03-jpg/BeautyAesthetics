@@ -1,11 +1,13 @@
+using System.Collections.ObjectModel;
 using System.Net;
-using System.Globalization;
-using System.Text.Json.Nodes;
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
-using Beauty_Aesthetics_WebPos.Components.ViewModels;
 using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
+using Beauty_Aesthetics_WebPos.Components.ViewModels;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
+using EBI.DM;
+using EBI.Enum;
+using EBI.UC;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.Inventory;
 
@@ -31,8 +33,6 @@ public sealed class StockGrnService : IStockGrnService
                 Array.Empty<StockGrnViewModel>());
         }
 
-        // Same history flow as SenangRetails InventoryStockIn:
-        // one LoadProxy request, 30-day window, page 1, page size 500.
         var result = await stockGrnAC.LoadProxyAsync(new StockGrnProxyRequestDTO
         {
             BranchID = branchId.Trim(),
@@ -58,26 +58,48 @@ public sealed class StockGrnService : IStockGrnService
         return ApiCallResult<IReadOnlyList<StockGrnViewModel>>.Ok(result.StatusCode, rows);
     }
 
+    public async Task<ApiCallResult<StockGrnViewModel>> LoadGrnAsync(
+        string documentId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+        {
+            return ApiCallResult<StockGrnViewModel>.Failure(
+                HttpStatusCode.BadRequest,
+                "GRN document ID is missing.");
+        }
+
+        var result = await stockGrnAC.LoadRecordAsync(documentId.Trim(), cancellationToken);
+        if (!result.Success || result.Value?.mobjDoc_Stock_GRN is null)
+        {
+            return ApiCallResult<StockGrnViewModel>.Failure(
+                result.StatusCode,
+                result.ErrorMessage ?? "Unable to load the GRN.");
+        }
+
+        return ApiCallResult<StockGrnViewModel>.Ok(result.StatusCode, ToViewModel(result.Value));
+    }
+
     public async Task<ApiCallResult<bool>> CreateGrnAsync(
         StockGrnViewModel grn,
         string branchId = "HQ",
         CancellationToken cancellationToken = default)
     {
-        var templateResult = await stockGrnAC.LoadRecordAsync(string.Empty, cancellationToken);
-        if (!templateResult.Success || templateResult.Value is null)
+        var validationError = Validate(grn);
+        if (validationError is not null)
         {
-            var message = templateResult.ErrorMessage ?? "Unable to prepare a new GRN.";
-            feedback.Error(message, "Stock In failed");
-            return ApiCallResult<bool>.Failure(templateResult.StatusCode, message);
+            feedback.Warning(validationError, "Check Stock In");
+            return ApiCallResult<bool>.Failure(HttpStatusCode.BadRequest, validationError);
         }
 
-        Apply(templateResult.Value.Document, grn, branchId);
-        ApplyLines(templateResult.Value, grn, branchId, isNewDocument: true);
-        templateResult.Value.Document.SaveAction = "Added";
-        templateResult.Value.Document.IsDirty = true;
+        var envelope = new Doc_Stock_GRN();
+        ApplyDocument(envelope.mobjDoc_Stock_GRN, grn, branchId);
+        ApplyLines(envelope, grn, branchId, isNewDocument: true);
+        envelope.mobjDoc_Stock_GRN.SaveAction = EntityState.Added;
+        envelope.mobjDoc_Stock_GRN.IsDirty = true;
 
         var result = ToBoolean(
-            await stockGrnAC.CreateRecordAsync(templateResult.Value, cancellationToken),
+            await stockGrnAC.CreateRecordAsync(envelope, cancellationToken),
             "Unable to create GRN.");
 
         if (result.Success)
@@ -92,26 +114,6 @@ public sealed class StockGrnService : IStockGrnService
         return result;
     }
 
-    public async Task<ApiCallResult<StockGrnViewModel>> LoadGrnAsync(
-        string documentId,
-        CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(documentId))
-        {
-            return ApiCallResult<StockGrnViewModel>.Failure(HttpStatusCode.BadRequest, "GRN document ID is missing.");
-        }
-
-        var result = await stockGrnAC.LoadRecordAsync(documentId, cancellationToken);
-        if (!result.Success || result.Value is null)
-        {
-            return ApiCallResult<StockGrnViewModel>.Failure(
-                result.StatusCode,
-                result.ErrorMessage ?? "Unable to load the GRN.");
-        }
-
-        return ApiCallResult<StockGrnViewModel>.Ok(result.StatusCode, ToViewModel(result.Value));
-    }
-
     public async Task<ApiCallResult<bool>> UpdateGrnAsync(
         StockGrnViewModel grn,
         string branchId = "HQ",
@@ -124,22 +126,30 @@ public sealed class StockGrnService : IStockGrnService
             return ApiCallResult<bool>.Failure(HttpStatusCode.BadRequest, message);
         }
 
-        var loadResult = await stockGrnAC.LoadRecordAsync(grn.DocumentId, cancellationToken);
-        if (!loadResult.Success || loadResult.Value is null)
+        var validationError = Validate(grn);
+        if (validationError is not null)
+        {
+            feedback.Warning(validationError, "Check GRN changes");
+            return ApiCallResult<bool>.Failure(HttpStatusCode.BadRequest, validationError);
+        }
+
+        var loadResult = await stockGrnAC.LoadRecordAsync(grn.DocumentId.Trim(), cancellationToken);
+        if (!loadResult.Success || loadResult.Value?.mobjDoc_Stock_GRN is null)
         {
             var message = loadResult.ErrorMessage ?? "Unable to load GRN before updating.";
             feedback.Error(message, "GRN not updated");
             return ApiCallResult<bool>.Failure(loadResult.StatusCode, message);
         }
 
-        Apply(loadResult.Value.Document, grn, branchId);
-        ApplyLines(loadResult.Value, grn, branchId, isNewDocument: false);
-        loadResult.Value.Document.DocumentID = grn.DocumentId;
-        loadResult.Value.Document.SaveAction = "Changed";
-        loadResult.Value.Document.IsDirty = true;
+        var envelope = loadResult.Value;
+        ApplyDocument(envelope.mobjDoc_Stock_GRN, grn, branchId);
+        ApplyLines(envelope, grn, branchId, isNewDocument: false);
+        envelope.mobjDoc_Stock_GRN.DocumentID = grn.DocumentId.Trim();
+        envelope.mobjDoc_Stock_GRN.SaveAction = EntityState.Changed;
+        envelope.mobjDoc_Stock_GRN.IsDirty = true;
 
         var result = ToBoolean(
-            await stockGrnAC.UpdateRecordAsync(loadResult.Value, cancellationToken),
+            await stockGrnAC.UpdateRecordAsync(envelope, cancellationToken),
             "Unable to update GRN.");
 
         if (result.Success)
@@ -166,7 +176,7 @@ public sealed class StockGrnService : IStockGrnService
         }
 
         var result = ToBoolean(
-            await stockGrnAC.DeleteAsync(documentId, cancellationToken),
+            await stockGrnAC.DeleteAsync(documentId.Trim(), cancellationToken),
             "Unable to delete GRN.");
 
         if (result.Success)
@@ -181,19 +191,26 @@ public sealed class StockGrnService : IStockGrnService
         return result;
     }
 
-    private static void Apply(StockGrnDocumentDTO document, StockGrnViewModel grn, string branchId)
+    private static void ApplyDocument(
+        Doc_Stock_GRNDM document,
+        StockGrnViewModel grn,
+        string branchId)
     {
-        var normalizedBranch = NormalizeBranchId(string.IsNullOrWhiteSpace(grn.BranchId) ? branchId : grn.BranchId);
+        var normalizedBranch = NormalizeBranchId(
+            string.IsNullOrWhiteSpace(grn.BranchId) ? branchId : grn.BranchId);
         var exchangeRate = grn.ExchangeRate <= 0 ? 1 : grn.ExchangeRate;
         var sourceLines = ResolveLines(grn);
-        var subtotal = sourceLines.Sum(line => Math.Max(0, line.Quantity) * Math.Max(0, line.UnitCost));
+        var subtotal = sourceLines.Sum(line =>
+            Math.Max(0, line.Quantity) * Math.Max(0, line.UnitCost));
         var taxAmount = Math.Max(0, grn.TaxAmount);
-        var totalBeforeTax = grn.IsTaxInclusive ? Math.Max(0, subtotal - taxAmount) : subtotal;
+        var totalBeforeTax = grn.IsTaxInclusive
+            ? Math.Max(0, subtotal - taxAmount)
+            : subtotal;
         var totalAfterTax = grn.Amount > 0
             ? grn.Amount
             : (grn.IsTaxInclusive ? subtotal : subtotal + taxAmount) + grn.RoundingAmount;
 
-        document.DocumentTypeID = 51;
+        document.DocumentTypeID = (int)EnumDocumentType.GRN;
         document.FriendlyDocumentName = "GRN";
         document.BranchID = normalizedBranch;
         document.EditBranchID = normalizedBranch;
@@ -213,12 +230,17 @@ public sealed class StockGrnService : IStockGrnService
         document.ExchangeRate = exchangeRate;
         document.TaxTypeID = NullIfWhiteSpace(grn.TaxTypeId);
         document.StockActivityType = NullIfWhiteSpace(grn.StockActivityType);
-        document.PostingDate = grn.PostingDate == default ? document.FinancialDate : grn.PostingDate;
-        document.IsPostingDateDifferent = document.PostingDate.Date != document.FinancialDate.Date;
+        document.PostingDate = grn.PostingDate == default
+            ? document.FinancialDate
+            : grn.PostingDate;
+        document.IsPostingDateDifferent =
+            document.PostingDate.Date != document.FinancialDate.Date;
+
         if (grn.PODate.HasValue)
         {
             document.POFinancialDate = grn.PODate.Value;
         }
+
         document.TotalBeforeTax = totalBeforeTax;
         document.TaxableAmount = totalBeforeTax;
         document.TaxAmount = taxAmount;
@@ -232,84 +254,84 @@ public sealed class StockGrnService : IStockGrnService
     }
 
     private static void ApplyLines(
-        StockGrnEnvelopeDTO envelope,
+        Doc_Stock_GRN envelope,
         StockGrnViewModel grn,
         string branchId,
         bool isNewDocument)
     {
-        var normalizedBranch = NormalizeBranchId(string.IsNullOrWhiteSpace(grn.BranchId) ? branchId : grn.BranchId);
+        var document = envelope.mobjDoc_Stock_GRN ??
+            throw new InvalidOperationException("GRN document header is missing.");
+        var normalizedBranch = NormalizeBranchId(
+            string.IsNullOrWhiteSpace(grn.BranchId) ? branchId : grn.BranchId);
         var sourceLines = ResolveLines(grn);
-        var existingLines = envelope.DocumentLines.ToList();
+        var existingLines = envelope.lstDocumentLine?.ToList() ?? new List<DocumentLineTableDM>();
         var existingById = existingLines
-            .Where(line => !string.IsNullOrWhiteSpace(ReadString(line, "documentLineID")))
-            .DistinctBy(line => ReadString(line, "documentLineID"), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(line => ReadString(line, "documentLineID"), StringComparer.OrdinalIgnoreCase);
-        var blankTemplate = isNewDocument ? existingLines.FirstOrDefault() : null;
-        var updatedLines = new List<JsonObject>();
+            .Where(line => !string.IsNullOrWhiteSpace(line.DocumentLineID))
+            .DistinctBy(line => line.DocumentLineID, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(line => line.DocumentLineID, StringComparer.OrdinalIgnoreCase);
+        var updatedLines = new List<DocumentLineTableDM>();
+        var exchangeRate = grn.ExchangeRate <= 0 ? 1 : grn.ExchangeRate;
 
         for (var index = 0; index < sourceLines.Count; index++)
         {
             var source = sourceLines[index];
-            JsonObject? existingLine = null;
-            var hasExistingLine = !string.IsNullOrWhiteSpace(source.DocumentLineId) &&
-                                  existingById.TryGetValue(source.DocumentLineId, out existingLine);
-            var line = hasExistingLine
-                ? existingLine!
-                : blankTemplate?.DeepClone().AsObject() ?? new JsonObject();
+            DocumentLineTableDM? existingLine = null;
+            var hasExistingLine =
+                !string.IsNullOrWhiteSpace(source.DocumentLineId) &&
+                existingById.TryGetValue(source.DocumentLineId, out existingLine);
 
-            RemoveLegacyLineFields(line);
-            var lineId = hasExistingLine ? source.DocumentLineId : Guid.NewGuid().ToString();
+            var line = hasExistingLine ? existingLine! : new DocumentLineTableDM();
             var quantity = Math.Max(0, source.Quantity);
             var unitCost = Math.Max(0, source.UnitCost);
             var lineAmount = quantity * unitCost;
 
-            line["isLoading"] = false;
-            line["documentID"] = envelope.Document.DocumentID;
-            line["documentLineID"] = lineId;
-            line["ownerDocumentTypeID"] = envelope.Document.DocumentTypeID;
-            line["lineOrder"] = index + 1;
-            SetLine(line, "description", source.ProductName);
-            SetLine(line, "itemName", source.ProductName);
-            SetLine(line, "lineItemID", source.InventoryId);
-            SetLine(line, "inventoryItemAccountID", source.InventoryId);
-            SetLine(line, "lineItemDisplayCode", source.Sku);
-            SetLine(line, "skuName", source.Sku);
-            SetLine(line, "unitOfMeasurementID", source.UnitOfMeasurementId);
-            line["quantity"] = quantity;
-            line["adjustedQuantity"] = quantity;
-            line["unitPrice"] = unitCost;
-            line["cost"] = unitCost;
-            line["subTotal"] = lineAmount;
-            line["subTotalBeforeGST"] = lineAmount;
-            line["amount"] = lineAmount;
-            line["taxableAmount"] = lineAmount;
-            line["taxAmount"] = 0;
-            line["inventoryTypeID"] = source.InventoryTypeId <= 0 ? 1 : source.InventoryTypeId;
-            line["branchID"] = normalizedBranch;
-            line["editBranchID"] = normalizedBranch;
-            line["financialDate"] = envelope.Document.FinancialDate;
-            line["documentDisplayCode"] = envelope.Document.DisplayCode;
-            line["currencyID"] = string.IsNullOrWhiteSpace(grn.TransactionCurrencyId) ? "MYR" : grn.TransactionCurrencyId;
-            line["exchangeRate"] = grn.ExchangeRate <= 0 ? 1 : grn.ExchangeRate;
-            line["convertedAmount"] = Math.Round(lineAmount * (grn.ExchangeRate <= 0 ? 1 : grn.ExchangeRate), 2);
-            line["saveAction"] = isNewDocument || !hasExistingLine ? "Added" : "Changed";
-            line["isDirty"] = true;
+            line.DocumentLineID = hasExistingLine ? source.DocumentLineId : string.Empty;
+            line.DocumentID = document.DocumentID ?? string.Empty;
+            line.OwnerDocumentTypeID = (int)EnumDocumentType.GRN;
+            line.LineOrder = index + 1;
+            line.Description = source.ProductName;
+            line.ItemName = source.ProductName;
+            line.LineItemID = source.InventoryId;
+            line.InventoryItemAccountID = source.InventoryId;
+            line.LineItemDisplayCode = source.Sku;
+            line.SKUName = source.Sku;
+            line.UnitOfMeasurementID = source.UnitOfMeasurementId;
+            line.Quantity = quantity;
+            line.AdjustedQuantity = quantity;
+            line.UnitPrice = unitCost;
+            line.Cost = unitCost;
+            line.SubTotal = lineAmount;
+            line.SubTotalBeforeGST = lineAmount;
+            line.Amount = lineAmount;
+            line.TaxableAmount = lineAmount;
+            line.TaxAmount = 0;
+            line.InventoryTypeID = source.InventoryTypeId <= 0 ? 1 : source.InventoryTypeId;
+            line.SKUQuantity = 1;
+            line.BranchID = normalizedBranch;
+            line.EditBranchID = normalizedBranch;
+            line.FinancialDate = document.FinancialDate;
+            line.DocumentDisplayCode = document.DisplayCode;
+            line.CurrencyID = string.IsNullOrWhiteSpace(grn.TransactionCurrencyId)
+                ? "MYR"
+                : grn.TransactionCurrencyId;
+            line.ExchangeRate = exchangeRate;
+            line.ConvertedAmount = Math.Round(lineAmount * exchangeRate, 2);
+            line.SaveAction = isNewDocument || !hasExistingLine
+                ? EntityState.Added
+                : EntityState.Changed;
+            line.IsDirty = true;
             updatedLines.Add(line);
         }
 
         foreach (var removedLine in existingLines.Except(updatedLines))
         {
-            if (isNewDocument && ReferenceEquals(removedLine, blankTemplate))
-            {
-                continue;
-            }
-
-            removedLine["saveAction"] = "Deleted";
-            removedLine["isDirty"] = true;
+            removedLine.SaveAction = EntityState.Deleted;
+            removedLine.IsDirty = true;
             updatedLines.Add(removedLine);
         }
 
-        envelope.DocumentLines = updatedLines;
+        envelope.lstDocumentLine =
+            new ObservableCollection<DocumentLineTableDM>(updatedLines);
     }
 
     private static IReadOnlyList<StockGrnLineViewModel> ResolveLines(StockGrnViewModel grn)
@@ -319,13 +341,14 @@ public sealed class StockGrnService : IStockGrnService
             return grn.Lines;
         }
 
-        if (string.IsNullOrWhiteSpace(grn.InventoryId) && string.IsNullOrWhiteSpace(grn.ItemSku))
+        if (string.IsNullOrWhiteSpace(grn.InventoryId) &&
+            string.IsNullOrWhiteSpace(grn.ItemSku))
         {
             return Array.Empty<StockGrnLineViewModel>();
         }
 
-        return new[]
-        {
+        return
+        [
             new StockGrnLineViewModel
             {
                 InventoryId = grn.InventoryId,
@@ -336,70 +359,65 @@ public sealed class StockGrnService : IStockGrnService
                 InventoryTypeId = grn.InventoryTypeId,
                 UnitCost = grn.UnitPrice
             }
-        };
+        ];
     }
 
-    private static StockGrnViewModel ToViewModel(StockGrnDocumentDTO document)
+    private static StockGrnViewModel ToViewModel(Doc_Stock_GRNDM document) => new()
     {
-        return new StockGrnViewModel
-        {
-            DocumentId = document.DocumentID ?? string.Empty,
-            BranchId = document.BranchID ?? document.EditBranchID ?? string.Empty,
-            Date = document.FinancialDate == default ? DateTime.Today : document.FinancialDate,
-            DisplayCode = First(document.DisplayCode, document.DocumentID),
-            AccountId = document.AccountID ?? string.Empty,
-            AccountName = document.AccountName ?? string.Empty,
-            PODisplayCode = document.PODisplayCode ?? string.Empty,
-            PODocumentId = document.PODocumentID ?? string.Empty,
-            OrderBranchId = document.OrderBranchID ?? string.Empty,
-            PaymentTermId = document.PaymentTermID ?? string.Empty,
-            PaymentTermName = document.PaymentTermName ?? string.Empty,
-            CreatedByDocumentId = document.CreatedByDocumentID ?? string.Empty,
-            CreatedByDocumentDisplayCode = document.CreatedByDocumentDisplayCode ?? string.Empty,
-            VerifyStatus = document.VerifyStatus ?? string.Empty,
-            ReferenceNumber = document.ReferenceNumber ?? string.Empty,
-            PODate = document.POFinancialDate == default ? null : document.POFinancialDate,
-            PostingDate = document.PostingDate == default ? document.FinancialDate : document.PostingDate,
-            IsPostingDateDifferent = document.IsPostingDateDifferent,
-            Remarks = document.Remarks ?? string.Empty,
-            Amount = document.TotalAfterTax != 0 ? document.TotalAfterTax : document.LocalTotalAfterTax,
-            TransactionCurrencyId = document.TransactionCurrencyID ?? string.Empty,
-            LocalCurrencyId = document.LocalCurrencyID ?? string.Empty,
-            ExchangeRate = document.ExchangeRate <= 0 ? 1 : document.ExchangeRate,
-            TaxTypeId = document.TaxTypeID ?? string.Empty,
-            TaxAmount = document.TaxAmount,
-            RoundingAmount = document.RoundingAmount,
-            StockActivityType = document.StockActivityType ?? string.Empty,
-            IsLocked = document.IsLocked,
-            IsVoid = document.IsVoid
-        };
-    }
+        DocumentId = document.DocumentID ?? string.Empty,
+        BranchId = First(document.BranchID, document.EditBranchID),
+        Date = document.FinancialDate == default ? DateTime.Today : document.FinancialDate,
+        DisplayCode = First(document.DisplayCode, document.DocumentID),
+        AccountId = document.AccountID ?? string.Empty,
+        AccountName = document.AccountName ?? string.Empty,
+        PODisplayCode = document.PODisplayCode ?? string.Empty,
+        PODocumentId = document.PODocumentID ?? string.Empty,
+        OrderBranchId = document.OrderBranchID ?? string.Empty,
+        PaymentTermId = document.PaymentTermID ?? string.Empty,
+        PaymentTermName = document.PaymentTermName ?? string.Empty,
+        CreatedByDocumentId = document.CreatedByDocumentID ?? string.Empty,
+        CreatedByDocumentDisplayCode = document.CreatedByDocumentDisplayCode ?? string.Empty,
+        VerifyStatus = document.VerifyStatus ?? string.Empty,
+        ReferenceNumber = document.ReferenceNumber ?? string.Empty,
+        PODate = document.POFinancialDate == default ? null : document.POFinancialDate,
+        PostingDate = document.PostingDate == default
+            ? document.FinancialDate
+            : document.PostingDate,
+        IsPostingDateDifferent = document.IsPostingDateDifferent,
+        Remarks = document.Remarks ?? string.Empty,
+        Amount = document.TotalAfterTax != 0
+            ? document.TotalAfterTax
+            : document.LocalTotalAfterTax,
+        TransactionCurrencyId = document.TransactionCurrencyID ?? string.Empty,
+        LocalCurrencyId = document.LocalCurrencyID ?? string.Empty,
+        ExchangeRate = document.ExchangeRate <= 0 ? 1 : document.ExchangeRate,
+        TaxTypeId = document.TaxTypeID ?? string.Empty,
+        TaxAmount = document.TaxAmount,
+        RoundingAmount = document.RoundingAmount,
+        StockActivityType = document.StockActivityType ?? string.Empty,
+        IsLocked = document.IsLocked,
+        IsVoid = document.IsVoid
+    };
 
-    private static StockGrnViewModel ToViewModel(StockGrnEnvelopeDTO envelope)
+    private static StockGrnViewModel ToViewModel(Doc_Stock_GRN envelope)
     {
-        var viewModel = ToViewModel(envelope.Document);
-        viewModel.Lines = envelope.DocumentLines
-            .Where(line => !string.Equals(ReadString(line, "saveAction"), "Deleted", StringComparison.OrdinalIgnoreCase))
-            .Select(line =>
+        var grn = envelope.mobjDoc_Stock_GRN is null
+            ? new StockGrnViewModel()
+            : ToViewModel(envelope.mobjDoc_Stock_GRN);
+
+        grn.Lines = (envelope.lstDocumentLine ?? new ObservableCollection<DocumentLineTableDM>())
+            .Where(line => line.SaveAction != EntityState.Deleted)
+            .Select(line => new StockGrnLineViewModel
             {
-                var cost = ReadDecimal(line, "cost", "unitPrice");
-                var quantity = ReadDecimal(line, "quantity");
-
-                return new StockGrnLineViewModel
-                {
-                    DocumentLineId = ReadString(line, "documentLineID"),
-                    InventoryId = ReadString(line, "lineItemID", "inventoryItemAccountID", "inventoryID"),
-                    ProductName = ReadString(line, "description", "itemName", "accountName"),
-                    Sku = ReadString(line, "lineItemDisplayCode", "itemDisplayCode", "skuName", "sku", "inventoryCode", "displayCode"),
-                    Quantity = quantity,
-                    UnitOfMeasurementId = ReadString(line, "unitOfMeasurementID", "uom", "uom1"),
-                    InventoryTypeId = Math.Max(1, (int)ReadDecimal(line, "inventoryTypeID")),
-                    UnitCost = cost
-                };
+                DocumentLineId = line.DocumentLineID ?? string.Empty,
+                InventoryId = First(line.LineItemID, line.InventoryItemAccountID),
+                ProductName = First(line.ItemName, line.Description),
+                Sku = First(line.LineItemDisplayCode, line.SKUName),
+                Quantity = line.Quantity != 0 ? line.Quantity : line.AdjustedQuantity,
+                UnitOfMeasurementId = line.UnitOfMeasurementID ?? string.Empty,
+                InventoryTypeId = Math.Max(1, line.InventoryTypeID),
+                UnitCost = FirstPositive(line.Cost, line.UnitPrice)
             })
-            // SenangRetails displays the returned DocumentLineTableDM rows directly.
-            // Do not discard a valid GRN line merely because a deployment omits
-            // LineItemID / InventoryItemAccountID / SKU from LoadRecord.
             .Where(line =>
                 !string.IsNullOrWhiteSpace(line.ProductName) ||
                 !string.IsNullOrWhiteSpace(line.InventoryId) ||
@@ -408,84 +426,54 @@ public sealed class StockGrnService : IStockGrnService
                 line.UnitCost != 0)
             .ToList();
 
-        var firstLine = viewModel.Lines.FirstOrDefault();
+        var firstLine = grn.Lines.FirstOrDefault();
         if (firstLine is not null)
         {
-            viewModel.ItemName = firstLine.ProductName;
-            viewModel.ItemSku = firstLine.Sku;
-            viewModel.InventoryId = firstLine.InventoryId;
-            viewModel.Uom = firstLine.UnitOfMeasurementId;
-            viewModel.InventoryTypeId = firstLine.InventoryTypeId;
-            viewModel.ReceivedQuantity = firstLine.Quantity;
-            viewModel.OrderedQuantity = firstLine.Quantity;
-            viewModel.UnitPrice = firstLine.UnitCost;
+            grn.ItemName = firstLine.ProductName;
+            grn.ItemSku = firstLine.Sku;
+            grn.InventoryId = firstLine.InventoryId;
+            grn.Uom = firstLine.UnitOfMeasurementId;
+            grn.InventoryTypeId = firstLine.InventoryTypeId;
+            grn.ReceivedQuantity = firstLine.Quantity;
+            grn.OrderedQuantity = firstLine.Quantity;
+            grn.UnitPrice = firstLine.UnitCost;
         }
 
-        return viewModel;
+        return grn;
     }
 
-    private static void SetLine(JsonObject line, string name, string value)
+    private static string? Validate(StockGrnViewModel grn)
     {
-        line[name] = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        if (string.IsNullOrWhiteSpace(grn.BranchId))
+            return "Receiving branch is required.";
+
+        var lines = ResolveLines(grn);
+        if (lines.Count == 0)
+            return "Select at least one product.";
+
+        if (lines.Any(line => string.IsNullOrWhiteSpace(line.InventoryId)))
+            return "A selected product is missing its inventory ID.";
+
+        if (lines.Any(line => line.Quantity <= 0))
+            return "Received quantity must be greater than zero.";
+
+        return null;
     }
 
-    private static void RemoveLegacyLineFields(JsonObject line)
-    {
-        foreach (var name in new[]
-        {
-            "inventoryID", "InventoryID", "sku", "SKU", "uom", "UOM",
-            "Quantity", "UnitPrice", "SubTotal", "BranchID", "SaveAction", "IsDirty"
-        })
-        {
-            line.Remove(name);
-        }
-    }
+    private static decimal FirstPositive(params decimal[] values) =>
+        values.FirstOrDefault(value => value > 0);
 
-    private static string ReadString(JsonObject line, params string[] names)
-    {
-        foreach (var name in names)
-        {
-            var property = line.FirstOrDefault(item =>
-                string.Equals(item.Key, name, StringComparison.OrdinalIgnoreCase));
-
-            if (property.Value is null)
-            {
-                continue;
-            }
-
-            var value = property.Value.ToString().Trim('"');
-            if (!string.IsNullOrWhiteSpace(value))
-            {
-                return value;
-            }
-        }
-
-        return string.Empty;
-    }
-
-    private static decimal ReadDecimal(JsonObject line, params string[] names)
-    {
-        var text = ReadString(line, names);
-        return decimal.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out var invariant)
-            ? invariant
-            : decimal.TryParse(text, NumberStyles.Any, CultureInfo.CurrentCulture, out var current) ? current : 0;
-    }
-
-    private static bool ReadBool(JsonObject line, params string[] names)
-    {
-        var text = ReadString(line, names);
-        return bool.TryParse(text, out var value) && value;
-    }
-
-    private static ApiCallResult<bool> ToBoolean(ApiCallResult<string> result, string fallback)
-    {
-        return result.Success
+    private static ApiCallResult<bool> ToBoolean(ApiCallResult<string> result, string fallback) =>
+        result.Success
             ? ApiCallResult<bool>.Ok(result.StatusCode, true)
-            : ApiCallResult<bool>.Failure(result.StatusCode, result.ErrorMessage ?? fallback);
-    }
+            : ApiCallResult<bool>.Failure(
+                result.StatusCode,
+                result.ErrorMessage ?? fallback);
 
-    private static string NormalizeBranchId(string branchId) =>
-        string.IsNullOrWhiteSpace(branchId) ? "HQ" : branchId.Trim().ToUpperInvariant();
+    private static string NormalizeBranchId(string? branchId) =>
+        string.IsNullOrWhiteSpace(branchId)
+            ? "HQ"
+            : branchId.Trim().ToUpperInvariant();
 
     private static string? NullIfWhiteSpace(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
