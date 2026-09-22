@@ -4,7 +4,16 @@ using Android.OS;
 
 namespace Beauty_Aesthetics_Hybrid
 {
-    [Activity(Theme = "@style/Maui.SplashTheme", MainLauncher = true, ConfigurationChanges = ConfigChanges.UiMode)]
+    [Activity(
+        Theme = "@style/Maui.SplashTheme",
+        MainLauncher = true,
+        ConfigurationChanges =
+            ConfigChanges.ScreenSize |
+            ConfigChanges.Orientation |
+            ConfigChanges.UiMode |
+            ConfigChanges.ScreenLayout |
+            ConfigChanges.SmallestScreenSize |
+            ConfigChanges.Density)]
     public class MainActivity : MauiAppCompatActivity
     {
     }
