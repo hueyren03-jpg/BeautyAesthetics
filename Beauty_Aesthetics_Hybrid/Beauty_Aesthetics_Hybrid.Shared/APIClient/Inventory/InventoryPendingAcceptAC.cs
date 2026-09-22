@@ -5,6 +5,7 @@ using System.Text.Json;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.Services.Auth;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
+using EBI.DM;
 
 namespace Beauty_Aesthetics_WebPos.APIClient;
 
@@ -20,7 +21,7 @@ public sealed class InventoryPendingAcceptAC
         this.authService = authService;
     }
 
-    public Task<ApiCallResult<List<PendingStockReceiptLineDTO>>> GetPendingByBranchAsync(
+    public Task<ApiCallResult<List<InventoryMovement_PendingAcceptDM>>> GetPendingByBranchAsync(
         string branchId,
         CancellationToken cancellationToken = default) =>
         PostListAsync(
@@ -29,7 +30,7 @@ public sealed class InventoryPendingAcceptAC
             "Pending stock receipt list response was invalid.",
             cancellationToken);
 
-    public Task<ApiCallResult<List<PendingStockReceiptLineDTO>>> GetDetailsAsync(
+    public Task<ApiCallResult<List<InventoryMovement_PendingAcceptDM>>> GetDetailsAsync(
         string documentId,
         CancellationToken cancellationToken = default) =>
         PostListAsync(
@@ -49,7 +50,7 @@ public sealed class InventoryPendingAcceptAC
         return await ReadMutationResponseAsync(response, cancellationToken);
     }
 
-    private async Task<ApiCallResult<List<PendingStockReceiptLineDTO>>> PostListAsync(
+    private async Task<ApiCallResult<List<InventoryMovement_PendingAcceptDM>>> PostListAsync(
         string uri,
         string id,
         string invalidResponseMessage,
@@ -57,7 +58,7 @@ public sealed class InventoryPendingAcceptAC
     {
         using var request = CreatePostRequest(uri, new PendingStockReceiptLookupDTO { Id = id });
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
-        return await ReadApiResponseAsync<List<PendingStockReceiptLineDTO>>(
+        return await ReadApiResponseAsync<List<InventoryMovement_PendingAcceptDM>>(
             response,
             invalidResponseMessage,
             cancellationToken);
