@@ -14,6 +14,7 @@
 @using Beauty_Aesthetics_WebPos.APIClient.ResultPattern
 @inject IJSRuntime JSRuntime
 @inject IServiceItemService ServiceItemService
+@inject IBranchSessionService BranchSession
 @inject IMemberCreditService MemberCreditService
 @inject IPackageService PackageService
 @inject IMembershipTypeService MembershipTypeService
@@ -2221,6 +2222,10 @@
     private bool ShowServiceImportExportDropdown { get; set; } = false;
     private const string ServiceImportExpectedHeader = "SKU,Service Name,Category,Duration (minutes),Buffer Time (minutes),Package,Price (MYR)";
     private bool IsServiceApiLoading { get; set; }
+    private string ServiceBranchId =>
+        BranchSession.CurrentBranch?.Id?.Trim() is { Length: > 0 } branchId
+            ? branchId
+            : "HQ";
     private string? ServiceApiError { get; set; }
 
     // Backing list for API-loaded services.
@@ -2638,6 +2643,11 @@
         InventoryItems = InventoryViewModel.Items.ToList();
         MemberCreditItems.Clear();
         Bundles.Clear();
+
+        // Services are branch-scoped just like Inventory records. Initialize the
+        // persisted/current branch before issuing the service API request.
+        await BranchSession.InitializeAsync();
+
         await LoadServiceItemsFromApiAsync();
         await LoadMemberCreditsFromApiAsync();
         await LoadPackagesFromApiAsync();
@@ -2652,7 +2662,7 @@
 
         try
         {
-            var result = await ServiceItemService.LoadServiceItemsAsync("hq");
+            var result = await ServiceItemService.LoadServiceItemsAsync(ServiceBranchId);
             if (result.Success && result.Value is not null)
             {
                 ServiceItems = result.Value.ToList();
@@ -2662,8 +2672,13 @@
             }
             else
             {
-                ServiceApiError = result.ErrorMessage ?? "Unable to load service records.";
+                ServiceApiError = result.ErrorMessage ?? $"Unable to load service records for branch {ServiceBranchId}.";
             }
+        }
+        catch (Exception ex)
+        {
+            ServiceItems.Clear();
+            ServiceApiError = $"Unable to load service records for branch {ServiceBranchId}. {ex.Message}";
         }
         finally
         {
@@ -4145,8 +4160,8 @@
                 IsEditMode ? SelectedService?.MasterAccountId : null);
 
             var result = IsEditMode
-                ? await ServiceItemService.UpdateServiceAsync(service, "hq")
-                : await ServiceItemService.CreateServiceAsync(service, "hq");
+                ? await ServiceItemService.UpdateServiceAsync(service, ServiceBranchId)
+                : await ServiceItemService.CreateServiceAsync(service, ServiceBranchId);
 
             if (!result.Success)
             {
