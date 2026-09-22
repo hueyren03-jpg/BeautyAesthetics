@@ -1,17 +1,24 @@
+using System.Net;
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.ViewModels;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
+using EBI.DM;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.Inventory;
 
 public sealed class InventoryPendingAcceptService : IInventoryPendingAcceptService
 {
     private readonly InventoryPendingAcceptAC pendingAcceptAC;
+    private readonly AppFeedbackService feedback;
 
-    public InventoryPendingAcceptService(InventoryPendingAcceptAC pendingAcceptAC)
+    public InventoryPendingAcceptService(
+        InventoryPendingAcceptAC pendingAcceptAC,
+        AppFeedbackService feedback)
     {
         this.pendingAcceptAC = pendingAcceptAC;
+        this.feedback = feedback;
     }
 
     public async Task<ApiCallResult<IReadOnlyList<PendingStockReceiptViewModel>>> LoadPendingAsync(
@@ -49,16 +56,53 @@ public sealed class InventoryPendingAcceptService : IInventoryPendingAcceptServi
             result.Value.Select(MapLine).ToList());
     }
 
-    public Task<ApiCallResult<string>> AcceptAsync(string documentId, CancellationToken cancellationToken = default) =>
-        pendingAcceptAC.AcceptStockInAsync(documentId, cancellationToken);
+    public async Task<ApiCallResult<string>> AcceptAsync(
+        string documentId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+        {
+            const string message = "Stock transfer document ID is missing.";
+            feedback.Warning(message, "Transfer not received");
+            return ApiCallResult<string>.Failure(HttpStatusCode.BadRequest, message);
+        }
 
+        // Stock Transfer is its own document workflow.
+        // AcceptStockIn receives the pending transfer at the destination branch.
+        var result = await pendingAcceptAC.AcceptStockInAsync(documentId, cancellationToken);
+        if (result.Success)
+        {
+            feedback.Success("Incoming stock transfer received successfully.", "Transfer received");
+        }
+        else
+        {
+            feedback.Error(result.ErrorMessage ?? "Unable to receive the stock transfer.", "Transfer not received");
+        }
+
+        return result;
+    }
+
+    public async Task<ApiCallResult<string>> AcceptAsync(
+        PendingStockReceiptViewModel receipt,
+        CancellationToken cancellationToken = default)
+    {
+        if (receipt is null || string.IsNullOrWhiteSpace(receipt.DocumentId))
+        {
+            return ApiCallResult<string>.Failure(
+                HttpStatusCode.BadRequest,
+                "Stock transfer document ID is missing.");
+        }
+
+        return await AcceptAsync(receipt.DocumentId, cancellationToken);
+    }
     private static PendingStockReceiptViewModel MapDocument(
         string documentId,
         string destinationBranchId,
-        IEnumerable<PendingStockReceiptLineDTO> source)
+        IEnumerable<InventoryMovement_PendingAcceptDM> source)
     {
         var lines = source.ToList();
         var first = lines[0];
+
         return new PendingStockReceiptViewModel
         {
             DocumentId = documentId,
@@ -75,7 +119,7 @@ public sealed class InventoryPendingAcceptService : IInventoryPendingAcceptServi
         };
     }
 
-    private static PendingStockReceiptLineViewModel MapLine(PendingStockReceiptLineDTO line) => new()
+    private static PendingStockReceiptLineViewModel MapLine(InventoryMovement_PendingAcceptDM line) => new()
     {
         LineId = line.DocumentLineID ?? string.Empty,
         InventoryMovementId = line.InventoryMovementID ?? string.Empty,
@@ -90,8 +134,10 @@ public sealed class InventoryPendingAcceptService : IInventoryPendingAcceptServi
     private static string FirstValue(IEnumerable<string?> values, string fallback) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? fallback;
 
-    private static ApiCallResult<T> Failure<T>(ApiCallResult<List<PendingStockReceiptLineDTO>> source) =>
+    private static ApiCallResult<T> Failure<T>(ApiCallResult<List<InventoryMovement_PendingAcceptDM>> source) =>
         source.IsUnauthorized
             ? ApiCallResult<T>.Unauthorized(source.StatusCode)
-            : ApiCallResult<T>.Failure(source.StatusCode, source.ErrorMessage ?? "Pending stock receipt request failed.");
+            : ApiCallResult<T>.Failure(
+                source.StatusCode,
+                source.ErrorMessage ?? "Pending stock receipt request failed.");
 }

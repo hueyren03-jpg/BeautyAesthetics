@@ -6,7 +6,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.Inventory;
 public interface IStockGinService
 {
     Task<ApiCallResult<IReadOnlyList<StockGinViewModel>>> LoadGinsAsync(
-        string branchId = "HQ",
+        string branchId,
         CancellationToken cancellationToken = default);
 
     Task<ApiCallResult<StockGinViewModel>> LoadGinAsync(
@@ -19,5 +19,9 @@ public interface IStockGinService
 
     Task<ApiCallResult<bool>> UpdateGinAsync(
         StockGinViewModel gin,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiCallResult<bool>> DeleteGinAsync(
+        string documentId,
         CancellationToken cancellationToken = default);
 }

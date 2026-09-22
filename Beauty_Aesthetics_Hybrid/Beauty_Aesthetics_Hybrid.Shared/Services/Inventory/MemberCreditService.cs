@@ -2,6 +2,7 @@ using System.Net;
 using Beauty_Aesthetics_WebPos.APIClient;   
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.ViewModels;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 using EBI.DM;
 using EBI.Enum;
@@ -16,10 +17,12 @@ public sealed class MemberCreditService : IMemberCreditService
     private static readonly DateTime InventoryAvailableTo = new(2049, 12, 31);
 
     private readonly ServiceInventoryAC serviceInventoryAC;
+    private readonly AppFeedbackService feedback;
 
-    public MemberCreditService(ServiceInventoryAC serviceInventoryAC)
+    public MemberCreditService(ServiceInventoryAC serviceInventoryAC, AppFeedbackService feedback)
     {
         this.serviceInventoryAC = serviceInventoryAC;
+        this.feedback = feedback;
     }
 
     public async Task<ApiCallResult<IReadOnlyList<MembershipViewModel.MemberCredit>>> LoadMemberCreditsAsync(
@@ -70,9 +73,16 @@ public sealed class MemberCreditService : IMemberCreditService
         var normalizedBranchId = NormalizeBranchId(branchId);
         var record = CreateMemberCreditRecord(memberCredit, normalizedBranchId);
         var request = CreatePackageRequest(record, normalizedBranchId, memberCredit.Price);
-        var result = await serviceInventoryAC.CreateFullAsync(request, cancellationToken);
+        var result = ToSaveResult(
+            await serviceInventoryAC.CreateFullAsync(request, cancellationToken),
+            "Unable to create member credit.");
 
-        return ToSaveResult(result, "Unable to create member credit.");
+        if (result.Success)
+            feedback.Success("Member credit created successfully.", "Member credit created");
+        else
+            feedback.Error(result.ErrorMessage ?? "Unable to create member credit.", "Member credit not created");
+
+        return result;
     }
 
     public async Task<ApiCallResult<bool>> UpdateMemberCreditAsync(
@@ -101,8 +111,16 @@ public sealed class MemberCreditService : IMemberCreditService
         loadResult.Value.IsDirty = true;
 
         var request = CreatePackageRequest(loadResult.Value, normalizedBranchId, memberCredit.Price);
-        var result = await serviceInventoryAC.UpdateFullAsync(request, cancellationToken);
-        return ToSaveResult(result, "Unable to update member credit.");
+        var result = ToSaveResult(
+            await serviceInventoryAC.UpdateFullAsync(request, cancellationToken),
+            "Unable to update member credit.");
+
+        if (result.Success)
+            feedback.Success("Member credit updated successfully.", "Member credit updated");
+        else
+            feedback.Error(result.ErrorMessage ?? "Unable to update member credit.", "Member credit not updated");
+
+        return result;
     }
 
     public async Task<ApiCallResult<bool>> DeactivateMemberCreditAsync(
@@ -124,8 +142,16 @@ public sealed class MemberCreditService : IMemberCreditService
 
         var normalizedBranchId = NormalizeBranchId(branchId);
         var request = CreatePackageRequest(loadResult.Value, normalizedBranchId, loadResult.Value.SalesPrice);
-        var result = await serviceInventoryAC.UpdateFullAsync(request, cancellationToken);
-        return ToSaveResult(result, "Unable to deactivate member credit.");
+        var result = ToSaveResult(
+            await serviceInventoryAC.UpdateFullAsync(request, cancellationToken),
+            "Unable to deactivate member credit.");
+
+        if (result.Success)
+            feedback.Success("Member credit deactivated successfully.", "Member credit deactivated");
+        else
+            feedback.Error(result.ErrorMessage ?? "Unable to deactivate member credit.", "Member credit not deactivated");
+
+        return result;
     }
 
     private static InventoryDM CreateMemberCreditRecord(

@@ -1,0 +1,694 @@
+@page "/sales/transactions"
+@namespace Beauty_Aesthetics_WebPos.Components.Pages
+@using Beauty_Aesthetics_WebPos.APIClient.ResultPattern
+@using Beauty_Aesthetics_WebPos.Components.Models
+@using Beauty_Aesthetics_WebPos.Components.Services.Inventory
+@using Beauty_Aesthetics_WebPos.Components.Services.Sales
+@using Beauty_Aesthetics_WebPos.Components.Services.Customers
+@using Beauty_Aesthetics_WebPos.Components.Services.Feedback
+@using Beauty_Aesthetics_WebPos.Models.DTOs
+@inject ICashSalesService CashSalesService
+@inject IBranchLookupService BranchLookupService
+@inject ICustomerService CustomerService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject AppFeedbackService Feedback
+
+<PageTitle>Transaction History</PageTitle>
+
+<main class="history-page">
+    <header class="history-header">
+        <div class="history-title-group">
+            <button type="button" class="icon-button" title="Back to sales" aria-label="Back to sales" @onclick="BackToSales">
+                <i class="bi bi-arrow-left"></i>
+            </button>
+            <div>
+                <h1>Transaction History</h1>
+                <p>Review and filter completed sales records.</p>
+            </div>
+        </div>
+        <div class="history-count">
+            <span>@FilteredTransactions.Count</span>
+            <small>results</small>
+        </div>
+    </header>
+
+    <section class="filter-panel" aria-label="Transaction filters">
+        <div class="filter-grid">
+            <label class="filter-field search-field">
+                <span>Search</span>
+                <div class="input-with-icon">
+                    <i class="bi bi-search"></i>
+                    <input value="@searchText" @oninput="OnSearchInput" placeholder="Invoice, customer, reference..." />
+                </div>
+            </label>
+
+            <label class="filter-field">
+                <span>From</span>
+                <input type="date" @bind="startDate" />
+            </label>
+
+            <label class="filter-field">
+                <span>To</span>
+                <input type="date" @bind="endDate" />
+            </label>
+
+            <label class="filter-field">
+                <span>Outlet</span>
+                <select @bind="selectedBranch">
+                    <option value="">All outlets</option>
+                    @foreach (var branch in branches)
+                    {
+                        <option value="@branch.Id">@branch.DisplayName</option>
+                    }
+                </select>
+            </label>
+
+            <label class="filter-field">
+                <span>Payment</span>
+                <select @bind="selectedPayment">
+                    <option value="">All methods</option>
+                    @foreach (var method in PaymentOptions)
+                    {
+                        <option value="@method">@method</option>
+                    }
+                </select>
+            </label>
+
+            <label class="filter-field">
+                <span>Status</span>
+                <select @bind="selectedStatus">
+                    <option value="">All statuses</option>
+                    @foreach (var status in StatusOptions)
+                    {
+                        <option value="@status">@status</option>
+                    }
+                </select>
+            </label>
+
+            <label class="filter-field">
+                <span>Minimum (MYR)</span>
+                <input type="number" min="0" step="0.01" @bind="minimumAmount" placeholder="0.00" />
+            </label>
+
+            <label class="filter-field">
+                <span>Maximum (MYR)</span>
+                <input type="number" min="0" step="0.01" @bind="maximumAmount" placeholder="Any" />
+            </label>
+        </div>
+
+        <div class="filter-actions">
+            <button type="button" class="secondary-button" @onclick="ClearFiltersAsync" disabled="@isLoading">
+                <i class="bi bi-x-circle"></i> Clear
+            </button>
+            <button type="button" class="primary-button" @onclick="ApplyFiltersAsync" disabled="@isLoading">
+                @if (isLoading)
+                {
+                    <span class="button-spinner" aria-hidden="true"></span>
+                    <span>Loading</span>
+                }
+                else
+                {
+                    <i class="bi bi-funnel"></i>
+                    <span>Apply Filters</span>
+                }
+            </button>
+        </div>
+    </section>
+
+    <section class="history-results" aria-live="polite">
+        @if (isLoading)
+        {
+            <div class="history-state">
+                <span class="loading-ring"></span>
+                <strong>Loading transactions...</strong>
+            </div>
+        }
+        else if (!PagedTransactions.Any())
+        {
+            <div class="history-state">
+                <i class="bi bi-receipt"></i>
+                <strong>No transactions found</strong>
+                <span>Try a wider date range or clear some filters.</span>
+            </div>
+        }
+        else
+        {
+            <div class="history-table-wrap">
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Invoice</th>
+                            <th>Customer</th>
+                            <th>Outlet</th>
+                            <th>Type</th>
+                            <th>Payment</th>
+                            <th class="amount-column">Amount</th>
+                            <th>Status</th>
+                            <th class="actions-column">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var transaction in PagedTransactions)
+                        {
+                            <tr>
+                                <td><strong>@transaction.Date.ToString("dd/MM/yyyy")</strong><small>@transaction.Date.ToString("hh:mm tt")</small></td>
+                                <td class="invoice-cell">@Display(transaction.InvoiceNumber)</td>
+                                <td>@Display(transaction.CustomerName)</td>
+                                <td>@Display(string.IsNullOrWhiteSpace(transaction.Branch) ? transaction.BranchId : transaction.Branch)</td>
+                                <td>@Display(transaction.Type)</td>
+                                <td>@Display(transaction.PaymentMethod)</td>
+                                <td class="amount-column">MYR @transaction.Amount.ToString("N2")</td>
+                                <td><span class="status-pill @StatusClass(transaction.Status)">@Display(transaction.Status)</span></td>
+                                <td class="actions-column">
+                                    <button type="button" class="row-action-button action-view" title="View transaction details" aria-label="View transaction @transaction.InvoiceNumber" @onclick="() => ViewTransactionAsync(transaction)">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    <button type="button" class="row-action-button action-edit" title="Edit transaction" aria-label="Edit transaction @transaction.InvoiceNumber" @onclick="() => EditTransactionAsync(transaction)">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button type="button" class="row-action-button action-delete" title="Delete transaction" aria-label="Delete transaction @transaction.InvoiceNumber" @onclick="() => RequestDelete(transaction)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="history-mobile-list">
+                @foreach (var transaction in PagedTransactions)
+                {
+                    <article class="history-mobile-card">
+                        <div class="mobile-card-heading">
+                            <div>
+                                <strong>@Display(transaction.InvoiceNumber)</strong>
+                                <span>@Display(transaction.CustomerName)</span>
+                            </div>
+                            <span class="status-pill @StatusClass(transaction.Status)">@Display(transaction.Status)</span>
+                        </div>
+                        <div class="mobile-card-grid">
+                            <div><small>Date</small><span>@transaction.Date.ToString("dd/MM/yyyy, hh:mm tt")</span></div>
+                            <div><small>Amount</small><span class="mobile-amount">MYR @transaction.Amount.ToString("N2")</span></div>
+                            <div><small>Payment</small><span>@Display(transaction.PaymentMethod)</span></div>
+                            <div><small>Outlet</small><span>@Display(string.IsNullOrWhiteSpace(transaction.Branch) ? transaction.BranchId : transaction.Branch)</span></div>
+                        </div>
+                        <div class="mobile-action-row">
+                            <button type="button" class="mobile-action-button action-view" @onclick="() => ViewTransactionAsync(transaction)"><i class="bi bi-eye"></i><span>View</span></button>
+                            <button type="button" class="mobile-action-button action-edit" @onclick="() => EditTransactionAsync(transaction)"><i class="bi bi-pencil"></i><span>Edit</span></button>
+                            <button type="button" class="mobile-action-button action-delete" @onclick="() => RequestDelete(transaction)"><i class="bi bi-trash"></i><span>Delete</span></button>
+                        </div>
+                    </article>
+                }
+            </div>
+
+            <footer class="history-pagination">
+                <span>Showing @PageStart-@PageEnd of @FilteredTransactions.Count</span>
+                <div>
+                    <button type="button" class="icon-button" title="Previous page" disabled="@(currentPage <= 1)" @onclick="PreviousPage">
+                        <i class="bi bi-chevron-left"></i>
+                    </button>
+                    <strong>@currentPage of @TotalPages</strong>
+                    <button type="button" class="icon-button" title="Next page" disabled="@(currentPage >= TotalPages)" @onclick="NextPage">
+                        <i class="bi bi-chevron-right"></i>
+                    </button>
+                </div>
+            </footer>
+        }
+    </section>
+</main>
+
+@if (selectedTransaction is not null)
+{
+    <TransactionDetailDialog Transaction="selectedTransaction" OnClose="CloseDetails" OnPrint="PrintDetailsAsync" />
+}
+@if (false && selectedTransaction is not null)
+{
+    <div class="modal-backdrop" @onclick="CloseDetails"></div>
+    <section class="modal-panel detail-modal" role="dialog" aria-modal="true">
+        <header class="modal-header-toolbar">
+            <h3><i class="bi bi-file-earmark-text"></i> Transaction Details</h3>
+            <button type="button" @onclick="CloseDetails"><i class="bi bi-x-lg"></i></button>
+        </header>
+        <div class="modal-content">
+            <section class="detail-section">
+                <h4><i class="bi bi-clipboard-data"></i> Transaction Information</h4>
+                <div class="detail-grid">
+                    <div class="detail-item"><span class="detail-label">Invoice</span><span class="detail-value">@Display(selectedTransaction.InvoiceNumber)</span></div>
+                    <div class="detail-item"><span class="detail-label">Date</span><span class="detail-value">@selectedTransaction.Date.ToString("dd MMMM yyyy")</span></div>
+                    <div class="detail-item"><span class="detail-label">Time</span><span class="detail-value">@selectedTransaction.Date.ToString("hh:mm tt")</span></div>
+                    <div class="detail-item"><span class="detail-label">Status</span><span class="status-pill @StatusClass(selectedTransaction.Status)">@Display(selectedTransaction.Status)</span></div>
+                </div>
+            </section>
+            <section class="detail-section">
+                <h4><i class="bi bi-person"></i> Customer Information</h4>
+                <div class="detail-grid">
+                    <div class="detail-item"><span class="detail-label">Customer</span><span class="detail-value">@Display(selectedTransaction.CustomerName)</span></div>
+                    <div class="detail-item"><span class="detail-label">Contact</span><span class="detail-value">@Display(selectedTransaction.CustomerContact)</span></div>
+                    <div class="detail-item"><span class="detail-label">Email</span><span class="detail-value">@Display(selectedTransaction.CustomerEmail)</span></div>
+                    <div class="detail-item"><span class="detail-label">Outlet / Branch</span><span class="detail-value">@Display(selectedTransaction.Branch)</span></div>
+                </div>
+            </section>
+            <section class="detail-section">
+                <h4><i class="bi bi-bag"></i> Items / Services</h4>
+                <div class="items-list">
+                    @if (selectedTransaction.Items.Any())
+                    {
+                        @foreach (var item in selectedTransaction.Items)
+                        {
+                            <div class="item-row"><div><strong>@Display(item.Name)</strong><small>@item.Quantity x MYR @item.UnitPrice.ToString("N2")</small></div><strong>MYR @item.TotalPrice.ToString("N2")</strong></div>
+                        }
+                    }
+                    else { <div class="empty-items">No item details returned.</div> }
+                </div>
+            </section>
+            <section class="detail-section">
+                <h4><i class="bi bi-credit-card"></i> Payment Details</h4>
+                <div class="detail-grid">
+                    <div class="detail-item"><span class="detail-label">Payment</span><span class="detail-value">@Display(selectedTransaction.PaymentMethod)</span></div>
+                    <div class="detail-item"><span class="detail-label">Transaction Type</span><span class="detail-value">@Display(selectedTransaction.Type)</span></div>
+                    <div class="detail-item"><span class="detail-label">Reference</span><span class="detail-value">@Display(selectedTransaction.ReferenceNumber)</span></div>
+                </div>
+                <div class="total-section">
+                    <div><span>Subtotal</span><span>MYR @selectedTransaction.Subtotal.ToString("N2")</span></div>
+                    <div><span>Tax</span><span>MYR @selectedTransaction.Tax.ToString("N2")</span></div>
+                    <div><span>Discount</span><span>- MYR @selectedTransaction.Discount.ToString("N2")</span></div>
+                    <div class="final"><span>Total Amount</span><span>MYR @selectedTransaction.Amount.ToString("N2")</span></div>
+                </div>
+            </section>
+            @if (!string.IsNullOrWhiteSpace(selectedTransaction.Notes))
+            { <section class="detail-section"><h4><i class="bi bi-journal-text"></i> Notes</h4><div class="notes-box">@selectedTransaction.Notes</div></section> }
+            <footer class="form-actions"><button type="button" class="secondary-button" @onclick="CloseDetails">Close</button><button type="button" class="primary-button" @onclick="PrintDetailsAsync"><i class="bi bi-printer"></i> Print Receipt</button></footer>
+        </div>
+    </section>
+}
+
+@if (editingTransaction is not null)
+{
+    <TransactionEditDialog Transaction="editingTransaction" Customers="customerOptions" Branches="branches" PaymentTypes="paymentTypes" IsSaving="isMutating" OnClose="CloseEdit" OnSave="SaveEditAsync" />
+}
+@if (false && editingTransaction is not null)
+{
+    <div class="modal-backdrop" @onclick="CloseEdit"></div>
+    <section class="modal-panel" role="dialog" aria-modal="true">
+        <header class="modal-header-toolbar"><h3><i class="bi bi-pencil-square edit-icon"></i> Edit Transaction</h3><button type="button" @onclick="CloseEdit"><i class="bi bi-x-lg"></i></button></header>
+        <div class="modal-content">
+            <div class="form-grid">
+                <label><span>Invoice</span><input value="@editingTransaction.InvoiceNumber" readonly /></label>
+                <label><span>Customer</span><select @bind="editingTransaction.AccountId" @bind:after="ApplyCustomerSelection"><option value="">Select customer</option>@foreach (var customer in customerOptions){<option value="@customer.SystemID">@CustomerOptionLabel(customer)</option>}</select></label>
+                <label><span>Transaction Date</span><input type="date" @bind="editingTransaction.Date" /></label>
+                <label><span>Outlet / Branch</span><select @bind="editingTransaction.BranchId">@foreach (var branch in branches){<option value="@branch.Id">@branch.DisplayName</option>}</select></label>
+                <label><span>Transaction Type</span><select @bind="editingTransaction.Type"><option value="Service">Service</option><option value="Product">Product</option><option value="Package">Package</option><option value="Voucher">Voucher</option></select></label>
+                <label><span>Payment Method</span><select @bind="editingTransaction.PaymentTypeId"><option value="0">Select method</option>@foreach (var payment in paymentTypes){<option value="@payment.POSPaymentTypeID">@payment.POSPaymentTypeName</option>}</select></label>
+                <label><span>Status</span><select @bind="editingTransaction.Status"><option value="Paid">Paid</option><option value="Pending">Pending</option><option value="Completed">Completed</option><option value="Cancelled">Cancelled</option></select></label>
+                <label><span>Amount (MYR)</span><input type="number" min="0" step="0.01" @bind="editingTransaction.Amount" /></label>
+                <label><span>Contact</span><input @bind="editingTransaction.CustomerContact" /></label>
+                <label><span>Email</span><input type="email" @bind="editingTransaction.CustomerEmail" /></label>
+                <label class="wide-field"><span>Notes</span><textarea rows="3" @bind="editingTransaction.Notes"></textarea></label>
+            </div>
+            <footer class="form-actions"><button type="button" class="secondary-button" @onclick="CloseEdit" disabled="@isMutating">Cancel</button><button type="button" class="primary-button" @onclick="SaveEditAsync" disabled="@isMutating"><i class="bi bi-check-lg"></i> Save Changes</button></footer>
+        </div>
+    </section>
+}
+
+@if (deletingTransaction is not null)
+{
+    <div class="transaction-detail-backdrop" role="presentation" @onclick="CloseDelete">
+        <section class="transaction-detail-dialog delete-transaction-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-transaction-title" @onclick:stopPropagation="true">
+            <header class="transaction-detail-header">
+                <div><span>Delete transaction</span><h2 id="delete-transaction-title">@Display(deletingTransaction.InvoiceNumber)</h2></div>
+                <button type="button" class="icon-button" aria-label="Close delete transaction" @onclick="CloseDelete"><i class="bi bi-x-lg"></i></button>
+            </header>
+            <div class="delete-dialog-content">
+                <p>This permanently removes the transaction. Enter a reason to continue.</p>
+                <label><span>Deletion reason</span><textarea rows="3" @bind="deletionReason" placeholder="Enter reason"></textarea></label>
+            </div>
+            <footer class="dialog-actions">
+                <button type="button" class="secondary-button" @onclick="CloseDelete" disabled="@isMutating">Cancel</button>
+                <button type="button" class="danger-button" @onclick="DeleteTransactionAsync" disabled="@isMutating"><i class="bi bi-trash"></i> Delete</button>
+            </footer>
+        </section>
+    </div>
+}
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <AppErrorPopup Title="Unable to load transaction history" Message="@errorMessage" OnDismiss="DismissError" />
+}
+
+@code {
+    private const int PageSize = 20;
+    private readonly List<Transaction> transactions = new();
+    private readonly List<BranchLookupItem> branches = new();
+    private readonly List<CashSalesPaymentTypeDTO> paymentTypes = new();
+    private readonly List<Customer> customerOptions = new();
+    private DateTime startDate = DateTime.Today.AddDays(-30);
+    private DateTime endDate = DateTime.Today;
+    private string searchText = string.Empty;
+    private string selectedBranch = string.Empty;
+    private string selectedPayment = string.Empty;
+    private string selectedStatus = string.Empty;
+    private decimal? minimumAmount;
+    private decimal? maximumAmount;
+    private string errorMessage = string.Empty;
+    private bool isLoading;
+    private int currentPage = 1;
+    private Transaction? deletingTransaction;
+    private string deletionReason = string.Empty;
+    private bool isMutating;
+    private Transaction? selectedTransaction;
+    private Transaction? editingTransaction;
+
+    private IReadOnlyList<string> PaymentOptions => paymentTypes
+        .Select(method => method.POSPaymentTypeName)
+        .Concat(transactions.Select(transaction => transaction.PaymentMethod))
+        .Where(method => !string.IsNullOrWhiteSpace(method))
+        .Select(method => method!)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(method => method)
+        .ToList();
+
+    private IReadOnlyList<string> StatusOptions => transactions
+        .Select(transaction => transaction.Status)
+        .Where(status => !string.IsNullOrWhiteSpace(status))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(status => status)
+        .ToList();
+
+    private IReadOnlyList<Transaction> FilteredTransactions => transactions
+        .Where(MatchesFilters)
+        .OrderByDescending(transaction => transaction.Date)
+        .ThenByDescending(transaction => transaction.CreatedAt)
+        .ToList();
+
+    private IReadOnlyList<Transaction> PagedTransactions => FilteredTransactions
+        .Skip((currentPage - 1) * PageSize)
+        .Take(PageSize)
+        .ToList();
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(FilteredTransactions.Count / (double)PageSize));
+    private int PageStart => FilteredTransactions.Count == 0 ? 0 : ((currentPage - 1) * PageSize) + 1;
+    private int PageEnd => Math.Min(currentPage * PageSize, FilteredTransactions.Count);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLookupsAsync();
+        await LoadTransactionsAsync();
+    }
+
+    private async Task LoadLookupsAsync()
+    {
+        var branchResult = await BranchLookupService.LoadBranchesAsync();
+        if (branchResult.Success && branchResult.Value is not null)
+            branches.AddRange(branchResult.Value);
+        else
+            errorMessage = branchResult.ErrorMessage ?? "Unable to load outlets.";
+
+        var paymentResult = await CashSalesService.LoadPaymentTypesAsync();
+        if (paymentResult.Success && paymentResult.Value is not null)
+            paymentTypes.AddRange(paymentResult.Value.Where(method => method.Active));
+
+        var customerResult = await CustomerService.SearchCustomersAsync(string.Empty);
+        if (customerResult.Success && customerResult.Value is not null)
+            customerOptions.AddRange(customerResult.Value.Where(customer => !string.IsNullOrWhiteSpace(customer.SystemID)).OrderBy(CustomerOptionLabel));
+    }
+
+    private async Task ApplyFiltersAsync()
+    {
+        if (endDate < startDate)
+        {
+            errorMessage = string.Empty;
+            Feedback.Warning("The end date must be on or after the start date.", "Check date range");
+            return;
+        }
+
+        currentPage = 1;
+        await LoadTransactionsAsync();
+        if (string.IsNullOrWhiteSpace(errorMessage))
+        {
+            Feedback.Info($"{FilteredTransactions.Count} transaction{(FilteredTransactions.Count == 1 ? string.Empty : "s")} matched the filters.", "Filters applied", 2200);
+        }
+    }
+
+    private async Task LoadTransactionsAsync()
+    {
+        isLoading = true;
+        errorMessage = string.Empty;
+        try
+        {
+            var result = await LoadSelectedOutletTransactionsAsync();
+            transactions.Clear();
+            if (result.Success && result.Value is not null)
+                transactions.AddRange(result.Value);
+            else
+                errorMessage = result.ErrorMessage ?? "Unable to load cash sales.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task<ApiCallResult<IReadOnlyList<Transaction>>> LoadSelectedOutletTransactionsAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(selectedBranch) || branches.Count == 0)
+            return await CashSalesService.LoadTransactionsAsync(startDate, endDate, selectedBranch);
+
+        var branchIds = branches.Select(branch => branch.Id)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var results = await Task.WhenAll(branchIds.Select(branchId =>
+            CashSalesService.LoadTransactionsAsync(startDate, endDate, branchId)));
+        var successfulResults = results.Where(result => result.Success && result.Value is not null).ToList();
+
+        if (successfulResults.Count == 0)
+        {
+            var failure = results.FirstOrDefault(result => !result.Success);
+            return ApiCallResult<IReadOnlyList<Transaction>>.Failure(
+                failure?.StatusCode ?? System.Net.HttpStatusCode.BadGateway,
+                failure?.ErrorMessage ?? "Unable to load sales for any outlet.");
+        }
+
+        var merged = successfulResults.SelectMany(result => result.Value!)
+            .GroupBy(TransactionIdentity, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderByDescending(transaction => transaction.Date)
+            .ToList();
+        return ApiCallResult<IReadOnlyList<Transaction>>.Ok(successfulResults[0].StatusCode, merged);
+    }
+
+    private bool MatchesFilters(Transaction transaction)
+    {
+        var searchMatches = string.IsNullOrWhiteSpace(searchText) ||
+            Contains(transaction.InvoiceNumber, searchText) ||
+            Contains(transaction.CustomerName, searchText) ||
+            Contains(transaction.ReferenceNumber, searchText) ||
+            Contains(transaction.DocumentId, searchText);
+        var paymentMatches = string.IsNullOrWhiteSpace(selectedPayment) ||
+            string.Equals(transaction.PaymentMethod, selectedPayment, StringComparison.OrdinalIgnoreCase);
+        var statusMatches = string.IsNullOrWhiteSpace(selectedStatus) ||
+            string.Equals(transaction.Status, selectedStatus, StringComparison.OrdinalIgnoreCase);
+        var minimumMatches = !minimumAmount.HasValue || transaction.Amount >= minimumAmount.Value;
+        var maximumMatches = !maximumAmount.HasValue || transaction.Amount <= maximumAmount.Value;
+        return searchMatches && paymentMatches && statusMatches && minimumMatches && maximumMatches;
+    }
+
+    private void OnSearchInput(ChangeEventArgs args)
+    {
+        searchText = args.Value?.ToString() ?? string.Empty;
+        currentPage = 1;
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        startDate = DateTime.Today.AddDays(-30);
+        endDate = DateTime.Today;
+        searchText = string.Empty;
+        selectedBranch = string.Empty;
+        selectedPayment = string.Empty;
+        selectedStatus = string.Empty;
+        minimumAmount = null;
+        maximumAmount = null;
+        currentPage = 1;
+        await LoadTransactionsAsync();
+        if (string.IsNullOrWhiteSpace(errorMessage))
+        {
+            Feedback.Info("Transaction filters were cleared.", "Filters cleared", 1800);
+        }
+    }
+
+    private void PreviousPage()
+    {
+        if (currentPage > 1) currentPage--;
+    }
+
+    private void NextPage()
+    {
+        if (currentPage < TotalPages) currentPage++;
+    }
+
+    private void BackToSales() => Navigation.NavigateTo("/sales");
+    private async Task ViewTransactionAsync(Transaction transaction)
+    {
+        selectedTransaction = await LoadFullTransactionAsync(transaction);
+    }
+
+    private async Task EditTransactionAsync(Transaction transaction)
+    {
+        editingTransaction = CloneTransaction(await LoadFullTransactionAsync(transaction));
+        Feedback.Info($"Editing transaction {Display(transaction.InvoiceNumber)}.", "Edit transaction", 2000);
+    }
+
+    private async Task<Transaction> LoadFullTransactionAsync(Transaction transaction)
+    {
+        if (string.IsNullOrWhiteSpace(transaction.DocumentId)) return transaction;
+        var result = await CashSalesService.LoadTransactionAsync(transaction.DocumentId);
+        if (result.Success && result.Value is not null) return result.Value;
+        errorMessage = result.ErrorMessage ?? "Unable to load transaction details.";
+        return transaction;
+    }
+
+    private async Task SaveEditAsync()
+    {
+        if (editingTransaction is null || isMutating) return;
+
+        var invoice = Display(editingTransaction.InvoiceNumber);
+        var feedbackId = Feedback.Loading($"Saving transaction {invoice}...", "Saving transaction");
+        isMutating = true;
+
+        try
+        {
+            var result = await CashSalesService.UpdateTransactionAsync(editingTransaction);
+            if (!result.Success)
+            {
+                errorMessage = result.ErrorMessage ?? "Unable to update the transaction.";
+                Feedback.Dismiss(feedbackId);
+                return;
+            }
+
+            CloseEdit();
+            await LoadTransactionsAsync();
+            Feedback.Resolve(feedbackId, $"Transaction {invoice} updated successfully.", "Transaction updated");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Unable to update the transaction. {ex.Message}";
+            Feedback.Fail(feedbackId, errorMessage, "Transaction not updated");
+        }
+        finally
+        {
+            isMutating = false;
+        }
+    }
+
+    private void ApplyCustomerSelection()
+    {
+        if (editingTransaction is null) return;
+        var customer = customerOptions.FirstOrDefault(item => item.SystemID == editingTransaction.AccountId);
+        if (customer is null) return;
+        editingTransaction.CustomerName = $"{customer.FirstName} {customer.LastName}".Trim();
+        editingTransaction.CustomerContact = customer.ContactNumber1;
+        editingTransaction.CustomerEmail = customer.Email;
+    }
+
+    private static string CustomerOptionLabel(Customer customer)
+    {
+        var name = $"{customer.FirstName} {customer.LastName}".Trim();
+        if (string.IsNullOrWhiteSpace(name)) name = customer.SystemID ?? "Customer";
+        return string.IsNullOrWhiteSpace(customer.ContactNumber1) ? name : $"{name} - {customer.ContactNumber1}";
+    }
+
+    private static Transaction CloneTransaction(Transaction source) => new()
+    {
+        Id=source.Id, DocumentId=source.DocumentId, AccountId=source.AccountId, BranchId=source.BranchId, PaymentTypeId=source.PaymentTypeId,
+        Date=source.Date, InvoiceNumber=source.InvoiceNumber, CustomerName=source.CustomerName, CustomerContact=source.CustomerContact,
+        CustomerEmail=source.CustomerEmail, Branch=source.Branch, Type=source.Type, ItemCount=source.ItemCount, Amount=source.Amount,
+        Subtotal=source.Subtotal, Tax=source.Tax, Discount=source.Discount, PaymentMethod=source.PaymentMethod, Status=source.Status,
+        ReferenceNumber=source.ReferenceNumber, Notes=source.Notes,
+        Items=source.Items.Select(item => new TransactionItem
+        {
+            Id=item.Id, InventoryId=item.InventoryId, Name=item.Name, Description=item.Description, ImageUrl=item.ImageUrl,
+            Category=item.Category, Quantity=item.Quantity, UnitPrice=item.UnitPrice, TotalPrice=item.TotalPrice, Discount=item.Discount
+        }).ToList(),
+        Payments=source.Payments.Select(payment => new TransactionPayment
+        {
+            ReceiptLineId=payment.ReceiptLineId, PaymentTypeId=payment.PaymentTypeId,
+            PaymentMethod=payment.PaymentMethod, Amount=payment.Amount
+        }).ToList(),
+        CreatedAt=source.CreatedAt, CreatedBy=source.CreatedBy
+    };
+
+    private void CloseDetails() => selectedTransaction = null;
+    private void CloseEdit() => editingTransaction = null;
+    private async Task PrintDetailsAsync()
+    {
+        await JS.InvokeVoidAsync("window.print");
+        Feedback.Success("The transaction receipt was sent to print.", "Receipt ready", 2600);
+    }
+
+    private void RequestDelete(Transaction transaction)
+    {
+        deletingTransaction = transaction;
+        deletionReason = string.Empty;
+    }
+
+    private async Task DeleteTransactionAsync()
+    {
+        if (deletingTransaction is null || isMutating) return;
+        if (string.IsNullOrWhiteSpace(deletionReason))
+        {
+            errorMessage = string.Empty;
+            Feedback.Warning("Enter a deletion reason.", "Deletion reason required");
+            return;
+        }
+
+        var invoice = Display(deletingTransaction.InvoiceNumber);
+        var feedbackId = Feedback.Loading($"Deleting transaction {invoice}...", "Deleting transaction");
+        isMutating = true;
+
+        try
+        {
+            var result = await CashSalesService.DeleteTransactionAsync(deletingTransaction, deletionReason.Trim());
+            if (!result.Success)
+            {
+                errorMessage = result.ErrorMessage ?? "Unable to delete the transaction.";
+                Feedback.Dismiss(feedbackId);
+                return;
+            }
+
+            CloseDelete();
+            await LoadTransactionsAsync();
+            Feedback.Resolve(feedbackId, $"Transaction {invoice} deleted successfully.", "Transaction deleted");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Unable to delete the transaction. {ex.Message}";
+            Feedback.Fail(feedbackId, errorMessage, "Transaction not deleted");
+        }
+        finally
+        {
+            isMutating = false;
+        }
+    }
+
+    private void CloseDelete() { deletingTransaction = null; deletionReason = string.Empty; }
+    private void DismissError() => errorMessage = string.Empty;
+    private static bool Contains(string? value, string search) =>
+        value?.Contains(search, StringComparison.OrdinalIgnoreCase) == true;
+    private static string Display(string? value) => string.IsNullOrWhiteSpace(value) ? "-" : value;
+    private static string TransactionIdentity(Transaction transaction) =>
+        !string.IsNullOrWhiteSpace(transaction.DocumentId)
+            ? transaction.DocumentId
+            : $"{transaction.BranchId}|{transaction.InvoiceNumber}|{transaction.Date:O}|{transaction.Amount}";
+    private static string StatusClass(string? status) => status?.Trim().ToLowerInvariant() switch
+    {
+        "paid" or "completed" => "status-success",
+        "pending" or "pending payment" => "status-warning",
+        "cancelled" or "voided" => "status-danger",
+        _ => "status-neutral"
+    };
+}

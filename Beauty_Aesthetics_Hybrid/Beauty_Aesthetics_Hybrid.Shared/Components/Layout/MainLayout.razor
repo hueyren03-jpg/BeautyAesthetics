@@ -7,14 +7,16 @@
 @inject IAuthService AuthService
 @inject Beauty_Aesthetics_WebPos.Components.Services.AppState AppState
 @inject IBranchSessionService BranchSession
+@inject AppFeedbackService Feedback
+@inject Microsoft.JSInterop.IJSRuntime JSRuntime
 
-<div class="MainLayout">
+<div class="MainLayout @(isPhoneLayout ? "phone-layout" : string.Empty)">
     @* This is the side bar *@
 
     @* This is the main body *@
     <div class="PageWrapper">
         @* move this back up if broken *@
-        <div class="SidebarWrapper @(isSidebarOpen ? "" : "sidebarClose") @(!isMobileLayout ? "desktop-sidebar" : "")">
+        <div class="SidebarWrapper @(isSidebarOpen ? "" : "sidebarClose") @(isMobileLayout ? "compact-sidebar" : "desktop-sidebar")">
             <div class="Sidebar">
                 <div class="SidebarLogoWrapper">
                     <img src="images/EBI_Logo.png" class="SidebarLogo" />
@@ -74,38 +76,47 @@
                 
             </div>
         </div>
-        <div class="SidebarOverlay @(isSidebarOpen ? "visible" : "") @(!isMobileLayout ? "desktop-overlay" : "")"
+        <div class="SidebarOverlay @(isSidebarOpen ? "visible" : "") @(isMobileLayout ? "compact-overlay" : "desktop-overlay")"
              @onclick="CloseSidebar"
              aria-hidden="true"></div>
         <div class="page">
-            <div class="HeaderWrapper">
-                <button type="button" class="mobile-nav-toggle" @onclick="ToggleSideBar" title="Open Menu" aria-label="Toggle Menu">
+            <div class="HeaderWrapper @(isMobileLayout ? "compact-header" : string.Empty)">
+                <button type="button"
+                        class="mobile-nav-toggle @(isMobileLayout ? "mobile-nav-toggle--visible" : string.Empty)"
+                        @onclick="ToggleSideBar"
+                        title="Open Menu"
+                        aria-label="Toggle Menu">
                     <i class="fa-solid fa-bars"></i>
                 </button>
                 <div class="header">
+                    <button type="button"
+                            class="HeaderBranchSwitch"
+                            @onclick="ToggleBranchPicker"
+                            disabled="@(BranchSession.AvailableBranches.Count <= 1)"
+                            aria-expanded="@isBranchPickerOpen"
+                            title="@(BranchSession.AvailableBranches.Count > 1 ? "Switch working branch" : "Current working branch")"
+                            aria-label="@(BranchSession.AvailableBranches.Count > 1 ? $"Switch branch. Current branch: {BranchSession.CurrentBranch?.DisplayName ?? "Not selected"}" : $"Current branch: {BranchSession.CurrentBranch?.DisplayName ?? "Not selected"}")">
+                        <span class="HeaderBranchSwitch__icon">
+                            <i class="fa-solid fa-building"></i>
+                        </span>
+                        <span class="HeaderBranchSwitch__copy">
+                            <small>Working branch</small>
+                            <strong>@(BranchSession.CurrentBranch?.DisplayName ?? "Not selected")</strong>
+                        </span>
+                        @if (BranchSession.AvailableBranches.Count > 1)
+                        {
+                            <span class="HeaderBranchSwitch__action" aria-hidden="true">
+                                <i class="fa-solid fa-arrow-right-arrow-left"></i>
+                            </span>
+                        }
+                    </button>
+
                     <div @onclick="ToggleProfile" class="profile">
                         <i class="fa-solid fa-user ProfileIcon"></i>
                         <i class="fa-solid fa-caret-down ProfileDropdown"></i>
                         <div class="ProfileSelection @(isProfileOpen ? "" : "isProfileClose")">
                             <p class="ProfileUserName">Tay Keng Aik</p>
                             <p class="ProfileEmail">taykengaik@gmail.com</p>
-                            <div class="ProfileBranchSummary">
-                                <i class="fa-solid fa-building"></i>
-                                <span>
-                                    <small>Working branch</small>
-                                    <strong>@(BranchSession.CurrentBranch?.DisplayName ?? "Not selected")</strong>
-                                </span>
-                            </div>
-                            @if (BranchSession.AvailableBranches.Count > 1)
-                            {
-                                <button type="button"
-                                        class="ProfileBranchSwitch"
-                                        @onclick="OpenBranchPicker"
-                                        @onclick:stopPropagation="true">
-                                    <i class="fa-solid fa-arrow-right-arrow-left"></i>
-                                    Switch branch
-                                </button>
-                            }
                             <div class="ProfileSelectionItemGroup" @onclick='() => NavigateToRoute("/profile")'>
                                 <i class="fa-solid fa-user-gear ProfileSelectionIcon"></i>
                                 <p class="ProfileSelectionItem">@L["Profile"]</p>
@@ -114,6 +125,65 @@
                         </div>
                     </div>
                 </div>
+
+                @if (isBranchPickerOpen)
+                {
+                    <div class="HeaderBranchPickerBackdrop" @onclick="CloseBranchPicker"></div>
+                    <section class="HeaderBranchPicker" @onclick:stopPropagation="true" aria-label="Switch working branch">
+                        <div class="HeaderBranchPicker__header">
+                            <div>
+                                <small>WORKING BRANCH</small>
+                                <strong>Switch branch</strong>
+                            </div>
+                            <button type="button"
+                                    class="HeaderBranchPicker__close"
+                                    @onclick="CloseBranchPicker"
+                                    aria-label="Close branch picker">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(branchSwitchError))
+                        {
+                            <div class="HeaderBranchPicker__error" role="alert">@branchSwitchError</div>
+                        }
+
+                        <div class="HeaderBranchPicker__list">
+                            @foreach (var branch in BranchSession.AvailableBranches)
+                            {
+                                var isCurrent = string.Equals(
+                                    branch.Id,
+                                    BranchSession.CurrentBranch?.Id,
+                                    StringComparison.OrdinalIgnoreCase);
+
+                                <button type="button"
+                                        class="HeaderBranchPicker__item @(isCurrent ? "is-current" : string.Empty)"
+                                        disabled="@(isSwitchingBranch || isCurrent)"
+                                        @onclick="() => ChooseHeaderBranchAsync(branch.Id)">
+                                    <span class="HeaderBranchPicker__itemIcon">
+                                        <i class="bi bi-building"></i>
+                                    </span>
+                                    <span class="HeaderBranchPicker__itemCopy">
+                                        <strong>@branch.DisplayName</strong>
+                                        <small>@branch.Id</small>
+                                    </span>
+                                    @if (isCurrent)
+                                    {
+                                        <span class="HeaderBranchPicker__current">Current</span>
+                                    }
+                                    else if (isSwitchingBranch)
+                                    {
+                                        <i class="bi bi-arrow-repeat"></i>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-chevron-right"></i>
+                                    }
+                                </button>
+                            }
+                        </div>
+                    </section>
+                }
             </div>
             <div class="content">
                 @Body
@@ -130,8 +200,13 @@
 
 @code {
     private bool isProfileOpen = false;
+    private bool isBranchPickerOpen = false;
+    private bool isSwitchingBranch = false;
+    private string? branchSwitchError;
     private bool isSidebarOpen = false;
     private bool isMobileLayout = true;
+    private bool isPhoneLayout = false;
+    private string detectedFormFactor = string.Empty;
 
     protected override void OnInitialized()
     {
@@ -140,17 +215,69 @@
 
         try
         {
-            var factor = FormFactor.GetFormFactor();
-            if (factor == "Desktop" || factor == "Web" || factor == "Tablet")
+            detectedFormFactor = FormFactor.GetFormFactor() ?? string.Empty;
+            isPhoneLayout = detectedFormFactor.Equals("Phone", StringComparison.OrdinalIgnoreCase);
+            var desktopCapable =
+                detectedFormFactor.Equals("Desktop", StringComparison.OrdinalIgnoreCase) ||
+                detectedFormFactor.Equals("Web", StringComparison.OrdinalIgnoreCase);
+
+            isSidebarOpen = desktopCapable;
+            isMobileLayout = !desktopCapable;
+        }
+        catch
+        {
+            detectedFormFactor = string.Empty;
+            isPhoneLayout = false;
+            isSidebarOpen = false;
+            isMobileLayout = true;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Keep compact drawer positioning tied to the real rendered header edge.
+        // Android WebView safe-area values are not reliable in landscape.
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("posResponsive.syncHeaderMetrics");
+        }
+        catch
+        {
+            // Layout still has CSS fallbacks when JS metrics are unavailable.
+        }
+
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            var isWeb =
+                detectedFormFactor.Equals("Web", StringComparison.OrdinalIgnoreCase);
+
+            var isDesktopDevice =
+                detectedFormFactor.Equals("Desktop", StringComparison.OrdinalIgnoreCase);
+
+            // Keep Razor's shell decision aligned with the Web stylesheet media rule:
+            // phone width always uses compact UI; touch/coarse-pointer tablets up to
+            // 1180px also use compact UI; mouse/desktop Web keeps the full sidebar.
+            var useCompactLayout = isWeb
+                ? await JSRuntime.InvokeAsync<bool>("posResponsive.useCompactWebLayout")
+                : !isDesktopDevice;
+
+            if (isMobileLayout != useCompactLayout ||
+                (useCompactLayout && isSidebarOpen) ||
+                (!useCompactLayout && !isSidebarOpen))
             {
-                isSidebarOpen = true;
-                isMobileLayout = false;
+                isMobileLayout = useCompactLayout;
+                isSidebarOpen = !useCompactLayout;
+                await InvokeAsync(StateHasChanged);
             }
         }
         catch
         {
-            isSidebarOpen = false;
-            isMobileLayout = true;
+            // Keep the form-factor fallback when viewport interop is unavailable.
         }
     }
 
@@ -186,12 +313,57 @@
         _ = InvokeAsync(StateHasChanged);
     }
 
-    private void OpenBranchPicker()
+    private void ToggleBranchPicker()
     {
         isProfileOpen = false;
-        var relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
-        var returnUrl = string.IsNullOrWhiteSpace(relativePath) ? "/" : $"/{relativePath}";
-        NavigationManager.NavigateTo($"/select-branch?returnUrl={Uri.EscapeDataString(returnUrl)}");
+        branchSwitchError = null;
+        isBranchPickerOpen = !isBranchPickerOpen;
+    }
+
+    private void CloseBranchPicker()
+    {
+        if (isSwitchingBranch)
+        {
+            return;
+        }
+
+        isBranchPickerOpen = false;
+        branchSwitchError = null;
+    }
+
+    private async Task ChooseHeaderBranchAsync(string branchId)
+    {
+        if (isSwitchingBranch ||
+            string.IsNullOrWhiteSpace(branchId) ||
+            string.Equals(branchId, BranchSession.CurrentBranch?.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        isSwitchingBranch = true;
+        branchSwitchError = null;
+
+        try
+        {
+            var selected = await BranchSession.SelectAsync(branchId);
+            if (!selected)
+            {
+                branchSwitchError = "The selected branch could not be activated.";
+                return;
+            }
+
+            // Reload the exact same route after persisting the branch. This gives every
+            // branch-scoped page a clean state and avoids hot-swapping live components.
+            NavigationManager.NavigateTo(NavigationManager.Uri, forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            branchSwitchError = $"Unable to switch branch. {ex.Message}";
+        }
+        finally
+        {
+            isSwitchingBranch = false;
+        }
     }
 
     private void CloseSidebar()
@@ -224,9 +396,18 @@
 
     private async Task LogoutAsync()
     {
-        await BranchSession.ClearAsync();
-        await AuthService.LogoutAsync();
-        NavigationManager.NavigateTo("/login", replace: true);
+        var feedbackId = Feedback.Loading("Signing out securely...", "Signing out");
+        try
+        {
+            await BranchSession.ClearAsync();
+            await AuthService.LogoutAsync();
+            Feedback.Resolve(feedbackId, "You have been signed out successfully.", "Signed out", 2600);
+            NavigationManager.NavigateTo("/login", replace: true);
+        }
+        catch (Exception ex)
+        {
+            Feedback.Fail(feedbackId, $"Unable to sign out. {ex.Message}", "Sign out failed");
+        }
     }
 
     private string GetSidebarItemClass(string matchPrefix)

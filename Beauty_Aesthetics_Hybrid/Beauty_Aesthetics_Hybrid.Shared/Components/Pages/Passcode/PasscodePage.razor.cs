@@ -1,5 +1,6 @@
 using Beauty_Aesthetics_WebPos.Components.Models.Passcode;
 using Beauty_Aesthetics_WebPos.Components.Services.Employees;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.Components.ViewModels;
 using Microsoft.AspNetCore.Components;
 using EmployeeModel = Beauty_Aesthetics_WebPos.Components.Models.Employee.Employee;
@@ -25,6 +26,7 @@ public partial class PasscodePage
 
     [Inject] private NavigationManager NavManager { get; set; } = default!;
     [Inject] private IEmployeeService EmployeeService { get; set; } = default!;
+    [Inject] private AppFeedbackService Feedback { get; set; } = default!;
 
     public List<string> PermissionList { get; } =
     [
@@ -87,6 +89,7 @@ public partial class PasscodePage
             {
                 employeeLoadError = result.ErrorMessage ?? "Employees could not be loaded.";
                 activeEmployees = Array.Empty<EmployeeModel>();
+                Feedback.Error(employeeLoadError, "Employees unavailable");
                 return;
             }
 
@@ -135,6 +138,7 @@ public partial class PasscodePage
     {
         newPasscode = CreateNewPasscode();
         showAddPopup = true;
+        Feedback.Info("Enter the passcode and choose one or more permissions.", "New passcode", 2200);
     }
 
     private void CloseAddPopup() => showAddPopup = false;
@@ -144,6 +148,7 @@ public partial class PasscodePage
         if (VM is null || string.IsNullOrWhiteSpace(newPasscode.Code) ||
             string.IsNullOrWhiteSpace(newPasscode.Permission))
         {
+            Feedback.Warning("Passcode and at least one permission are required.", "Passcode not saved");
             return;
         }
 
@@ -154,9 +159,11 @@ public partial class PasscodePage
         newPasscode.Status = "Active";
         VM.Passcode.Insert(0, newPasscode);
 
+        var savedCode = newPasscode.Code;
         newPasscode = CreateNewPasscode();
         CurrentPage = 1;
         showAddPopup = false;
+        Feedback.Success($"Passcode {savedCode} created successfully.", "Passcode created");
     }
 
     private void ShowViewPopup(PasscodeModel passcode)
@@ -193,18 +200,22 @@ public partial class PasscodePage
                 string.Equals(employee.Name, editPasscode.UsedBy, StringComparison.OrdinalIgnoreCase))?.Code;
         }
         showEditPopup = true;
+        Feedback.Info($"Editing passcode {passcode.Code}.", "Edit passcode", 2200);
     }
 
     private void CloseEditPopup()
     {
+        var updatedCode = selectedPasscode.Code;
         showEditPopup = false;
         selectedPasscode = null;
+        Feedback.Success($"Passcode {updatedCode} updated successfully.", "Passcode updated");
     }
 
     private void UpdatePasscode()
     {
         if (VM is null || selectedPasscode is null || string.IsNullOrWhiteSpace(editPasscode.Permission))
         {
+            Feedback.Warning("Select at least one permission before saving.", "Passcode not updated");
             return;
         }
 
@@ -237,9 +248,11 @@ public partial class PasscodePage
             return;
         }
 
+        var deletedCode = selectedPasscode.Code;
         VM.Passcode.Remove(selectedPasscode);
         showDeletePopup = false;
         selectedPasscode = null;
+        Feedback.Success($"Passcode {deletedCode} deleted successfully.", "Passcode deleted");
 
         var totalPages = Math.Max(1, (int)Math.Ceiling(FilteredPasscodes.Count / (double)ItemsPerPage));
         CurrentPage = Math.Min(CurrentPage, totalPages);

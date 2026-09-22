@@ -10,6 +10,7 @@
 @inject NavigationManager NavigationManager
 @inject DocumentTemplateViewModel TemplateViewModel
 @inject IJSRuntime JS
+@inject AppFeedbackService Feedback
 @implements IDisposable
 
 <PageTitle>Documents - Beauty Aesthetics</PageTitle>
@@ -2305,6 +2306,7 @@
         _showValidationError = false;
         _validationErrorMessage = "";
         _showAddModal = true;
+        Feedback.Info("Upload a file and enter its document details.", "New document", 2200);
     }
 
     private void CloseAddModal()
@@ -2442,6 +2444,7 @@
         {
             _showValidationError = true;
             _validationErrorMessage = "Document title is required.";
+            Feedback.Warning(_validationErrorMessage, "Document not saved");
             StateHasChanged();
             return;
         }
@@ -2450,6 +2453,7 @@
         {
             _showValidationError = true;
             _validationErrorMessage = "Please select a template.";
+            Feedback.Warning(_validationErrorMessage, "Document not saved");
             StateHasChanged();
             return;
         }
@@ -2475,6 +2479,7 @@
                 {
                     _showValidationError = true;
                     _validationErrorMessage = $"Please fill in the required fields: {string.Join(", ", missingFields)}";
+                    Feedback.Warning(_validationErrorMessage, "Document not saved");
                     StateHasChanged();
                     return;
                 }
@@ -2563,6 +2568,7 @@
             {
                 _showValidationError = true;
                 _validationErrorMessage = $"Please fill in the required fields: {string.Join(", ", missingFields)}";
+                Feedback.Warning(_validationErrorMessage, "Document not saved");
                 StateHasChanged();
                 return;
             }
@@ -2594,7 +2600,8 @@
         // Map template to document type
         var documentType = MapTemplateToDocumentType(_selectedTemplate.Value.Name);
 
-        if (_isEditingDocument && _documentToEdit != null)
+        var wasEditingTemplateDocument = _isEditingDocument && _documentToEdit != null;
+        if (wasEditingTemplateDocument)
         {
             // Update existing document
             var updatedDoc = _documentToEdit with 
@@ -2631,6 +2638,9 @@
         _documentToEdit = null;
         _showAppointmentTimePicker = false; // Close time picker
         _showValidationError = false; // Clear validation error
+        Feedback.Success(
+            wasEditingTemplateDocument ? "Document updated successfully." : "Document created successfully from template.",
+            wasEditingTemplateDocument ? "Document updated" : "Document created");
         CloseTemplateDocumentModal();
         StateHasChanged();
     }
@@ -3062,7 +3072,7 @@
         _selectedTemplate = null;
         CloseTemplateSelectionModal();
         
-        // Navigate to template builder
+        Feedback.Info($"Editing template {template.Name}.", "Edit template", 2200);
         NavigationManager.NavigateTo("/templates/builder");
     }
     
@@ -3071,7 +3081,7 @@
         // Clear any template being edited to ensure we start fresh
         _templateViewModel.StartNewTemplate();
         
-        // Navigate to template builder
+        Feedback.Info("Create a new document template.", "New template", 2200);
         NavigationManager.NavigateTo("/templates/builder");
     }
     
@@ -3086,6 +3096,7 @@
     {
         _showDeleteTemplateModal = false;
         _templateToDelete = null;
+        Feedback.Info("Template deletion cancelled.", "Delete cancelled", 1800);
         StateHasChanged();
     }
     
@@ -3122,8 +3133,9 @@
             }
         }
         
-        // Close delete modal and refresh
-        CancelDeleteTemplate();
+        Feedback.Success($"Template '{template.Name}' deleted.", "Template deleted");
+        _showDeleteTemplateModal = false;
+        _templateToDelete = null;
         StateHasChanged(); // Trigger UI update
     }
 
@@ -3416,7 +3428,7 @@
             if (!allowedTypes.Contains(file.ContentType))
             {
                 Console.WriteLine($"Invalid file type: {file.ContentType}");
-                await JS.InvokeVoidAsync("alert", $"Invalid file type. Supported formats: PDF, JPG, PNG, DOCX, XLS, XLSX");
+                ShowDocumentFeedback($"Invalid file type. Supported formats: PDF, JPG, PNG, DOCX, XLS, XLSX");
                 return;
             }
 
@@ -3427,14 +3439,14 @@
             if (file.ContentType.StartsWith("image/") && file.Size > maxFileSizeImages)
             {
                 Console.WriteLine($"Image file too large: {file.Size / 1024} KB");
-                await JS.InvokeVoidAsync("alert", $"Image file too large. Maximum size: 5MB");
+                ShowDocumentFeedback($"Image file too large. Maximum size: 5MB");
                 return;
             }
             
             if ((file.ContentType.Contains("pdf") || file.ContentType.Contains("word") || file.ContentType.Contains("excel") || file.ContentType.Contains("spreadsheetml")) && file.Size > maxFileSizeDocuments)
             {
                 Console.WriteLine($"Document file too large: {file.Size / 1024} KB");
-                await JS.InvokeVoidAsync("alert", $"Document file too large. Maximum size: 10MB");
+                ShowDocumentFeedback($"Document file too large. Maximum size: 10MB");
                 return;
             }
 
@@ -3452,12 +3464,13 @@
             _uploadedFileContentType = file.ContentType;
             
             Console.WriteLine($"File uploaded: {_uploadedFileName}, size: {file.Size / 1024} KB, type: {file.ContentType}");
+            Feedback.Success($"{_uploadedFileName} uploaded and ready to save.", "File uploaded", 2600);
             StateHasChanged();
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error handling file upload: {ex.Message}");
-            await JS.InvokeVoidAsync("alert", $"Error uploading file: {ex.Message}");
+            ShowDocumentFeedback($"Error uploading file: {ex.Message}");
         }
     }
 
@@ -3472,6 +3485,7 @@
         {
             _showValidationError = true;
             _validationErrorMessage = "Document title is required. Please enter a document title.";
+            Feedback.Warning(_validationErrorMessage, "Document not saved");
             StateHasChanged();
             return;
         }
@@ -3481,6 +3495,7 @@
         {
             _showValidationError = true;
             _validationErrorMessage = "Please upload a file. A file is required to create a document.";
+            Feedback.Warning(_validationErrorMessage, "Document not saved");
             StateHasChanged();
             return;
         }
@@ -3507,6 +3522,7 @@
         );
 
         ViewModel.AddDocument(newDoc);
+        Feedback.Success($"Document '{newDoc.Title}' saved successfully.", "Document saved");
         CloseAddModal();
         StateHasChanged();
     }
@@ -3565,7 +3581,7 @@
         {
             Console.WriteLine($"Error opening preview: {ex.Message}");
             // Show error message to user
-            JS.InvokeVoidAsync("alert", "Error opening preview. Please try downloading the file instead.");
+            ShowDocumentFeedback("Error opening preview. Please try downloading the file instead.");
         }
     }
 
@@ -3590,12 +3606,13 @@
         catch (Exception ex)
         {
             Console.WriteLine($"Error opening file in new tab: {ex.Message}");
-            await JS.InvokeVoidAsync("alert", "Error opening file in new tab. Please try downloading instead.");
+            ShowDocumentFeedback("Error opening file in new tab. Please try downloading instead.");
         }
     }
 
     private void EditDocument(DocumentViewModel.Document doc)
     {
+        Feedback.Info($"Editing document {doc.Title}.", "Edit document", 2200);
         _documentToEdit = doc;
         _isEditingDocument = true;
         
@@ -3697,7 +3714,10 @@
         if (_documentToEdit == null || 
             string.IsNullOrWhiteSpace(_editingDocumentTitle) ||
             _editingDocumentContent == null)
+        {
+            Feedback.Warning("Document title and content are required.", "Document not updated");
             return;
+        }
         
         try
         {
@@ -3708,6 +3728,7 @@
                 LastUpdated = DateTime.Now
             };
             ViewModel.UpdateDocument(_documentToEdit.Id, updatedDoc);
+            Feedback.Success($"Document '{updatedDoc.Title}' updated successfully.", "Document updated");
             
             CloseEditContentModal();
             StateHasChanged();
@@ -3715,7 +3736,7 @@
         catch (Exception ex)
         {
             Console.WriteLine($"Error saving edited content: {ex.Message}");
-            // Optionally show error message to user
+            Feedback.Error($"Unable to update document. {ex.Message}", "Document not updated");
         }
     }
     
@@ -4205,12 +4226,14 @@
             {
                 // Download the PDF file directly
                 await JS.InvokeVoidAsync("downloadDocumentFile", $"{fileName}.pdf", doc.FilePath);
+                Feedback.Success($"{fileName}.pdf download started.", "Download started", 2400);
             }
             // If document has a file path (uploaded file) but not PDF - download as is
             else if (!string.IsNullOrEmpty(doc.FilePath))
             {
                 // Download the file
                 await JS.InvokeVoidAsync("downloadDocumentFile", $"{fileName}{extension}", doc.FilePath);
+                Feedback.Success($"{fileName}{extension} download started.", "Download started", 2400);
             }
             // If document has HTML content - download as PDF using print dialog
             else if (!string.IsNullOrEmpty(doc.Content))
@@ -4221,17 +4244,18 @@
                 // Open print dialog to save as PDF
                 var pdfFileName = $"{fileName}.pdf";
                 await JS.InvokeVoidAsync("downloadDocumentAsPDF", htmlDocument, pdfFileName);
+                Feedback.Success($"{pdfFileName} prepared for download.", "PDF ready", 2400);
             }
             else
             {
                 // No content or file to download
-                await JS.InvokeVoidAsync("alert", "This document has no content or file to download.");
+                ShowDocumentFeedback("This document has no content or file to download.");
             }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error downloading document: {ex.Message}");
-            await JS.InvokeVoidAsync("alert", $"Error downloading document: {ex.Message}");
+            ShowDocumentFeedback($"Error downloading document: {ex.Message}");
         }
     }
     
@@ -4247,21 +4271,23 @@
                 
                 // Open print dialog
                 await JS.InvokeVoidAsync("printDocument", htmlDocument, doc.Title);
+                Feedback.Success($"{doc.Title} sent to print.", "Print ready", 2400);
             }
             else if (!string.IsNullOrEmpty(doc.FilePath) && IsPdfFile(doc.FilePath))
             {
                 // For PDF files, open in new tab to print
                 await JS.InvokeVoidAsync("window.open", doc.FilePath, "_blank");
+                Feedback.Info("PDF opened in a new tab for printing.", "Print PDF", 2200);
             }
             else
             {
-                await JS.InvokeVoidAsync("alert", "This document cannot be printed directly. Please download it first.");
+                ShowDocumentFeedback("This document cannot be printed directly. Please download it first.");
             }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error printing document: {ex.Message}");
-            await JS.InvokeVoidAsync("alert", $"Error printing document: {ex.Message}");
+            ShowDocumentFeedback($"Error printing document: {ex.Message}");
         }
     }
     
@@ -4589,6 +4615,7 @@
     {
         _showDeleteModal = false;
         _documentToDelete = null;
+        Feedback.Info("Document deletion cancelled.", "Delete cancelled", 1800);
     }
 
     private void ConfirmDelete()
@@ -4596,8 +4623,10 @@
         if (_documentToDelete.HasValue)
         {
             ViewModel.RemoveDocument(_documentToDelete.Value);
+            Feedback.Success("Document deleted successfully.", "Document deleted");
         }
-        CancelDelete();
+        _showDeleteModal = false;
+        _documentToDelete = null;
         StateHasChanged();
     }
 
@@ -4671,6 +4700,7 @@
             if (string.IsNullOrWhiteSpace(_newDocumentTypeName))
             {
                 _addTypeError = "Document type name cannot be empty.";
+                Feedback.Warning(_addTypeError, "Document type not added");
                 StateHasChanged();
                 return;
             }
@@ -4681,6 +4711,7 @@
             if (_documentTypes.Any(t => t.Equals(trimmedName, StringComparison.OrdinalIgnoreCase)))
             {
                 _addTypeError = "This document type already exists (case-insensitive).";
+                Feedback.Warning(_addTypeError, "Document type not added");
                 StateHasChanged();
                 return;
             }
@@ -4691,11 +4722,13 @@
             await _templateViewModel.SaveDocumentTypesToStorageAsync();
             _newDocumentTypeName = "";
             _addTypeError = "";
+            Feedback.Success($"Document type '{trimmedName}' added.", "Document type added", 2400);
             StateHasChanged();
         }
         catch (Exception ex)
         {
             _addTypeError = $"Error adding document type: {ex.Message}";
+            Feedback.Error(_addTypeError, "Document type not added");
             StateHasChanged();
         }
     }
@@ -4713,6 +4746,7 @@
         _editingDocumentType = type;
         _editingDocumentTypeOriginal = type;
         _editTypeError = null;
+        Feedback.Info($"Editing document type {type}.", "Edit document type", 2000);
         StateHasChanged();
     }
     
@@ -4730,6 +4764,7 @@
             if (newType != oldType && _documentTypes.Contains(newType, StringComparer.OrdinalIgnoreCase))
             {
                 _editTypeError = "This document type already exists.";
+                Feedback.Warning(_editTypeError, "Document type not updated");
                 StateHasChanged();
                 return;
             }
@@ -4757,12 +4792,16 @@
                 ViewModel.SelectedTypes = newSelectedTypes;
             }
             
-            CancelEditDocumentType();
+            _editingDocumentType = null;
+            _editingDocumentTypeOriginal = null;
+            _editTypeError = null;
+            Feedback.Success($"Document type '{oldType}' renamed to '{newType}'.", "Document type updated");
             StateHasChanged();
         }
         catch (Exception ex)
         {
             _editTypeError = $"Error saving document type: {ex.Message}";
+            Feedback.Error(_editTypeError, "Document type not updated");
             StateHasChanged();
         }
     }
@@ -4821,6 +4860,7 @@
         {
             // Prevent deletion - show error message
             _deleteDocumentTypeError = $"Cannot delete document type. There {(documentsUsingType.Count == 1 ? "is" : "are")} {documentsUsingType.Count} document{(documentsUsingType.Count == 1 ? "" : "s")} still using this type. Please update or remove those documents before deleting.";
+            Feedback.Warning(_deleteDocumentTypeError, "Document type not deleted");
             StateHasChanged();
             return;
         }
@@ -4842,8 +4882,37 @@
             ViewModel.ShowAllTypes = false;
         }
         
-        CancelDeleteDocumentType();
+        _showDeleteDocumentTypeModal = false;
+        _documentTypeToDelete = null;
+        _deleteDocumentTypeError = null;
+        Feedback.Success($"Document type '{typeToDelete}' deleted.", "Document type deleted");
         StateHasChanged();
+    }
+
+    private void ShowDocumentFeedback(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        var normalized = message.Trim();
+        if (normalized.Contains("no content", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("cannot be printed", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("invalid file", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("too large", StringComparison.OrdinalIgnoreCase))
+        {
+            Feedback.Warning(normalized, "Document action unavailable");
+        }
+        else if (normalized.Contains("error", StringComparison.OrdinalIgnoreCase) ||
+                 normalized.Contains("failed", StringComparison.OrdinalIgnoreCase))
+        {
+            Feedback.Error(normalized, "Document action failed");
+        }
+        else
+        {
+            Feedback.Info(normalized);
+        }
     }
 
     // Custom Dropdown Logic for Date Filter

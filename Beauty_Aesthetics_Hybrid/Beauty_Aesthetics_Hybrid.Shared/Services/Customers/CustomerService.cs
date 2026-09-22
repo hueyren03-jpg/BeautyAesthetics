@@ -97,7 +97,8 @@ public sealed class CustomerService : ICustomerService
 
         if (!result.Success)
         {
-            return CustomerOperationResult<Customer>.Fail(ToCustomerError(result.ErrorMessage));
+            var message = ToCustomerError(result.ErrorMessage);
+            return CustomerOperationResult<Customer>.Fail(message);
         }
 
         if (result.Value is not null)
@@ -110,7 +111,8 @@ public sealed class CustomerService : ICustomerService
                 : result.Value.DisplayCode;
         }
 
-        return CustomerOperationResult<Customer>.Ok(MapAndCache(record));
+        var created = MapAndCache(record);
+        return CustomerOperationResult<Customer>.Ok(created);
     }
 
     public async Task<CustomerOperationResult<Customer>> UpdateCustomerAsync(
@@ -127,10 +129,12 @@ public sealed class CustomerService : ICustomerService
         var result = await customerAC.UpdateRecordAsync(record, cancellationToken);
         if (!result.Success)
         {
-            return CustomerOperationResult<Customer>.Fail(ToCustomerError(result.ErrorMessage));
+            var message = ToCustomerError(result.ErrorMessage);
+            return CustomerOperationResult<Customer>.Fail(message);
         }
 
-        return CustomerOperationResult<Customer>.Ok(MapAndCache(record, customer.Id));
+        var updated = MapAndCache(record, customer.Id);
+        return CustomerOperationResult<Customer>.Ok(updated);
     }
 
     public async Task<CustomerOperationResult<Customer>> DeactivateCustomerAsync(
@@ -150,10 +154,12 @@ public sealed class CustomerService : ICustomerService
         var result = await customerAC.UpdateRecordAsync(record, cancellationToken);
         if (!result.Success)
         {
-            return CustomerOperationResult<Customer>.Fail(ToCustomerError(result.ErrorMessage));
+            var message = ToCustomerError(result.ErrorMessage);
+            return CustomerOperationResult<Customer>.Fail(message);
         }
 
-        return CustomerOperationResult<Customer>.Ok(MapAndCache(record, customerId));
+        var deactivated = MapAndCache(record, customerId);
+        return CustomerOperationResult<Customer>.Ok(deactivated);
     }
 
     private Customer MapAndCache(CustomerDM record)

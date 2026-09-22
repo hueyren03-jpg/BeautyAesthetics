@@ -8,7 +8,7 @@ public interface IBranchLookupService
         CancellationToken cancellationToken = default);
 }
 
-public sealed record BranchLookupItem(string Id, string Name)
+public sealed record BranchLookupItem(string Id, string Name, string GroupId = "")
 {
     public string DisplayName => string.Equals(Id, Name, StringComparison.OrdinalIgnoreCase)
         ? Id

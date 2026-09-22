@@ -6,6 +6,7 @@
 @using Microsoft.AspNetCore.Components
 
 @inject IJSRuntime JS
+@inject AppFeedbackService Feedback
 @inject NavigationManager NavigationManager
 @inject CaseNotePageViewModel ViewModel
 
@@ -265,17 +266,23 @@
         if (confirmed)
         {
             ViewModel.DeleteNote(noteId);
+            Feedback.Success("Case note deleted successfully.", "Case note deleted");
             if (ViewModel.CurrentlyViewingNoteId == noteId)
             {
                 ViewModel.CurrentlyViewingNoteId = null;
             }
             StateHasChanged();
         }
+        else
+        {
+            Feedback.Info("Case note deletion cancelled.", "Delete cancelled", 1800);
+        }
     }
 
     private void SelectNote(CaseNotePageViewModel.CaseNote note)
     {
         ViewModel.CurrentlyViewingNoteId = note.Id;
+        Feedback.Info($"Opening case note from {note.Date:MMM dd, yyyy} for editing.", "Edit case note", 2200);
         NavigationManager.NavigateTo("/case-notes");
     }
 

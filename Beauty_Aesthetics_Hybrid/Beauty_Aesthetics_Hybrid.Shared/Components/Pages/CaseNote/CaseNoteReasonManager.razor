@@ -4,6 +4,7 @@
 @using Beauty_Aesthetics_WebPos.Components.ViewModels
 @implements IAsyncDisposable
 @inject IJSRuntime JS
+@inject AppFeedbackService Feedback
 
 <PageTitle>Reason Manager</PageTitle>
 
@@ -262,6 +263,7 @@
     private void StartAddingNew()
     {
         ViewModel.StartAddingNew();
+        Feedback.Info("Enter the new medical certificate reason.", "New reason", 2000);
         StateHasChanged();
     }
 
@@ -270,6 +272,7 @@
         if (!ViewModel.CanAddReason())
         {
             ViewModel.SetError(ViewModel.GetAddValidationError());
+            Feedback.Warning(ViewModel.GetAddValidationError(), "Reason not added");
             return;
         }
 
@@ -279,18 +282,22 @@
             
             if (result.Success)
             {
-                ViewModel.SetSuccess($"✓ Reason '{ViewModel.NewReasonKey}' added successfully!");
+                var key = ViewModel.NewReasonKey;
+                ViewModel.SetSuccess($"✓ Reason '{key}' added successfully!");
+                Feedback.Success($"Reason '{key}' added successfully.", "Reason added");
                 ViewModel.CancelAddingNew();
                 await LoadReasons();
             }
             else
             {
                 ViewModel.SetError(result.Error ?? "Failed to add reason");
+                Feedback.Error(result.Error ?? "Failed to add reason", "Reason not added");
             }
         }
         catch (Exception ex)
         {
             ViewModel.SetError($"Error: {ex.Message}");
+            Feedback.Error($"Unable to add reason. {ex.Message}", "Reason not added");
         }
     }
 
@@ -299,6 +306,7 @@
         if (!ViewModel.CanUpdateReason())
         {
             ViewModel.SetError(ViewModel.GetEditValidationError());
+            Feedback.Warning(ViewModel.GetEditValidationError(), "Reason not updated");
             return;
         }
 
@@ -309,12 +317,14 @@
             if (result.Success)
             {
                 ViewModel.SetSuccess($"✓ Reason updated successfully!");
+                Feedback.Success("Reason updated successfully.", "Reason updated");
                 ViewModel.CancelEditing();
                 await LoadReasons();
             }
             else
             {
                 ViewModel.SetError(result.Error ?? "Failed to update reason");
+                Feedback.Error(result.Error ?? "Failed to update reason", "Reason not updated");
             }
         }
         catch (Exception ex)
@@ -331,18 +341,22 @@
             
             if (result.Success)
             {
-                ViewModel.SetSuccess($"✓ Reason '{ViewModel.ReasonToDelete}' deleted successfully!");
+                var key = ViewModel.ReasonToDelete;
+                ViewModel.SetSuccess($"✓ Reason '{key}' deleted successfully!");
+                Feedback.Success($"Reason '{key}' deleted successfully.", "Reason deleted");
                 ViewModel.CancelDelete();
                 await LoadReasons();
             }
             else
             {
                 ViewModel.SetError(result.Error ?? "Failed to delete reason");
+                Feedback.Error(result.Error ?? "Failed to delete reason", "Reason not deleted");
             }
         }
         catch (Exception ex)
         {
             ViewModel.SetError($"Error: {ex.Message}");
+            Feedback.Error($"Unable to delete reason. {ex.Message}", "Reason not deleted");
         }
     }
 

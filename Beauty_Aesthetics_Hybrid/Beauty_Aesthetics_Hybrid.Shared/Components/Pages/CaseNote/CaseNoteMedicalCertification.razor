@@ -4,6 +4,7 @@
 @using Beauty_Aesthetics_WebPos.Components.ViewModels
 @implements IDisposable
 @inject IJSRuntime JS
+@inject AppFeedbackService Feedback
 
 <PageTitle>Medical Certificate</PageTitle>
 
@@ -892,6 +893,7 @@
         if (!string.IsNullOrWhiteSpace(_tempSignatureDataUrl))
         {
             _signatureDataUrl = _tempSignatureDataUrl;
+            Feedback.Success("Doctor signature saved.", "Signature saved", 2200);
             _showSignatureModal = false;
             _canvasInitialized = false;
             _tempSignatureDataUrl = "";
@@ -951,6 +953,7 @@
     {
         await JS.InvokeVoidAsync("clearSignatureCanvas");
         _tempSignatureDataUrl = "";
+        Feedback.Info("Signature cleared.", "Signature cleared", 1800);
     }
 
     private async Task CheckSignatureStatus()
@@ -990,6 +993,7 @@
         {
             ViewModel.StatusMessage = ViewModel.DayOffValidationError;
             ViewModel.IsSuccess = false;
+            Feedback.Warning(ViewModel.StatusMessage, "Certificate not ready");
             return;
         }
 
@@ -1016,6 +1020,7 @@
         {
             ViewModel.StatusMessage = ViewModel.TimeOffValidationError;
             ViewModel.IsSuccess = false;
+            Feedback.Warning(ViewModel.StatusMessage, "Certificate not ready");
             return;
         }
 
@@ -1040,6 +1045,7 @@
     {
         if (!CanPrintCertificate())
         {
+            Feedback.Warning("Doctor name, patient name and signature are required before printing.", "Certificate not printed");
             return;
         }
 
@@ -1065,6 +1071,7 @@
         // Show success message
         ViewModel.StatusMessage = $"✓ Medical Certificate {_previewCertNumber} prepared for printing!";
         ViewModel.IsSuccess = true;
+        Feedback.Success(ViewModel.StatusMessage, "Certificate ready");
         
         // Reset form
         if (_certificateType == "day-off")
@@ -1089,6 +1096,7 @@
         {
             ViewModel.StatusMessage = ViewModel.DayOffValidationError;
             ViewModel.IsSuccess = false;
+            Feedback.Warning(ViewModel.StatusMessage, "Certificate not printed");
             return;
         }
 
@@ -1119,6 +1127,8 @@
         // Show success message
         ViewModel.StatusMessage = $"✓ Medical Certificate {certificateNumber} prepared for printing!";
         ViewModel.IsSuccess = true;
+        Feedback.Success(ViewModel.StatusMessage, "Certificate ready");
+        Feedback.Success(ViewModel.StatusMessage, "Certificate ready");
         
         // Reset form
         ViewModel.ResetDayOff();
@@ -1130,6 +1140,7 @@
         {
             ViewModel.StatusMessage = ViewModel.TimeOffValidationError;
             ViewModel.IsSuccess = false;
+            Feedback.Warning(ViewModel.StatusMessage, "Certificate not printed");
             return;
         }
 

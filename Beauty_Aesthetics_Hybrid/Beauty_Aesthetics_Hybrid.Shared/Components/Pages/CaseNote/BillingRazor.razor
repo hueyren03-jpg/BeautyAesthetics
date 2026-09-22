@@ -6,6 +6,7 @@
 @using System.Linq
 @using System.Text.RegularExpressions
 @inject NavigationManager NavigationManager
+@inject AppFeedbackService Feedback
 
 <PageTitle>Billing - Beauty Aesthetics</PageTitle>
 
@@ -1450,6 +1451,7 @@
         }
 
         _showServicePickerModal = false;
+        Feedback.Success($"{svc.Name} added to billing.", "Service added", 2200);
     }
 
     private void OpenPrescriptionModal()
@@ -1568,13 +1570,19 @@
             ToggleDeleteMode();
         }
         
+        var deletedCount = _pendingDeleteItems.Sum(item => item.Quantity);
         _showDeleteConfirmModal = false;
+        Feedback.Success(
+            $"{deletedCount} billing item{(deletedCount == 1 ? string.Empty : "s")} removed.",
+            "Items removed",
+            2400);
         StateHasChanged();
     }
 
     private void CancelDeleteConfirm()
     {
         _showDeleteConfirmModal = false;
+        Feedback.Info("Billing item deletion cancelled.", "Delete cancelled", 1800);
     }
 
     private void ToggleServiceDeleteMode()
@@ -1624,6 +1632,7 @@
 
         // Show modal
         _showPrescriptionModal = true;
+        Feedback.Info($"Editing {item.Name}.", "Edit prescription item", 2000);
     }
 
     private void AddSinglePrescriptionDrug()
@@ -1634,6 +1643,7 @@
             string.IsNullOrWhiteSpace(PrescriptionViewModel.NewDrugReason))
         {
             _showPrescriptionValidationError = true;
+            Feedback.Warning("Frequency, duration and reason are required.", "Prescription item not saved");
             return;
         }
 
@@ -1667,6 +1677,10 @@
                  PrescriptionItems.Add(newItem);
              }
              
+             Feedback.Success(
+                 _editingPrescriptionItem != null ? $"{drug.Name} updated." : $"{drug.Name} added.",
+                 _editingPrescriptionItem != null ? "Prescription item updated" : "Prescription item added",
+                 2200);
              StateHasChanged();
         }
 
@@ -1691,17 +1705,21 @@
             string.IsNullOrWhiteSpace(PrescriptionViewModel.NewDrugReason))
         {
             _showPrescriptionValidationError = true;
+            Feedback.Warning("Select a drug and complete frequency, duration and reason.", "Drug not added");
             return;
         }
 
         _showPrescriptionValidationError = false;
+        var selectedDrugName = PrescriptionViewModel.SelectedDrugToAdd?.Name ?? "Drug";
         PrescriptionViewModel.AddSelectedDrug();
+        Feedback.Success($"{selectedDrugName} added to the prescription.", "Drug added", 2200);
         StateHasChanged();
     }
 
     private void RemoveModalDrug(CaseNotePrescriptionViewModel.SelectedDrug drug)
     {
         PrescriptionViewModel.RemoveSelectedDrug(drug);
+        Feedback.Info($"{drug.Drug.Name} removed from the prescription.", "Drug removed", 1800);
     }
 
     private void AppendPrescriptionToBilling(CaseNotePrescriptionViewModel.Prescription prescription)
@@ -1738,6 +1756,7 @@
         {
             _prescriptionStatusMessage = "Add at least one drug before saving.";
             _prescriptionStatusIsSuccess = false;
+            Feedback.Warning(_prescriptionStatusMessage, "Prescription not saved");
             return;
         }
 
@@ -1747,12 +1766,14 @@
         {
             _prescriptionStatusMessage = prescriptionNumber;
             _prescriptionStatusIsSuccess = false;
+            Feedback.Error(prescriptionNumber, "Prescription not saved");
             return;
         }
 
         SubmitPrescriptionToState(prescriptionNumber);
         _prescriptionStatusMessage = $"Prescription {prescriptionNumber} saved.";
         _prescriptionStatusIsSuccess = true;
+        Feedback.Success(_prescriptionStatusMessage, "Prescription saved");
 
         await Task.Delay(500);
         ClosePrescriptionModal();
@@ -1868,6 +1889,7 @@
         if (!SelectedPaymentSplits.Any())
         {
             _multiPaymentError = "Enter at least one payment amount before applying.";
+            Feedback.Warning(_multiPaymentError, "Payment split not applied");
             await InvokeAsync(StateHasChanged);
             return;
         }
@@ -1879,6 +1901,7 @@
         AmountReceivedError = null;
 
         _showMultiPaymentModal = false;
+        Feedback.Success($"Payment split of RM {total:N2} applied.", "Payment split applied", 2400);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -1946,6 +1969,7 @@
         if (AmountReceived is null || AmountReceived < TotalPayable)
         {
             _showInsufficientAmountModal = true;
+            Feedback.Warning($"Amount received must cover RM {TotalPayable:N2}.", "Insufficient payment");
             return;
         }
 
@@ -1980,6 +2004,7 @@
 
             // Mark as paid
             BillingStatusText = "Paid";
+            Feedback.Success($"Payment of RM {AmountReceived:N2} completed successfully.", "Payment completed");
 
             // Close confirm modal and show summary
             _showConfirmPaymentModal = false;
@@ -2020,6 +2045,10 @@
         {
             // Simulate receipt processing
             await Task.Delay(600);
+            Feedback.Success(
+                action == "print" ? "Receipt sent to print." : "Receipt email prepared successfully.",
+                action == "print" ? "Receipt print ready" : "Receipt email ready",
+                2400);
             // Here you would call your actual print/email service
         }
         finally
@@ -2053,12 +2082,14 @@
         if (string.IsNullOrWhiteSpace(_postPaymentEmail))
         {
             _postPaymentEmailError = "Please enter an email address.";
+            Feedback.Warning(_postPaymentEmailError, "Invoice not emailed");
             return;
         }
 
         if (!IsValidEmail(_postPaymentEmail))
         {
             _postPaymentEmailError = "Please enter a valid email address.";
+            Feedback.Warning(_postPaymentEmailError, "Invoice not emailed");
             return;
         }
 
@@ -2079,6 +2110,10 @@
         {
             // Simulate backend processing - replace with real API call later
             await Task.Delay(1200);
+            Feedback.Success(
+                action == "print" ? "Invoice sent to print." : $"Invoice prepared for {_postPaymentEmail}.",
+                action == "print" ? "Invoice print ready" : "Invoice email ready",
+                2400);
         }
         finally
         {
@@ -2239,6 +2274,7 @@
                 if (newDiscount > gross)
                 {
                     _discountError = $"Discount cannot exceed item total (RM {gross:N2})";
+                    Feedback.Warning(_discountError, "Discount not applied");
                     return;
                 }
 
@@ -2262,6 +2298,7 @@
                 if (newDiscount > gross)
                 {
                     _discountError = $"Discount cannot exceed service total (RM {gross:N2})";
+                    Feedback.Warning(_discountError, "Discount not applied");
                     return;
                 }
 
@@ -2293,6 +2330,7 @@
                 if (newDiscount > runningTotal)
                 {
                     _discountError = $"Discount cannot exceed current total (RM {runningTotal:N2})";
+                    Feedback.Warning(_discountError, "Discount not applied");
                     return;
                 }
 
@@ -2301,6 +2339,7 @@
         }
 
         CloseDiscountModal();
+        Feedback.Success("Discount applied successfully.", "Discount applied", 2200);
     }
 
     private sealed class PaymentMethodGroup

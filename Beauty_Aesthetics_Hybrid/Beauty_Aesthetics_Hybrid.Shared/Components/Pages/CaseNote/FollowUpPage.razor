@@ -7,6 +7,7 @@
 @inject IJSRuntime JS
 @inject NavigationManager NavigationManager
 @inject FollowUpPageViewModel ViewModel
+@inject AppFeedbackService Feedback
 @implements IAsyncDisposable
 
 <PageTitle>Follow Up - Beauty Aesthetics</PageTitle>
@@ -877,6 +878,7 @@
     private void CancelNewFollowUp()
     {
         _showNewFollowUpConfirmModal = false;
+        Feedback.Info("New follow-up creation cancelled.", "Action cancelled", 1800);
         StateHasChanged();
     }
 
@@ -893,6 +895,7 @@
         
         _currentlyViewingFollowUpId = followUp.Id;
         _hasUnsavedChanges = false;
+        Feedback.Info($"Editing follow-up from {followUp.Date:MMM dd, yyyy}.", "Edit follow-up", 2200);
         _lastSavedContent = followUp.Content;
         
         if (_isEditorReady)
@@ -909,6 +912,7 @@
         {
             _statusMessage = ViewModel.SelectedPatient == null ? "Please select a patient" : "Editor not ready";
             _isSuccess = false;
+            Feedback.Warning(_statusMessage, "Follow-up not saved");
             StateHasChanged();
             return;
         }
@@ -930,6 +934,7 @@
             {
                 _statusMessage = "Please write some follow-up notes";
                 _isSuccess = false;
+                Feedback.Warning(_statusMessage, "Follow-up not saved");
                 _isSaving = false;
                 _showSavingOverlay = false;
                 await InvokeAsync(StateHasChanged);
@@ -959,6 +964,9 @@
             _currentlyViewingFollowUpId = null;
             _isSuccess = true;
             _statusMessage = isUpdate ? "Follow-up updated successfully!" : "Follow-up saved successfully!";
+            Feedback.Success(
+                _statusMessage,
+                isUpdate ? "Follow-up updated" : "Follow-up saved");
             
             // Clear editor for new follow-ups (non-blocking)
             if (!isUpdate)
@@ -987,6 +995,7 @@
             Console.WriteLine($"[BLAZOR] Error saving follow-up: {ex.Message}");
             _statusMessage = "Failed to save follow-up. Please try again.";
             _isSuccess = false;
+            Feedback.Error(_statusMessage, "Follow-up not saved");
         }
         finally
         {
@@ -1007,6 +1016,7 @@
     {
         _showDeleteModal = false;
         _followUpToDelete = null;
+        Feedback.Info("Follow-up deletion cancelled.", "Delete cancelled", 1800);
         StateHasChanged();
     }
 
@@ -1028,6 +1038,7 @@
             
             _statusMessage = "Follow-up deleted successfully!";
             _isSuccess = true;
+            Feedback.Success(_statusMessage, "Follow-up deleted");
         }
         
         // Close modal immediately

@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.Models;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.Sales;
@@ -12,11 +13,16 @@ public sealed class CashSalesService : ICashSalesService
 {
     private readonly CashSalesAC cashSalesAC;
     private readonly WebDashboardAC dashboardAC;
+    private readonly AppFeedbackService feedback;
 
-    public CashSalesService(CashSalesAC cashSalesAC, WebDashboardAC dashboardAC)
+    public CashSalesService(
+        CashSalesAC cashSalesAC,
+        WebDashboardAC dashboardAC,
+        AppFeedbackService feedback)
     {
         this.cashSalesAC = cashSalesAC;
         this.dashboardAC = dashboardAC;
+        this.feedback = feedback;
     }
 
     public async Task<ApiCallResult<IReadOnlyList<Transaction>>> LoadTransactionsAsync(
@@ -152,7 +158,10 @@ public sealed class CashSalesService : ICashSalesService
     {
         var templateResult = await cashSalesAC.LoadRecordAsync(string.Empty, cancellationToken);
         if (!templateResult.Success || templateResult.Value is null)
-            return ApiCallResult<Transaction>.Failure(templateResult.StatusCode, templateResult.ErrorMessage ?? "Unable to initialize a cash sale.");
+        {
+            var message = templateResult.ErrorMessage ?? "Unable to initialize a cash sale.";
+            return ApiCallResult<Transaction>.Failure(templateResult.StatusCode, message);
+        }
 
         var document = (JsonObject)templateResult.Value.DeepClone();
         var header = document["objDoc_CashSales"] as JsonObject ?? new JsonObject();
@@ -163,7 +172,10 @@ public sealed class CashSalesService : ICashSalesService
 
         var createResult = await cashSalesAC.CreateRecordAsync(document, cancellationToken);
         if (!createResult.Success)
-            return ApiCallResult<Transaction>.Failure(createResult.StatusCode, createResult.ErrorMessage ?? "Unable to create the cash sale.");
+        {
+            var message = createResult.ErrorMessage ?? "Unable to create the cash sale.";
+            return ApiCallResult<Transaction>.Failure(createResult.StatusCode, message);
+        }
 
         transaction.DocumentId = FindString(createResult.Value, "DocumentID", "Id") ?? transaction.DocumentId;
         transaction.InvoiceNumber = FindString(createResult.Value, "DisplayCode") ?? transaction.InvoiceNumber;
@@ -173,7 +185,10 @@ public sealed class CashSalesService : ICashSalesService
         {
             var paymentResult = await SavePaymentsAsync(transaction, cancellationToken);
             if (!paymentResult.Success)
-                return ApiCallResult<Transaction>.Failure(paymentResult.StatusCode, paymentResult.ErrorMessage ?? "The sale was created, but its payment could not be saved.");
+            {
+                var message = paymentResult.ErrorMessage ?? "The sale was created, but its payment could not be saved.";
+                return ApiCallResult<Transaction>.Failure(paymentResult.StatusCode, message);
+            }
         }
 
         return ApiCallResult<Transaction>.Ok(createResult.StatusCode, transaction);
@@ -183,29 +198,45 @@ public sealed class CashSalesService : ICashSalesService
     {
         var loadResult = await cashSalesAC.LoadRecordAsync(transaction.DocumentId, cancellationToken);
         if (!loadResult.Success || loadResult.Value is null)
-            return ApiCallResult<Transaction>.Failure(loadResult.StatusCode, loadResult.ErrorMessage ?? "Unable to load the cash sale for editing.");
+        {
+            var message = loadResult.ErrorMessage ?? "Unable to load the cash sale for editing.";
+            return ApiCallResult<Transaction>.Failure(loadResult.StatusCode, message);
+        }
 
         var header = loadResult.Value["objDoc_CashSales"] as JsonObject;
         if (header is null)
-            return ApiCallResult<Transaction>.Failure(HttpStatusCode.OK, "Cash sale header was missing.");
+        {
+            const string message = "Cash sale header was missing.";
+            return ApiCallResult<Transaction>.Failure(HttpStatusCode.OK, message);
+        }
 
         ApplyHeader(header, transaction, false);
         var saveResult = await cashSalesAC.SaveHeaderAsync(header, cancellationToken);
         if (!saveResult.Success)
-            return ApiCallResult<Transaction>.Failure(saveResult.StatusCode, saveResult.ErrorMessage ?? "Unable to update the cash sale.");
+        {
+            var message = saveResult.ErrorMessage ?? "Unable to update the cash sale.";
+            return ApiCallResult<Transaction>.Failure(saveResult.StatusCode, message);
+        }
 
         if (transaction.Payments.Count > 0 || transaction.PaymentTypeId != 0)
         {
             var paymentResult = await SavePaymentsAsync(transaction, cancellationToken);
             if (!paymentResult.Success)
-                return ApiCallResult<Transaction>.Failure(paymentResult.StatusCode, paymentResult.ErrorMessage ?? "The sale was updated, but its payment could not be saved.");
+            {
+                var message = paymentResult.ErrorMessage ?? "The sale was updated, but its payment could not be saved.";
+                return ApiCallResult<Transaction>.Failure(paymentResult.StatusCode, message);
+            }
         }
 
         return ApiCallResult<Transaction>.Ok(saveResult.StatusCode, transaction);
     }
 
-    public Task<ApiCallResult<string>> DeleteTransactionAsync(Transaction transaction, string reason, CancellationToken cancellationToken = default) =>
-        cashSalesAC.DeleteAsync(new CashSalesDeleteDTO
+    public async Task<ApiCallResult<string>> DeleteTransactionAsync(
+        Transaction transaction,
+        string reason,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await cashSalesAC.DeleteAsync(new CashSalesDeleteDTO
         {
             Id = transaction.DocumentId,
             DocumentId = transaction.DocumentId,
@@ -213,6 +244,16 @@ public sealed class CashSalesService : ICashSalesService
             FinancialDate = transaction.Date,
             Reason = reason
         }, cancellationToken);
+
+        if (result.Success)
+        {
+        }
+        else
+        {
+        }
+
+        return result;
+    }
 
     private async Task<ApiCallResult<string>> SavePaymentsAsync(Transaction transaction, CancellationToken cancellationToken)
     {

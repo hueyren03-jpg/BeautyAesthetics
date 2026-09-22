@@ -1,0 +1,2063 @@
+/*
+   Mobile POS full-data table standard for Inventory + Services.
+   Phone behavior:
+   - same data fields as the Windows/desktop tables
+   - horizontal swipe for data columns
+   - Actions column remains pinned on the right
+   - no page-level horizontal overflow
+   Desktop/tablet styling is intentionally left unchanged.
+*/
+
+@media (max-width: 768px) {
+    :root {
+        --mobile-table-action-width: 96px;
+        --mobile-table-action-btn: 36px;
+        --mobile-table-action-gap: 6px;
+        --mobile-table-border: #dbe7f5;
+        --mobile-table-head: #eff6ff;
+        --mobile-table-action-shadow: -8px 0 14px -12px rgba(15, 23, 42, 0.55);
+    }
+
+    /* =========================================================
+       SHARED SCROLL CONTAINMENT
+       ========================================================= */
+    .inventory .inventory__table-wrapper,
+    .inventory .table-scroll,
+    .inventory .table-scroll__inner,
+    .inventory .inventory-options__card-body,
+    .services .services__table-wrapper,
+    .services .membership-options__table-region {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+    }
+
+    .inventory .inventory__table-wrapper,
+    .inventory .table-scroll,
+    .inventory .table-scroll__inner,
+    .services .services__table-wrapper,
+    .services .membership-options__table-region {
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        overscroll-behavior-x: contain !important;
+        -webkit-overflow-scrolling: touch !important;
+        touch-action: pan-x pan-y !important;
+    }
+
+    /* =========================================================
+       INVENTORY — PRODUCTS
+       Use the complete Windows table on phone.
+       ========================================================= */
+    .inventory .inventory-products-full-table.desktop-view {
+        display: block !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+
+    .inventory .inventory-products-mobile-compact.mobile-view {
+        display: none !important;
+    }
+
+    .inventory .inventory-products-desktop-table {
+        width: 960px !important;
+        min-width: 960px !important;
+        max-width: none !important;
+        table-layout: fixed !important;
+    }
+
+    .inventory .inventory-products-desktop-table col.product-compact-col-name { width: 210px !important; }
+    .inventory .inventory-products-desktop-table col.product-compact-col-sku { width: 130px !important; }
+    .inventory .inventory-products-desktop-table col.product-compact-col-category { width: 140px !important; }
+    .inventory .inventory-products-desktop-table col.product-compact-col-price { width: 120px !important; }
+    .inventory .inventory-products-desktop-table col.product-compact-col-stock { width: 120px !important; }
+    .inventory .inventory-products-desktop-table col.product-compact-col-status { width: 124px !important; }
+    .inventory .inventory-products-desktop-table col.product-compact-col-actions { width: var(--mobile-table-action-width) !important; }
+
+    /* =========================================================
+       INVENTORY — PO / STOCK TRANSFER / GIN / GRN
+       Undo the old mobile nth-child hiding so every Windows field
+       remains available by horizontal swipe.
+       ========================================================= */
+    .inventory table.inventory-mobile-compact-table {
+        width: max-content !important;
+        max-width: none !important;
+        table-layout: fixed !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--po {
+        width: 920px !important;
+        min-width: 920px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--stock {
+        width: 940px !important;
+        min-width: 940px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--gin {
+        width: 1180px !important;
+        min-width: 1180px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--grn {
+        width: 1500px !important;
+        min-width: 1500px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table > thead > tr > th,
+    .inventory table.inventory-mobile-compact-table > tbody > tr:not(.inventory-mobile-detail-row) > td {
+        display: table-cell !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        width: auto !important;
+        min-width: 110px !important;
+        max-width: none !important;
+        padding: 11px 12px !important;
+        box-sizing: border-box !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table > thead > tr > th.inventory__checkbox-col,
+    .inventory table.inventory-mobile-compact-table > tbody > tr > td.inventory__checkbox-col,
+    .inventory table.inventory-mobile-compact-table > thead > tr > th.purchase-orders__checkbox-col,
+    .inventory table.inventory-mobile-compact-table > tbody > tr > td.purchase-orders__checkbox-col {
+        min-width: 54px !important;
+        width: 54px !important;
+        max-width: 54px !important;
+    }
+
+    /* Full columns make the old mobile expanded-detail row redundant. */
+    .inventory table.inventory-mobile-compact-table .inventory-mobile-detail-row,
+    .inventory .inventory-mobile-detail-row {
+        display: none !important;
+    }
+
+
+
+    /* Strong final overrides for legacy compact-table nth-child rules.
+       These selectors intentionally include the concrete table type so they
+       beat older !important hide/width declarations. */
+    .inventory table.inventory-mobile-compact-table.inventory-mobile-compact-table--po > thead > tr > th,
+    .inventory table.inventory-mobile-compact-table.inventory-mobile-compact-table--po > tbody > tr:not(.inventory-mobile-detail-row) > td,
+    .inventory table.inventory-mobile-compact-table.inventory-mobile-compact-table--stock > thead > tr > th,
+    .inventory table.inventory-mobile-compact-table.inventory-mobile-compact-table--stock > tbody > tr:not(.inventory-mobile-detail-row) > td,
+    .inventory table.inventory-mobile-compact-table.inventory-mobile-compact-table--gin > thead > tr > th,
+    .inventory table.inventory-mobile-compact-table.inventory-mobile-compact-table--gin > tbody > tr:not(.inventory-mobile-detail-row) > td,
+    .inventory table.inventory-mobile-compact-table.inventory-mobile-compact-table--grn > thead > tr > th,
+    .inventory table.inventory-mobile-compact-table.inventory-mobile-compact-table--grn > tbody > tr:not(.inventory-mobile-detail-row) > td {
+        display: table-cell !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table.inventory-mobile-compact-table--po :is(th.inventory-row-actions-column, td.inventory-row-actions-column),
+    .inventory table.inventory-mobile-compact-table.inventory-mobile-compact-table--stock :is(th.inventory-row-actions-column, td.inventory-row-actions-column),
+    .inventory table.inventory-mobile-compact-table.inventory-mobile-compact-table--gin :is(th.inventory-row-actions-column, td.inventory-row-actions-column),
+    .inventory table.inventory-mobile-compact-table.inventory-mobile-compact-table--grn :is(th.inventory-row-actions-column, td.inventory-row-actions-column) {
+        display: table-cell !important;
+        position: sticky !important;
+        right: 0 !important;
+        width: var(--mobile-table-action-width) !important;
+        min-width: var(--mobile-table-action-width) !important;
+        max-width: var(--mobile-table-action-width) !important;
+        padding: 8px !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        overflow: visible !important;
+        z-index: 14 !important;
+        box-sizing: border-box !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table.inventory-mobile-compact-table--po th.inventory-row-actions-column,
+    .inventory table.inventory-mobile-compact-table.inventory-mobile-compact-table--stock th.inventory-row-actions-column,
+    .inventory table.inventory-mobile-compact-table.inventory-mobile-compact-table--gin th.inventory-row-actions-column,
+    .inventory table.inventory-mobile-compact-table.inventory-mobile-compact-table--grn th.inventory-row-actions-column {
+        background: var(--mobile-table-head) !important;
+        z-index: 18 !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table.inventory-mobile-compact-table--po td.inventory-row-actions-column,
+    .inventory table.inventory-mobile-compact-table.inventory-mobile-compact-table--stock td.inventory-row-actions-column,
+    .inventory table.inventory-mobile-compact-table.inventory-mobile-compact-table--gin td.inventory-row-actions-column,
+    .inventory table.inventory-mobile-compact-table.inventory-mobile-compact-table--grn td.inventory-row-actions-column {
+        background: #ffffff !important;
+    }
+
+    /* =========================================================
+       INVENTORY — INVENTORY OPTIONS
+       All current fields remain visible; only Actions is pinned.
+       ========================================================= */
+    .inventory .inventory-options__card-body {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+
+    .inventory .inventory-options__table {
+        min-width: 520px !important;
+        width: 100% !important;
+        table-layout: auto !important;
+    }
+
+    /* =========================================================
+       INVENTORY — FIXED ACTION COLUMN
+       ========================================================= */
+    .inventory :is(
+        th.product-actions-heading,
+        td.product-row-actions,
+        th.inventory-option-actions-column,
+        td.inventory-option-actions-column,
+        th.inventory-row-actions-column,
+        td.inventory-row-actions-column
+    ) {
+        display: table-cell !important;
+        position: sticky !important;
+        right: 0 !important;
+        z-index: 12 !important;
+        width: var(--mobile-table-action-width) !important;
+        min-width: var(--mobile-table-action-width) !important;
+        max-width: var(--mobile-table-action-width) !important;
+        padding: 6px !important;
+        text-align: center !important;
+        vertical-align: middle !important;
+        white-space: nowrap !important;
+        overflow: visible !important;
+        box-sizing: border-box !important;
+        box-shadow: none !important;
+    }
+
+    .inventory :is(
+        th.product-actions-heading,
+        th.inventory-option-actions-column,
+        th.inventory-row-actions-column
+    ) {
+        z-index: 16 !important;
+        background: var(--mobile-table-head) !important;
+        border-left: 1px solid var(--mobile-table-border) !important;
+    }
+
+    .inventory :is(
+        td.product-row-actions,
+        td.inventory-option-actions-column,
+        td.inventory-row-actions-column
+    ) {
+        background: #ffffff !important;
+        border-left: 1px solid #edf2f7 !important;
+    }
+
+    .inventory tbody tr:hover :is(
+        td.product-row-actions,
+        td.inventory-option-actions-column,
+        td.inventory-row-actions-column
+    ),
+    .inventory tbody tr.selected :is(
+        td.product-row-actions,
+        td.inventory-option-actions-column,
+        td.inventory-row-actions-column
+    ) {
+        background: #eff6ff !important;
+    }
+
+    .inventory :is(
+        td.product-row-actions,
+        td.inventory-option-actions-column,
+        td.inventory-row-actions-column
+    ) > :is(.grn-row-actions, .membership-options__row-actions),
+    .inventory .grn-row-actions {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: var(--mobile-table-action-gap) !important;
+        width: 100% !important;
+    }
+
+    .inventory :is(
+        td.product-row-actions,
+        td.inventory-option-actions-column,
+        td.inventory-row-actions-column
+    ) .product-row-action,
+    .inventory td.inventory-option-actions-column .tab-btn {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: var(--mobile-table-action-btn) !important;
+        min-width: var(--mobile-table-action-btn) !important;
+        max-width: var(--mobile-table-action-btn) !important;
+        height: var(--mobile-table-action-btn) !important;
+        min-height: var(--mobile-table-action-btn) !important;
+        padding: 0 !important;
+        margin: 0 1px !important;
+        border-radius: 8px !important;
+        flex: 0 0 var(--mobile-table-action-btn) !important;
+    }
+
+    /* GRN already has a dedicated flex wrapper. Keep it consistent. */
+    .inventory .inventory-mobile-compact-table--grn .grn-row-actions {
+        display: flex !important;
+        justify-content: center !important;
+        gap: var(--mobile-table-action-gap) !important;
+    }
+
+    /* =========================================================
+       SERVICES — FULL WINDOWS TABLES ON MOBILE
+       Hide simplified duplicate tables and expose every desktop field.
+       ========================================================= */
+    .services .services__table-wrapper.desktop-view {
+        display: block !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+
+    .services .services__table-wrapper--simplified.mobile-view {
+        display: none !important;
+    }
+
+    .services .services__table-wrapper.desktop-view > .services__table {
+        width: 1040px !important;
+        min-width: 1040px !important;
+        max-width: none !important;
+        table-layout: auto !important;
+    }
+
+    .services .services__table-wrapper.desktop-view > .services__table > thead > tr > th,
+    .services .services__table-wrapper.desktop-view > .services__table > tbody > tr > td {
+        display: table-cell !important;
+        min-width: 120px !important;
+        padding: 11px 12px !important;
+        box-sizing: border-box !important;
+        white-space: nowrap !important;
+    }
+
+    .services .services__table-wrapper.desktop-view > .services__table .services__checkbox-col {
+        width: 54px !important;
+        min-width: 54px !important;
+        max-width: 54px !important;
+    }
+
+    /* Main Services / Member Credit / Package action column. */
+    .services .services__table-wrapper.desktop-view > .services__table :is(
+        th.services__actions-col,
+        td.services__actions-col
+    ) {
+        position: sticky !important;
+        right: 0 !important;
+        z-index: 12 !important;
+        width: var(--mobile-table-action-width) !important;
+        min-width: var(--mobile-table-action-width) !important;
+        max-width: var(--mobile-table-action-width) !important;
+        padding: 8px !important;
+        background: #ffffff !important;
+        border-left: 1px solid var(--mobile-table-border) !important;
+        box-shadow: none !important;
+        overflow: visible !important;
+    }
+
+    .services .services__table-wrapper.desktop-view > .services__table th.services__actions-col {
+        z-index: 16 !important;
+        background: var(--mobile-table-head) !important;
+    }
+
+    .services .services__table-wrapper.desktop-view .services__row-actions {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: var(--mobile-table-action-gap) !important;
+        width: 100% !important;
+    }
+
+    .services .services__table-wrapper.desktop-view .services__row-actions .services__action-btn {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: var(--mobile-table-action-btn) !important;
+        min-width: var(--mobile-table-action-btn) !important;
+        max-width: var(--mobile-table-action-btn) !important;
+        height: var(--mobile-table-action-btn) !important;
+        min-height: var(--mobile-table-action-btn) !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        flex: 0 0 var(--mobile-table-action-btn) !important;
+        border-radius: 8px !important;
+    }
+
+    /* Membership Configuration tables use a single table for desktop + mobile.
+       Keep all fields and pin only their final Actions column. */
+    .services .membership-options__table-region {
+        overflow-x: auto !important;
+    }
+
+    .services .member-type-table {
+        min-width: 620px !important;
+        width: 100% !important;
+        table-layout: auto !important;
+    }
+
+    .services .membership-options__table {
+        min-width: 520px !important;
+        width: 100% !important;
+        table-layout: auto !important;
+    }
+
+    .services .member-type-table > thead > tr > th:last-child,
+    .services .member-type-table > tbody > tr > td:last-child,
+    .services .membership-options__table > thead > tr > th.member-point-actions-col,
+    .services .membership-options__table > tbody > tr > td.member-point-actions-col {
+        position: sticky !important;
+        right: 0 !important;
+        z-index: 12 !important;
+        width: var(--mobile-table-action-width) !important;
+        min-width: var(--mobile-table-action-width) !important;
+        max-width: var(--mobile-table-action-width) !important;
+        padding: 8px !important;
+        background: #ffffff !important;
+        border-left: 1px solid var(--mobile-table-border) !important;
+        box-shadow: none !important;
+        overflow: visible !important;
+    }
+
+    .services .member-type-table > thead > tr > th:last-child,
+    .services .membership-options__table > thead > tr > th.member-point-actions-col {
+        z-index: 16 !important;
+        background: var(--mobile-table-head) !important;
+    }
+
+    .services .member-type-table .membership-options__row-actions,
+    .services .membership-options__table .membership-options__row-actions {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: var(--mobile-table-action-gap) !important;
+        width: 100% !important;
+    }
+
+    .services .member-type-table .membership-options__row-actions .membership-options__view-btn,
+    .services .membership-options__table .membership-options__row-actions .membership-options__view-btn {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: var(--mobile-table-action-btn) !important;
+        min-width: var(--mobile-table-action-btn) !important;
+        max-width: var(--mobile-table-action-btn) !important;
+        height: var(--mobile-table-action-btn) !important;
+        min-height: var(--mobile-table-action-btn) !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        gap: 0 !important;
+        flex: 0 0 var(--mobile-table-action-btn) !important;
+        border-radius: 8px !important;
+        font-size: 0 !important;
+        overflow: hidden !important;
+    }
+
+    .services .member-type-table .membership-options__row-actions .membership-options__view-btn i,
+    .services .membership-options__table .membership-options__row-actions .membership-options__view-btn i {
+        margin: 0 !important;
+        font-size: 15px !important;
+        line-height: 1 !important;
+    }
+}
+
+
+/* Compact phone action controls across Inventory + Services. */
+@media (max-width: 768px) {
+    .inventory :is(
+        td.product-row-actions,
+        td.inventory-option-actions-column,
+        td.inventory-row-actions-column
+    ) .product-row-action i,
+    .inventory td.inventory-option-actions-column .tab-btn i,
+    .services .services__row-actions .services__action-btn i,
+    .services .membership-options__row-actions .membership-options__view-btn i {
+        font-size: 13px !important;
+        line-height: 1 !important;
+    }
+
+    .inventory :is(
+        th.product-actions-heading,
+        td.product-row-actions,
+        th.inventory-option-actions-column,
+        td.inventory-option-actions-column,
+        th.inventory-row-actions-column,
+        td.inventory-row-actions-column
+    ),
+    .services .services__table-wrapper.desktop-view > .services__table :is(
+        th.services__actions-col,
+        td.services__actions-col
+    ),
+    .services .member-type-table > thead > tr > th:last-child,
+    .services .member-type-table > tbody > tr > td:last-child,
+    .services .membership-options__table > thead > tr > th.member-point-actions-col,
+    .services .membership-options__table > tbody > tr > td.member-point-actions-col {
+        padding: 5px !important;
+    }
+}
+
+
+/* =========================================================
+   FINAL Inventory field layout for PO / Stock Transfer / GIN / GRN
+   One horizontal scroller, explicit Windows-field widths, fixed Actions.
+   ========================================================= */
+@media (max-width: 768px) {
+    :root {
+        --mobile-table-action-width: 88px;
+        --mobile-table-action-btn: 36px;
+        --mobile-table-action-gap: 6px;
+    }
+
+    /* Only the OUTER table region scrolls. Inner helpers must not create
+       another horizontal scroll context or sticky Actions will fail. */
+    .inventory .inventory__table-wrapper.table-scroll,
+    .inventory .inventory__table-wrapper.pos-touch-table-scroll {
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        -webkit-overflow-scrolling: touch !important;
+        overscroll-behavior-x: contain !important;
+        position: relative !important;
+    }
+
+    .inventory .table-scroll__inner {
+        width: max-content !important;
+        min-width: max-content !important;
+        max-width: none !important;
+        overflow: visible !important;
+        position: static !important;
+    }
+
+    .inventory .table-scroll__inner.pos-touch-table-scroll {
+        overflow: visible !important;
+    }
+
+    /* ---------- Purchase Orders ---------- */
+    .inventory table.inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting) {
+        width: 980px !important;
+        min-width: 980px !important;
+        max-width: 980px !important;
+        table-layout: fixed !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(1),
+    .inventory table.inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(1) {
+        width: 150px !important; min-width: 150px !important; max-width: 150px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(2),
+    .inventory table.inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(2) {
+        width: 110px !important; min-width: 110px !important; max-width: 110px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(3),
+    .inventory table.inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(3) {
+        width: 110px !important; min-width: 110px !important; max-width: 110px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(4),
+    .inventory table.inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(4) {
+        width: 180px !important; min-width: 180px !important; max-width: 180px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(5),
+    .inventory table.inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(5) {
+        width: 120px !important; min-width: 120px !important; max-width: 120px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(6),
+    .inventory table.inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(6) {
+        width: 220px !important; min-width: 220px !important; max-width: 220px !important;
+    }
+
+    /* ---------- Stock Transfer ---------- */
+    .inventory table.inventory-mobile-compact-table--stock:not(.inventory-mobile-compact-table--selecting) {
+        width: 940px !important;
+        min-width: 940px !important;
+        max-width: 940px !important;
+        table-layout: fixed !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--stock:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(1),
+    .inventory table.inventory-mobile-compact-table--stock:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(1) {
+        width: 170px !important; min-width: 170px !important; max-width: 170px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--stock:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(2),
+    .inventory table.inventory-mobile-compact-table--stock:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(2) {
+        width: 140px !important; min-width: 140px !important; max-width: 140px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--stock:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(3),
+    .inventory table.inventory-mobile-compact-table--stock:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(3) {
+        width: 110px !important; min-width: 110px !important; max-width: 110px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--stock:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(4),
+    .inventory table.inventory-mobile-compact-table--stock:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(4),
+    .inventory table.inventory-mobile-compact-table--stock:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(5),
+    .inventory table.inventory-mobile-compact-table--stock:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(5) {
+        width: 150px !important; min-width: 150px !important; max-width: 150px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--stock:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(6),
+    .inventory table.inventory-mobile-compact-table--stock:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(6) {
+        width: 130px !important; min-width: 130px !important; max-width: 130px !important;
+    }
+
+    /* ---------- GIN ---------- */
+    .inventory table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting) {
+        width: 1090px !important;
+        min-width: 1090px !important;
+        max-width: 1090px !important;
+        table-layout: fixed !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(1),
+    .inventory table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(1) {
+        width: 170px !important; min-width: 170px !important; max-width: 170px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(2),
+    .inventory table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(2) {
+        width: 110px !important; min-width: 110px !important; max-width: 110px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(3),
+    .inventory table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(3) {
+        width: 110px !important; min-width: 110px !important; max-width: 110px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(4),
+    .inventory table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(4) {
+        width: 160px !important; min-width: 160px !important; max-width: 160px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(5),
+    .inventory table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(5) {
+        width: 180px !important; min-width: 180px !important; max-width: 180px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(6),
+    .inventory table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(6) {
+        width: 130px !important; min-width: 130px !important; max-width: 130px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(7),
+    .inventory table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(7) {
+        width: 142px !important; min-width: 142px !important; max-width: 142px !important;
+    }
+
+    /* ---------- GRN ---------- */
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) {
+        width: 1350px !important;
+        min-width: 1350px !important;
+        max-width: 1350px !important;
+        table-layout: fixed !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(1),
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(1) {
+        width: 110px !important; min-width: 110px !important; max-width: 110px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(2),
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(2) {
+        width: 110px !important; min-width: 110px !important; max-width: 110px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(3),
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(3) {
+        width: 180px !important; min-width: 180px !important; max-width: 180px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(4),
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(4) {
+        width: 180px !important; min-width: 180px !important; max-width: 180px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(5),
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(5) {
+        width: 160px !important; min-width: 160px !important; max-width: 160px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(6),
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(6) {
+        width: 160px !important; min-width: 160px !important; max-width: 160px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(7),
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(7) {
+        width: 120px !important; min-width: 120px !important; max-width: 120px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(8),
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(8) {
+        width: 130px !important; min-width: 130px !important; max-width: 130px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) > thead > tr > th:nth-child(9),
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) > tbody > tr > td:nth-child(9) {
+        width: 112px !important; min-width: 112px !important; max-width: 112px !important;
+    }
+
+    /* ---------- Shared fixed Actions ---------- */
+    .inventory table.inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting) :is(th.inventory-row-actions-column, td.inventory-row-actions-column),
+    .inventory table.inventory-mobile-compact-table--stock:not(.inventory-mobile-compact-table--selecting) :is(th.inventory-row-actions-column, td.inventory-row-actions-column),
+    .inventory table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting) :is(th.inventory-row-actions-column, td.inventory-row-actions-column),
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) :is(th.inventory-row-actions-column, td.inventory-row-actions-column) {
+        position: sticky !important;
+        right: 0 !important;
+        width: var(--mobile-table-action-width) !important;
+        min-width: var(--mobile-table-action-width) !important;
+        max-width: var(--mobile-table-action-width) !important;
+        padding: 5px !important;
+        overflow: visible !important;
+        box-sizing: border-box !important;
+        box-shadow: none !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting) th.inventory-row-actions-column,
+    .inventory table.inventory-mobile-compact-table--stock:not(.inventory-mobile-compact-table--selecting) th.inventory-row-actions-column,
+    .inventory table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting) th.inventory-row-actions-column,
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) th.inventory-row-actions-column {
+        z-index: 30 !important;
+        background: #eff6ff !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting) td.inventory-row-actions-column,
+    .inventory table.inventory-mobile-compact-table--stock:not(.inventory-mobile-compact-table--selecting) td.inventory-row-actions-column,
+    .inventory table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting) td.inventory-row-actions-column,
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) td.inventory-row-actions-column {
+        z-index: 25 !important;
+        background: #ffffff !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table :is(th, td) {
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        vertical-align: middle !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table td.inventory-row-actions-column,
+    .inventory table.inventory-mobile-compact-table th.inventory-row-actions-column {
+        overflow: visible !important;
+    }
+}
+
+
+/* =========================================================
+   FINAL SERVICES FIXED ACTIONS
+   Android/MAUI WebView: sticky table cells are much more reliable with
+   separate borders and one explicit scrolling ancestor.
+   ========================================================= */
+@media (max-width: 768px) {
+    /* One scroll owner for every Services data table. */
+    .services .services__table-wrapper.desktop-view,
+    .services .membership-options__table-region {
+        display: block !important;
+        position: relative !important;
+        isolation: isolate !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        -webkit-overflow-scrolling: touch !important;
+        overscroll-behavior-x: contain !important;
+        touch-action: pan-x pan-y !important;
+    }
+
+    /* Prevent any JS-added/legacy nested wrapper from becoming a second
+       horizontal scroll context inside the page-owned Services wrapper. */
+    .services .services__table-wrapper.desktop-view > .pos-touch-table-scroll,
+    .services .membership-options__table-region > .pos-touch-table-scroll {
+        overflow: visible !important;
+        width: max-content !important;
+        min-width: max-content !important;
+        max-width: none !important;
+    }
+
+    /* Sticky cells inside border-collapse:collapse are inconsistent in
+       Android System WebView. Use separate borders for the mobile tables. */
+    .services .services__table-wrapper.desktop-view > table.services__table,
+    .services .membership-options__table-region > table.member-type-table,
+    .services .membership-options__table-region > table.membership-options__table {
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        overflow: visible !important;
+    }
+
+    /* Main Services table: preserve all Windows columns and scroll only them. */
+    .services .services__table-wrapper.desktop-view > table.services__table {
+        width: 1040px !important;
+        min-width: 1040px !important;
+        max-width: 1040px !important;
+        table-layout: fixed !important;
+    }
+
+    /* Services / Member Credit / Package Actions — physically pinned right. */
+    .services .services__table-wrapper.desktop-view > table.services__table > thead > tr > th.services__actions-col,
+    .services .services__table-wrapper.desktop-view > table.services__table > tbody > tr > td.services__actions-col {
+        display: table-cell !important;
+        position: -webkit-sticky !important;
+        position: sticky !important;
+        right: 0 !important;
+        inset-inline-end: 0 !important;
+        width: var(--mobile-table-action-width) !important;
+        min-width: var(--mobile-table-action-width) !important;
+        max-width: var(--mobile-table-action-width) !important;
+        padding: 5px !important;
+        overflow: visible !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        background-clip: padding-box !important;
+        border-left: 1px solid var(--mobile-table-border) !important;
+        box-shadow: none !important;
+        transform: translateZ(0) !important;
+    }
+
+    .services .services__table-wrapper.desktop-view > table.services__table > thead > tr > th.services__actions-col {
+        z-index: 50 !important;
+        background: var(--mobile-table-head) !important;
+    }
+
+    .services .services__table-wrapper.desktop-view > table.services__table > tbody > tr > td.services__actions-col {
+        z-index: 45 !important;
+        background: #ffffff !important;
+    }
+
+    .services .services__table-wrapper.desktop-view > table.services__table > tbody > tr:hover > td.services__actions-col,
+    .services .services__table-wrapper.desktop-view > table.services__table > tbody > tr.selected > td.services__actions-col {
+        background: #eff6ff !important;
+    }
+
+    .services .services__table-wrapper.desktop-view > table.services__table .services__row-actions {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: var(--mobile-table-action-gap) !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        margin: 0 !important;
+    }
+
+    .services .services__table-wrapper.desktop-view > table.services__table .services__row-actions .services__action-btn {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        flex: 0 0 var(--mobile-table-action-btn) !important;
+        width: var(--mobile-table-action-btn) !important;
+        min-width: var(--mobile-table-action-btn) !important;
+        max-width: var(--mobile-table-action-btn) !important;
+        height: var(--mobile-table-action-btn) !important;
+        min-height: var(--mobile-table-action-btn) !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+
+    /* Member Type — all data scrolls; final Actions column stays fixed. */
+    .services .membership-options__table-region > table.member-type-table {
+        width: 620px !important;
+        min-width: 620px !important;
+        max-width: 620px !important;
+        table-layout: fixed !important;
+    }
+
+    .services .membership-options__table-region > table.member-type-table > thead > tr > th:last-child,
+    .services .membership-options__table-region > table.member-type-table > tbody > tr > td:last-child {
+        position: -webkit-sticky !important;
+        position: sticky !important;
+        right: 0 !important;
+        inset-inline-end: 0 !important;
+        width: var(--mobile-table-action-width) !important;
+        min-width: var(--mobile-table-action-width) !important;
+        max-width: var(--mobile-table-action-width) !important;
+        padding: 5px !important;
+        overflow: visible !important;
+        background-clip: padding-box !important;
+        border-left: 1px solid var(--mobile-table-border) !important;
+        box-shadow: none !important;
+        transform: translateZ(0) !important;
+    }
+
+    .services .membership-options__table-region > table.member-type-table > thead > tr > th:last-child {
+        z-index: 50 !important;
+        background: var(--mobile-table-head) !important;
+    }
+
+    .services .membership-options__table-region > table.member-type-table > tbody > tr > td:last-child {
+        z-index: 45 !important;
+        background: #ffffff !important;
+    }
+
+    /* Member Point — keep the behavior you liked, but make the pin explicit. */
+    .services .membership-options__table-region > table.membership-options__table--member-point {
+        width: 520px !important;
+        min-width: 520px !important;
+        max-width: 520px !important;
+        table-layout: fixed !important;
+    }
+
+    .services .membership-options__table-region > table.membership-options__table--member-point > thead > tr > th.member-point-actions-col,
+    .services .membership-options__table-region > table.membership-options__table--member-point > tbody > tr > td.member-point-actions-col {
+        position: -webkit-sticky !important;
+        position: sticky !important;
+        right: 0 !important;
+        inset-inline-end: 0 !important;
+        width: var(--mobile-table-action-width) !important;
+        min-width: var(--mobile-table-action-width) !important;
+        max-width: var(--mobile-table-action-width) !important;
+        padding: 5px !important;
+        overflow: visible !important;
+        background-clip: padding-box !important;
+        border-left: 1px solid var(--mobile-table-border) !important;
+        box-shadow: none !important;
+        transform: translateZ(0) !important;
+    }
+
+    .services .membership-options__table-region > table.membership-options__table--member-point > thead > tr > th.member-point-actions-col {
+        z-index: 50 !important;
+        background: var(--mobile-table-head) !important;
+    }
+
+    .services .membership-options__table-region > table.membership-options__table--member-point > tbody > tr > td.member-point-actions-col {
+        z-index: 45 !important;
+        background: #ffffff !important;
+    }
+
+    .services .membership-options__table-region :is(
+        .membership-options__row-actions,
+        .member-point-row-actions
+    ) {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: var(--mobile-table-action-gap) !important;
+        width: 100% !important;
+        margin: 0 !important;
+    }
+
+    .services .membership-options__table-region .membership-options__row-actions .membership-options__view-btn {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        flex: 0 0 var(--mobile-table-action-btn) !important;
+        width: var(--mobile-table-action-btn) !important;
+        min-width: var(--mobile-table-action-btn) !important;
+        max-width: var(--mobile-table-action-btn) !important;
+        height: var(--mobile-table-action-btn) !important;
+        min-height: var(--mobile-table-action-btn) !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        font-size: 0 !important;
+    }
+
+    .services .membership-options__table-region .membership-options__row-actions .membership-options__view-btn i {
+        margin: 0 !important;
+        font-size: 13px !important;
+    }
+}
+
+
+/* =========================================================
+   GRN MOBILE — NEVER TRUNCATE FIELD VALUES
+   Full values remain readable by horizontal swipe. Actions stay fixed.
+   ========================================================= */
+@media (max-width: 768px) {
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) {
+        width: max-content !important;
+        min-width: 1350px !important;
+        max-width: none !important;
+        table-layout: auto !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > thead > tr > th:not(.inventory-row-actions-column),
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > tbody > tr:not(.inventory-mobile-detail-row) > td:not(.inventory-row-actions-column) {
+        width: auto !important;
+        max-width: none !important;
+        white-space: nowrap !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+    }
+
+    /* Preserve sensible minimum widths while allowing real content to grow. */
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > :is(thead, tbody) > tr > :is(th, td):nth-child(1) {
+        min-width: 110px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > :is(thead, tbody) > tr > :is(th, td):nth-child(2) {
+        min-width: 110px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > :is(thead, tbody) > tr > :is(th, td):nth-child(3) {
+        min-width: 180px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > :is(thead, tbody) > tr > :is(th, td):nth-child(4) {
+        min-width: 200px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > :is(thead, tbody) > tr > :is(th, td):nth-child(5),
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > :is(thead, tbody) > tr > :is(th, td):nth-child(6) {
+        min-width: 170px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > :is(thead, tbody) > tr > :is(th, td):nth-child(7),
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > :is(thead, tbody) > tr > :is(th, td):nth-child(8) {
+        min-width: 130px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > :is(thead, tbody) > tr > :is(th, td):nth-child(9) {
+        min-width: 120px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        :is(th.inventory-row-actions-column, td.inventory-row-actions-column) {
+        width: var(--mobile-table-action-width) !important;
+        min-width: var(--mobile-table-action-width) !important;
+        max-width: var(--mobile-table-action-width) !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        white-space: nowrap !important;
+    }
+}
+
+
+/* =========================================================
+   SERVICE / MEMBER CREDIT / PACKAGE — TRUE VIEWPORT-PINNED ACTIONS
+   Keep the page itself at phone width. Only the table wrapper scrolls.
+   ========================================================= */
+@media (max-width: 768px) {
+    .services,
+    .services > *,
+    .services .services__content,
+    .services .services__section,
+    .services .services__section--member-credit {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+    }
+
+    .services,
+    .services .services__content,
+    .services .services__section,
+    .services .services__section--member-credit {
+        overflow-x: hidden !important;
+    }
+
+    .services .services__table-wrapper.desktop-view {
+        display: block !important;
+        position: relative !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        box-sizing: border-box !important;
+        -webkit-overflow-scrolling: touch !important;
+        overscroll-behavior-x: contain !important;
+        isolation: isolate !important;
+    }
+
+    .services .services__table-wrapper.desktop-view > table.services__table {
+        display: table !important;
+        width: 1040px !important;
+        min-width: 1040px !important;
+        max-width: 1040px !important;
+        table-layout: fixed !important;
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        overflow: visible !important;
+    }
+
+    /* Do not depend on the class selector anymore. In these three full
+       Windows tables, Actions is always the final column. */
+    .services .services__table-wrapper.desktop-view > table.services__table > thead > tr > th:last-child,
+    .services .services__table-wrapper.desktop-view > table.services__table > tbody > tr > td:last-child {
+        display: table-cell !important;
+        position: -webkit-sticky !important;
+        position: sticky !important;
+        right: 0 !important;
+        inset-inline-end: 0 !important;
+        left: auto !important;
+        width: var(--mobile-table-action-width) !important;
+        min-width: var(--mobile-table-action-width) !important;
+        max-width: var(--mobile-table-action-width) !important;
+        padding: 5px !important;
+        box-sizing: border-box !important;
+        overflow: visible !important;
+        white-space: nowrap !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        transform: none !important;
+        background-clip: padding-box !important;
+        border-left: 1px solid var(--mobile-table-border) !important;
+        box-shadow: -9px 0 13px -10px rgba(15, 23, 42, 0.62) !important;
+    }
+
+    .services .services__table-wrapper.desktop-view > table.services__table > thead > tr > th:last-child {
+        z-index: 100 !important;
+        background: var(--mobile-table-head) !important;
+    }
+
+    .services .services__table-wrapper.desktop-view > table.services__table > tbody > tr > td:last-child {
+        z-index: 90 !important;
+        background: #ffffff !important;
+    }
+
+    .services .services__table-wrapper.desktop-view > table.services__table > tbody > tr:hover > td:last-child,
+    .services .services__table-wrapper.desktop-view > table.services__table > tbody > tr.selected > td:last-child {
+        background: #eff6ff !important;
+    }
+
+    .services .services__table-wrapper.desktop-view > table.services__table > tbody > tr > td:last-child .services__row-actions {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: var(--mobile-table-action-gap) !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    .services .services__table-wrapper.desktop-view > table.services__table > tbody > tr > td:last-child .services__action-btn {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        flex: 0 0 var(--mobile-table-action-btn) !important;
+        width: var(--mobile-table-action-btn) !important;
+        min-width: var(--mobile-table-action-btn) !important;
+        max-width: var(--mobile-table-action-btn) !important;
+        height: var(--mobile-table-action-btn) !important;
+        min-height: var(--mobile-table-action-btn) !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+}
+
+
+/* GRN mobile only — smaller row action controls. */
+@media (max-width: 768px) {
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        td.inventory-row-actions-column.grn-row-actions-column .grn-row-actions {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 4px !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        td.inventory-row-actions-column.grn-row-actions-column .grn-row-actions .product-row-action {
+        flex: 0 0 30px !important;
+        width: 30px !important;
+        min-width: 30px !important;
+        max-width: 30px !important;
+        height: 30px !important;
+        min-height: 30px !important;
+        max-height: 30px !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border-radius: 6px !important;
+    }
+
+    .inventory table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        td.inventory-row-actions-column.grn-row-actions-column .grn-row-actions .product-row-action i {
+        font-size: 12px !important;
+        line-height: 1 !important;
+        margin: 0 !important;
+    }
+}
+
+
+/* Mobile fixed Actions columns — clean edge, no shadow/fade. */
+@media (max-width: 768px) {
+    .inventory :is(
+        th.product-actions-heading,
+        td.product-row-actions,
+        th.inventory-option-actions-column,
+        td.inventory-option-actions-column,
+        th.inventory-row-actions-column,
+        td.inventory-row-actions-column
+    ),
+    .services .services__table-wrapper.desktop-view > table.services__table > thead > tr > th:last-child,
+    .services .services__table-wrapper.desktop-view > table.services__table > tbody > tr > td:last-child,
+    .services .membership-options__table-region > table.member-type-table > thead > tr > th:last-child,
+    .services .membership-options__table-region > table.member-type-table > tbody > tr > td:last-child,
+    .services .membership-options__table-region > table.membership-options__table--member-point > thead > tr > th.member-point-actions-col,
+    .services .membership-options__table-region > table.membership-options__table--member-point > tbody > tr > td.member-point-actions-col {
+        box-shadow: none !important;
+        filter: none !important;
+    }
+}
+
+
+/* =========================================================
+   GIN MOBILE — TRUE FIXED RIGHT ACTIONS
+   GIN gets its own scroll owner and sticky-safe action column.
+   ========================================================= */
+@media (max-width: 768px) {
+    .inventory .gin-table-scroll {
+        display: block !important;
+        position: relative !important;
+        isolation: isolate !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        -webkit-overflow-scrolling: touch !important;
+        overscroll-behavior-x: contain !important;
+        touch-action: pan-x pan-y !important;
+    }
+
+    .inventory .gin-table-scroll__inner {
+        display: block !important;
+        position: static !important;
+        width: max-content !important;
+        min-width: max-content !important;
+        max-width: none !important;
+        overflow: visible !important;
+    }
+
+    .inventory .gin-table-scroll__inner.pos-touch-table-scroll {
+        overflow: visible !important;
+    }
+
+    .inventory .gin-table-scroll table.inventory-mobile-compact-table--gin {
+        display: table !important;
+        width: 1090px !important;
+        min-width: 1090px !important;
+        max-width: 1090px !important;
+        table-layout: fixed !important;
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        overflow: visible !important;
+    }
+
+    .inventory .gin-table-scroll table.inventory-mobile-compact-table--gin
+        > thead > tr > th.gin-row-actions-column,
+    .inventory .gin-table-scroll table.inventory-mobile-compact-table--gin
+        > tbody > tr > td.gin-row-actions-column {
+        display: table-cell !important;
+        position: -webkit-sticky !important;
+        position: sticky !important;
+        right: 0 !important;
+        inset-inline-end: 0 !important;
+        left: auto !important;
+        width: 86px !important;
+        min-width: 86px !important;
+        max-width: 86px !important;
+        padding: 5px !important;
+        box-sizing: border-box !important;
+        overflow: visible !important;
+        white-space: nowrap !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        transform: none !important;
+        filter: none !important;
+        box-shadow: none !important;
+        border-left: 1px solid var(--mobile-table-border) !important;
+        background-clip: padding-box !important;
+    }
+
+    .inventory .gin-table-scroll table.inventory-mobile-compact-table--gin
+        > thead > tr > th.gin-row-actions-column {
+        z-index: 100 !important;
+        background: var(--mobile-table-head) !important;
+    }
+
+    .inventory .gin-table-scroll table.inventory-mobile-compact-table--gin
+        > tbody > tr > td.gin-row-actions-column {
+        z-index: 90 !important;
+        background: #ffffff !important;
+    }
+
+    .inventory .gin-table-scroll table.inventory-mobile-compact-table--gin
+        > tbody > tr:hover > td.gin-row-actions-column,
+    .inventory .gin-table-scroll table.inventory-mobile-compact-table--gin
+        > tbody > tr.selected > td.gin-row-actions-column {
+        background: #eff6ff !important;
+    }
+
+    .inventory .gin-table-scroll .gin-row-actions {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 4px !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    .inventory .gin-table-scroll .gin-row-actions .product-row-action {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        flex: 0 0 34px !important;
+        width: 34px !important;
+        min-width: 34px !important;
+        max-width: 34px !important;
+        height: 34px !important;
+        min-height: 34px !important;
+        max-height: 34px !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border-radius: 7px !important;
+    }
+
+    .inventory .gin-table-scroll .gin-row-actions .product-row-action i {
+        margin: 0 !important;
+        font-size: 12px !important;
+        line-height: 1 !important;
+    }
+}
+
+
+/* =========================================================
+   GRN MOBILE — FINAL STRUCTURAL FIX
+   Full Windows fields, no overlap, no ellipsis, fixed Actions.
+   ========================================================= */
+@media (max-width: 768px) {
+    .inventory .grn-table-scroll {
+        display: block !important;
+        position: relative !important;
+        isolation: isolate !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        -webkit-overflow-scrolling: touch !important;
+        overscroll-behavior-x: contain !important;
+        touch-action: pan-x pan-y !important;
+    }
+
+    .inventory .grn-table-scroll__inner {
+        display: block !important;
+        position: static !important;
+        width: max-content !important;
+        min-width: max-content !important;
+        max-width: none !important;
+        overflow: visible !important;
+    }
+
+    .inventory .grn-table-scroll__inner.pos-touch-table-scroll {
+        overflow: visible !important;
+    }
+
+    .inventory .grn-table-scroll table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting) {
+        display: table !important;
+        width: 1470px !important;
+        min-width: 1470px !important;
+        max-width: 1470px !important;
+        table-layout: fixed !important;
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        overflow: visible !important;
+    }
+
+    /* Force every Windows GRN field back into the mobile table. */
+    .inventory .grn-table-scroll table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > thead > tr > th:not(.grn-row-actions-column),
+    .inventory .grn-table-scroll table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > tbody > tr:not(.inventory-mobile-detail-row) > td:not(.grn-row-actions-column) {
+        display: table-cell !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
+        text-overflow: clip !important;
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
+        word-break: break-word !important;
+        vertical-align: middle !important;
+        padding: 10px 12px !important;
+    }
+
+    /* Exact GRN field tracks:
+       Branch | Date | GRN No | Supplier | PO No | Reference | Tax | Amount | Status */
+    .inventory .grn-table-scroll table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > :is(thead, tbody) > tr > :is(th, td):nth-child(1) {
+        width: 120px !important;
+        min-width: 120px !important;
+        max-width: 120px !important;
+    }
+
+    .inventory .grn-table-scroll table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > :is(thead, tbody) > tr > :is(th, td):nth-child(2) {
+        width: 110px !important;
+        min-width: 110px !important;
+        max-width: 110px !important;
+    }
+
+    .inventory .grn-table-scroll table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > :is(thead, tbody) > tr > :is(th, td):nth-child(3) {
+        width: 190px !important;
+        min-width: 190px !important;
+        max-width: 190px !important;
+    }
+
+    .inventory .grn-table-scroll table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > :is(thead, tbody) > tr > :is(th, td):nth-child(4) {
+        width: 220px !important;
+        min-width: 220px !important;
+        max-width: 220px !important;
+    }
+
+    .inventory .grn-table-scroll table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > :is(thead, tbody) > tr > :is(th, td):nth-child(5) {
+        width: 180px !important;
+        min-width: 180px !important;
+        max-width: 180px !important;
+    }
+
+    .inventory .grn-table-scroll table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > :is(thead, tbody) > tr > :is(th, td):nth-child(6) {
+        width: 180px !important;
+        min-width: 180px !important;
+        max-width: 180px !important;
+    }
+
+    .inventory .grn-table-scroll table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > :is(thead, tbody) > tr > :is(th, td):nth-child(7) {
+        width: 130px !important;
+        min-width: 130px !important;
+        max-width: 130px !important;
+    }
+
+    .inventory .grn-table-scroll table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > :is(thead, tbody) > tr > :is(th, td):nth-child(8) {
+        width: 140px !important;
+        min-width: 140px !important;
+        max-width: 140px !important;
+    }
+
+    .inventory .grn-table-scroll table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > :is(thead, tbody) > tr > :is(th, td):nth-child(9) {
+        width: 120px !important;
+        min-width: 120px !important;
+        max-width: 120px !important;
+    }
+
+    /* Keep identifiers and badges readable within their own cells. */
+    .inventory .grn-table-scroll table.inventory-mobile-compact-table--grn
+        :is(.inventory-branch-chip, .inventory-plain-value, .inventory-money-value, .inventory-status-badge) {
+        max-width: 100% !important;
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
+        word-break: break-word !important;
+    }
+
+    /* Actions stays pinned to the visible phone edge. */
+    .inventory .grn-table-scroll table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > thead > tr > th.grn-row-actions-column,
+    .inventory .grn-table-scroll table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > tbody > tr > td.grn-row-actions-column {
+        display: table-cell !important;
+        position: -webkit-sticky !important;
+        position: sticky !important;
+        right: 0 !important;
+        inset-inline-end: 0 !important;
+        left: auto !important;
+        width: 80px !important;
+        min-width: 80px !important;
+        max-width: 80px !important;
+        padding: 5px !important;
+        box-sizing: border-box !important;
+        overflow: visible !important;
+        white-space: nowrap !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        box-shadow: none !important;
+        filter: none !important;
+        border-left: 1px solid var(--mobile-table-border) !important;
+        background-clip: padding-box !important;
+    }
+
+    .inventory .grn-table-scroll table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > thead > tr > th.grn-row-actions-column {
+        z-index: 100 !important;
+        background: var(--mobile-table-head) !important;
+    }
+
+    .inventory .grn-table-scroll table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+        > tbody > tr > td.grn-row-actions-column {
+        z-index: 90 !important;
+        background: #ffffff !important;
+    }
+
+    .inventory .grn-table-scroll .grn-row-actions {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 4px !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    .inventory .grn-table-scroll .grn-row-actions .product-row-action {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        flex: 0 0 30px !important;
+        width: 30px !important;
+        min-width: 30px !important;
+        max-width: 30px !important;
+        height: 30px !important;
+        min-height: 30px !important;
+        max-height: 30px !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border-radius: 6px !important;
+    }
+
+    .inventory .grn-table-scroll .grn-row-actions .product-row-action i {
+        font-size: 12px !important;
+        line-height: 1 !important;
+        margin: 0 !important;
+    }
+}
+
+
+/* =========================================================
+   FINAL INVENTORY DOCUMENT TABLE STANDARD
+   PO / Stock Transfer / GIN / GRN
+   - one horizontal scroller
+   - all Windows fields visible
+   - no ellipsis/overlap
+   - Actions pinned to phone right edge
+   ========================================================= */
+@media (max-width: 768px) {
+    /* Keep the Inventory page itself inside the phone viewport. */
+    .inventory,
+    .inventory > *,
+    .inventory .inventory__content,
+    .inventory .purchase-orders,
+    .inventory .stock-transfer,
+    .inventory .returned-stock,
+    .inventory .grn-section {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    /* -------- one scroll owner per table -------- */
+    .inventory .po-table-scroll,
+    .inventory .stock-history-table-scroll,
+    .inventory .gin-table-scroll,
+    .inventory .grn-table-scroll {
+        display: block !important;
+        position: relative !important;
+        isolation: isolate !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        -webkit-overflow-scrolling: touch !important;
+        overscroll-behavior-x: contain !important;
+        touch-action: pan-x pan-y !important;
+    }
+
+    .inventory .stock-history-table-scroll__inner,
+    .inventory .gin-table-scroll__inner,
+    .inventory .grn-table-scroll__inner {
+        display: block !important;
+        position: static !important;
+        width: max-content !important;
+        min-width: max-content !important;
+        max-width: none !important;
+        overflow: visible !important;
+    }
+
+    .inventory .stock-history-table-scroll__inner.pos-touch-table-scroll,
+    .inventory .gin-table-scroll__inner.pos-touch-table-scroll,
+    .inventory .grn-table-scroll__inner.pos-touch-table-scroll {
+        overflow: visible !important;
+    }
+
+    /* Beat the old Stock Transfer mobile rule that hid horizontal scrolling. */
+    .inventory .stock-transfer .stock-history-table-scroll,
+    .inventory .stock-transfer .stock-history-table-scroll__inner {
+        overflow-x: auto !important;
+    }
+
+    .inventory .stock-transfer .stock-history-table-scroll__inner {
+        overflow: visible !important;
+    }
+
+    /* -------- sticky-safe tables -------- */
+    .inventory .po-table-scroll table.inventory-mobile-compact-table--po,
+    .inventory .stock-history-table-scroll table.inventory-mobile-compact-table--stock,
+    .inventory .gin-table-scroll table.inventory-mobile-compact-table--gin,
+    .inventory .grn-table-scroll table.inventory-mobile-compact-table--grn {
+        display: table !important;
+        max-width: none !important;
+        table-layout: fixed !important;
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        overflow: visible !important;
+    }
+
+    .inventory .po-table-scroll table.inventory-mobile-compact-table--po {
+        width: 960px !important;
+        min-width: 960px !important;
+    }
+
+    .inventory .stock-history-table-scroll table.inventory-mobile-compact-table--stock {
+        width: 1234px !important;
+        min-width: 1234px !important;
+    }
+
+    .inventory .gin-table-scroll table.inventory-mobile-compact-table--gin {
+        width: 924px !important;
+        min-width: 924px !important;
+    }
+
+    .inventory .grn-table-scroll table.inventory-mobile-compact-table--grn {
+        width: 924px !important;
+        min-width: 924px !important;
+    }
+
+    /* Real column widths. These match the current semantic classes in Inventory.razor. */
+    .inventory .po-table-scroll :is(th, td).po-col--number { width: 140px !important; }
+    .inventory .po-table-scroll :is(th, td).po-col--date { width: 120px !important; }
+    .inventory .po-table-scroll :is(th, td).po-col--branch { width: 120px !important; }
+    .inventory .po-table-scroll :is(th, td).po-col--supplier { width: 180px !important; }
+    .inventory .po-table-scroll :is(th, td).po-col--status { width: 120px !important; }
+    .inventory .po-table-scroll :is(th, td).po-col--remarks { width: 196px !important; }
+
+    .inventory .stock-history-table-scroll :is(th, td).transfer-col--number { width: 160px !important; }
+    .inventory .stock-history-table-scroll :is(th, td).transfer-col--date { width: 150px !important; }
+    .inventory .stock-history-table-scroll :is(th, td).transfer-col--from { width: 150px !important; }
+    .inventory .stock-history-table-scroll :is(th, td).transfer-col--to { width: 150px !important; }
+    .inventory .stock-history-table-scroll :is(th, td).transfer-col--status { width: 120px !important; }
+    .inventory .stock-history-table-scroll :is(th, td).transfer-col--remarks { width: 196px !important; }
+    .inventory .stock-history-table-scroll :is(th, td).transfer-col--qty { width: 100px !important; }
+    .inventory .stock-history-table-scroll :is(th, td).transfer-col--cost { width: 124px !important; }
+
+    .inventory .gin-table-scroll :is(th, td).gin-col--number { width: 180px !important; }
+    .inventory .gin-table-scroll :is(th, td).gin-col--date { width: 160px !important; }
+    .inventory .gin-table-scroll :is(th, td).gin-col--activity { width: 160px !important; }
+    .inventory .gin-table-scroll :is(th, td).gin-col--remarks { width: 220px !important; }
+    .inventory .gin-table-scroll :is(th, td).gin-col--cost { width: 120px !important; }
+
+    .inventory .grn-table-scroll :is(th, td).grn-col--docno { width: 180px !important; }
+    .inventory .grn-table-scroll :is(th, td).grn-col--date { width: 160px !important; }
+    .inventory .grn-table-scroll :is(th, td).grn-col--activity { width: 160px !important; }
+    .inventory .grn-table-scroll :is(th, td).grn-col--remarks { width: 220px !important; }
+    .inventory .grn-table-scroll :is(th, td).grn-col--amount { width: 120px !important; }
+
+    /* All normal-mode Windows fields are real table cells on phone. */
+    .inventory :is(
+        .po-table-scroll table.inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting),
+        .stock-history-table-scroll table.inventory-mobile-compact-table--stock:not(.inventory-mobile-compact-table--selecting),
+        .gin-table-scroll table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting),
+        .grn-table-scroll table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+    ) > thead > tr > th,
+    .inventory :is(
+        .po-table-scroll table.inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting),
+        .stock-history-table-scroll table.inventory-mobile-compact-table--stock:not(.inventory-mobile-compact-table--selecting),
+        .gin-table-scroll table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting),
+        .grn-table-scroll table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+    ) > tbody > tr:not(.inventory-mobile-detail-row) > td {
+        display: table-cell !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        box-sizing: border-box !important;
+        vertical-align: middle !important;
+    }
+
+    /* Full scrollable table: keep normal table text horizontal, never break every character. */
+    .inventory :is(
+        .po-table-scroll table.inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting),
+        .stock-history-table-scroll table.inventory-mobile-compact-table--stock:not(.inventory-mobile-compact-table--selecting),
+        .gin-table-scroll table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting),
+        .grn-table-scroll table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+    ) > thead > tr > th:not(.inventory-row-actions-column),
+    .inventory :is(
+        .po-table-scroll table.inventory-mobile-compact-table--po:not(.inventory-mobile-compact-table--selecting),
+        .stock-history-table-scroll table.inventory-mobile-compact-table--stock:not(.inventory-mobile-compact-table--selecting),
+        .gin-table-scroll table.inventory-mobile-compact-table--gin:not(.inventory-mobile-compact-table--selecting),
+        .grn-table-scroll table.inventory-mobile-compact-table--grn:not(.inventory-mobile-compact-table--selecting)
+    ) > tbody > tr:not(.inventory-mobile-detail-row) > td:not(.inventory-row-actions-column) {
+        overflow: hidden !important;
+        text-overflow: clip !important;
+        white-space: nowrap !important;
+        overflow-wrap: normal !important;
+        word-break: normal !important;
+    }
+
+    .inventory :is(
+        .po-table-scroll .po-col--remarks,
+        .stock-history-table-scroll .transfer-col--remarks,
+        .gin-table-scroll .gin-col--remarks,
+        .grn-table-scroll .grn-col--remarks
+    ) {
+        white-space: normal !important;
+        overflow-wrap: break-word !important;
+        word-break: normal !important;
+    }
+
+    /* Old expandable compact rows are unnecessary when all fields are visible. */
+    .inventory :is(
+        .po-table-scroll,
+        .stock-history-table-scroll,
+        .gin-table-scroll,
+        .grn-table-scroll
+    ) .inventory-mobile-detail-row {
+        display: none !important;
+    }
+
+    /* -------- shared sticky behavior -------- */
+    .inventory .po-table-scroll :is(th.po-row-actions-column, td.po-row-actions-column),
+    .inventory .stock-history-table-scroll :is(th.stock-row-actions-column, td.stock-row-actions-column),
+    .inventory .gin-table-scroll :is(th.gin-row-actions-column, td.gin-row-actions-column),
+    .inventory .grn-table-scroll :is(th.grn-row-actions-column, td.grn-row-actions-column) {
+        display: table-cell !important;
+        position: -webkit-sticky !important;
+        position: sticky !important;
+        right: 0 !important;
+        inset-inline-end: 0 !important;
+        left: auto !important;
+        padding: 4px !important;
+        box-sizing: border-box !important;
+        overflow: visible !important;
+        white-space: nowrap !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        box-shadow: none !important;
+        filter: none !important;
+        border-left: 1px solid var(--mobile-table-border) !important;
+        background-clip: padding-box !important;
+    }
+
+    .inventory .po-table-scroll th.po-row-actions-column,
+    .inventory .stock-history-table-scroll th.stock-row-actions-column,
+    .inventory .gin-table-scroll th.gin-row-actions-column,
+    .inventory .grn-table-scroll th.grn-row-actions-column {
+        z-index: 120 !important;
+        background: var(--mobile-table-head) !important;
+    }
+
+    .inventory .po-table-scroll td.po-row-actions-column,
+    .inventory .stock-history-table-scroll td.stock-row-actions-column,
+    .inventory .gin-table-scroll td.gin-row-actions-column,
+    .inventory .grn-table-scroll td.grn-row-actions-column {
+        z-index: 110 !important;
+        background: #ffffff !important;
+    }
+
+    /* -------- widths + compact buttons -------- */
+    /* Every history row now has two direct action buttons.
+       Reserve one consistent sticky width so View + Edit/Delete never clip. */
+    .inventory .po-table-scroll :is(th.po-row-actions-column, td.po-row-actions-column),
+    .inventory .stock-history-table-scroll :is(th.stock-row-actions-column, td.stock-row-actions-column),
+    .inventory .gin-table-scroll :is(th.gin-row-actions-column, td.gin-row-actions-column),
+    .inventory .grn-table-scroll :is(th.grn-row-actions-column, td.grn-row-actions-column) {
+        width: 84px !important;
+        min-width: 84px !important;
+        max-width: 84px !important;
+    }
+
+    .inventory .po-table-scroll .po-row-actions {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 4px !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    .inventory .po-table-scroll .po-row-actions > .product-row-action {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        flex: 0 0 32px !important;
+        width: 32px !important;
+        min-width: 32px !important;
+        max-width: 32px !important;
+        height: 32px !important;
+        min-height: 32px !important;
+        max-height: 32px !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border-radius: 6px !important;
+    }
+
+    /* Buttons are direct children of the sticky <td> in the current Razor markup. */
+    .inventory .po-table-scroll td.po-row-actions-column > .product-row-action,
+    .inventory .stock-history-table-scroll td.stock-row-actions-column > .product-row-action,
+    .inventory .gin-table-scroll td.gin-row-actions-column > .product-row-action,
+    .inventory .grn-table-scroll td.grn-row-actions-column > .product-row-action {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 32px !important;
+        min-width: 32px !important;
+        max-width: 32px !important;
+        height: 32px !important;
+        min-height: 32px !important;
+        max-height: 32px !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        vertical-align: middle !important;
+        border-radius: 6px !important;
+    }
+
+    .inventory .po-table-scroll td.po-row-actions-column > .product-row-action + .product-row-action,
+    .inventory .stock-history-table-scroll td.stock-row-actions-column > .product-row-action + .product-row-action,
+    .inventory .gin-table-scroll td.gin-row-actions-column > .product-row-action + .product-row-action,
+    .inventory .grn-table-scroll td.grn-row-actions-column > .product-row-action + .product-row-action {
+        margin-left: 4px !important;
+    }
+
+    .inventory :is(
+        .po-table-scroll td.po-row-actions-column,
+        .stock-history-table-scroll td.stock-row-actions-column,
+        .gin-table-scroll td.gin-row-actions-column,
+        .grn-table-scroll td.grn-row-actions-column
+    ) > .product-row-action i {
+        margin: 0 !important;
+        font-size: 12px !important;
+        line-height: 1 !important;
+    }
+}
+
+
+/* PO + Stock Transfer mobile — absolutely no shadow/fade anywhere. */
+@media (max-width: 768px) {
+    .inventory .po-table-scroll :is(
+        th.po-row-actions-column,
+        td.po-row-actions-column
+    ),
+    .inventory .stock-history-table-scroll :is(
+        th.stock-row-actions-column,
+        td.stock-row-actions-column
+    ),
+    .inventory .po-table-scroll .po-row-actions,
+    .inventory .stock-history-table-scroll .stock-row-actions,
+    .inventory .po-table-scroll .po-row-actions .product-row-action,
+    .inventory .stock-history-table-scroll .stock-row-actions .product-row-action,
+    .inventory .po-table-scroll .po-row-actions .product-row-action:hover,
+    .inventory .stock-history-table-scroll .stock-row-actions .product-row-action:hover,
+    .inventory .po-table-scroll .po-row-actions .product-row-action:focus,
+    .inventory .stock-history-table-scroll .stock-row-actions .product-row-action:focus,
+    .inventory .po-table-scroll .po-row-actions .product-row-action:active,
+    .inventory .stock-history-table-scroll .stock-row-actions .product-row-action:active {
+        box-shadow: none !important;
+        filter: none !important;
+        text-shadow: none !important;
+    }
+
+    .inventory .po-table-scroll :is(
+        th.po-row-actions-column,
+        td.po-row-actions-column
+    )::before,
+    .inventory .po-table-scroll :is(
+        th.po-row-actions-column,
+        td.po-row-actions-column
+    )::after,
+    .inventory .stock-history-table-scroll :is(
+        th.stock-row-actions-column,
+        td.stock-row-actions-column
+    )::before,
+    .inventory .stock-history-table-scroll :is(
+        th.stock-row-actions-column,
+        td.stock-row-actions-column
+    )::after {
+        content: none !important;
+        display: none !important;
+        box-shadow: none !important;
+        background: transparent !important;
+    }
+}
+
+
+/* PO + Stock Transfer mobile tables — completely shadowless.
+   Removes wrapper/card/sticky-cell/button/row/pseudo-element shadows. */
+@media (max-width: 768px) {
+    .inventory .po-table-scroll,
+    .inventory .po-table-scroll *,
+    .inventory .po-table-scroll *::before,
+    .inventory .po-table-scroll *::after,
+    .inventory .stock-history-table-scroll,
+    .inventory .stock-history-table-scroll *,
+    .inventory .stock-history-table-scroll *::before,
+    .inventory .stock-history-table-scroll *::after {
+        box-shadow: none !important;
+        filter: none !important;
+        text-shadow: none !important;
+    }
+
+    .inventory .po-table-scroll,
+    .inventory .stock-history-table-scroll {
+        box-shadow: none !important;
+    }
+
+    .inventory .po-table-scroll :is(
+        th.po-row-actions-column,
+        td.po-row-actions-column
+    ),
+    .inventory .stock-history-table-scroll :is(
+        th.stock-row-actions-column,
+        td.stock-row-actions-column
+    ) {
+        box-shadow: none !important;
+        filter: none !important;
+        background-image: none !important;
+    }
+}
+
+
+/* FINAL: remove the wrapper-owned scroll fade/shadow for PO + Stock Transfer.
+   The grey strip was coming from .table-scroll::before/::after on the wrapper itself. */
+@media (max-width: 768px) {
+    .inventory .po-table-scroll,
+    .inventory .stock-history-table-scroll {
+        box-shadow: none !important;
+        filter: none !important;
+        background-image: none !important;
+    }
+
+    .inventory .po-table-scroll::before,
+    .inventory .po-table-scroll::after,
+    .inventory .stock-history-table-scroll::before,
+    .inventory .stock-history-table-scroll::after,
+    .inventory .table-scroll.stock-history-table-scroll::before,
+    .inventory .table-scroll.stock-history-table-scroll::after {
+        content: none !important;
+        display: none !important;
+        width: 0 !important;
+        min-width: 0 !important;
+        max-width: 0 !important;
+        opacity: 0 !important;
+        background: none !important;
+        background-image: none !important;
+        box-shadow: none !important;
+        filter: none !important;
+        pointer-events: none !important;
+    }
+}
+
+
+/* HARD STOP for PO + Stock sticky-cell edge effects on Android WebView.
+   Clip paint to the cell box so no legacy/compositor shadow can bleed left. */
+@media (max-width: 768px) {
+    .inventory .po-table-scroll :is(th.po-row-actions-column, td.po-row-actions-column),
+    .inventory .stock-history-table-scroll :is(th.stock-row-actions-column, td.stock-row-actions-column) {
+        box-shadow: none !important;
+        -webkit-box-shadow: none !important;
+        filter: none !important;
+        text-shadow: none !important;
+        background-image: none !important;
+        overflow: hidden !important;
+        clip-path: inset(0) !important;
+        -webkit-clip-path: inset(0) !important;
+        contain: paint !important;
+        border-left: 1px solid #dbe7f5 !important;
+    }
+
+    .inventory .po-table-scroll :is(th.po-row-actions-column, td.po-row-actions-column) *,
+    .inventory .stock-history-table-scroll :is(th.stock-row-actions-column, td.stock-row-actions-column) * {
+        box-shadow: none !important;
+        -webkit-box-shadow: none !important;
+        filter: none !important;
+        text-shadow: none !important;
+    }
+}
+
+/* ============================================================
+   SERVICES PHONE VIEWPORT CONTAINMENT
+   Kept separate while Inventory uses its original scroll/sticky behavior.
+   ============================================================ */
+@media (max-width: 768px) {
+    .services,
+    .services > * {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .services .services__table-wrapper.desktop-view {
+        display: none !important;
+    }
+
+    .services .services__table-wrapper--simplified.mobile-view {
+        display: block !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+        box-sizing: border-box !important;
+    }
+
+    .services .services__table-wrapper--simplified.mobile-view > table.services__table--simplified {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        table-layout: fixed !important;
+        box-sizing: border-box !important;
+    }
+
+    .services .services__table--simplified :is(th, td).services__actions-col {
+        position: static !important;
+        right: auto !important;
+        inset-inline-end: auto !important;
+        width: 72px !important;
+        min-width: 72px !important;
+        max-width: 72px !important;
+        padding-left: 2px !important;
+        padding-right: 2px !important;
+        overflow: hidden !important;
+        transform: none !important;
+        box-shadow: none !important;
+        z-index: auto !important;
+        box-sizing: border-box !important;
+    }
+
+    .services .services__table--simplified :is(th, td).services-mobile-primary-col {
+        width: auto !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        box-sizing: border-box !important;
+    }
+
+    .services .services__table--simplified :is(th, td).services-mobile-price-col {
+        width: 24% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        box-sizing: border-box !important;
+    }
+}

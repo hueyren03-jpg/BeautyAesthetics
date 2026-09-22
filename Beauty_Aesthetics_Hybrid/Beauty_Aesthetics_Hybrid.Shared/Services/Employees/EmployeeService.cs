@@ -1,5 +1,6 @@
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.Components.Models.Employee;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using EBI.DM;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.Employees;
@@ -10,11 +11,13 @@ public sealed class EmployeeService : IEmployeeService
     private static readonly DateTime SqlMinDate = new(1753, 1, 1);
 
     private readonly EmployeeAC employeeAC;
+    private readonly AppFeedbackService feedback;
     private readonly Dictionary<string, EmployeeDM> employeeRecords = new(StringComparer.OrdinalIgnoreCase);
 
-    public EmployeeService(EmployeeAC employeeAC)
+    public EmployeeService(EmployeeAC employeeAC, AppFeedbackService feedback)
     {
         this.employeeAC = employeeAC;
+        this.feedback = feedback;
     }
 
     public async Task<EmployeeOperationResult<IReadOnlyList<Employee>>> GetAllEmployeesAsync(
@@ -62,10 +65,12 @@ public sealed class EmployeeService : IEmployeeService
 
         if (!result.Success)
         {
-            return EmployeeOperationResult<Employee>.Fail(ToEmployeeError(result.ErrorMessage));
+            var message = ToEmployeeError(result.ErrorMessage);
+            return EmployeeOperationResult<Employee>.Fail(message);
         }
 
-        return EmployeeOperationResult<Employee>.Ok(MapAndCache(record));
+        var created = MapAndCache(record);
+        return EmployeeOperationResult<Employee>.Ok(created);
     }
 
     public async Task<EmployeeOperationResult<Employee>> UpdateEmployeeAsync(
@@ -82,10 +87,12 @@ public sealed class EmployeeService : IEmployeeService
         var result = await employeeAC.UpdateRecordAsync(record, cancellationToken);
         if (!result.Success)
         {
-            return EmployeeOperationResult<Employee>.Fail(ToEmployeeError(result.ErrorMessage));
+            var message = ToEmployeeError(result.ErrorMessage);
+            return EmployeeOperationResult<Employee>.Fail(message);
         }
 
-        return EmployeeOperationResult<Employee>.Ok(MapAndCache(record));
+        var updated = MapAndCache(record);
+        return EmployeeOperationResult<Employee>.Ok(updated);
     }
 
     public async Task<EmployeeOperationResult<Employee>> DeactivateEmployeeAsync(
@@ -117,10 +124,12 @@ public sealed class EmployeeService : IEmployeeService
         var result = await employeeAC.UpdateRecordAsync(record, cancellationToken);
         if (!result.Success)
         {
-            return EmployeeOperationResult<Employee>.Fail(ToEmployeeError(result.ErrorMessage));
+            var message = ToEmployeeError(result.ErrorMessage);
+            return EmployeeOperationResult<Employee>.Fail(message);
         }
 
-        return EmployeeOperationResult<Employee>.Ok(MapAndCache(record));
+        var deactivated = MapAndCache(record);
+        return EmployeeOperationResult<Employee>.Ok(deactivated);
     }
 
     public async Task<EmployeeOperationResult<IReadOnlyList<Employee>>> GetActiveEmployeesByBranchAsync(

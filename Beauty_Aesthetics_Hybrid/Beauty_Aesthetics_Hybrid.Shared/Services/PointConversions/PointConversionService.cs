@@ -1,5 +1,6 @@
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.PointConversions;
@@ -7,10 +8,12 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.PointConversions;
 public sealed class PointConversionService : IPointConversionService
 {
     private readonly PointConversionAC pointConversionAC;
+    private readonly AppFeedbackService feedback;
 
-    public PointConversionService(PointConversionAC pointConversionAC)
+    public PointConversionService(PointConversionAC pointConversionAC, AppFeedbackService feedback)
     {
         this.pointConversionAC = pointConversionAC;
+        this.feedback = feedback;
     }
 
     public async Task<ApiCallResult<IReadOnlyList<PointConversionDM>>> GetAllAsync(
@@ -34,26 +37,43 @@ public sealed class PointConversionService : IPointConversionService
         CancellationToken cancellationToken = default) =>
         pointConversionAC.LoadRecordAsync(pointId, cancellationToken);
 
-    public Task<ApiCallResult<bool>> CreateAsync(
+    public async Task<ApiCallResult<bool>> CreateAsync(
         PointConversionDM pointConversion,
         CancellationToken cancellationToken = default)
     {
         PrepareForSave(pointConversion, "Added");
-        return pointConversionAC.CreateRecordAsync(pointConversion, cancellationToken);
+        var result = await pointConversionAC.CreateRecordAsync(pointConversion, cancellationToken);
+        if (result.Success)
+            feedback.Success("Point conversion rule created successfully.", "Point rule created");
+        else
+            feedback.Error(result.ErrorMessage ?? "Unable to create point conversion rule.", "Point rule not created");
+        return result;
     }
 
-    public Task<ApiCallResult<bool>> UpdateAsync(
+    public async Task<ApiCallResult<bool>> UpdateAsync(
         PointConversionDM pointConversion,
         CancellationToken cancellationToken = default)
     {
         PrepareForSave(pointConversion, "Changed");
-        return pointConversionAC.UpdateRecordAsync(pointConversion, cancellationToken);
+        var result = await pointConversionAC.UpdateRecordAsync(pointConversion, cancellationToken);
+        if (result.Success)
+            feedback.Success("Point conversion rule updated successfully.", "Point rule updated");
+        else
+            feedback.Error(result.ErrorMessage ?? "Unable to update point conversion rule.", "Point rule not updated");
+        return result;
     }
 
-    public Task<ApiCallResult<bool>> DeleteAsync(
+    public async Task<ApiCallResult<bool>> DeleteAsync(
         string pointId,
-        CancellationToken cancellationToken = default) =>
-        pointConversionAC.DeleteAsync(pointId, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        var result = await pointConversionAC.DeleteAsync(pointId, cancellationToken);
+        if (result.Success)
+            feedback.Success("Point conversion rule deleted successfully.", "Point rule deleted");
+        else
+            feedback.Error(result.ErrorMessage ?? "Unable to delete point conversion rule.", "Point rule not deleted");
+        return result;
+    }
 
     private static void PrepareForSave(PointConversionDM pointConversion, string saveAction)
     {

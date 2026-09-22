@@ -28,7 +28,8 @@ public sealed class BranchLookupService : IBranchLookupService
             .Where(IsActive)
             .Select(item => new BranchLookupItem(
                 First(item.BranchID, item.DisplayCode, item.MasterAccountID).Trim().ToUpperInvariant(),
-                First(item.Branch, item.BranchName, item.AccountName, item.DisplayCode, item.BranchID).Trim()))
+                First(item.Branch, item.BranchName, item.AccountName, item.DisplayCode, item.BranchID).Trim(),
+                First(item.BranchGroupID, item.GroupID, item.BranchID).Trim()))
             .Where(item => !string.IsNullOrWhiteSpace(item.Id))
             .DistinctBy(item => item.Id, StringComparer.OrdinalIgnoreCase)
             .OrderBy(item => item.Name)

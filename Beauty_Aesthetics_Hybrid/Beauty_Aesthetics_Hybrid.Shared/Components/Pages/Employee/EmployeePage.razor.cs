@@ -1,4 +1,5 @@
 ﻿using Beauty_Aesthetics_WebPos.Components.Services.Employees;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.Components.ViewModels;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
@@ -10,6 +11,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages.Employee
         [Inject] private NavigationManager NavManager { get; set; } = default!;
         [Inject] private IEmployeeService EmployeeService { get; set; } = default!;
         [Inject] private IJSRuntime JS { get; set; } = default!;
+        [Inject] private AppFeedbackService Feedback { get; set; } = default!;
 
         private EmployeePageViewModel VM { get; set; } = default!;
 
@@ -64,6 +66,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages.Employee
             else
             {
                 EmployeeDetailsError = result.ErrorMessage ?? "Unable to load the complete employee record.";
+                Feedback.Error(EmployeeDetailsError, "Employee details unavailable");
             }
 
             IsEmployeeDetailsLoading = false;
@@ -93,11 +96,13 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages.Employee
 
         private async Task NavigateToAddEmployeeAsync()
         {
+            Feedback.Info("Opening a new employee form.", "Add employee", 2200);
             await VM.NavigateToAddEmployeeAsync();
         }
 
         private async Task NavigateToEditEmployeeAsync(string code)
         {
+            Feedback.Info($"Opening employee {code} for editing.", "Edit employee", 2200);
             await VM.NavigateToEditEmployeeAsync(code);
         }
 
@@ -109,14 +114,31 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages.Employee
 
             if (!confirmed)
             {
+                Feedback.Info("Employee deactivation cancelled.", "No changes made", 1800);
                 return;
             }
 
+            var feedbackId = Feedback.Loading($"Deactivating employee {code}...", "Deactivating employee");
             var result = await VM.DeleteEmployeeAsync(code);
-            if (result.Success && SelectedEmployee?.Code == code)
+
+            if (!result.Success)
+            {
+                Feedback.Fail(
+                    feedbackId,
+                    result.ErrorMessage ?? VM.ErrorMessage ?? "Unable to deactivate employee.",
+                    "Employee not deactivated");
+                return;
+            }
+
+            if (SelectedEmployee?.Code == code)
             {
                 SelectedEmployee = null;
             }
+
+            Feedback.Resolve(
+                feedbackId,
+                $"Employee {code} was deactivated successfully.",
+                "Employee deactivated");
         }
     }
 }

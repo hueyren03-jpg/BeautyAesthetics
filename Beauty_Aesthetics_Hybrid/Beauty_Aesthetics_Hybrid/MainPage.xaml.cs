@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace Beauty_Aesthetics_Hybrid
 {
     public partial class MainPage : ContentPage
@@ -7,6 +9,29 @@ namespace Beauty_Aesthetics_Hybrid
             InitializeComponent();
 
 #if ANDROID
+            blazorWebView.BlazorWebViewInitialized += (_, args) =>
+            {
+                if (args.WebView is not Android.Webkit.WebView webView)
+                {
+                    return;
+                }
+
+                // Some Android/.NET 10 combinations can fail while creating a
+                // custom Android.Webkit.WebChromeClient. Do not let an optional
+                // camera integration prevent the entire POS from starting.
+                // If construction fails, leave BlazorWebView's built-in chrome
+                // client in place and continue loading the app normally.
+                try
+                {
+                    var cameraChromeClient = new CameraEnabledBlazorWebChromeClient();
+                    webView.SetWebChromeClient(cameraChromeClient);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Camera WebChromeClient unavailable; using the default BlazorWebView client. {ex}");
+                }
+            };
+
             var context = Android.App.Application.Context;
             var resources = context?.Resources;
             var resourceId = resources?.GetIdentifier("status_bar_height", "dimen", "android") ?? 0;

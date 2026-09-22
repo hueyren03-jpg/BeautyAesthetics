@@ -1,0 +1,386 @@
+/*
+   Tablet/mobile viewport containment.
+   Keep every page inside the visible workspace while allowing wide data tables
+   to scroll inside their own containers instead of widening the whole app.
+   Desktop/Windows layouts above 1180px are intentionally untouched.
+*/
+
+@media (max-width: 1180px) {
+    html,
+    body,
+    #app,
+    .page,
+    .content,
+    .PageWrapper {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    html,
+    body,
+    #app,
+    .page,
+    .content {
+        overflow-x: hidden !important;
+    }
+
+    /* Grid/flex items default to min-width:auto, which lets a wide child table
+       enlarge the whole page. Force workspace children to be shrinkable. */
+    .page > *,
+    .content > *,
+    .content main,
+    .content section,
+    .content article,
+    .content form,
+    .content header,
+    .content nav,
+    .content aside,
+    .content .card {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Compact/tablet navigation owns the area below the application header.
+       Keeping the drawer below the blue header prevents the menu, hamburger and
+       profile/header controls from visually occupying the same layer. */
+    .SidebarWrapper:not(.desktop-sidebar) {
+        top: 56px !important;
+        height: calc(100dvh - 56px) !important;
+        max-height: calc(100dvh - 56px) !important;
+        padding-top: 0 !important;
+    }
+
+    .SidebarWrapper.sidebarClose:not(.desktop-sidebar) {
+        top: 56px !important;
+        height: 0 !important;
+        max-height: 0 !important;
+    }
+
+    .SidebarOverlay:not(.desktop-overlay) {
+        top: 56px !important;
+        height: calc(100dvh - 56px) !important;
+    }
+
+    .SidebarWrapper:not(.desktop-sidebar) .SidebarHeader {
+        min-height: 54px !important;
+        padding-top: 12px !important;
+        padding-bottom: 12px !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Common table hosts must own horizontal scrolling. Never let a table
+       propagate its intrinsic width to the page/grid track. */
+    .content :where(
+        .pos-touch-table-scroll,
+        .table-responsive,
+        .table-scroll,
+        .table-scroll__inner,
+        .employee-table-desktop,
+        .inventory__table-wrapper,
+        .services__table-wrapper,
+        .customer-list-card,
+        .customer-balance-table-wrap,
+        .line-table-wrap,
+        .sales-table-wrapper,
+        .report-table-wrapper,
+        .roster-table-wrapper,
+        [class*="table-wrapper"],
+        [class*="table-wrap"]
+    ) {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+        overflow-x: auto !important;
+        overscroll-behavior-x: contain !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+
+    /* Keep wide tables readable. They can be wider than the viewport, but only
+       their table host scrolls horizontally. */
+    .content .pos-touch-table-scroll > table,
+    .content .employee-table-desktop > table,
+    .content .table-responsive > table,
+    .content .table-scroll > table,
+    .content .table-scroll__inner > table {
+        max-width: none !important;
+    }
+
+    /* Employee tablet view: the desktop table remains a table, but is fully
+       contained inside the screen and scrolls internally when all 8 columns
+       cannot fit. */
+    .employee-page {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+    }
+
+    .employee-table-desktop {
+        display: block;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+    }
+
+    .employee-table-desktop .pos-touch-table-scroll {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .employee-table {
+        width: 100% !important;
+        min-width: 920px !important;
+    }
+
+    .employee-summary,
+    .employee-header,
+    .employee-mobile,
+    .employee-mobile__results,
+    .employee-pagination {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Long toolbar/filter rows should wrap or scroll inside themselves, not
+       enlarge the page. */
+    .content :where(
+        .inventory__toolbar,
+        .services__toolbar,
+        .customers-toolbar,
+        .employee-header,
+        .incoming-toolbar,
+        .pending-orders-toolbar,
+        .sales-toolbar,
+        .report-toolbar,
+        .roster-toolbar,
+        .tab-navigation,
+        .inventory__menu,
+        .services__menu
+    ) {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Media and form controls should never force a page wider than its card. */
+    .content img,
+    .content video,
+    .content canvas,
+    .content svg,
+    .content input,
+    .content select,
+    .content textarea {
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+}
+
+@media (max-width: 768px) {
+    /* Phone pages must never expose page-level horizontal scrolling. Wide
+       tables still scroll through their local wrappers above. */
+    .page,
+    .content,
+    .PageWrapper {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        overflow-x: hidden !important;
+    }
+
+    .employee-page {
+        padding-left: 8px !important;
+        padding-right: 8px !important;
+    }
+
+    /* The phone uses employee cards, so the desktop table should not reserve
+       any hidden intrinsic width. */
+    .employee-table-desktop.desktop-view {
+        display: none !important;
+    }
+
+    .employee-mobile.mobile-view {
+        display: flex !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .employee-mobile-card,
+    .customer-row,
+    .services-mobile-details,
+    .inventory-mobile-details {
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+    }
+
+
+}
+
+
+/* ============================================================
+   COMPACT/TABLET DRAWER — ALIGN TO THE ACTUAL BLUE HEADER
+   --pos-header-bottom is measured from HeaderWrapper at runtime.
+   This avoids Android landscape safe-area / edge-to-edge inconsistencies.
+   ============================================================ */
+.MainLayout .SidebarWrapper.compact-sidebar {
+    top: var(--pos-header-bottom, 58px) !important;
+    height: calc(100dvh - var(--pos-header-bottom, 58px)) !important;
+    max-height: calc(100dvh - var(--pos-header-bottom, 58px)) !important;
+    padding-top: 0 !important;
+    margin-top: 0 !important;
+    box-sizing: border-box !important;
+}
+
+.MainLayout .SidebarOverlay.compact-overlay {
+    top: var(--pos-header-bottom, 58px) !important;
+    bottom: auto !important;
+    height: calc(100dvh - var(--pos-header-bottom, 58px)) !important;
+    max-height: calc(100dvh - var(--pos-header-bottom, 58px)) !important;
+}
+
+/* Closed compact drawer stays off-canvas; do not collapse it back into
+   the system-status area. The separate header hamburger remains the trigger. */
+.MainLayout .SidebarWrapper.compact-sidebar.sidebarClose {
+    top: var(--pos-header-bottom, 58px) !important;
+    height: calc(100dvh - var(--pos-header-bottom, 58px)) !important;
+    max-height: calc(100dvh - var(--pos-header-bottom, 58px)) !important;
+}
+
+/* The drawer's own Menu row now begins below the app header and gets a
+   generous tap target without touching the Android status region. */
+.MainLayout .SidebarWrapper.compact-sidebar:not(.sidebarClose) .SidebarHeader {
+    min-height: 56px !important;
+    padding: 0 14px !important;
+    margin: 0 0 4px 0 !important;
+    display: grid !important;
+    grid-template-columns: 42px minmax(0, 1fr) !important;
+    align-items: center !important;
+    box-sizing: border-box !important;
+    touch-action: manipulation !important;
+}
+
+
+/* ============================================================
+   COMPACT HEADER / HAMBURGER — CLASS DRIVEN, NOT WIDTH DRIVEN
+   Blazor's compact-layout state is the source of truth. This keeps the
+   hamburger visible on wide Android tablets where CSS width looks desktop.
+   ============================================================ */
+.MainLayout .mobile-nav-toggle.mobile-nav-toggle--visible {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 48px !important;
+    min-width: 48px !important;
+    height: 48px !important;
+    min-height: 48px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 9px !important;
+    position: relative !important;
+    z-index: 30 !important;
+    flex: 0 0 48px !important;
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+}
+
+/* On compact tablets/landscape devices, reserve a lower app-header band
+   beneath the Android status area. Portrait phones keep their existing header. */
+@media (min-width: 769px) {
+    .MainLayout .HeaderWrapper.compact-header {
+        min-height: 82px !important;
+        height: 82px !important;
+        padding-top: 24px !important;
+        padding-left: 14px !important;
+        padding-right: 14px !important;
+        box-sizing: border-box !important;
+        align-items: center !important;
+    }
+
+    .MainLayout .HeaderWrapper.compact-header .mobile-nav-toggle.mobile-nav-toggle--visible {
+        width: 46px !important;
+        min-width: 46px !important;
+        height: 46px !important;
+        min-height: 46px !important;
+        flex-basis: 46px !important;
+        align-self: center !important;
+    }
+
+    .MainLayout .HeaderWrapper.compact-header .header {
+        align-self: center !important;
+    }
+}
+
+
+/* ============================================================
+   COMPACT SIDEBAR — SINGLE HAMBURGER SOURCE OF TRUTH
+   Wide tablets can match old desktop sidebarClose rules. Override them
+   unconditionally whenever MainLayout has marked the drawer compact.
+   ============================================================ */
+.MainLayout .SidebarWrapper.compact-sidebar {
+    position: fixed !important;
+    left: 0 !important;
+    width: min(288px, 86vw) !important;
+    min-width: 0 !important;
+    background: #ffffff !important;
+    border-right: 1px solid #d7e1ec !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    transition: transform .24s ease, opacity .2s ease !important;
+    z-index: 5001 !important;
+}
+
+/* Closed compact drawer must never become the old 80px desktop icon strip. */
+.MainLayout .SidebarWrapper.compact-sidebar.sidebarClose {
+    width: min(288px, 86vw) !important;
+    transform: translateX(-105%) !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    overflow: hidden !important;
+    border-right: 0 !important;
+    box-shadow: none !important;
+}
+
+/* Open compact drawer. */
+.MainLayout .SidebarWrapper.compact-sidebar:not(.sidebarClose) {
+    width: min(288px, 86vw) !important;
+    transform: translateX(0) !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
+
+/* Extra protection against old desktop icon-strip children leaking out. */
+.MainLayout .SidebarWrapper.compact-sidebar.sidebarClose .Sidebar,
+.MainLayout .SidebarWrapper.compact-sidebar.sidebarClose .SidebarHeader,
+.MainLayout .SidebarWrapper.compact-sidebar.sidebarClose .SidebarItem,
+.MainLayout .SidebarWrapper.compact-sidebar.sidebarClose .SidebarLogoWrapper {
+    display: none !important;
+}
+
+/* The blue-header hamburger is the only hamburger in compact mode.
+   Keep the drawer header as a text-only, full-row close target. */
+.MainLayout .SidebarWrapper.compact-sidebar:not(.sidebarClose) .SidebarHeader .SidebarItemIcon {
+    display: none !important;
+}
+
+.MainLayout .SidebarWrapper.compact-sidebar:not(.sidebarClose) .SidebarHeader {
+    grid-template-columns: minmax(0, 1fr) !important;
+    padding-left: 18px !important;
+}
+
+.MainLayout .SidebarWrapper.compact-sidebar:not(.sidebarClose) .SidebarHeader h5 {
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}

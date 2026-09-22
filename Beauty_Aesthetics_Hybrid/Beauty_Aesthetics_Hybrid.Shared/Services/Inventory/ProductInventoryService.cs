@@ -3,6 +3,7 @@ using System.Text.Json;
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.ViewModels;
+using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 using EBI.DM;
 using EBI.Enum;
@@ -17,10 +18,12 @@ public sealed class ProductInventoryService : IProductInventoryService
     private static readonly DateTime AvailableTo = new(2049, 12, 31);
 
     private readonly InventoryAC inventoryAC;
+    private readonly AppFeedbackService feedback;
 
-    public ProductInventoryService(InventoryAC inventoryAC)
+    public ProductInventoryService(InventoryAC inventoryAC, AppFeedbackService feedback)
     {
         this.inventoryAC = inventoryAC;
+        this.feedback = feedback;
     }
 
     public async Task<ApiCallResult<IReadOnlyList<InventoryViewModel.InventoryItem>>> LoadProductsAsync(
@@ -66,7 +69,7 @@ public sealed class ProductInventoryService : IProductInventoryService
 
             if (balanceResult.Success && balanceResult.Value is not null)
             {
-                var balances = new Dictionary<string, StockBalanceItemDTO>(
+                var balances = new Dictionary<string, rpt_StockBalanceByBranchByItemsDM>(
                     balanceResult.Value,
                     StringComparer.OrdinalIgnoreCase);
 
@@ -82,6 +85,25 @@ public sealed class ProductInventoryService : IProductInventoryService
         }
 
         return ApiCallResult<IReadOnlyList<InventoryViewModel.InventoryItem>>.Ok(result.StatusCode, products);
+    }
+
+    public async Task<ApiCallResult<InventoryViewModel.InventoryItem>> LoadProductAsync(
+        string masterAccountId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(masterAccountId))
+        {
+            return ApiCallResult<InventoryViewModel.InventoryItem>.Failure(
+                HttpStatusCode.BadRequest,
+                "Product record ID is missing.");
+        }
+
+        var result = await inventoryAC.LoadRecordAsync(masterAccountId, cancellationToken);
+        return result.Success && result.Value is not null
+            ? ApiCallResult<InventoryViewModel.InventoryItem>.Ok(result.StatusCode, ToProduct(result.Value))
+            : ApiCallResult<InventoryViewModel.InventoryItem>.Failure(
+                result.StatusCode,
+                result.ErrorMessage ?? "Unable to load product details.");
     }
 
     public async Task<ApiCallResult<bool>> CreateProductAsync(
@@ -113,8 +135,20 @@ public sealed class ProductInventoryService : IProductInventoryService
             ]
         };
 
-        var result = await inventoryAC.CreateFullAsync(request, cancellationToken);
-        return ToBoolean(result, "Unable to create product.");
+        var result = ToBoolean(
+            await inventoryAC.CreateFullAsync(request, cancellationToken),
+            "Unable to create product.");
+
+        if (result.Success)
+        {
+            feedback.Success("Product created successfully.", "Product created");
+        }
+        else
+        {
+            feedback.Error(result.ErrorMessage ?? "Unable to create product.", "Product not created");
+        }
+
+        return result;
     }
 
     public async Task<ApiCallResult<bool>> UpdateProductAsync(
@@ -158,9 +192,20 @@ public sealed class ProductInventoryService : IProductInventoryService
             ]
         };
 
-        return ToBoolean(
+        var result = ToBoolean(
             await inventoryAC.UpdateFullAsync(request, cancellationToken),
             "Unable to update product.");
+
+        if (result.Success)
+        {
+            feedback.Success("Product updated successfully.", "Product updated");
+        }
+        else
+        {
+            feedback.Error(result.ErrorMessage ?? "Unable to update product.", "Product not updated");
+        }
+
+        return result;
     }
 
     public async Task<ApiCallResult<bool>> DeleteProductAsync(
@@ -172,7 +217,18 @@ public sealed class ProductInventoryService : IProductInventoryService
             return ApiCallResult<bool>.Failure(HttpStatusCode.BadRequest, "Product record ID is missing.");
         }
 
-        return await inventoryAC.DeleteFullAsync(product.MasterAccountId, cancellationToken);
+        var result = await inventoryAC.DeleteFullAsync(product.MasterAccountId, cancellationToken);
+
+        if (result.Success)
+        {
+            feedback.Success("Product deleted successfully.", "Product deleted");
+        }
+        else
+        {
+            feedback.Error(result.ErrorMessage ?? "Unable to delete product.", "Product not deleted");
+        }
+
+        return result;
     }
 
     private static InventoryViewModel.InventoryItem ToProduct(InventoryDM record)
@@ -252,6 +308,8 @@ public sealed class ProductInventoryService : IProductInventoryService
         record.Rack = product.Location.Trim();
         record.StockReorderLevel = ParseDecimal(product.LowAlertCount);
         record.MaxDiscountLimit = product.DiscountCap;
+        record.ImagePath = string.IsNullOrWhiteSpace(product.ImagePath) ? null : product.ImagePath.Trim();
+        record.ImageFileName = string.IsNullOrWhiteSpace(product.ImageFileName) ? null : product.ImageFileName.Trim();
         record.QuantityFactor = Math.Max(1, ParseDecimal(product.ConversionFactor));
         var primaryUom = ParseStockUom(product.StockUom1);
         var secondaryUom = ParseStockUom(product.StockUom2);
