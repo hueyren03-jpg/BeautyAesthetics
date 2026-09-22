@@ -4,6 +4,7 @@ using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.ViewModels;
 using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
+using EBI.DM;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.Inventory;
 
@@ -97,7 +98,7 @@ public sealed class InventoryPendingAcceptService : IInventoryPendingAcceptServi
     private static PendingStockReceiptViewModel MapDocument(
         string documentId,
         string destinationBranchId,
-        IEnumerable<PendingStockReceiptLineDTO> source)
+        IEnumerable<InventoryMovement_PendingAcceptDM> source)
     {
         var lines = source.ToList();
         var first = lines[0];
@@ -118,7 +119,7 @@ public sealed class InventoryPendingAcceptService : IInventoryPendingAcceptServi
         };
     }
 
-    private static PendingStockReceiptLineViewModel MapLine(PendingStockReceiptLineDTO line) => new()
+    private static PendingStockReceiptLineViewModel MapLine(InventoryMovement_PendingAcceptDM line) => new()
     {
         LineId = line.DocumentLineID ?? string.Empty,
         InventoryMovementId = line.InventoryMovementID ?? string.Empty,
@@ -133,7 +134,7 @@ public sealed class InventoryPendingAcceptService : IInventoryPendingAcceptServi
     private static string FirstValue(IEnumerable<string?> values, string fallback) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? fallback;
 
-    private static ApiCallResult<T> Failure<T>(ApiCallResult<List<PendingStockReceiptLineDTO>> source) =>
+    private static ApiCallResult<T> Failure<T>(ApiCallResult<List<InventoryMovement_PendingAcceptDM>> source) =>
         source.IsUnauthorized
             ? ApiCallResult<T>.Unauthorized(source.StatusCode)
             : ApiCallResult<T>.Failure(
