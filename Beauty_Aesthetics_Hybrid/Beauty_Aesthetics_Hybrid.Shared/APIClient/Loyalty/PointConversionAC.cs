@@ -12,7 +12,8 @@ public sealed class PointConversionAC
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
     private static readonly MediaTypeHeaderValue JsonPatchMediaType =
@@ -30,7 +31,7 @@ public sealed class PointConversionAC
         SendForResultAsync<List<PointConversionDM>>(
             HttpMethod.Post,
             "/api/CashSales_PointConversionFormula/LoadProxy",
-            new { },
+            null,
             "Member point list response was invalid.",
             cancellationToken);
 
@@ -74,7 +75,7 @@ public sealed class PointConversionAC
     private async Task<ApiCallResult<T>> SendForResultAsync<T>(
         HttpMethod method,
         string uri,
-        object payload,
+        object? payload,
         string invalidResponseMessage,
         CancellationToken cancellationToken)
     {

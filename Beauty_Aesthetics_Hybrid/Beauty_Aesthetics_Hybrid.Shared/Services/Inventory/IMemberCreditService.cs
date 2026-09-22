@@ -18,8 +18,7 @@ public interface IMemberCreditService
         string branchId = "hq",
         CancellationToken cancellationToken = default);
 
-    Task<ApiCallResult<bool>> DeactivateMemberCreditAsync(
+    Task<ApiCallResult<bool>> DeleteMemberCreditAsync(
         string masterAccountId,
-        string branchId = "hq",
         CancellationToken cancellationToken = default);
 }

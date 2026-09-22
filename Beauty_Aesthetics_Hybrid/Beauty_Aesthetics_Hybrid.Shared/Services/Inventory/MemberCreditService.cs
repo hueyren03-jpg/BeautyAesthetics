@@ -123,33 +123,23 @@ public sealed class MemberCreditService : IMemberCreditService
         return result;
     }
 
-    public async Task<ApiCallResult<bool>> DeactivateMemberCreditAsync(
+    public async Task<ApiCallResult<bool>> DeleteMemberCreditAsync(
         string masterAccountId,
-        string branchId = "hq",
         CancellationToken cancellationToken = default)
     {
-        var loadResult = await serviceInventoryAC.LoadRecordAsync(masterAccountId, cancellationToken);
-        if (!loadResult.Success || loadResult.Value is null)
+        if (string.IsNullOrWhiteSpace(masterAccountId))
         {
             return ApiCallResult<bool>.Failure(
-                loadResult.StatusCode,
-                loadResult.ErrorMessage ?? "Unable to load the member credit.");
+                HttpStatusCode.BadRequest,
+                "The selected member credit has no record ID.");
         }
 
-        loadResult.Value.AccountStatus = "Inactive";
-        loadResult.Value.SaveAction = EntityState.Changed;
-        loadResult.Value.IsDirty = true;
-
-        var normalizedBranchId = NormalizeBranchId(branchId);
-        var request = CreatePackageRequest(loadResult.Value, normalizedBranchId, loadResult.Value.SalesPrice);
-        var result = ToSaveResult(
-            await serviceInventoryAC.UpdateFullAsync(request, cancellationToken),
-            "Unable to deactivate member credit.");
+        var result = await serviceInventoryAC.DeleteSimpleAsync(masterAccountId.Trim(), cancellationToken);
 
         if (result.Success)
-            feedback.Success("Member credit deactivated successfully.", "Member credit deactivated");
+            feedback.Success("Member credit deleted successfully.", "Member credit deleted");
         else
-            feedback.Error(result.ErrorMessage ?? "Unable to deactivate member credit.", "Member credit not deactivated");
+            feedback.Error(result.ErrorMessage ?? "Unable to delete member credit.", "Member credit not deleted");
 
         return result;
     }

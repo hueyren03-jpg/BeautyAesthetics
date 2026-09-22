@@ -14,6 +14,7 @@
 @using Beauty_Aesthetics_WebPos.APIClient.ResultPattern
 @inject IJSRuntime JSRuntime
 @inject IServiceItemService ServiceItemService
+@inject IBranchSessionService BranchSession
 @inject IMemberCreditService MemberCreditService
 @inject IPackageService PackageService
 @inject IMembershipTypeService MembershipTypeService
@@ -617,7 +618,7 @@
             <div class="membership-options">
                 <div class="membership-options__grid">
                     <!-- Member Type Section -->
-                    <div class="membership-options__card">
+                    <div class="membership-options__card membership-options__card--member-type">
                         <div class="membership-options__card-header">
                             <h3>@L["MemberType"]</h3>
                             <div class="membership-options__header-actions">
@@ -670,13 +671,16 @@
                                                     <input type="checkbox" @onchange="ToggleSelectAllMemberTypes" checked="@IsAllMemberTypesSelected" />
                                                 </th>
                                             }
-                                            <th class='@GetServiceSortHeaderClass(MemberTypeSortColumn, MemberTypeSortAscending, "Name")' @onclick='() => ToggleMemberTypeSort("Name")'>
-                                                @L["Name"]
+                                            <th class='member-type-table__code @GetServiceSortHeaderClass(MemberTypeSortColumn, MemberTypeSortAscending, "Code")' @onclick='() => ToggleMemberTypeSort("Code")'>
+                                                Code
                                             </th>
-                                            <th class='@GetServiceSortHeaderClass(MemberTypeSortColumn, MemberTypeSortAscending, "MembersAssigned")' @onclick='() => ToggleMemberTypeSort("MembersAssigned")'>
-                                                @L["MembersAssigned"]
+                                            <th class='member-type-table__name @GetServiceSortHeaderClass(MemberTypeSortColumn, MemberTypeSortAscending, "Name")' @onclick='() => ToggleMemberTypeSort("Name")'>
+                                                @L["MemberType"]
                                             </th>
-                                            <th>@L["Actions"]</th>
+                                            <th class='member-type-table__status @GetServiceSortHeaderClass(MemberTypeSortColumn, MemberTypeSortAscending, "Status")' @onclick='() => ToggleMemberTypeSort("Status")'>
+                                                Status
+                                            </th>
+                                            <th class="member-type-table__actions">@L["Actions"]</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -689,13 +693,15 @@
                                                         <input type="checkbox" checked="@SelectedMemberTypesForDeletion.Contains(memberType)" @onchange="() => ToggleMemberTypeSelection(memberType)" />
                                                     </td>
                                                 }
-                                                <td>@memberType.MemberTypeName</td>
-                                                <td>0</td>
-                                                <td @onclick:stopPropagation="true">
+                                                <td class="member-type-table__code">@memberType.MemberTypeID</td>
+                                                <td class="member-type-table__name">@memberType.MemberTypeName</td>
+                                                <td class="member-type-table__status">
+                                                    <span class="service-status-indicator service-status-indicator--@(memberType.Active ? "success" : "danger")">
+                                                        @(memberType.Active ? "Active" : "Inactive")
+                                                    </span>
+                                                </td>
+                                                <td class="member-type-table__actions" @onclick:stopPropagation="true">
                                                     <div class="membership-options__row-actions">
-                                                        <button type="button" class="membership-options__view-btn" title="View details" @onclick="() => ShowMemberTypeDetails(memberType)">
-                                                            <i class="bi bi-eye"></i> @L["View"]
-                                                        </button>
                                                         <button type="button" class="membership-options__view-btn membership-options__view-btn--icon" title="@L["EditMemberType"]" aria-label="@L["EditMemberType"]" @onclick="() => EditMemberTypeFromRow(memberType)">
                                                             <i class="bi bi-pencil"></i>
                                                         </button>
@@ -716,9 +722,12 @@
                         </div>
                     </div>
                     <!-- Member Point Section -->
-                    <div class="membership-options__card">
+                    <div class="membership-options__card membership-options__card--member-point">
                         <div class="membership-options__card-header">
-                            <h3>@L["MemberPoint"]</h3>
+                            <div class="point-rule-heading">
+                                <h3>@L["MemberPoint"]</h3>
+                                <p>Configure how each membership type earns points.</p>
+                            </div>
                             <div class="membership-options__header-actions">
                                 <button class="services__action-btn" @onclick="ShowAddMemberPointForm">
                                     <i class="bi bi-plus-lg"></i>
@@ -749,14 +758,17 @@
                                         <button class="membership-options__btn membership-options__btn--secondary" @onclick="CancelMemberPointDeleteMode">
                                             @L["Cancel"]
                                         </button>
-                                        <button class="membership-options__btn membership-options__btn--danger" @onclick='() => RequestSelectedDeleteConfirmation("memberPoints", SelectedMemberPointsForDeletion.Count, "member point(s)")' disabled="@(!SelectedMemberPointsForDeletion.Any())">
+                                        <button class="membership-options__btn membership-options__btn--danger"
+                                                disabled="@(!SelectedMemberPointsForDeletion.Any())"
+                                                @onclick='() => RequestSelectedDeleteConfirmation("memberPoints", SelectedMemberPointsForDeletion.Count, "member point(s)")'>
                                             @L["DeleteSelected"]
                                         </button>
                                     </div>
                                 </div>
                             }
+
                             <div class="membership-options__search">
-                                <input type="text" placeholder="@L["Search"]..." value="@MemberPointSearch" @oninput="(ChangeEventArgs e) => { MemberPointSearch = e.Value?.ToString() ?? string.Empty; MemberPointCurrentPage = 1; }" />
+                                <input type="text" placeholder="Search member type or point rule..." value="@MemberPointSearch" @oninput="(ChangeEventArgs e) => { MemberPointSearch = e.Value?.ToString() ?? string.Empty; MemberPointCurrentPage = 1; }" />
                             </div>
                             <div class="membership-options__table-region">
                             <table class="membership-options__table membership-options__table--member-point">
@@ -768,33 +780,57 @@
                                                 <input type="checkbox" @onchange="ToggleSelectAllMemberPoints" checked="@IsAllMemberPointsSelected" />
                                             </th>
                                         }
-                                        <th class='@GetServiceSortHeaderClass(MemberPointSortColumn, MemberPointSortAscending, "MemberType")' @onclick='() => ToggleMemberPointSort("MemberType")'>
+                                        <th class='point-rule-member @GetServiceSortHeaderClass(MemberPointSortColumn, MemberPointSortAscending, "MemberType")' @onclick='() => ToggleMemberPointSort("MemberType")'>
                                             @L["MemberType"]
                                         </th>
+                                        <th class='point-rule-amount @GetServiceSortHeaderClass(MemberPointSortColumn, MemberPointSortAscending, "ForEveryAmount")' @onclick='() => ToggleMemberPointSort("ForEveryAmount")'>For Every (MYR)</th>
+                                        <th class='point-rule-points @GetServiceSortHeaderClass(MemberPointSortColumn, MemberPointSortAscending, "EqualToPoint")' @onclick='() => ToggleMemberPointSort("EqualToPoint")'>Earned Points</th>
+                                        <th class='point-rule-round @GetServiceSortHeaderClass(MemberPointSortColumn, MemberPointSortAscending, "RoundDown")' @onclick='() => ToggleMemberPointSort("RoundDown")'>Round Down</th>
+                                        <th class='point-rule-date @GetServiceSortHeaderClass(MemberPointSortColumn, MemberPointSortAscending, "StartDate")' @onclick='() => ToggleMemberPointSort("StartDate")'>Start Date</th>
+                                        <th class='point-rule-date @GetServiceSortHeaderClass(MemberPointSortColumn, MemberPointSortAscending, "EndDate")' @onclick='() => ToggleMemberPointSort("EndDate")'>End Date</th>
                                         <th class="member-point-actions-col">@L["Actions"]</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @foreach (var memberPoint in PaginatedMemberPoints)
                                     {
-                                        <tr>
+                                        <tr class="point-rule-row @(SelectedMemberPointsForDeletion.Contains(memberPoint) ? "selected" : "")"
+                                            @onclick="() => HandleMemberPointRowClick(memberPoint)">
                                             @if (IsMemberPointDeleteMode)
                                             {
                                                 <td class="membership-options__checkbox-col" @onclick:stopPropagation="true">
-                                                    <input type="checkbox" checked="@SelectedMemberPointsForDeletion.Contains(memberPoint)" @onchange="() => ToggleMemberPointSelection(memberPoint)" />
+                                                    <input type="checkbox"
+                                                           checked="@SelectedMemberPointsForDeletion.Contains(memberPoint)"
+                                                           @onchange="() => ToggleMemberPointSelection(memberPoint)" />
                                                 </td>
                                             }
-                                            <td>@memberPoint.MemberType</td>
+                                            <td class="point-rule-member">
+                                                <strong>@memberPoint.MemberType</strong>
+                                                <small>@memberPoint.MemberTypeId</small>
+                                            </td>
+                                            <td class="point-rule-amount">MYR @memberPoint.ForEveryAmount.ToString("N2")</td>
+                                            <td class="point-rule-points">@memberPoint.EqualToPoint.ToString("0.##")</td>
+                                            <td class="point-rule-round">
+                                                <span class="point-rule-toggle @(memberPoint.RoundDownToInteger ? "point-rule-toggle--on" : "point-rule-toggle--off")">
+                                                    <i class="bi @(memberPoint.RoundDownToInteger ? "bi-check-circle-fill" : "bi-dash-circle")"></i>
+                                                    @(memberPoint.RoundDownToInteger ? "Yes" : "No")
+                                                </span>
+                                            </td>
+                                            <td class="point-rule-date">@memberPoint.StartDate?.ToString("dd/MM/yyyy")</td>
+                                            <td class="point-rule-date">@memberPoint.EndDate?.ToString("dd/MM/yyyy")</td>
                                             <td class="member-point-actions-col" @onclick:stopPropagation="true">
                                                 <div class="membership-options__row-actions member-point-row-actions">
-                                                    <button class="membership-options__view-btn" @onclick="() => ShowViewMemberPointDetails(memberPoint)">
-                                                        <i class="bi bi-eye"></i> @L["View"]
-                                                    </button>
                                                     <button type="button" class="membership-options__view-btn membership-options__view-btn--icon" title="Edit member point" aria-label="Edit member point" @onclick="() => EditMemberPointFromRow(memberPoint)">
                                                         <i class="bi bi-pencil"></i>
                                                     </button>
                                                 </div>
                                             </td>
+                                        </tr>
+                                    }
+                                    @if (!PaginatedMemberPoints.Any())
+                                    {
+                                        <tr class="point-rule-empty-row">
+                                            <td colspan="@(IsMemberPointDeleteMode ? 8 : 7)">No point rules found.</td>
                                         </tr>
                                     }
                                 </tbody>
@@ -815,402 +851,50 @@
                 @if (IsAddMemberTypeFormVisible)
                 {
                     <div class="member-type-modal-overlay" @onclick="CloseAddMemberTypeForm">
-                        <div class="member-type-modal" @onclick:stopPropagation="true">
+                        <div class="member-type-modal member-type-modal--compact" @onclick:stopPropagation="true">
                             <div class="member-type-modal__header">
                                 <div class="member-type-modal__title">
                                     <i class="bi bi-person-badge"></i>
-                                    <h2>Member Type</h2>
+                                    <h2>@(IsMemberTypeEditMode ? "Edit Member Type" : "Add Member Type")</h2>
                                 </div>
                                 <div class="member-type-modal__actions">
-                                    <button class="member-type-modal__btn member-type-modal__btn--save" disabled="@IsSavingMemberType" @onclick="HandleAddMemberType">
+                                    <button type="button" class="member-type-modal__btn member-type-modal__btn--save" disabled="@IsSavingMemberType" @onclick="HandleAddMemberType">
                                         @(IsSavingMemberType ? "Saving..." : L["Save"])
                                     </button>
-                                    <button class="member-type-modal__btn member-type-modal__btn--cancel" @onclick="CloseAddMemberTypeForm">
+                                    <button type="button" class="member-type-modal__btn member-type-modal__btn--cancel" @onclick="CloseAddMemberTypeForm">
                                         Cancel
                                     </button>
                                 </div>
                             </div>
                             <div class="member-type-modal__body">
-                                <form class="member-type-form" @onsubmit:preventDefault>
-                                    <div class="member-type-form__row">
-                                        <div class="member-type-form__group member-type-form__group--small">
-                                            <label>Code</label>
-                                            <input type="text" @bind="NewMemberTypeCode" disabled="@IsMemberTypeEditMode" />
+                                <form class="member-type-form member-type-form--compact" @onsubmit:preventDefault>
+                                    <div class="member-type-form__compact-grid">
+                                        <div class="member-type-form__group">
+                                            <label for="memberTypeCode">Code <span class="member-type-form__required">*</span></label>
+                                            <input id="memberTypeCode"
+                                                   type="text"
+                                                   @bind="NewMemberTypeCode"
+                                                   autocomplete="off"
+                                                   required />
                                         </div>
-                                        <div class="member-type-form__group member-type-form__group--checkbox">
-                                            <input type="checkbox" id="activeCheckbox" @bind="NewMemberTypeActive" />
-                                            <label for="activeCheckbox">Active</label>
-                                        </div>
-                                        <div class="member-type-form__group member-type-form__group--checkbox">
-                                            <input type="checkbox" id="discountCreditCheckbox" @bind="NewMemberTypeDiscountCredit" />
-                                            <label for="discountCreditCheckbox">Discount apply only to Credit Redemption</label>
-                                        </div>
-                                    </div>
 
-                                    <div class="member-type-form__row">
-                                        <div class="member-type-form__group member-type-form__group--full">
-                                            <label>Name</label>
-                                            <input type="text" @bind="NewMemberTypeName" required />
+                                        <div class="member-type-form__group">
+                                            <label for="memberTypeName">Member Type <span class="member-type-form__required">*</span></label>
+                                            <input id="memberTypeName"
+                                                   type="text"
+                                                   @bind="NewMemberTypeName"
+                                                   autocomplete="off"
+                                                   required />
                                         </div>
                                     </div>
 
-                                    <div class="member-type-form__sections">
-                                        <!-- Member Discount Section -->
-                                        <div class="member-type-form__section">
-                                            <h3>Member Discount</h3>
-                                            <div class="member-type-form__discount-grid">
-                                                <div class="member-type-form__group">
-                                                    <label>Product</label>
-                                                    <div class="member-type-form__input-group">
-                                                        <input type="number" step="0.01" @bind="NewMemberTypeProductDiscount" />
-                                                        <span class="member-type-form__suffix">%</span>
-                                                    </div>
-                                                </div>
-                                                <div class="member-type-form__group">
-                                                    <label>Service</label>
-                                                    <div class="member-type-form__input-group">
-                                                        <input type="number" step="0.01" @bind="NewMemberTypeServiceDiscount" />
-                                                        <span class="member-type-form__suffix">%</span>
-                                                    </div>
-                                                </div>
-                                                <div class="member-type-form__group">
-                                                    <label>Package</label>
-                                                    <div class="member-type-form__input-group">
-                                                        <input type="number" step="0.01" @bind="NewMemberTypeBundleDiscount" />
-                                                        <span class="member-type-form__suffix">%</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Discount Timing Section -->
-                                        <div class="member-type-form__section">
-                                            <h3>Discount Timing</h3>
-                                            <div class="member-type-form__timing-grid">
-                                                <div class="member-type-form__group">
-                                                    <label>Time From</label>
-                                                    <input type="time" value="@NewMemberTypeTimeFrom" @onchange="@((e) => NewMemberTypeTimeFrom = e.Value?.ToString() ?? "00:00")" />
-                                                </div>
-                                                <div class="member-type-form__group">
-                                                    <label>Time To</label>
-                                                    <input type="time" value="@NewMemberTypeTimeTo" @onchange="@((e) => NewMemberTypeTimeTo = e.Value?.ToString() ?? "23:59")" />
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Discount Items Section -->
-                                        <div class="member-type-form__section">
-                                            <h3>Discount Items</h3>
-                                            <div class="member-type-form__note">
-                                                <i class="bi bi-info-circle"></i>
-                                                <span>Note: A selected Brand will auto includes all Groups and Items under the Brand</span>
-                                            </div>
-                                            <div class="member-type-form__discount-items">
-                                                <div class="member-type-form__group">
-                                                    <label>Item Brand</label>
-                                                    <select @bind="SelectedItemBrand">
-                                                        <option value="">Select Brand</option>
-                                                        <option value="Brand A">Brand A</option>
-                                                        <option value="Brand B">Brand B</option>
-                                                        <option value="Brand C">Brand C</option>
-                                                        <option value="Brand D">Brand D</option>
-                                                    </select>
-                                                </div>
-                                                <div class="member-type-form__group">
-                                                    <label>@L["ItemGroup"]</label>
-                                                    <select @bind="SelectedItemGroup">
-                                                        <option value="">@L["SelectGroup"]</option>
-                                                        <option value="Skincare">Skincare</option>
-                                                        <option value="Treatment">Treatment</option>
-                                                        <option value="Serum">Serum</option>
-                                                        <option value="Mask">Mask</option>
-                                                        <option value="Toner">Toner</option>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Item Source Section (full-width below sections) -->
-                                    <div class="member-type-form__section">
-                                        <h3>@L["OverrideDiscountOnSpecificItems"]</h3>
-                                        <div class="member-type-form">
-                                            <div class="member-type-form__group">
-                                                <label>@L["ItemSource"]</label>
-                                                <div class="member-type-form__toggle-group">
-                                                    <button type="button" class="member-type-form__toggle-button @(SelectedItemType == "Service" ? "active" : string.Empty)" @onclick='() => SelectedItemType = "Service"'>@L["Services"]</button>
-                                                    <button type="button" class="member-type-form__toggle-button @(SelectedItemType == "Inventory" ? "active" : string.Empty)" @onclick='() => SelectedItemType = "Inventory"'>@L["Inventory"]</button>
-                                                </div>
-                                            </div>
-
-                                            @if (SelectedItemType == "Inventory")
-                                            {
-                                                var inventoryFilteredItems = FilteredOverrideInventoryItems.ToList();
-                                                var inventoryTotalPages = CalculateTotalPages(inventoryFilteredItems.Count, OverrideItemsPageSize);
-                                                var inventoryCurrentPage = Math.Clamp(OverrideInventoryPage, 1, inventoryTotalPages);
-                                                var paginatedInventoryItems = inventoryFilteredItems
-                                                .Skip((inventoryCurrentPage - 1) * OverrideItemsPageSize)
-                                                .Take(OverrideItemsPageSize)
-                                                .ToList();
-                                                var inventoryHasItems = inventoryFilteredItems.Count > 0;
-                                                var inventoryPrevDisabled = inventoryCurrentPage <= 1;
-                                                var inventoryNextDisabled = inventoryCurrentPage >= inventoryTotalPages;
-
-                                                if (OverrideInventoryPage != inventoryCurrentPage)
-                                                {
-                                                    OverrideInventoryPage = inventoryCurrentPage;
-                                                }
-
-                                                <div class="member-type-form__group member-type-form__group--full member-type-form__inventory-search">
-                                                    <input type="text" @bind="OverrideInventorySearch" placeholder="@L["SearchPlaceholder"]" />
-                                                </div>
-                                                <div class="member-type-form__inventory-table">
-                                                    <table class="member-type-inventory-table">
-                                                        <thead>
-                                                            <tr>
-                                                                <th style="width:40px;"></th>
-                                                                <th>@L["ProductName"]</th>
-                                                                <th>@L["SKU"]</th>
-                                                                <th>@L["Barcode"]</th>
-                                                                <th>@L["DiscountPercent"]</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            @if (paginatedInventoryItems.Any())
-                                                            {
-                                                                foreach (var product in paginatedInventoryItems)
-                                                                {
-                                                                    <tr>
-                                                                        <td>
-                                                                            <input type="checkbox" />
-                                                                        </td>
-                                                                        <td>@product.Type</td>
-                                                                        <td>@product.Sku</td>
-                                                                        <td>@product.Barcode</td>
-                                                                        <td>
-                                                                            <input type="number" min="0" max="100" step="0.01" class="member-type-form__discount-input" />
-                                                                        </td>
-                                                                    </tr>
-                                                                }
-                                                            }
-                                                            else
-                                                            {
-                                                                <tr>
-                                                                    <td colspan="5" class="member-type-form__empty">@L["NoInventoryItemsFound"]</td>
-                                                                </tr>
-                                                            }
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                                @if (inventoryHasItems)
-                                                {
-                                                    <div class="member-type-form__pagination">
-                                                        <span class="member-type-form__pagination-info">@L["Page"] @inventoryCurrentPage @L["Of"] @inventoryTotalPages</span>
-                                                        <div class="member-type-form__pagination-controls">
-                                                            <button type="button"
-                                                                    class="member-type-form__pagination-btn"
-                                                                    disabled="@inventoryPrevDisabled"
-                                                                    @onclick="() => ChangeOverrideInventoryPage(-1)">
-                                                                @L["Previous"]
-                                                            </button>
-                                                            <button type="button"
-                                                                    class="member-type-form__pagination-btn"
-                                                                    disabled="@inventoryNextDisabled"
-                                                                    @onclick="() => ChangeOverrideInventoryPage(1)">
-                                                                @L["Next"]
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                }
-                                            }
-                                            else if (SelectedItemType == "Service")
-                                            {
-                                                <div class="member-type-form__stack">
-                                                    <!-- Services button -->
-                                                    <div class="member-type-form__group member-type-form__group--small">
-                                                        <button type="button"
-                                                                class="member-type-form__stack-button @(IsOverrideServiceOpen ? "active" : string.Empty)"
-                                                                @onclick='() => ToggleOverrideSection("Service")'>
-                                                            <span>@L["Services"]</span>
-                                                            <i class="bi bi-caret-down-fill"></i>
-                                                        </button>
-                                                    </div>
-
-                                                    @if (IsOverrideServiceOpen)
-                                                    {
-                                                        var serviceFilteredItems = FilteredOverrideServiceItems.ToList();
-                                                        var serviceTotalPages = CalculateTotalPages(serviceFilteredItems.Count, OverrideItemsPageSize);
-                                                        var serviceCurrentPage = Math.Clamp(OverrideServicePage, 1, serviceTotalPages);
-                                                        var paginatedServiceItems = serviceFilteredItems
-                                                        .Skip((serviceCurrentPage - 1) * OverrideItemsPageSize)
-                                                        .Take(OverrideItemsPageSize)
-                                                        .ToList();
-                                                        var serviceHasItems = serviceFilteredItems.Count > 0;
-                                                        var servicePrevDisabled = serviceCurrentPage <= 1;
-                                                        var serviceNextDisabled = serviceCurrentPage >= serviceTotalPages;
-
-                                                        if (OverrideServicePage != serviceCurrentPage)
-                                                        {
-                                                            OverrideServicePage = serviceCurrentPage;
-                                                        }
-
-                                                        <div class="member-type-form__group member-type-form__group--full member-type-form__inventory-search">
-                                                            <input type="text" @bind="OverrideServiceSearch" placeholder="@L["SearchServicesPlaceholder"]" />
-                                                        </div>
-                                                        <div class="member-type-form__inventory-table">
-                                                            <table class="member-type-inventory-table">
-                                                                <thead>
-                                                                    <tr>
-                                                                        <th style="width:40px;"></th>
-                                                                        <th>@L["ServiceName"]</th>
-                                                                        <th>@L["SKU"]</th>
-                                                                        <th>@L["DurationSpend"]</th>
-                                                                        <th>@L["DiscountPercent"]</th>
-                                                                    </tr>
-                                                                </thead>
-                                                                <tbody>
-                                                                    @if (paginatedServiceItems.Any())
-                                                                    {
-                                                                        foreach (var service in paginatedServiceItems)
-                                                                        {
-                                                                            <tr>
-                                                                                <td>
-                                                                                    <input type="checkbox" />
-                                                                                </td>
-                                                                                <td>@service.ServiceName</td>
-                                                                                <td>@service.Sku</td>
-                                                                                <td>@service.DurationSpend</td>
-                                                                                <td>
-                                                                                    <input type="number" min="0" max="100" step="0.01" class="member-type-form__discount-input" />
-                                                                                </td>
-                                                                            </tr>
-                                                                        }
-                                                                    }
-                                                                    else
-                                                                    {
-                                                                        <tr>
-                                                                            <td colspan="5" class="member-type-form__empty">@L["NoServicesFound"]</td>
-                                                                        </tr>
-                                                                    }
-                                                                </tbody>
-                                                            </table>
-                                                        </div>
-                                                        @if (serviceHasItems)
-                                                        {
-                                                            <div class="member-type-form__pagination">
-                                                                <span class="member-type-form__pagination-info">@L["Page"] @serviceCurrentPage @L["Of"] @serviceTotalPages</span>
-                                                                <div class="member-type-form__pagination-controls">
-                                                                    <button type="button"
-                                                                            class="member-type-form__pagination-btn"
-                                                                            disabled="@servicePrevDisabled"
-                                                                            @onclick="() => ChangeOverrideServicePage(-1)">
-                                                                        @L["Previous"]
-                                                                    </button>
-                                                                    <button type="button"
-                                                                            class="member-type-form__pagination-btn"
-                                                                            disabled="@serviceNextDisabled"
-                                                                            @onclick="() => ChangeOverrideServicePage(1)">
-                                                                        @L["Next"]
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        }
-                                                    }
-
-                                                    <!-- Packages button -->
-                                                    <div class="member-type-form__group member-type-form__group--small">
-                                                        <button type="button"
-                                                                class="member-type-form__stack-button @(IsOverridePackageOpen ? "active" : string.Empty)"
-                                                                @onclick='() => ToggleOverrideSection("Package")'>
-                                                            <span>@L["Package"]</span>
-                                                            <i class="bi bi-caret-down-fill"></i>
-                                                        </button>
-                                                    </div>
-
-                                                    @if (IsOverridePackageOpen)
-                                                    {
-                                                        var packageFilteredItems = FilteredOverrideBundles.ToList();
-                                                        var packageTotalPages = CalculateTotalPages(packageFilteredItems.Count, OverrideItemsPageSize);
-                                                        var packageCurrentPage = Math.Clamp(OverridePackagePage, 1, packageTotalPages);
-                                                        var paginatedPackageItems = packageFilteredItems
-                                                        .Skip((packageCurrentPage - 1) * OverrideItemsPageSize)
-                                                        .Take(OverrideItemsPageSize)
-                                                        .ToList();
-                                                        var packageHasItems = packageFilteredItems.Count > 0;
-                                                        var packagePrevDisabled = packageCurrentPage <= 1;
-                                                        var packageNextDisabled = packageCurrentPage >= packageTotalPages;
-
-                                                        if (OverridePackagePage != packageCurrentPage)
-                                                        {
-                                                            OverridePackagePage = packageCurrentPage;
-                                                        }
-
-                                                        <div class="member-type-form__group member-type-form__group--full member-type-form__inventory-search">
-                                                            <input type="text" @bind="OverridePackageSearch" placeholder="@L["SearchServicesPlaceholder"]" />
-                                                        </div>
-                                                        <div class="member-type-form__inventory-table">
-                                                            <table class="member-type-inventory-table member-type-inventory-table--packages">
-                                                                <thead>
-                                                                    <tr>
-                                                                        <th style="width:40px;"></th>
-                                                                        <th>@L["PackageName"]</th>
-                                                                        <th>@L["SKU"]</th>
-                                                                        <th>@L["ServicesIncluded"]</th>
-                                                                        <th>@L["DiscountPercent"]</th>
-                                                                    </tr>
-                                                                </thead>
-                                                                <tbody>
-                                                                    @if (paginatedPackageItems.Any())
-                                                                    {
-                                                                        foreach (var bundle in paginatedPackageItems)
-                                                                        {
-                                                                            <tr>
-                                                                                <td>
-                                                                                    <input type="checkbox" />
-                                                                                </td>
-                                                                                <td>@bundle.BundleName</td>
-                                                                                <td>@bundle.SKU</td>
-                                                                                <td>@GetBundleServicesIncluded(bundle.SKU)</td>
-                                                                                <td>
-                                                                                    <input type="number" min="0" max="100" step="0.01" class="member-type-form__discount-input" />
-                                                                                </td>
-                                                                            </tr>
-                                                                        }
-                                                                    }
-                                                                    else
-                                                                    {
-                                                                        <tr>
-                                                                            <td colspan="5" class="member-type-form__empty">@L["NoPackagesFound"]</td>
-                                                                        </tr>
-                                                                    }
-                                                                </tbody>
-                                                            </table>
-                                                        </div>
-                                                        @if (packageHasItems)
-                                                        {
-                                                            <div class="member-type-form__pagination">
-                                                                <span class="member-type-form__pagination-info">@L["Page"] @packageCurrentPage @L["Of"] @packageTotalPages</span>
-                                                                <div class="member-type-form__pagination-controls">
-                                                                    <button type="button"
-                                                                            class="member-type-form__pagination-btn"
-                                                                            disabled="@packagePrevDisabled"
-                                                                            @onclick="() => ChangeOverridePackagePage(-1)">
-                                                                        @L["Previous"]
-                                                                    </button>
-                                                                    <button type="button"
-                                                                            class="member-type-form__pagination-btn"
-                                                                            disabled="@packageNextDisabled"
-                                                                            @onclick="() => ChangeOverridePackagePage(1)">
-                                                                        @L["Next"]
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        }
-                                                    }
-                                                </div>
-                                            }
-                                        </div>
-                                    </div>
+                                    <label class="member-type-form__status-control" for="memberTypeActive">
+                                        <input id="memberTypeActive" type="checkbox" @bind="NewMemberTypeActive" />
+                                        <span class="member-type-form__status-copy">
+                                            <strong>Active</strong>
+                                            <small>Allow staff to use this membership type.</small>
+                                        </span>
+                                    </label>
                                 </form>
                             </div>
                         </div>
@@ -1225,7 +909,9 @@
                             <div class="member-point-modal__header">
                                 <div class="member-point-modal__title">
                                     <i class="bi bi-star"></i>
-                                    <h2>Point Setup</h2>
+                                    <div>
+                                        <h2>Point Setup</h2>
+                                    </div>
                                 </div>
                                 <div class="member-point-modal__actions">
                                     <button class="member-point-modal__btn member-point-modal__btn--save"
@@ -1240,113 +926,125 @@
                             </div>
                             <div class="member-point-modal__body">
 
-                                <form class="member-point-form" @onsubmit:preventDefault>
-                                    <div class="member-point-form__field">
-                                        <label>Member Type</label>
-                                        <select @bind="NewMemberPointMemberType">
-                                            <option value="">Select Member Type</option>
-                                            @foreach (var memberType in MemberTypeItems.Where(item => item.Active))
-                                            {
-                                                <option value="@memberType.MemberTypeID">@memberType.MemberTypeName</option>
-                                            }
-                                        </select>
-                                    </div>
+                                @if (!string.IsNullOrWhiteSpace(MemberPointApiError))
+                                {
+                                    <div class="point-setup-error" role="alert">@MemberPointApiError</div>
+                                }
 
-                                    <div class="member-point-form__field">
-                                        <label>Minimum Amount Spent</label>
-                                        <input type="number" step="0.01" @bind="NewMemberPointMinAmount" />
-                                    </div>
+                                <form class="member-point-form point-setup-form" @onsubmit:preventDefault>
+                                    <fieldset class="point-setup-section point-setup-section--first">
+                                        <legend>Earning</legend>
 
-                                    <div class="member-point-form__field">
-                                        <label>For Every X Amount</label>
-                                        <input type="number" step="0.01" @bind="NewMemberPointForEveryAmount" />
-                                    </div>
-
-                                    <div class="member-point-form__field">
-                                        <label>Equal to X Point</label>
-                                        <input type="number" step="0.01" @bind="NewMemberPointEqualToPoint" />
-                                    </div>
-
-                                    <div class="member-point-form__field member-point-form__field--checkbox">
-                                        <input type="checkbox" id="excludeTaxCheckbox" @bind="NewMemberPointExcludeTax" />
-                                        <label for="excludeTaxCheckbox">Exclude Tax Amount</label>
-                                    </div>
-
-                                    <div class="member-point-form__field member-point-form__field--checkbox">
-                                        <input type="checkbox" id="pointRoundDownCheckbox" @bind="NewMemberPointRoundDown" />
-                                        <label for="pointRoundDownCheckbox">Point Round Down</label>
-                                    </div>
-
-                                    <div class="member-point-form__field">
-                                        <label>Expiry Option</label>
-                                        <select @bind="NewMemberPointExpiryOption">
-                                            <option value="0">N/A</option>
-                                            <option value="1">Month From Obtained</option>
-                                            <option value="2">Fixed Expiry Month</option>
-                                        </select>
-                                    </div>
-
-                                    <div class="member-point-form__field">
-                                        <label>Expiry Month</label>
-                                        <input type="number" @bind="NewMemberPointExpiryMonth" />
-                                    </div>
-
-                                    <div class="member-point-form__field">
-                                        <label>Money Conversion Rate</label>
-                                        <input type="number" step="0.0001" @bind="NewMemberPointMoneyConversion" />
-                                    </div>
-
-                                    <div class="member-point-form__field member-point-form__field--checkbox">
-                                        <input type="checkbox" id="convertVoucherCheckbox" @bind="NewMemberPointConvertVoucher" />
-                                        <label for="convertVoucherCheckbox">Convert to voucher</label>
-                                    </div>
-
-                                    <div class="member-point-form__field">
-                                        <label>Start Date</label>
-                                        <input type="date" @bind="NewMemberPointStartDate" />
-                                    </div>
-
-                                    <div class="member-point-form__field">
-                                        <label>End Date</label>
-                                        <input type="date" @bind="NewMemberPointEndDate" />
-                                    </div>
-
-                                    <div class="member-point-form__section">
-                                        <h3>Visible To Branch</h3>
-                                        <div class="member-point-form__branch-table">
-                                            <table>
-                                                <thead>
-                                                    <tr>
-                                                        <th style="width: 40px;"></th>
-                                                        <th style="width: 40px;"></th>
-                                                        <th>ID</th>
-                                                        <th>Name</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    <tr class="member-point-form__branch-group">
-                                                        <td><i class="bi bi-caret-right-fill"></i></td>
-                                                        <td>
-                                                            <input type="checkbox"
-                                                                   checked="@IsMemberPointBranchSelected("HQ")"
-                                                                   @onchange='e => ToggleMemberPointBranch("HQ", e)' />
-                                                        </td>
-                                                        <td colspan="2"><strong>Group: HQ</strong></td>
-                                                    </tr>
-                                                    <tr>
-                                                        <td></td>
-                                                        <td>
-                                                            <input type="checkbox"
-                                                                   checked="@IsMemberPointBranchSelected("HQ")"
-                                                                   @onchange='e => ToggleMemberPointBranch("HQ", e)' />
-                                                        </td>
-                                                        <td>HQ</td>
-                                                        <td>HQ</td>
-                                                    </tr>
-                                                </tbody>
-                                            </table>
+                                        <div class="point-setup-field point-setup-field--wide">
+                                            <label for="pointMemberType">Member Type <span>*</span></label>
+                                            <select id="pointMemberType" @bind="NewMemberPointMemberType" required>
+                                                <option value="">Select member type</option>
+                                                @foreach (var memberType in MemberTypeItems.Where(item => item.Active))
+                                                {
+                                                    <option value="@memberType.MemberTypeID">@memberType.MemberTypeName (@memberType.MemberTypeID)</option>
+                                                }
+                                            </select>
                                         </div>
-                                    </div>
+
+                                        <div class="point-setup-grid point-setup-grid--three">
+                                            <div class="point-setup-field">
+                                                <label for="pointMinimumSpend">Minimum Spend</label>
+                                                <div class="point-setup-input-prefix"><span>MYR</span><input id="pointMinimumSpend" type="number" min="0" step="0.01" @bind="NewMemberPointMinAmount" /></div>
+                                            </div>
+                                            <div class="point-setup-field">
+                                                <label for="pointForEvery">Spend Amount <span>*</span></label>
+                                                <div class="point-setup-input-prefix"><span>MYR</span><input id="pointForEvery" type="number" min="0.01" step="0.01" @bind="NewMemberPointForEveryAmount" required /></div>
+                                            </div>
+                                            <div class="point-setup-field">
+                                                <label for="pointEarned">Points Earned <span>*</span></label>
+                                                <input id="pointEarned" type="number" min="0.01" step="0.01" @bind="NewMemberPointEqualToPoint" required />
+                                            </div>
+                                        </div>
+
+                                        <div class="point-setup-toggle-grid">
+                                            <label class="point-setup-toggle" for="excludeTaxCheckbox">
+                                                <input type="checkbox" id="excludeTaxCheckbox" @bind="NewMemberPointExcludeTax" />
+                                                <span><strong>Exclude Tax</strong></span>
+                                            </label>
+                                            <label class="point-setup-toggle" for="pointRoundDownCheckbox">
+                                                <input type="checkbox" id="pointRoundDownCheckbox" @bind="NewMemberPointRoundDown" />
+                                                <span><strong>Round Down Points</strong></span>
+                                            </label>
+                                        </div>
+                                    </fieldset>
+
+                                    <fieldset class="point-setup-section">
+                                        <legend>Validity</legend>
+                                        <div class="point-setup-grid">
+                                            <div class="point-setup-field">
+                                                <label for="pointStartDate">Valid From <span>*</span></label>
+                                                <input id="pointStartDate" type="date" @bind="NewMemberPointStartDate" required />
+                                            </div>
+                                            <div class="point-setup-field">
+                                                <label for="pointEndDate">Valid Until <span>*</span></label>
+                                                <input id="pointEndDate" type="date" @bind="NewMemberPointEndDate" required />
+                                            </div>
+                                        </div>
+                                        <div class="point-setup-grid point-setup-grid--three">
+                                            <div class="point-setup-field">
+                                                <label for="pointExpiryOption">Expiry</label>
+                                                <select id="pointExpiryOption" @bind="NewMemberPointExpiryOption">
+                                                    <option value="0">No Expiry</option>
+                                                    <option value="1">Months After Earning</option>
+                                                    <option value="2">Fixed Expiry Month</option>
+                                                </select>
+                                            </div>
+                                            @if (NewMemberPointExpiryOption != "0")
+                                            {
+                                                <div class="point-setup-field">
+                                                    <label for="pointExpiryMonth">@(NewMemberPointExpiryOption == "1" ? "Valid Months" : "Expiry Month")</label>
+                                                    <input id="pointExpiryMonth" type="number" min="0" step="1" @bind="NewMemberPointExpiryMonth" />
+                                                </div>
+                                            }
+                                            <div class="point-setup-field">
+                                                <label for="pointConversionRate">MYR per Point</label>
+                                                <input id="pointConversionRate" type="number" min="0" step="0.0001" @bind="NewMemberPointMoneyConversion" />
+                                            </div>
+                                        </div>
+
+                                        <label class="point-setup-toggle" for="convertVoucherCheckbox">
+                                            <input type="checkbox" id="convertVoucherCheckbox" @bind="NewMemberPointConvertVoucher" />
+                                            <span><strong>Convert to Cash Voucher</strong></span>
+                                        </label>
+                                    </fieldset>
+
+                                    <fieldset class="point-setup-section">
+                                        <legend>Branches</legend>
+                                        <div class="point-setup-section__title-row">
+                                            @if (BranchSession.AvailableBranches.Count > 0)
+                                            {
+                                                <label class="point-setup-select-all">
+                                                    <input type="checkbox" checked="@AreAllMemberPointBranchesSelected" @onchange="ToggleAllMemberPointBranches" />
+                                                    All Branches
+                                                </label>
+                                            }
+                                        </div>
+                                        <div class="point-setup-branch-list">
+                                            @if (BranchSession.AvailableBranches.Count == 0)
+                                            {
+                                                <p class="point-setup-branch-empty">No branches are available.</p>
+                                            }
+                                            else
+                                            {
+                                                @foreach (var branch in BranchSession.AvailableBranches)
+                                                {
+                                                    <label class="point-setup-branch" for="pointBranch_@branch.Id">
+                                                        <input id="pointBranch_@branch.Id"
+                                                               type="checkbox"
+                                                               checked="@IsMemberPointBranchSelected(branch.Id)"
+                                                               @onchange="e => ToggleMemberPointBranch(branch.Id, e)" />
+                                                        <span><strong>@branch.Id</strong><small>@branch.Name</small></span>
+                                                    </label>
+                                                }
+                                            }
+                                        </div>
+                                    </fieldset>
+
                                 </form>
                             </div>
                         </div>
@@ -1840,38 +1538,6 @@
             </div>
         </div>
     }
-    @if (MemberTypeDetailsItem is not null)
-    {
-        <div class="service-detail-modal-overlay" @onclick="CloseDetailModals">
-            <div class="service-detail-modal" @onclick:stopPropagation="true">
-                <div class="service-detail-modal__header">
-                    <div class="service-detail-modal__title">
-                        <i class="bi bi-person-badge"></i>
-                        <h2>Member Type Details</h2>
-                    </div>
-                    <button type="button" class="service-detail-modal__close" @onclick="CloseDetailModals" title="Close"><i class="bi bi-x-lg"></i></button>
-                </div>
-                <div class="service-detail-modal__body">
-                    <div class="service-detail-grid">
-                        <div class="service-detail-item"><span class="detail-label">Code</span><strong class="detail-value">@FormatDisplay(MemberTypeDetailsItem.MemberTypeID)</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Member Type</span><strong class="detail-value">@FormatDisplay(MemberTypeDetailsItem.MemberTypeName)</strong></div>
-                        <div class="service-detail-item service-detail-item--status"><span class="detail-label">Status</span><strong class="detail-value">@(MemberTypeDetailsItem.Active ? "Active" : "Inactive")</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Membership Validity</span><strong class="detail-value">@(MemberTypeDetailsItem.MembershipValidDays > 0 ? $"{MemberTypeDetailsItem.MembershipValidDays} days" : "No limit")</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Product Discount</span><strong class="detail-value">@MemberTypeDetailsItem.MemberDiscountOnInventory.ToString("N2")%</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Service Discount</span><strong class="detail-value">@MemberTypeDetailsItem.MemberDiscountOnServices.ToString("N2")%</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Package Discount</span><strong class="detail-value">@MemberTypeDetailsItem.MemberDiscountOnPackage.ToString("N2")%</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Bundle Discount</span><strong class="detail-value">@MemberTypeDetailsItem.MemberDiscountOnBundle.ToString("N2")%</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Discount Timing</span><strong class="detail-value">@FormatMemberTypeTimeRange(MemberTypeDetailsItem.DiscountTimeFrom, MemberTypeDetailsItem.DiscountTimeTo)</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Credit Redemption Only</span><strong class="detail-value">@(MemberTypeDetailsItem.IsDiscountLimitToCreditRedemption ? "Yes" : "No")</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Applicable Brand</span><strong class="detail-value">@FormatDisplay(MemberTypeDetailsItem.ApplicableToItemBrand)</strong></div>
-                        <div class="service-detail-item"><span class="detail-label">Applicable Group</span><strong class="detail-value">@FormatDisplay(MemberTypeDetailsItem.ApplicableToItemGroup)</strong></div>
-                        <div class="service-detail-item service-detail-item--wide"><span class="detail-label">Applicable Items</span><strong class="detail-value">@FormatDisplay(MemberTypeDetailsItem.ApplicableToItems)</strong></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    }
-
     @if (ServiceDetailsItem is not null)
     {
         <div class="service-detail-modal-overlay" @onclick="CloseDetailModals">
@@ -1940,16 +1606,6 @@
                         </dl>
                     </section>
 
-                    <section class="service-record-view__section service-record-view__section--availability">
-                        <div class="service-record-view__section-heading">
-                            <i class="bi bi-calendar3" aria-hidden="true"></i>
-                            <h3>Availability</h3>
-                        </div>
-                        <dl class="service-record-view__fields">
-                            <div><dt>Available date</dt><dd>@FormatDateRange(ServiceDetailsItem.AvailableDateFrom, ServiceDetailsItem.AvailableDateTo)</dd></div>
-                            <div><dt>Available time</dt><dd>@FormatTimeRange(ServiceDetailsItem.AvailableTimeFrom, ServiceDetailsItem.AvailableTimeTo)</dd></div>
-                        </dl>
-                    </section>
                 </div>
                 <div class="service-record-view__footer">
                     <button type="button" @onclick="CloseDetailModals">Done</button>
@@ -2024,16 +1680,6 @@
                         </dl>
                     </section>
 
-                    <section class="service-record-view__section service-record-view__section--availability">
-                        <div class="service-record-view__section-heading">
-                            <i class="bi bi-calendar3" aria-hidden="true"></i>
-                            <h3>Availability</h3>
-                        </div>
-                        <dl class="service-record-view__fields">
-                            <div><dt>Available date</dt><dd>@FormatDateRange(MemberCreditDetailsItem.AvailableDateFrom, MemberCreditDetailsItem.AvailableDateTo)</dd></div>
-                            <div><dt>Available time</dt><dd>@FormatTimeRange(MemberCreditDetailsItem.AvailableTimeFrom, MemberCreditDetailsItem.AvailableTimeTo)</dd></div>
-                        </dl>
-                    </section>
                 </div>
                 <div class="service-record-view__footer">
                     <button type="button" @onclick="CloseDetailModals">Done</button>
@@ -2114,16 +1760,6 @@
                         </dl>
                     </section>
 
-                    <section class="service-record-view__section service-record-view__section--availability">
-                        <div class="service-record-view__section-heading">
-                            <i class="bi bi-calendar3" aria-hidden="true"></i>
-                            <h3>Availability</h3>
-                        </div>
-                        <dl class="service-record-view__fields">
-                            <div><dt>Available date</dt><dd>@FormatDateRange(BundleDetailsItem.AvailableDateFrom, BundleDetailsItem.AvailableDateTo)</dd></div>
-                            <div><dt>Available time</dt><dd>@FormatTimeRange(BundleDetailsItem.AvailableTimeFrom, BundleDetailsItem.AvailableTimeTo)</dd></div>
-                        </dl>
-                    </section>
                 </div>
                 <div class="service-record-view__footer">
                     <button type="button" @onclick="CloseDetailModals">Done</button>
@@ -2172,7 +1808,6 @@
     private List<string> fileSkus = new();
     private int index;
     private ServiceViewModel.ServiceItem? SelectedService { get; set; }
-    private MembershipTypeDM? MemberTypeDetailsItem { get; set; }
     private ServiceViewModel.ServiceItem? ServiceDetailsItem { get; set; }
     private MembershipViewModel.MemberCredit? MemberCreditDetailsItem { get; set; }
     private BundleItem? BundleDetailsItem { get; set; }
@@ -2186,10 +1821,6 @@
     private int MemberTypeCurrentPage { get; set; } = 1;
     private int MemberPointCurrentPage { get; set; } = 1;
     private int BundleCurrentPage { get; set; } = 1;
-    private int OverrideItemsPageSize { get; set; } = 10;
-    private int OverrideServicePage { get; set; } = 1;
-    private int OverridePackagePage { get; set; } = 1;
-    private int OverrideInventoryPage { get; set; } = 1;
     private string SearchQuery { get; set; } = string.Empty;
     private List<MultiTableFilter.FilterData> ActiveServiceFilters { get; set; } = new();
     private List<MultiTableFilter.FilterData> ActiveBundleFilters { get; set; } = new();
@@ -2221,6 +1852,10 @@
     private bool ShowServiceImportExportDropdown { get; set; } = false;
     private const string ServiceImportExpectedHeader = "SKU,Service Name,Category,Duration (minutes),Buffer Time (minutes),Package,Price (MYR)";
     private bool IsServiceApiLoading { get; set; }
+    private string ServiceBranchId =>
+        BranchSession.CurrentBranch?.Id?.Trim() is { Length: > 0 } branchId
+            ? branchId
+            : "HQ";
     private string? ServiceApiError { get; set; }
 
     // Backing list for API-loaded services.
@@ -2343,13 +1978,13 @@
     private string? MemberPointSortColumn { get; set; }
     private bool MemberPointSortAscending { get; set; } = true;
     private MembershipViewModel.MemberPoint? SelectedMemberPoint { get; set; }
-    private bool IsMemberPointDeleteMode { get; set; }
-    private HashSet<MembershipViewModel.MemberPoint> SelectedMemberPointsForDeletion { get; set; } = new();
-    private bool IsAllMemberPointsSelected => FilteredMemberPoints.Any() && SelectedMemberPointsForDeletion.Count == FilteredMemberPoints.Count();
     private List<MembershipViewModel.MemberPoint> MemberPointItems { get; set; } = new();
     private bool IsMemberPointApiLoading { get; set; }
     private bool IsSavingMemberPoint { get; set; }
     private bool IsMemberPointEditMode { get; set; }
+    private bool IsMemberPointDeleteMode { get; set; }
+    private HashSet<MembershipViewModel.MemberPoint> SelectedMemberPointsForDeletion { get; set; } = new();
+    private bool IsAllMemberPointsSelected => FilteredMemberPoints.Any() && SelectedMemberPointsForDeletion.Count == FilteredMemberPoints.Count();
     private string? MemberPointApiError { get; set; }
 
     private string? MemberCreditSortColumn { get; set; }
@@ -2400,19 +2035,7 @@
     private bool IsAddMemberTypeFormVisible { get; set; }
     private string NewMemberTypeCode { get; set; } = string.Empty;
     private bool NewMemberTypeActive { get; set; } = true;
-    private bool NewMemberTypeDiscountCredit { get; set; }
     private string NewMemberTypeName { get; set; } = string.Empty;
-    private decimal NewMemberTypeProductDiscount { get; set; } = 0.00m;
-    private decimal NewMemberTypeServiceDiscount { get; set; } = 0.00m;
-    private decimal NewMemberTypePackageDiscount { get; set; } = 0.00m;
-    private decimal NewMemberTypeBundleDiscount { get; set; } = 0.00m;
-    private string NewMemberTypeTimeFrom { get; set; } = "00:00";
-    private string NewMemberTypeTimeTo { get; set; } = "23:59";
-    private string SelectedItemType { get; set; } = "Inventory";
-    private string SelectedItemBrand { get; set; } = string.Empty;
-    private string SelectedItemGroup { get; set; } = string.Empty;
-    private string SelectedItem { get; set; } = string.Empty;
-
     // Add Member Point Form properties
     private bool IsAddMemberPointFormVisible { get; set; }
     private bool IsViewMemberPointDetailsVisible { get; set; }
@@ -2431,120 +2054,9 @@
     private DateTime? NewMemberPointEndDate { get; set; }
     private string NewMemberPointVisibleToBranchId { get; set; } = "HQ";
 
-    // Override discount on specific items - inventory search
-    private string overrideInventorySearch = string.Empty;
-    private string OverrideInventorySearch
-    {
-        get => overrideInventorySearch;
-        set
-        {
-            if (overrideInventorySearch != value)
-            {
-                overrideInventorySearch = value;
-                OverrideInventoryPage = 1;
-            }
-        }
-    }
-
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await JSRuntime.InvokeVoidAsync("initColumnResize");
-    }
-
-    private string GetBundleServicesIncluded(string sku)
-    {
-        if (string.IsNullOrWhiteSpace(sku))
-        {
-            return "-";
-        }
-
-        return "";
-        // return BundleServicesLookup.TryGetValue(sku, out var services)
-        //     ? services
-        //     : "-";
-    }
-
-    private IEnumerable<InventoryViewModel.InventoryItem> FilteredOverrideInventoryItems =>
-        string.IsNullOrWhiteSpace(OverrideInventorySearch)
-            ? InventoryItems
-            : InventoryItems.Where(p =>
-                (p.Type?.Contains(OverrideInventorySearch, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                (p.Sku?.Contains(OverrideInventorySearch, StringComparison.OrdinalIgnoreCase) ?? false));
-
-    private IEnumerable<ServiceViewModel.ServiceItem> FilteredOverrideServiceItems =>
-        string.IsNullOrWhiteSpace(OverrideServiceSearch)
-            ? ServiceItems
-            : ServiceItems.Where(p =>
-                (p.ServiceName?.Contains(OverrideServiceSearch, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                (p.Sku?.Contains(OverrideServiceSearch, StringComparison.OrdinalIgnoreCase) ?? false));
-
-    private IEnumerable<BundleItem> FilteredOverrideBundles =>
-        string.IsNullOrWhiteSpace(OverridePackageSearch)
-            ? Bundles
-            : Bundles.Where(p =>
-                (p.BundleName?.Contains(OverridePackageSearch, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                (p.SKU?.Contains(OverridePackageSearch, StringComparison.OrdinalIgnoreCase) ?? false));
-
-    // Override discount on specific items - services/packages
-    private bool IsOverrideServiceOpen { get; set; } = true;
-    private bool IsOverridePackageOpen { get; set; }
-
-    private string overrideServiceSearch = string.Empty;
-    private string OverrideServiceSearch
-    {
-        get => overrideServiceSearch;
-        set
-        {
-            if (overrideServiceSearch != value)
-            {
-                overrideServiceSearch = value;
-                OverrideServicePage = 1;
-            }
-        }
-    }
-
-    private string overridePackageSearch = string.Empty;
-    private string OverridePackageSearch
-    {
-        get => overridePackageSearch;
-        set
-        {
-            if (overridePackageSearch != value)
-            {
-                overridePackageSearch = value;
-                OverridePackagePage = 1;
-            }
-        }
-    }
-
-    //private const int OverrideItemsPageSize = 8;
-
-    private static int CalculateTotalPages(int totalItems, int pageSize)
-    {
-        if (pageSize <= 0)
-        {
-            return 1;
-        }
-
-        return Math.Max(1, (int)Math.Ceiling(totalItems / (double)pageSize));
-    }
-
-    private void ChangeOverrideInventoryPage(int delta)
-    {
-        var totalPages = CalculateTotalPages(FilteredOverrideInventoryItems.Count(), OverrideItemsPageSize);
-        OverrideInventoryPage = Math.Clamp(OverrideInventoryPage + delta, 1, totalPages);
-    }
-
-    private void ChangeOverrideServicePage(int delta)
-    {
-        var totalPages = CalculateTotalPages(FilteredOverrideServiceItems.Count(), OverrideItemsPageSize);
-        OverrideServicePage = Math.Clamp(OverrideServicePage + delta, 1, totalPages);
-    }
-
-    private void ChangeOverridePackagePage(int delta)
-    {
-        var totalPages = CalculateTotalPages(FilteredOverrideBundles.Count(), OverrideItemsPageSize);
-        OverridePackagePage = Math.Clamp(OverridePackagePage + delta, 1, totalPages);
     }
 
     private void OnServiceSearchChanged(ChangeEventArgs e)
@@ -2566,28 +2078,6 @@
         BundleSearchQuery = e.Value?.ToString() ?? string.Empty;
         BundleCurrentPage = 1;
         ExpandedMobileBundleSku = null;
-    }
-
-    private void ToggleOverrideSection(string option)
-    {
-        if (option == "Service")
-        {
-            IsOverrideServiceOpen = !IsOverrideServiceOpen;
-
-            if (IsOverrideServiceOpen)
-            {
-                OverrideServicePage = 1;
-            }
-        }
-        else if (option == "Package")
-        {
-            IsOverridePackageOpen = !IsOverridePackageOpen;
-
-            if (IsOverridePackageOpen)
-            {
-                OverridePackagePage = 1;
-            }
-        }
     }
 
     private IEnumerable<ServiceViewModel.ServiceItem> FilteredServices
@@ -2638,6 +2128,11 @@
         InventoryItems = InventoryViewModel.Items.ToList();
         MemberCreditItems.Clear();
         Bundles.Clear();
+
+        // Services are branch-scoped just like Inventory records. Initialize the
+        // persisted/current branch before issuing the service API request.
+        await BranchSession.InitializeAsync();
+
         await LoadServiceItemsFromApiAsync();
         await LoadMemberCreditsFromApiAsync();
         await LoadPackagesFromApiAsync();
@@ -2652,7 +2147,7 @@
 
         try
         {
-            var result = await ServiceItemService.LoadServiceItemsAsync("hq");
+            var result = await ServiceItemService.LoadServiceItemsAsync(ServiceBranchId);
             if (result.Success && result.Value is not null)
             {
                 ServiceItems = result.Value.ToList();
@@ -2664,6 +2159,11 @@
             {
                 ServiceApiError = result.ErrorMessage ?? "Unable to load service records.";
             }
+        }
+        catch (Exception ex)
+        {
+            ServiceItems.Clear();
+            ServiceApiError = $"Unable to load service records. {ex.Message}";
         }
         finally
         {
@@ -2785,28 +2285,13 @@
                 return;
             }
 
+            var currentBranchId = ServiceBranchId;
             MemberPointItems = result.Value
                 .Where(item =>
                     string.IsNullOrWhiteSpace(item.VisibleToBranchID) ||
                     item.VisibleToBranchID.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                        .Any(branch => string.Equals(branch.Trim(), "HQ", StringComparison.OrdinalIgnoreCase)))
-                .Select(item => new MembershipViewModel.MemberPoint(
-                    GetMemberTypeName(item.MemberTypeID),
-                    item.MinimumSpend,
-                    item.ForEveryXDollar,
-                    item.EqualToXPoint,
-                    GetExpiryOptionLabel(item.ExpiryOption),
-                    item.PointID,
-                    item.MemberTypeID,
-                    item.RMConversionRatio,
-                    item.ExcludeTaxAmount,
-                    item.RoundDownToInteger,
-                    item.ExpiryMonth,
-                    item.ConvertRebateIntoCashVoucher,
-                    item.FromDate,
-                    item.ToDate,
-                    item.VisibleToBranchID ?? string.Empty,
-                    item.ExpiryOption))
+                        .Any(branch => string.Equals(branch.Trim(), currentBranchId, StringComparison.OrdinalIgnoreCase)))
+                .Select(MapMemberPoint)
                 .OrderBy(item => item.MemberType)
                 .ToList();
 
@@ -2839,6 +2324,24 @@
         2 => "Fixed Expiry Month",
         _ => "N/A"
     };
+
+    private MembershipViewModel.MemberPoint MapMemberPoint(PointConversionDM item) => new(
+        GetMemberTypeName(item.MemberTypeID),
+        item.MinimumSpend,
+        item.ForEveryXDollar,
+        item.EqualToXPoint,
+        GetExpiryOptionLabel(item.ExpiryOption),
+        item.PointID,
+        item.MemberTypeID,
+        item.RMConversionRatio,
+        item.ExcludeTaxAmount,
+        item.RoundDownToInteger,
+        item.ExpiryMonth,
+        item.ConvertRebateIntoCashVoucher,
+        item.FromDate,
+        item.ToDate,
+        item.VisibleToBranchID ?? string.Empty,
+        item.ExpiryOption);
 
     private IEnumerable<BundleItem> FilteredBundles
     {
@@ -3085,8 +2588,9 @@
             {
                 items = MemberTypeSortColumn switch
                 {
+                    "Code" => MemberTypeSortAscending ? items.OrderBy(m => m.MemberTypeID ?? string.Empty) : items.OrderByDescending(m => m.MemberTypeID ?? string.Empty),
                     "Name" => MemberTypeSortAscending ? items.OrderBy(m => m.MemberTypeName ?? string.Empty) : items.OrderByDescending(m => m.MemberTypeName ?? string.Empty),
-                    "MembersAssigned" => items,
+                    "Status" => MemberTypeSortAscending ? items.OrderBy(m => m.Active) : items.OrderByDescending(m => m.Active),
                     _ => items
                 };
             }
@@ -3204,6 +2708,9 @@
                     "ForEveryAmount" => MemberPointSortAscending ? items.OrderBy(m => m.ForEveryAmount) : items.OrderByDescending(m => m.ForEveryAmount),
                     "EqualToPoint" => MemberPointSortAscending ? items.OrderBy(m => m.EqualToPoint) : items.OrderByDescending(m => m.EqualToPoint),
                     "ExpiryOption" => MemberPointSortAscending ? items.OrderBy(m => m.ExpiryOption) : items.OrderByDescending(m => m.ExpiryOption),
+                    "RoundDown" => MemberPointSortAscending ? items.OrderBy(m => m.RoundDownToInteger) : items.OrderByDescending(m => m.RoundDownToInteger),
+                    "StartDate" => MemberPointSortAscending ? items.OrderBy(m => m.StartDate) : items.OrderByDescending(m => m.StartDate),
+                    "EndDate" => MemberPointSortAscending ? items.OrderBy(m => m.EndDate) : items.OrderByDescending(m => m.EndDate),
                     _ => items
                 };
             }
@@ -3236,9 +2743,75 @@
         }
     }
 
-    private void HandleMemberPointRowClick(MembershipViewModel.MemberPoint memberPoint)
+    private async Task HandleMemberPointRowClick(MembershipViewModel.MemberPoint memberPoint)
     {
+        if (IsMemberPointDeleteMode)
+        {
+            ToggleMemberPointSelection(memberPoint);
+            return;
+        }
+
         SelectedMemberPoint = memberPoint;
+        await EditMemberPointFromRow(memberPoint);
+    }
+
+    private void ToggleMemberPointDeleteMode()
+    {
+        IsMemberPointDeleteMode = !IsMemberPointDeleteMode;
+        if (!IsMemberPointDeleteMode)
+        {
+            SelectedMemberPointsForDeletion.Clear();
+        }
+    }
+
+    private void CancelMemberPointDeleteMode()
+    {
+        IsMemberPointDeleteMode = false;
+        SelectedMemberPointsForDeletion.Clear();
+    }
+
+    private void ToggleMemberPointSelection(MembershipViewModel.MemberPoint memberPoint)
+    {
+        if (!SelectedMemberPointsForDeletion.Add(memberPoint))
+        {
+            SelectedMemberPointsForDeletion.Remove(memberPoint);
+        }
+    }
+
+    private void ToggleSelectAllMemberPoints(ChangeEventArgs eventArgs)
+    {
+        if ((bool)(eventArgs.Value ?? false))
+        {
+            SelectedMemberPointsForDeletion = FilteredMemberPoints.ToHashSet();
+        }
+        else
+        {
+            SelectedMemberPointsForDeletion.Clear();
+        }
+    }
+
+    private async Task ConfirmMemberPointDelete()
+    {
+        MemberPointApiError = null;
+
+        foreach (var memberPoint in SelectedMemberPointsForDeletion.ToList())
+        {
+            if (string.IsNullOrWhiteSpace(memberPoint.PointId))
+            {
+                continue;
+            }
+
+            var result = await PointConversionService.DeleteAsync(memberPoint.PointId);
+            if (!result.Success)
+            {
+                MemberPointApiError = result.ErrorMessage ?? $"Unable to delete the point rule for {memberPoint.MemberType}.";
+                return;
+            }
+        }
+
+        SelectedMemberPointsForDeletion.Clear();
+        IsMemberPointDeleteMode = false;
+        await LoadMemberPointsFromApiAsync();
     }
 
     private void ToggleMemberPointSort(string columnName)
@@ -3316,70 +2889,6 @@
             .OrderBy(v => v.StartsWith(term, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
             .ThenBy(v => v)
             .Take(10);
-    }
-
-    private void ToggleMemberPointDeleteMode()
-    {
-        IsMemberPointDeleteMode = !IsMemberPointDeleteMode;
-        if (!IsMemberPointDeleteMode)
-        {
-            SelectedMemberPointsForDeletion.Clear();
-        }
-    }
-
-    private void CancelMemberPointDeleteMode()
-    {
-        IsMemberPointDeleteMode = false;
-        SelectedMemberPointsForDeletion.Clear();
-    }
-
-    private void ToggleMemberPointSelection(MembershipViewModel.MemberPoint memberPoint)
-    {
-        if (SelectedMemberPointsForDeletion.Contains(memberPoint))
-        {
-            SelectedMemberPointsForDeletion.Remove(memberPoint);
-        }
-        else
-        {
-            SelectedMemberPointsForDeletion.Add(memberPoint);
-        }
-    }
-
-    private void ToggleSelectAllMemberPoints(ChangeEventArgs e)
-    {
-        if ((bool)(e.Value ?? false))
-        {
-            SelectedMemberPointsForDeletion = FilteredMemberPoints.ToHashSet();
-        }
-        else
-        {
-            SelectedMemberPointsForDeletion.Clear();
-        }
-    }
-
-    private async Task ConfirmMemberPointDelete()
-    {
-        MemberPointApiError = null;
-
-        foreach (var memberPoint in SelectedMemberPointsForDeletion.ToList())
-        {
-            if (string.IsNullOrWhiteSpace(memberPoint.PointId))
-            {
-                MemberPointApiError = $"Member point rule for {memberPoint.MemberType} has no record ID.";
-                return;
-            }
-
-            var result = await PointConversionService.DeleteAsync(memberPoint.PointId);
-            if (!result.Success)
-            {
-                MemberPointApiError = result.ErrorMessage ?? $"Unable to delete {memberPoint.MemberType}.";
-                return;
-            }
-        }
-
-        SelectedMemberPointsForDeletion.Clear();
-        IsMemberPointDeleteMode = false;
-        await LoadMemberPointsFromApiAsync();
     }
 
     // Member Credit filtering and sorting
@@ -3493,12 +3002,11 @@
                 return;
             }
 
-            var result = await MemberCreditService.DeactivateMemberCreditAsync(
-                memberCredit.MasterAccountId,
-                "hq");
+            var result = await MemberCreditService.DeleteMemberCreditAsync(
+                memberCredit.MasterAccountId);
             if (!result.Success)
             {
-                MemberCreditApiError = result.ErrorMessage ?? $"Unable to deactivate {memberCredit.Name}.";
+                MemberCreditApiError = result.ErrorMessage ?? $"Unable to delete {memberCredit.Name}.";
                 return;
             }
         }
@@ -3534,23 +3042,7 @@
         
         NewMemberTypeCode = SelectedMemberType.MemberTypeID ?? string.Empty;
         NewMemberTypeActive = SelectedMemberType.Active;
-        NewMemberTypeDiscountCredit = SelectedMemberType.IsDiscountLimitToCreditRedemption;
         NewMemberTypeName = SelectedMemberType.MemberTypeName ?? string.Empty;
-        NewMemberTypeProductDiscount = SelectedMemberType.MemberDiscountOnInventory;
-        NewMemberTypeServiceDiscount = SelectedMemberType.MemberDiscountOnServices;
-        NewMemberTypeBundleDiscount = SelectedMemberType.MemberDiscountOnBundle;
-        NewMemberTypePackageDiscount = SelectedMemberType.MemberDiscountOnPackage;
-
-        var timeFrom = SelectedMemberType.DiscountTimeFrom ?? "00:00:00";
-        var timeTo = SelectedMemberType.DiscountTimeTo ?? "23:59:59";
-        if (timeFrom.Length > 5) timeFrom = timeFrom.Substring(0, 5);
-        if (timeTo.Length > 5) timeTo = timeTo.Substring(0, 5);
-        NewMemberTypeTimeFrom = timeFrom;
-        NewMemberTypeTimeTo = timeTo;
-
-        SelectedItemBrand = SelectedMemberType.ApplicableToItemBrand ?? string.Empty;
-        SelectedItemGroup = SelectedMemberType.ApplicableToItemGroup ?? string.Empty;
-        SelectedItem = SelectedMemberType.ApplicableToItems ?? string.Empty;
         Feedback.Info(
             $"Editing membership type {SelectedMemberType.MemberTypeName ?? SelectedMemberType.MemberTypeID}.",
             "Edit membership type",
@@ -3567,17 +3059,7 @@
     {
         NewMemberTypeCode = string.Empty;
         NewMemberTypeActive = true;
-        NewMemberTypeDiscountCredit = false;
         NewMemberTypeName = string.Empty;
-        NewMemberTypeProductDiscount = 0.00m;
-        NewMemberTypeServiceDiscount = 0.00m;
-        NewMemberTypePackageDiscount = 0.00m;
-        NewMemberTypeBundleDiscount = 0.00m;
-        NewMemberTypeTimeFrom = "00:00";
-        NewMemberTypeTimeTo = "23:59";
-        SelectedItemBrand = string.Empty;
-        SelectedItemGroup = string.Empty;
-        SelectedItem = string.Empty;
         MemberTypeApiError = null;
     }
 
@@ -3599,27 +3081,7 @@
 
         try
         {
-            var timeFrom = NewMemberTypeTimeFrom;
-            if (timeFrom.Length == 5) timeFrom = $"{timeFrom}:00";
-            var timeTo = NewMemberTypeTimeTo;
-            if (timeTo.Length == 5) timeTo = $"{timeTo}:59";
-
-            var memberType = new MembershipTypeDM
-            {
-                MemberTypeID = NewMemberTypeCode,
-                MemberTypeName = NewMemberTypeName,
-                Active = NewMemberTypeActive,
-                IsDiscountLimitToCreditRedemption = NewMemberTypeDiscountCredit,
-                MemberDiscountOnInventory = NewMemberTypeProductDiscount,
-                MemberDiscountOnServices = NewMemberTypeServiceDiscount,
-                MemberDiscountOnBundle = NewMemberTypeBundleDiscount,
-                MemberDiscountOnPackage = NewMemberTypeBundleDiscount,
-                DiscountTimeFrom = timeFrom,
-                DiscountTimeTo = timeTo,
-                ApplicableToItemBrand = SelectedItemBrand,
-                ApplicableToItemGroup = SelectedItemGroup,
-                ApplicableToItems = SelectedItem
-            };
+            var memberType = BuildMemberTypeSaveModel();
 
             ApiCallResult<bool> result;
             if (IsMemberTypeEditMode)
@@ -3651,6 +3113,33 @@
         }
     }
 
+    private MembershipTypeDM BuildMemberTypeSaveModel()
+    {
+        var existing = IsMemberTypeEditMode ? SelectedMemberType : null;
+
+        return new MembershipTypeDM
+        {
+            IsLoading = existing?.IsLoading ?? false,
+            MemberTypeID = NewMemberTypeCode.Trim(),
+            MemberTypeName = NewMemberTypeName.Trim(),
+            Active = NewMemberTypeActive,
+            MembershipValidDays = existing?.MembershipValidDays ?? 0,
+            MemberDiscountOnInventory = existing?.MemberDiscountOnInventory ?? 0m,
+            MemberDiscountOnServices = existing?.MemberDiscountOnServices ?? 0m,
+            MemberDiscountOnPackage = existing?.MemberDiscountOnPackage ?? 0m,
+            MemberDiscountOnBundle = existing?.MemberDiscountOnBundle ?? 0m,
+            ApplicableToItems = existing?.ApplicableToItems,
+            ApplicableToItemGroup = existing?.ApplicableToItemGroup,
+            ApplicableToItemBrand = existing?.ApplicableToItemBrand,
+            IsDiscountLimitToCreditRedemption = existing?.IsDiscountLimitToCreditRedemption ?? false,
+            DiscountTimeFrom = existing?.DiscountTimeFrom ?? "00:00:00",
+            DiscountTimeTo = existing?.DiscountTimeTo ?? "23:59:59",
+            lstBrand = existing?.lstBrand?.ToList() ?? new(),
+            lstGroup = existing?.lstGroup?.ToList() ?? new(),
+            lstItem = existing?.lstItem?.ToList() ?? new()
+        };
+    }
+
     // Member Point Form methods
     private void ShowAddMemberPointForm()
     {
@@ -3680,9 +3169,9 @@
         NewMemberPointExpiryMonth = 0;
         NewMemberPointMoneyConversion = 0.0000m;
         NewMemberPointConvertVoucher = false;
-        NewMemberPointStartDate = null;
-        NewMemberPointEndDate = null;
-        NewMemberPointVisibleToBranchId = "HQ";
+        NewMemberPointStartDate = DateTime.Today;
+        NewMemberPointEndDate = DateTime.Today.AddYears(1);
+        NewMemberPointVisibleToBranchId = ServiceBranchId;
     }
 
     private async Task HandleAddMemberPoint()
@@ -3734,7 +3223,9 @@
                 ToDate = NewMemberPointEndDate.Value,
                 ExpiryOption = int.TryParse(NewMemberPointExpiryOption, out var option) ? option : 0,
                 ExpiryMonth = Math.Max(0, NewMemberPointExpiryMonth),
-                VisibleToBranchID = NewMemberPointVisibleToBranchId,
+                VisibleToBranchID = string.IsNullOrWhiteSpace(NewMemberPointVisibleToBranchId)
+                    ? null
+                    : NewMemberPointVisibleToBranchId,
                 ExcludeTaxAmount = NewMemberPointExcludeTax,
                 ConvertRebateIntoCashVoucher = NewMemberPointConvertVoucher
             };
@@ -3771,36 +3262,54 @@
         ViewingMemberPoint = null;
     }
 
-    private void EditMemberPointFromRow(MembershipViewModel.MemberPoint memberPoint)
+    private async Task EditMemberPointFromRow(MembershipViewModel.MemberPoint memberPoint)
     {
-        ViewingMemberPoint = memberPoint;
-        EditMemberPointFromView();
+        MemberPointApiError = null;
+        var editItem = memberPoint;
+
+        if (!string.IsNullOrWhiteSpace(memberPoint.PointId))
+        {
+            var result = await PointConversionService.LoadRecordAsync(memberPoint.PointId);
+            if (!result.Success || result.Value is null)
+            {
+                MemberPointApiError = result.ErrorMessage ?? "Unable to load the selected point rule.";
+                return;
+            }
+
+            editItem = MapMemberPoint(result.Value);
+        }
+
+        OpenMemberPointEditor(editItem);
     }
 
     private void EditMemberPointFromView()
     {
         if (ViewingMemberPoint != null)
         {
-            SelectedMemberPoint = ViewingMemberPoint;
-            IsMemberPointEditMode = true;
-            NewMemberPointMemberType = ViewingMemberPoint.MemberTypeId ?? string.Empty;
-            NewMemberPointMinAmount = ViewingMemberPoint.MinAmount;
-            NewMemberPointForEveryAmount = ViewingMemberPoint.ForEveryAmount;
-            NewMemberPointEqualToPoint = ViewingMemberPoint.EqualToPoint;
-            NewMemberPointExpiryOption = ViewingMemberPoint.ExpiryOptionId.ToString(CultureInfo.InvariantCulture);
-            NewMemberPointExpiryMonth = ViewingMemberPoint.ExpiryMonth;
-            NewMemberPointMoneyConversion = ViewingMemberPoint.MoneyConversionRate;
-            NewMemberPointExcludeTax = ViewingMemberPoint.ExcludeTaxAmount;
-            NewMemberPointRoundDown = ViewingMemberPoint.RoundDownToInteger;
-            NewMemberPointConvertVoucher = ViewingMemberPoint.ConvertToVoucher;
-            NewMemberPointStartDate = ViewingMemberPoint.StartDate;
-            NewMemberPointEndDate = ViewingMemberPoint.EndDate;
-            NewMemberPointVisibleToBranchId = ViewingMemberPoint.VisibleToBranchId;
-            MemberPointApiError = null;
-
+            OpenMemberPointEditor(ViewingMemberPoint);
             CloseViewMemberPointDetails();
-            IsAddMemberPointFormVisible = true;
         }
+    }
+
+    private void OpenMemberPointEditor(MembershipViewModel.MemberPoint memberPoint)
+    {
+        SelectedMemberPoint = memberPoint;
+        IsMemberPointEditMode = true;
+        NewMemberPointMemberType = memberPoint.MemberTypeId ?? string.Empty;
+        NewMemberPointMinAmount = memberPoint.MinAmount;
+        NewMemberPointForEveryAmount = memberPoint.ForEveryAmount;
+        NewMemberPointEqualToPoint = memberPoint.EqualToPoint;
+        NewMemberPointExpiryOption = memberPoint.ExpiryOptionId.ToString(CultureInfo.InvariantCulture);
+        NewMemberPointExpiryMonth = memberPoint.ExpiryMonth;
+        NewMemberPointMoneyConversion = memberPoint.MoneyConversionRate;
+        NewMemberPointExcludeTax = memberPoint.ExcludeTaxAmount;
+        NewMemberPointRoundDown = memberPoint.RoundDownToInteger;
+        NewMemberPointConvertVoucher = memberPoint.ConvertToVoucher;
+        NewMemberPointStartDate = memberPoint.StartDate;
+        NewMemberPointEndDate = memberPoint.EndDate;
+        NewMemberPointVisibleToBranchId = memberPoint.VisibleToBranchId;
+        MemberPointApiError = null;
+        IsAddMemberPointFormVisible = true;
     }
 
     private bool IsMemberPointBranchSelected(string branchId)
@@ -3827,6 +3336,17 @@
         }
 
         NewMemberPointVisibleToBranchId = string.Join(",", branches);
+    }
+
+    private bool AreAllMemberPointBranchesSelected =>
+        BranchSession.AvailableBranches.Count > 0 &&
+        BranchSession.AvailableBranches.All(branch => IsMemberPointBranchSelected(branch.Id));
+
+    private void ToggleAllMemberPointBranches(ChangeEventArgs eventArgs)
+    {
+        NewMemberPointVisibleToBranchId = eventArgs.Value is true
+            ? string.Join(",", BranchSession.AvailableBranches.Select(branch => branch.Id))
+            : string.Empty;
     }
 
     // View Member Credit Details methods
@@ -3860,14 +3380,6 @@
         ShowMemberCreditDetails(memberCredit);
     }
 
-    private void ShowMemberTypeDetails(MembershipTypeDM memberType)
-    {
-        MemberTypeDetailsItem = memberType;
-        ServiceDetailsItem = null;
-        MemberCreditDetailsItem = null;
-        BundleDetailsItem = null;
-    }
-
     private void EditService(ServiceViewModel.ServiceItem service)
     {
         SelectedService = service;
@@ -3888,7 +3400,6 @@
 
     private void ShowServiceDetails(ServiceViewModel.ServiceItem service)
     {
-        MemberTypeDetailsItem = null;
         ServiceDetailsItem = service;
         MemberCreditDetailsItem = null;
         BundleDetailsItem = null;
@@ -3896,7 +3407,6 @@
 
     private void ShowMemberCreditDetails(MembershipViewModel.MemberCredit memberCredit)
     {
-        MemberTypeDetailsItem = null;
         MemberCreditDetailsItem = memberCredit;
         ServiceDetailsItem = null;
         BundleDetailsItem = null;
@@ -3904,7 +3414,6 @@
 
     private void ShowBundleDetails(BundleItem bundle)
     {
-        MemberTypeDetailsItem = null;
         BundleDetailsItem = bundle;
         ServiceDetailsItem = null;
         MemberCreditDetailsItem = null;
@@ -3912,7 +3421,6 @@
 
     private void CloseDetailModals()
     {
-        MemberTypeDetailsItem = null;
         ServiceDetailsItem = null;
         MemberCreditDetailsItem = null;
         BundleDetailsItem = null;
@@ -3926,13 +3434,6 @@
         }
 
         return $"{(from?.ToString("dd/MM/yyyy") ?? "-")} - {(to?.ToString("dd/MM/yyyy") ?? "-")}";
-    }
-
-    private static string FormatMemberTypeTimeRange(string? from, string? to)
-    {
-        var start = string.IsNullOrWhiteSpace(from) ? "00:00" : from[..Math.Min(5, from.Length)];
-        var end = string.IsNullOrWhiteSpace(to) ? "23:59" : to[..Math.Min(5, to.Length)];
-        return $"{start} - {end}";
     }
 
     private static string FormatDisplay(string? value) =>
@@ -3967,26 +3468,6 @@
 
         return "neutral";
     }
-
-    private static string FormatDateRange(DateTime? from, DateTime? to)
-    {
-        var start = FormatDate(from);
-        var end = FormatDate(to);
-        return start == "-" && end == "-" ? "-" : $"{start} - {end}";
-    }
-
-    private static string FormatDate(DateTime? value) =>
-        value.HasValue && value.Value.Year > 1900 ? value.Value.ToString("dd/MM/yyyy") : "-";
-
-    private static string FormatTimeRange(TimeSpan? from, TimeSpan? to)
-    {
-        var start = FormatTime(from);
-        var end = FormatTime(to);
-        return start == "-" && end == "-" ? "-" : $"{start} - {end}";
-    }
-
-    private static string FormatTime(TimeSpan? value) =>
-        value.HasValue ? DateTime.Today.Add(value.Value).ToString("hh:mm tt") : "-";
 
     private string GetBundleServiceNames(BundleItem bundle)
     {
@@ -4123,9 +3604,11 @@
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(NewServiceName) || string.IsNullOrWhiteSpace(NewServiceSKU))
+        if (string.IsNullOrWhiteSpace(NewServiceName) ||
+            string.IsNullOrWhiteSpace(NewServiceSKU) ||
+            string.IsNullOrWhiteSpace(NewServiceCategory))
         {
-            ServiceApiError = "Service name and SKU are required.";
+            ServiceApiError = "Service name, SKU and category are required.";
             return;
         }
 
@@ -4145,8 +3628,8 @@
                 IsEditMode ? SelectedService?.MasterAccountId : null);
 
             var result = IsEditMode
-                ? await ServiceItemService.UpdateServiceAsync(service, "hq")
-                : await ServiceItemService.CreateServiceAsync(service, "hq");
+                ? await ServiceItemService.UpdateServiceAsync(service, ServiceBranchId)
+                : await ServiceItemService.CreateServiceAsync(service, ServiceBranchId);
 
             if (!result.Success)
             {
@@ -4156,6 +3639,11 @@
 
             CloseAddServiceForm();
             await LoadServiceItemsFromApiAsync();
+        }
+        catch (Exception ex)
+        {
+            ServiceApiError = $"Unable to save service. {ex.Message}";
+            Feedback.Error(ServiceApiError, "Service not saved");
         }
         finally
         {

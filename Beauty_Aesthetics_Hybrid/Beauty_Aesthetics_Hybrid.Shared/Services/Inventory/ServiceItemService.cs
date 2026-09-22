@@ -1,9 +1,9 @@
 using System.Net;
-using System.Text.Json;
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.ViewModels;
 using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
+using Beauty_Aesthetics_WebPos.Models.DTOs;
 using EBI.DM;
 using EBI.Enum;
 
@@ -29,7 +29,9 @@ public sealed class ServiceItemService : IServiceItemService
         string branchId = "hq",
         CancellationToken cancellationToken = default)
     {
-        var result = await serviceInventoryAC.LoadProxyByItemGroupAsync(branchId, cancellationToken);
+        // Services are master records. Load the normal inventory proxy and use the
+        // current branch only to prefer that branch when the API returns duplicates.
+        var result = await serviceInventoryAC.LoadProxyAsync(null, cancellationToken);
         if (!result.Success || result.Value is null)
         {
             return ApiCallResult<IReadOnlyList<ServiceViewModel.ServiceItem>>.Failure(
@@ -37,9 +39,13 @@ public sealed class ServiceItemService : IServiceItemService
                 result.ErrorMessage ?? "Unable to load service records.");
         }
 
+        var normalizedBranchId = NormalizeBranchId(branchId);
         var services = result.Value
-            .SelectMany(group => group.Value ?? new List<InventoryDM>())
             .Where(record => record.InventoryTypeID == ServiceInventoryTypeId)
+            .GroupBy(ServiceRecordKey, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.FirstOrDefault(record =>
+                                 string.Equals(record.BranchID, normalizedBranchId, StringComparison.OrdinalIgnoreCase))
+                             ?? group.First())
             .Select(ToServiceItem)
             .OrderBy(service => service.ServiceName)
             .ToList();
@@ -52,11 +58,13 @@ public sealed class ServiceItemService : IServiceItemService
         string branchId = "hq",
         CancellationToken cancellationToken = default)
     {
-        var record = CreateServiceRecord(service, branchId);
+        var normalizedBranchId = NormalizeBranchId(branchId);
+        var record = CreateServiceRecord(service, normalizedBranchId);
         record.SaveAction = EntityState.Added;
         record.IsDirty = true;
 
-        var result = await serviceInventoryAC.CreateSimpleAsync(record, cancellationToken);
+        var request = CreateServiceRequest(record, normalizedBranchId, service.Price, "Added");
+        var result = await serviceInventoryAC.CreateFullAsync(request, cancellationToken);
 
         var saveResult = ToSaveResult(result, "Unable to create service.");
         if (saveResult.Success)
@@ -91,11 +99,17 @@ public sealed class ServiceItemService : IServiceItemService
                 loadResult.ErrorMessage ?? "Unable to load the service before updating it.");
         }
 
-        ApplyServiceValues(loadResult.Value, service, branchId);
+        var normalizedBranchId = NormalizeBranchId(branchId);
+        ApplyServiceValues(loadResult.Value, service, normalizedBranchId);
         loadResult.Value.SaveAction = EntityState.Changed;
         loadResult.Value.IsDirty = true;
 
-        var result = await serviceInventoryAC.UpdateSimpleAsync(loadResult.Value, cancellationToken);
+        var request = CreateServiceRequest(
+            loadResult.Value,
+            normalizedBranchId,
+            service.Price,
+            "Changed");
+        var result = await serviceInventoryAC.UpdateFullAsync(request, cancellationToken);
 
         var saveResult = ToSaveResult(result, "Unable to update service.");
         if (saveResult.Success)
@@ -121,7 +135,7 @@ public sealed class ServiceItemService : IServiceItemService
                 "The selected service has no record ID.");
         }
 
-        var result = await serviceInventoryAC.DeleteSimpleAsync(masterAccountId, cancellationToken);
+        var result = await serviceInventoryAC.DeleteFullAsync(masterAccountId, cancellationToken);
         if (result.Success)
         {
             feedback.Success("Service deleted successfully.", "Service deleted");
@@ -221,8 +235,39 @@ public sealed class ServiceItemService : IServiceItemService
         return int.TryParse(firstPart, out var minutes) ? Math.Max(0, minutes) : 0;
     }
 
+    private static InventoryPackageRequestDTO CreateServiceRequest(
+        InventoryDM record,
+        string branchId,
+        decimal price,
+        string branchSaveAction)
+    {
+        return new InventoryPackageRequestDTO
+        {
+            ObjInventory = record,
+            Branches =
+            [
+                new InventoryBranchDTO
+                {
+                    MasterAccountId = record.MasterAccountID,
+                    BranchId = branchId,
+                    BranchPrice = Math.Max(0, price),
+                    IsEnabled = true,
+                    GroupId = branchId,
+                    SaveAction = branchSaveAction,
+                    IsDirty = true
+                }
+            ]
+        };
+    }
+
+    private static string ServiceRecordKey(InventoryDM record)
+    {
+        return FirstNonEmpty(record.MasterAccountID, record.DisplayCode, record.AccountName)
+               ?? $"service-{record.GetHashCode()}";
+    }
+
     private static ApiCallResult<bool> ToSaveResult(
-        ApiCallResult<JsonElement> result,
+        ApiCallResult<InventorySaveResultDTO> result,
         string fallbackMessage)
     {
         return result.Success
