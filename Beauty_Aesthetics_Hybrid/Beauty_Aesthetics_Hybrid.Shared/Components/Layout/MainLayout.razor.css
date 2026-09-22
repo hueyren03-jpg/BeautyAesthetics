@@ -427,34 +427,48 @@ h5 {
    so phones behave the same in portrait AND landscape.
    ============================================================ */
 
-/* Mobile OPEN: full-height overlay panel */
+/* Compact mobile/tablet drawer.
+   This is the single sidebar design used whenever MainLayout marks it compact. */
+.MainLayout .SidebarWrapper.compact-sidebar,
 .SidebarWrapper:not(.desktop-sidebar) {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 240px;
-    height: 100vh;
-    border-right: 2px solid #A3A3A3;
-    margin-top: 0px;
-    padding-top: env(safe-area-inset-top, 0px);
-    transition: width 0.3s ease-in-out, background-color 0.3s ease-in-out,
-                height 0.3s ease-in-out;
-    z-index: 5001;
-    background-color: white;
-    overflow-y: auto;
-    overflow-x: hidden;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: min(288px, 86vw) !important;
+    min-width: 0 !important;
+    height: 100vh !important;
+    border-right: 1px solid #d7e1ec !important;
+    margin-top: 0 !important;
+    padding-top: env(safe-area-inset-top, 0px) !important;
+    transition: transform .24s ease, opacity .2s ease !important;
+    z-index: 5001 !important;
+    background: #ffffff !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
 }
 
-/* Mobile CLOSED: transparent floating hamburger-only button */
+/* Closed compact drawer is fully off-canvas.
+   The blue-header hamburger is the only compact menu trigger. */
+.MainLayout .SidebarWrapper.compact-sidebar.sidebarClose,
 .SidebarWrapper.sidebarClose:not(.desktop-sidebar) {
-    width: 80px !important;
-    height: calc(80px + env(safe-area-inset-top, 0px)) !important;
+    width: min(288px, 86vw) !important;
+    transform: translateX(-105%) !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
     overflow: hidden !important;
-    background-color: transparent !important;
-    border: none !important;
+    background: #ffffff !important;
+    border-right: 0 !important;
     box-shadow: none !important;
-    color: white !important;
-    z-index: 5001;
+}
+
+/* Open compact drawer always uses the same menu appearance. */
+.MainLayout .SidebarWrapper.compact-sidebar:not(.sidebarClose),
+.SidebarWrapper:not(.desktop-sidebar):not(.sidebarClose) {
+    transform: translateX(0) !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
 }
 
 /* Mobile/compact drawer branding.
@@ -493,13 +507,20 @@ h5 {
     display: none !important;
 }
 
-/* Mobile: compact header */
-.SidebarWrapper:not(.desktop-sidebar) .SidebarHeader {
-    display: grid;
-    grid-template-columns: 40px auto;
-    grid-template-rows: 1fr;
-    padding: 16px 10px 16px 20px;
-    font-size: 20px;
+/* Compact drawer header: text-only close target.
+   Do not render the old second hamburger inside the drawer. */
+.MainLayout .SidebarWrapper.compact-sidebar:not(.sidebarClose) .SidebarHeader,
+.SidebarWrapper:not(.desktop-sidebar):not(.sidebarClose) .SidebarHeader {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: 1fr !important;
+    padding: 16px 18px !important;
+    font-size: 20px !important;
+}
+
+.MainLayout .SidebarWrapper.compact-sidebar:not(.sidebarClose) .SidebarHeader .SidebarItemIcon,
+.SidebarWrapper:not(.desktop-sidebar):not(.sidebarClose) .SidebarHeader .SidebarItemIcon {
+    display: none !important;
 }
 
 /* Mobile: hide icon-only dashboard icon */
