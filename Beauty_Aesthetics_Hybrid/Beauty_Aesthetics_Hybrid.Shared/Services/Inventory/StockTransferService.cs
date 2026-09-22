@@ -1,11 +1,13 @@
+using System.Collections.ObjectModel;
 using System.Net;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
-using Beauty_Aesthetics_WebPos.Components.ViewModels;
 using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
+using Beauty_Aesthetics_WebPos.Components.ViewModels;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
+using EBI.DM;
+using EBI.Enum;
+using EBI.UC;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.Inventory;
 
@@ -36,8 +38,6 @@ public sealed class StockTransferService : IStockTransferService
                 "Select a working branch before loading stock transfer history.");
         }
 
-        // Match SenangRetails: one branch-scoped LoadProxy request. Beauty has no
-        // transfer-history date picker, so keep a practical two-year window.
         var result = await stockTransferAC.LoadProxyAsync(new StockTransferProxyRequestDTO
         {
             BranchID = branchId.Trim(),
@@ -56,7 +56,7 @@ public sealed class StockTransferService : IStockTransferService
 
         var transfers = result.Value
             .Where(document => !document.IsVoid)
-            .DistinctBy(document => TransferKey(document), StringComparer.OrdinalIgnoreCase)
+            .DistinctBy(TransferKey, StringComparer.OrdinalIgnoreCase)
             .Select(ToViewModel)
             .OrderByDescending(transfer => transfer.Date)
             .ThenByDescending(transfer => transfer.DisplayCode)
@@ -64,7 +64,9 @@ public sealed class StockTransferService : IStockTransferService
 
         await ApplyPendingApiStatusesAsync(transfers, cancellationToken);
 
-        return ApiCallResult<IReadOnlyList<StockTransferViewModel>>.Ok(result.StatusCode, transfers);
+        return ApiCallResult<IReadOnlyList<StockTransferViewModel>>.Ok(
+            result.StatusCode,
+            transfers);
     }
 
     public async Task<ApiCallResult<StockTransferViewModel>> LoadTransferAsync(
@@ -78,17 +80,22 @@ public sealed class StockTransferService : IStockTransferService
                 "Stock transfer document ID is missing.");
         }
 
-        var result = await stockTransferAC.LoadRecordAsync(documentId, cancellationToken);
-        if (!result.Success || result.Value is null)
+        var result = await stockTransferAC.LoadRecordAsync(documentId.Trim(), cancellationToken);
+        if (!result.Success || result.Value?.objDoc_StockTransfer is null)
         {
             return ApiCallResult<StockTransferViewModel>.Failure(
                 result.StatusCode,
                 result.ErrorMessage ?? "Unable to load stock transfer details.");
         }
 
-        var transfer = ToViewModel(result.Value.Document);
-        transfer.Lines = result.Value.DocumentLines.Select(ToLineViewModel).ToList();
+        var transfer = ToViewModel(result.Value.objDoc_StockTransfer);
+        transfer.Lines = (result.Value.lstDocumentLine ?? new ObservableCollection<DocumentLineTableDM>())
+            .Where(line => line.SaveAction != EntityState.Deleted)
+            .Select(ToLineViewModel)
+            .ToList();
+
         await ApplyPendingApiStatusAsync(transfer, cancellationToken);
+
         return ApiCallResult<StockTransferViewModel>.Ok(result.StatusCode, transfer);
     }
 
@@ -103,33 +110,23 @@ public sealed class StockTransferService : IStockTransferService
             return ApiCallResult<bool>.Failure(HttpStatusCode.BadRequest, validationError);
         }
 
-        var templateResult = await stockTransferAC.LoadRecordAsync(string.Empty, cancellationToken);
-        if (!templateResult.Success || templateResult.Value is null)
-        {
-            var message = templateResult.ErrorMessage ?? "Unable to prepare a new stock transfer.";
-            feedback.Error(message, "Transfer not created");
-            return ApiCallResult<bool>.Failure(templateResult.StatusCode, message);
-        }
-
         HashSet<string>? existingTransferIds = null;
-        if (string.IsNullOrWhiteSpace(templateResult.Value.Document.DocumentID))
+        var beforeCreate = await LoadTransfersAsync(transfer.FromBranchId, cancellationToken);
+        if (beforeCreate.Success && beforeCreate.Value is not null)
         {
-            var beforeCreate = await LoadTransfersAsync(transfer.FromBranchId, cancellationToken);
-            if (beforeCreate.Success && beforeCreate.Value is not null)
-            {
-                existingTransferIds = beforeCreate.Value
-                    .Where(item => !string.IsNullOrWhiteSpace(item.DocumentId))
-                    .Select(item => item.DocumentId)
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            }
+            existingTransferIds = beforeCreate.Value
+                .Where(item => !string.IsNullOrWhiteSpace(item.DocumentId))
+                .Select(item => item.DocumentId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
 
-        ApplyDocument(templateResult.Value.Document, transfer);
-        ApplyLines(templateResult.Value, transfer, isNew: true);
-        templateResult.Value.Document.SaveAction = "Added";
-        templateResult.Value.Document.IsDirty = true;
+        var envelope = new Doc_StockTransfer();
+        ApplyDocument(envelope.objDoc_StockTransfer, transfer);
+        ApplyLines(envelope, transfer, isNew: true);
+        envelope.objDoc_StockTransfer.SaveAction = EntityState.Added;
+        envelope.objDoc_StockTransfer.IsDirty = true;
 
-        var createResult = await stockTransferAC.CreateRecordAsync(templateResult.Value, cancellationToken);
+        var createResult = await stockTransferAC.CreateRecordAsync(envelope, cancellationToken);
         if (!createResult.Success)
         {
             var message = createResult.ErrorMessage ?? "Unable to create stock transfer.";
@@ -138,33 +135,39 @@ public sealed class StockTransferService : IStockTransferService
         }
 
         transfer.DocumentId = First(
-            templateResult.Value.Document.DocumentID,
+            envelope.objDoc_StockTransfer.DocumentID,
             LooksLikeDocumentId(createResult.Value) ? createResult.Value : null,
             transfer.DocumentId);
-        transfer.DocumentTypeId = templateResult.Value.Document.DocumentTypeID;
+        transfer.DocumentTypeId = envelope.objDoc_StockTransfer.DocumentTypeID;
         transfer.DisplayCode = First(
-            templateResult.Value.Document.DisplayCode,
-            templateResult.Value.Document.ReferenceNumber,
+            envelope.objDoc_StockTransfer.DisplayCode,
             transfer.DisplayCode,
             transfer.DocumentId);
 
         if (!string.IsNullOrWhiteSpace(transfer.DocumentId))
         {
-            var createdRecord = await stockTransferAC.LoadRecordAsync(transfer.DocumentId, cancellationToken);
-            if (createdRecord.Success && createdRecord.Value is not null)
+            var createdRecord = await stockTransferAC.LoadRecordAsync(
+                transfer.DocumentId,
+                cancellationToken);
+
+            if (createdRecord.Success &&
+                createdRecord.Value?.objDoc_StockTransfer is not null)
             {
-                ApplyCreatedIdentity(transfer, createdRecord.Value.Document);
-                transfer.Lines = createdRecord.Value.DocumentLines.Count > 0
-                    ? createdRecord.Value.DocumentLines.Select(ToLineViewModel).ToList()
-                    : transfer.Lines;
-            }
-            else if (string.IsNullOrWhiteSpace(templateResult.Value.Document.DocumentID))
-            {
-                transfer.DocumentId = string.Empty;
+                ApplyCreatedIdentity(
+                    transfer,
+                    createdRecord.Value.objDoc_StockTransfer);
+
+                transfer.Lines =
+                    (createdRecord.Value.lstDocumentLine ??
+                     new ObservableCollection<DocumentLineTableDM>())
+                    .Where(line => line.SaveAction != EntityState.Deleted)
+                    .Select(ToLineViewModel)
+                    .ToList();
             }
         }
 
-        if (string.IsNullOrWhiteSpace(transfer.DocumentId) && existingTransferIds is not null)
+        if (string.IsNullOrWhiteSpace(transfer.DocumentId) &&
+            existingTransferIds is not null)
         {
             var resolvedTransfer = await ResolveCreatedTransferAsync(
                 transfer,
@@ -182,7 +185,8 @@ public sealed class StockTransferService : IStockTransferService
 
         if (string.IsNullOrWhiteSpace(transfer.DocumentId))
         {
-            const string message = "Stock Transfer was created, but its document ID could not be resolved safely.";
+            const string message =
+                "Stock Transfer was created, but its document ID could not be resolved safely.";
             feedback.Warning(message, "Transfer requires attention");
             return ApiCallResult<bool>.Failure(HttpStatusCode.Conflict, message);
         }
@@ -209,22 +213,28 @@ public sealed class StockTransferService : IStockTransferService
             return ApiCallResult<bool>.Failure(HttpStatusCode.BadRequest, validationError);
         }
 
-        var loadResult = await stockTransferAC.LoadRecordAsync(transfer.DocumentId, cancellationToken);
-        if (!loadResult.Success || loadResult.Value is null)
+        var loadResult = await stockTransferAC.LoadRecordAsync(
+            transfer.DocumentId.Trim(),
+            cancellationToken);
+
+        if (!loadResult.Success || loadResult.Value?.objDoc_StockTransfer is null)
         {
-            var message = loadResult.ErrorMessage ?? "Unable to load stock transfer before updating.";
+            var message =
+                loadResult.ErrorMessage ??
+                "Unable to load stock transfer before updating.";
             feedback.Error(message, "Transfer not updated");
             return ApiCallResult<bool>.Failure(loadResult.StatusCode, message);
         }
 
-        ApplyDocument(loadResult.Value.Document, transfer);
-        ApplyLines(loadResult.Value, transfer, isNew: false);
-        loadResult.Value.Document.DocumentID = transfer.DocumentId;
-        loadResult.Value.Document.SaveAction = "Changed";
-        loadResult.Value.Document.IsDirty = true;
+        var envelope = loadResult.Value;
+        ApplyDocument(envelope.objDoc_StockTransfer, transfer);
+        ApplyLines(envelope, transfer, isNew: false);
+        envelope.objDoc_StockTransfer.DocumentID = transfer.DocumentId.Trim();
+        envelope.objDoc_StockTransfer.SaveAction = EntityState.Changed;
+        envelope.objDoc_StockTransfer.IsDirty = true;
 
         var result = ToBoolean(
-            await stockTransferAC.UpdateRecordAsync(loadResult.Value, cancellationToken),
+            await stockTransferAC.UpdateRecordAsync(envelope, cancellationToken),
             "Unable to update stock transfer.");
 
         if (result.Success)
@@ -233,7 +243,9 @@ public sealed class StockTransferService : IStockTransferService
         }
         else
         {
-            feedback.Error(result.ErrorMessage ?? "Unable to update stock transfer.", "Transfer not updated");
+            feedback.Error(
+                result.ErrorMessage ?? "Unable to update stock transfer.",
+                "Transfer not updated");
         }
 
         return result;
@@ -251,7 +263,7 @@ public sealed class StockTransferService : IStockTransferService
         }
 
         var result = ToBoolean(
-            await stockTransferAC.DeleteAsync(documentId, cancellationToken),
+            await stockTransferAC.DeleteAsync(documentId.Trim(), cancellationToken),
             "Unable to delete stock transfer.");
 
         if (result.Success)
@@ -260,7 +272,9 @@ public sealed class StockTransferService : IStockTransferService
         }
         else
         {
-            feedback.Error(result.ErrorMessage ?? "Unable to delete stock transfer.", "Transfer not deleted");
+            feedback.Error(
+                result.ErrorMessage ?? "Unable to delete stock transfer.",
+                "Transfer not deleted");
         }
 
         return result;
@@ -271,7 +285,10 @@ public sealed class StockTransferService : IStockTransferService
         IReadOnlySet<string> existingTransferIds,
         CancellationToken cancellationToken)
     {
-        var afterCreate = await LoadTransfersAsync(requestedTransfer.FromBranchId, cancellationToken);
+        var afterCreate = await LoadTransfersAsync(
+            requestedTransfer.FromBranchId,
+            cancellationToken);
+
         if (!afterCreate.Success || afterCreate.Value is null)
         {
             return null;
@@ -290,7 +307,10 @@ public sealed class StockTransferService : IStockTransferService
         var verifiedCandidates = new List<StockTransferViewModel>();
         foreach (var candidate in candidates)
         {
-            var detailResult = await LoadTransferAsync(candidate.DocumentId, cancellationToken);
+            var detailResult = await LoadTransferAsync(
+                candidate.DocumentId,
+                cancellationToken);
+
             if (!detailResult.Success || detailResult.Value is null)
             {
                 continue;
@@ -307,31 +327,29 @@ public sealed class StockTransferService : IStockTransferService
             }
         }
 
-        return verifiedCandidates.Count == 1 ? verifiedCandidates[0] : null;
+        return verifiedCandidates.Count == 1
+            ? verifiedCandidates[0]
+            : null;
     }
 
-    private static void ApplyDocument(StockTransferDocumentDTO document, StockTransferViewModel transfer)
+    private static void ApplyDocument(
+        Doc_StockTransferDM document,
+        StockTransferViewModel transfer)
     {
         var fromBranch = NormalizeBranchId(transfer.FromBranchId);
         var toBranch = NormalizeBranchId(transfer.ToBranchId);
+        var date = transfer.Date == default ? DateTime.Today : transfer.Date;
+        var total = transfer.Lines.Sum(line =>
+            Math.Max(0, line.Quantity) * Math.Max(0, line.UnitCost));
 
-        document.FriendlyDocumentName = string.IsNullOrWhiteSpace(document.FriendlyDocumentName)
-            ? "Stock Transfer"
-            : document.FriendlyDocumentName;
         document.BranchID = fromBranch;
         document.EditBranchID = fromBranch;
-        document.OrderBranchID = toBranch;
         document.FromBranchID = fromBranch;
-        document.ToBranchID = toBranch;
         document.FromBranch = First(transfer.FromBranchName, transfer.FromBranchId);
+        document.ToBranchID = toBranch;
         document.ToBranch = First(transfer.ToBranchName, transfer.ToBranchId);
-        document.FinancialDate = transfer.Date == default ? DateTime.Today : transfer.Date;
-        document.DisplayCode = NullIfWhiteSpace(transfer.DisplayCode);
-        document.ReferenceNumber = NullIfWhiteSpace(transfer.DisplayCode);
+        document.FinancialDate = date;
         document.Remarks = NullIfWhiteSpace(transfer.Remarks);
-        document.ExchangeRate = document.ExchangeRate <= 0 ? 1 : document.ExchangeRate;
-
-        var total = transfer.Lines.Sum(line => Math.Max(0, line.Quantity) * Math.Max(0, line.UnitCost));
         document.TotalBeforeTax = total;
         document.TaxableAmount = total;
         document.TotalAfterTax = total;
@@ -340,88 +358,163 @@ public sealed class StockTransferService : IStockTransferService
         document.LocalTotalAfterTax = total;
     }
 
-    private static void ApplyLines(StockTransferEnvelopeDTO envelope, StockTransferViewModel transfer, bool isNew)
+    private static void ApplyLines(
+        Doc_StockTransfer envelope,
+        StockTransferViewModel transfer,
+        bool isNew)
     {
-        var existingById = envelope.DocumentLines
-            .Where(line => !string.IsNullOrWhiteSpace(ReadString(line, "documentLineID")))
-            .DistinctBy(line => ReadString(line, "documentLineID"), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(line => ReadString(line, "documentLineID")!, StringComparer.OrdinalIgnoreCase);
-        var updatedLines = new List<JsonObject>();
+        var document = envelope.objDoc_StockTransfer ??
+            throw new InvalidOperationException(
+                "Stock transfer document header is missing.");
+
+        var existingLines =
+            envelope.lstDocumentLine?.ToList() ??
+            new List<DocumentLineTableDM>();
+
+        var existingById = existingLines
+            .Where(line => !string.IsNullOrWhiteSpace(line.DocumentLineID))
+            .DistinctBy(line => line.DocumentLineID, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                line => line.DocumentLineID,
+                StringComparer.OrdinalIgnoreCase);
+
+        var updatedLines = new List<DocumentLineTableDM>();
+        var fromBranch = NormalizeBranchId(transfer.FromBranchId);
+        var date = transfer.Date == default ? DateTime.Today : transfer.Date;
 
         for (var index = 0; index < transfer.Lines.Count; index++)
         {
             var source = transfer.Lines[index];
-            JsonObject? existingLine = null;
-            var hasExistingLine = !string.IsNullOrWhiteSpace(source.DocumentLineId) &&
-                                  existingById.TryGetValue(source.DocumentLineId, out existingLine);
-            var line = hasExistingLine ? existingLine! : new JsonObject();
-            var documentLineId = hasExistingLine ? source.DocumentLineId : Guid.NewGuid().ToString();
-            var saveAction = isNew || !hasExistingLine ? "Added" : "Changed";
+            DocumentLineTableDM? existingLine = null;
+            var hasExistingLine =
+                !string.IsNullOrWhiteSpace(source.DocumentLineId) &&
+                existingById.TryGetValue(source.DocumentLineId, out existingLine);
 
-            Set(line, "documentLineID", documentLineId);
-            Set(line, "documentID", envelope.Document.DocumentID);
-            Set(line, "ownerDocumentTypeID", envelope.Document.DocumentTypeID);
-            Set(line, "lineOrder", index + 1);
-            Set(line, "lineItemID", source.InventoryId);
-            Set(line, "inventoryItemAccountID", source.InventoryId);
-            Set(line, "lineItemDisplayCode", source.Sku);
-            Set(line, "skuName", source.Sku);
-            Set(line, "description", source.ProductName);
-            Set(line, "itemName", source.ProductName);
-            var lineAmount = Math.Max(0, source.Quantity) * Math.Max(0, source.UnitCost);
-            Set(line, "quantity", source.Quantity);
-            Set(line, "adjustedQuantity", source.Quantity);
-            Set(line, "unitPrice", Math.Max(0, source.UnitCost));
-            Set(line, "cost", Math.Max(0, source.UnitCost));
-            Set(line, "subTotal", lineAmount);
-            Set(line, "subTotalBeforeGST", lineAmount);
-            Set(line, "amount", lineAmount);
-            Set(line, "taxableAmount", lineAmount);
-            Set(line, "unitOfMeasurementID", source.UnitOfMeasurementId);
-            Set(line, "inventoryTypeID", source.InventoryTypeId <= 0 ? 1 : source.InventoryTypeId);
-            Set(line, "skuQuantity", 1);
-            Set(line, "branchID", NormalizeBranchId(transfer.FromBranchId));
-            Set(line, "editBranchID", NormalizeBranchId(transfer.FromBranchId));
-            Set(line, "financialDate", transfer.Date == default ? DateTime.Today : transfer.Date);
-            Set(line, "saveAction", saveAction);
-            Set(line, "isDirty", true);
+            var line = hasExistingLine
+                ? existingLine!
+                : new DocumentLineTableDM();
+
+            var quantity = Math.Max(0, source.Quantity);
+            var unitCost = Math.Max(0, source.UnitCost);
+            var lineAmount = quantity * unitCost;
+
+            line.DocumentLineID =
+                hasExistingLine ? source.DocumentLineId : string.Empty;
+            line.DocumentID = document.DocumentID ?? string.Empty;
+            line.OwnerDocumentTypeID = document.DocumentTypeID;
+            line.LineOrder = index + 1;
+            line.LineItemID = source.InventoryId;
+            line.InventoryItemAccountID = source.InventoryId;
+            line.LineItemDisplayCode = source.Sku;
+            line.SKUName = source.Sku;
+            line.Description = source.ProductName;
+            line.ItemName = source.ProductName;
+            line.Quantity = quantity;
+            line.AdjustedQuantity = quantity;
+            line.UnitPrice = unitCost;
+            line.Cost = unitCost;
+            line.SubTotal = lineAmount;
+            line.SubTotalBeforeGST = lineAmount;
+            line.Amount = lineAmount;
+            line.TaxableAmount = lineAmount;
+            line.UnitOfMeasurementID = source.UnitOfMeasurementId;
+            line.InventoryTypeID =
+                source.InventoryTypeId <= 0 ? 1 : source.InventoryTypeId;
+            line.SKUQuantity = 1;
+            line.BranchID = fromBranch;
+            line.EditBranchID = fromBranch;
+            line.FinancialDate = date;
+            line.DocumentDisplayCode = document.DisplayCode;
+            line.SaveAction = isNew || !hasExistingLine
+                ? EntityState.Added
+                : EntityState.Changed;
+            line.IsDirty = true;
+
             updatedLines.Add(line);
         }
 
-        foreach (var removedLine in envelope.DocumentLines.Except(updatedLines))
+        foreach (var removedLine in existingLines.Except(updatedLines))
         {
-            Set(removedLine, "saveAction", "Deleted");
-            Set(removedLine, "isDirty", true);
+            removedLine.SaveAction = EntityState.Deleted;
+            removedLine.IsDirty = true;
             updatedLines.Add(removedLine);
         }
 
-        envelope.DocumentLines = updatedLines;
+        envelope.lstDocumentLine =
+            new ObservableCollection<DocumentLineTableDM>(updatedLines);
     }
 
-    private static void ApplyCreatedIdentity(StockTransferViewModel transfer, StockTransferDocumentDTO document)
+    private static void ApplyCreatedIdentity(
+        StockTransferViewModel transfer,
+        Doc_StockTransferDM document)
     {
         transfer.DocumentId = First(document.DocumentID, transfer.DocumentId);
-        transfer.DocumentTypeId = document.DocumentTypeID != 0 ? document.DocumentTypeID : transfer.DocumentTypeId;
-        transfer.DisplayCode = First(document.DisplayCode, document.ReferenceNumber, transfer.DisplayCode, transfer.DocumentId);
-        transfer.FromBranchId = First(document.FromBranchID, document.BranchID, document.EditBranchID, transfer.FromBranchId);
-        transfer.ToBranchId = First(document.ToBranchID, document.OrderBranchID, transfer.ToBranchId);
+        transfer.DocumentTypeId =
+            document.DocumentTypeID != 0
+                ? document.DocumentTypeID
+                : transfer.DocumentTypeId;
+        transfer.DisplayCode = First(
+            document.DisplayCode,
+            transfer.DisplayCode,
+            transfer.DocumentId);
+        transfer.FromBranchId = First(
+            document.FromBranchID,
+            document.BranchID,
+            document.EditBranchID,
+            transfer.FromBranchId);
+        transfer.ToBranchId = First(
+            document.ToBranchID,
+            transfer.ToBranchId);
+        transfer.FromBranchName = First(
+            document.FromBranch,
+            transfer.FromBranchName,
+            transfer.FromBranchId);
+        transfer.ToBranchName = First(
+            document.ToBranch,
+            transfer.ToBranchName,
+            transfer.ToBranchId);
         transfer.Remarks = document.Remarks ?? transfer.Remarks;
     }
 
-    private static StockTransferViewModel ToViewModel(StockTransferDocumentDTO document) => new()
+    private static StockTransferViewModel ToViewModel(
+        Doc_StockTransferDM document) => new()
     {
         DocumentId = document.DocumentID ?? string.Empty,
         DocumentTypeId = document.DocumentTypeID,
-        DisplayCode = First(document.DisplayCode, document.ReferenceNumber, document.DocumentID),
-        Date = document.FinancialDate == default ? DateTime.Today : document.FinancialDate,
-        BranchId = First(document.BranchID, document.EditBranchID, document.FromBranchID),
-        FromBranchId = First(document.FromBranchID, document.BranchID, document.EditBranchID),
-        FromBranchName = First(document.FromBranch, document.FromBranchID, document.BranchID),
-        ToBranchId = First(document.ToBranchID, document.OrderBranchID),
-        ToBranchName = First(document.ToBranch, document.ToBranchID, document.OrderBranchID),
+        DisplayCode = First(document.DisplayCode, document.DocumentID),
+        Date = document.FinancialDate == default
+            ? DateTime.Today
+            : document.FinancialDate,
+        BranchId = First(
+            document.BranchID,
+            document.EditBranchID,
+            document.FromBranchID),
+        FromBranchId = First(
+            document.FromBranchID,
+            document.BranchID,
+            document.EditBranchID),
+        FromBranchName = First(
+            document.FromBranch,
+            document.FromBranchID,
+            document.BranchID),
+        ToBranchId = document.ToBranchID ?? string.Empty,
+        ToBranchName = First(document.ToBranch, document.ToBranchID),
         Remarks = document.Remarks ?? string.Empty,
-        TotalAmount = document.TotalAfterTax != 0 ? document.TotalAfterTax : document.LocalTotalAfterTax,
-        Status = ResolveTransferStatus(document)
+        TotalAmount = document.TotalAfterTax,
+        Status = document.IsVoid ? "Cancelled" : "In Transit"
+    };
+
+    private static StockTransferLineViewModel ToLineViewModel(
+        DocumentLineTableDM line) => new()
+    {
+        DocumentLineId = line.DocumentLineID ?? string.Empty,
+        InventoryId = First(line.LineItemID, line.InventoryItemAccountID),
+        Sku = First(line.LineItemDisplayCode, line.SKUName),
+        ProductName = First(line.Description, line.ItemName),
+        Quantity = line.Quantity != 0 ? line.Quantity : line.AdjustedQuantity,
+        UnitCost = FirstPositive(line.Cost, line.UnitPrice),
+        InventoryTypeId = Math.Max(1, line.InventoryTypeID),
+        UnitOfMeasurementId = line.UnitOfMeasurementID ?? string.Empty
     };
 
     private async Task ApplyPendingApiStatusesAsync(
@@ -431,20 +524,25 @@ public sealed class StockTransferService : IStockTransferService
         var groups = transfers
             .Where(ShouldResolveFromPendingApi)
             .Where(transfer => !string.IsNullOrWhiteSpace(transfer.ToBranchId))
-            .GroupBy(transfer => transfer.ToBranchId.Trim(), StringComparer.OrdinalIgnoreCase);
+            .GroupBy(
+                transfer => transfer.ToBranchId.Trim(),
+                StringComparer.OrdinalIgnoreCase);
 
         foreach (var group in groups)
         {
-            var pendingResult = await pendingAcceptService.LoadPendingAsync(group.Key, cancellationToken);
+            var pendingResult = await pendingAcceptService.LoadPendingAsync(
+                group.Key,
+                cancellationToken);
+
             if (!pendingResult.Success || pendingResult.Value is null)
             {
-                // Never invent a completion state when the API cannot be checked.
                 continue;
             }
 
             foreach (var transfer in group)
             {
-                transfer.Status = pendingResult.Value.Any(receipt => MatchesPendingTransfer(transfer, receipt))
+                transfer.Status = pendingResult.Value.Any(
+                        receipt => MatchesPendingTransfer(transfer, receipt))
                     ? "In Transit"
                     : "Completed";
             }
@@ -470,15 +568,22 @@ public sealed class StockTransferService : IStockTransferService
             return;
         }
 
-        transfer.Status = pendingResult.Value.Any(receipt => MatchesPendingTransfer(transfer, receipt))
+        transfer.Status = pendingResult.Value.Any(
+                receipt => MatchesPendingTransfer(transfer, receipt))
             ? "In Transit"
             : "Completed";
     }
 
-    private static bool ShouldResolveFromPendingApi(StockTransferViewModel transfer) =>
-        !string.Equals(transfer.Status, "Cancelled", StringComparison.OrdinalIgnoreCase) &&
-        !string.Equals(transfer.Status, "Draft", StringComparison.OrdinalIgnoreCase) &&
-        !string.Equals(transfer.Status, "Completed", StringComparison.OrdinalIgnoreCase);
+    private static bool ShouldResolveFromPendingApi(
+        StockTransferViewModel transfer) =>
+        !string.Equals(
+            transfer.Status,
+            "Cancelled",
+            StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(
+            transfer.Status,
+            "Completed",
+            StringComparison.OrdinalIgnoreCase);
 
     private static bool MatchesPendingTransfer(
         StockTransferViewModel transfer,
@@ -486,136 +591,34 @@ public sealed class StockTransferService : IStockTransferService
         SameKey(transfer.DocumentId, receipt.DocumentId) ||
         SameKey(transfer.DisplayCode, receipt.DisplayCode);
 
-    private static string ResolveTransferStatus(StockTransferDocumentDTO document)
-    {
-        if (document.IsVoid)
-        {
-            return "Cancelled";
-        }
-
-        if (document.ExtensionData is not null)
-        {
-            foreach (var statusName in new[]
-                     {
-                         "status", "documentStatus", "transferStatus", "stockTransferStatus",
-                         "verifyStatus", "acceptStatus", "receiptStatus"
-                     })
-            {
-                var status = ReadExtensionString(document.ExtensionData, statusName);
-                if (!string.IsNullOrWhiteSpace(status))
-                {
-                    var normalized = NormalizeTransferStatus(status);
-                    if (normalized is not null)
-                    {
-                        return normalized;
-                    }
-                }
-            }
-
-            foreach (var receivedName in new[] { "isReceived", "isAccepted", "isCompleted", "accepted" })
-            {
-                if (ReadExtensionBoolean(document.ExtensionData, receivedName))
-                {
-                    return "Completed";
-                }
-            }
-        }
-
-        return "In Transit";
-    }
-
-    private static string? NormalizeTransferStatus(string status)
-    {
-        var value = status.Trim();
-        if (value.Contains("receive", StringComparison.OrdinalIgnoreCase) ||
-            value.Contains("accept", StringComparison.OrdinalIgnoreCase) ||
-            value.Contains("complete", StringComparison.OrdinalIgnoreCase) ||
-            value.Contains("closed", StringComparison.OrdinalIgnoreCase))
-        {
-            return "Completed";
-        }
-
-        if (value.Contains("cancel", StringComparison.OrdinalIgnoreCase) ||
-            value.Contains("void", StringComparison.OrdinalIgnoreCase))
-        {
-            return "Cancelled";
-        }
-
-        if (value.Contains("draft", StringComparison.OrdinalIgnoreCase))
-        {
-            return "Draft";
-        }
-
-        if (value.Contains("pending", StringComparison.OrdinalIgnoreCase) ||
-            value.Contains("transit", StringComparison.OrdinalIgnoreCase) ||
-            value.Contains("dispatch", StringComparison.OrdinalIgnoreCase) ||
-            value.Contains("posted", StringComparison.OrdinalIgnoreCase) ||
-            value.Contains("open", StringComparison.OrdinalIgnoreCase) ||
-            value.Contains("new", StringComparison.OrdinalIgnoreCase))
-        {
-            return "In Transit";
-        }
-
-        return null;
-    }
-
-    private static string ReadExtensionString(
-        IReadOnlyDictionary<string, JsonElement> extensionData,
-        string propertyName)
-    {
-        var property = extensionData.FirstOrDefault(item =>
-            string.Equals(item.Key, propertyName, StringComparison.OrdinalIgnoreCase));
-
-        return property.Value.ValueKind switch
-        {
-            JsonValueKind.String => property.Value.GetString() ?? string.Empty,
-            JsonValueKind.Number => property.Value.ToString(),
-            _ => string.Empty
-        };
-    }
-
-    private static bool ReadExtensionBoolean(
-        IReadOnlyDictionary<string, JsonElement> extensionData,
-        string propertyName)
-    {
-        var property = extensionData.FirstOrDefault(item =>
-            string.Equals(item.Key, propertyName, StringComparison.OrdinalIgnoreCase));
-
-        return property.Value.ValueKind switch
-        {
-            JsonValueKind.True => true,
-            JsonValueKind.String => bool.TryParse(property.Value.GetString(), out var parsed) && parsed,
-            JsonValueKind.Number => property.Value.TryGetInt32(out var number) && number != 0,
-            _ => false
-        };
-    }
-
-    private static StockTransferLineViewModel ToLineViewModel(JsonObject line) => new()
-    {
-        DocumentLineId = ReadString(line, "documentLineID"),
-        InventoryMovementId = First(
-            ReadString(line, "inventoryMovementID"),
-            ReadString(line, "InventoryMovementID")),
-        InventoryId = First(ReadString(line, "lineItemID"), ReadString(line, "inventoryItemAccountID")),
-        Sku = First(ReadString(line, "lineItemDisplayCode"), ReadString(line, "skuName")),
-        ProductName = First(ReadString(line, "description"), ReadString(line, "itemName")),
-        Quantity = ReadDecimal(line, "quantity"),
-        UnitCost = ReadDecimal(line, "cost") > 0
-            ? ReadDecimal(line, "cost")
-            : ReadDecimal(line, "unitPrice"),
-        InventoryTypeId = Math.Max(1, (int)ReadDecimal(line, "inventoryTypeID")),
-        UnitOfMeasurementId = ReadString(line, "unitOfMeasurementID")
-    };
-
     private static string? Validate(StockTransferViewModel transfer)
     {
-        if (string.IsNullOrWhiteSpace(transfer.FromBranchId)) return "From branch is required.";
-        if (string.IsNullOrWhiteSpace(transfer.ToBranchId)) return "To branch is required.";
-        if (string.Equals(transfer.FromBranchId.Trim(), transfer.ToBranchId.Trim(), StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(transfer.FromBranchId))
+            return "From branch is required.";
+
+        if (string.IsNullOrWhiteSpace(transfer.ToBranchId))
+            return "To branch is required.";
+
+        if (string.Equals(
+                transfer.FromBranchId.Trim(),
+                transfer.ToBranchId.Trim(),
+                StringComparison.OrdinalIgnoreCase))
+        {
             return "From branch and to branch must be different.";
-        if (transfer.Lines.Count == 0) return "Select at least one product.";
-        if (transfer.Lines.Any(line => string.IsNullOrWhiteSpace(line.InventoryId))) return "A selected product is missing its inventory ID.";
-        if (transfer.Lines.Any(line => line.Quantity <= 0)) return "Transfer quantity must be greater than zero.";
+        }
+
+        if (transfer.Lines.Count == 0)
+            return "Select at least one product.";
+
+        if (transfer.Lines.Any(
+                line => string.IsNullOrWhiteSpace(line.InventoryId)))
+        {
+            return "A selected product is missing its inventory ID.";
+        }
+
+        if (transfer.Lines.Any(line => line.Quantity <= 0))
+            return "Transfer quantity must be greater than zero.";
+
         return null;
     }
 
@@ -625,13 +628,19 @@ public sealed class StockTransferService : IStockTransferService
     {
         var actualTotals = actual
             .Where(line => !string.IsNullOrWhiteSpace(line.InventoryId))
-            .GroupBy(line => LineMatchKey(line), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key, group => group.Sum(line => line.Quantity), StringComparer.OrdinalIgnoreCase);
+            .GroupBy(LineMatchKey, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Sum(line => line.Quantity),
+                StringComparer.OrdinalIgnoreCase);
 
         var expectedTotals = expected
             .Where(line => !string.IsNullOrWhiteSpace(line.InventoryId))
-            .GroupBy(line => LineMatchKey(line), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key, group => group.Sum(line => line.Quantity), StringComparer.OrdinalIgnoreCase);
+            .GroupBy(LineMatchKey, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Sum(line => line.Quantity),
+                StringComparer.OrdinalIgnoreCase);
 
         return actualTotals.Count == expectedTotals.Count &&
                expectedTotals.All(item =>
@@ -643,7 +652,9 @@ public sealed class StockTransferService : IStockTransferService
         $"{line.InventoryId.Trim()}|{NormalizeUom(line.UnitOfMeasurementId)}";
 
     private static string NormalizeUom(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? "UNIT" : value.Trim().ToUpperInvariant();
+        string.IsNullOrWhiteSpace(value)
+            ? "UNIT"
+            : value.Trim().ToUpperInvariant();
 
     private static bool LooksLikeDocumentId(string? value) =>
         !string.IsNullOrWhiteSpace(value) &&
@@ -653,7 +664,10 @@ public sealed class StockTransferService : IStockTransferService
     private static bool SameKey(string? left, string? right) =>
         !string.IsNullOrWhiteSpace(left) &&
         !string.IsNullOrWhiteSpace(right) &&
-        string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase);
+        string.Equals(
+            left.Trim(),
+            right.Trim(),
+            StringComparison.OrdinalIgnoreCase);
 
     private static bool SameText(string? left, string? right) =>
         string.Equals(
@@ -661,43 +675,33 @@ public sealed class StockTransferService : IStockTransferService
             right?.Trim() ?? string.Empty,
             StringComparison.OrdinalIgnoreCase);
 
-    private static void Set(JsonObject line, string name, string? value) => line[name] = value;
-    private static void Set(JsonObject line, string name, int value) => line[name] = value;
-    private static void Set(JsonObject line, string name, decimal value) => line[name] = value;
-    private static void Set(JsonObject line, string name, bool value) => line[name] = value;
-    private static void Set(JsonObject line, string name, DateTime value) => line[name] = value;
-
-    private static string ReadString(JsonObject line, string name)
-    {
-        var property = line.FirstOrDefault(item => string.Equals(item.Key, name, StringComparison.OrdinalIgnoreCase));
-        return property.Value?.ToString().Trim('"') ?? string.Empty;
-    }
-
-    private static decimal ReadDecimal(JsonObject line, string name)
-    {
-        var property = line.FirstOrDefault(item => string.Equals(item.Key, name, StringComparison.OrdinalIgnoreCase));
-        if (property.Value is null) return 0;
-        if (property.Value is JsonValue jsonValue && jsonValue.TryGetValue<decimal>(out var decimalValue)) return decimalValue;
-        return decimal.TryParse(property.Value.ToString(), out var parsed) ? parsed : 0;
-    }
-
-    private static ApiCallResult<bool> ToBoolean(ApiCallResult<string> result, string fallback) =>
-        result.Success
-            ? ApiCallResult<bool>.Ok(result.StatusCode, true)
-            : ApiCallResult<bool>.Failure(result.StatusCode, result.ErrorMessage ?? fallback);
-
-    private static string TransferKey(StockTransferDocumentDTO document) =>
+    private static string TransferKey(Doc_StockTransferDM document) =>
         First(
             document.DocumentID,
             document.DisplayCode,
-            $"{document.FinancialDate:O}|{document.NumericCode}");
+            $"{document.FinancialDate:O}|{document.FromBranchID}|{document.ToBranchID}");
+
+    private static decimal FirstPositive(params decimal[] values) =>
+        values.FirstOrDefault(value => value > 0);
+
+    private static ApiCallResult<bool> ToBoolean(
+        ApiCallResult<string> result,
+        string fallback) =>
+        result.Success
+            ? ApiCallResult<bool>.Ok(result.StatusCode, true)
+            : ApiCallResult<bool>.Failure(
+                result.StatusCode,
+                result.ErrorMessage ?? fallback);
 
     private static string NormalizeBranchId(string? branchId) =>
-        string.IsNullOrWhiteSpace(branchId) ? "HQ" : branchId.Trim().ToUpperInvariant();
+        string.IsNullOrWhiteSpace(branchId)
+            ? "HQ"
+            : branchId.Trim().ToUpperInvariant();
 
     private static string? NullIfWhiteSpace(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static string First(params string?[] values) =>
-        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ??
+        string.Empty;
 }

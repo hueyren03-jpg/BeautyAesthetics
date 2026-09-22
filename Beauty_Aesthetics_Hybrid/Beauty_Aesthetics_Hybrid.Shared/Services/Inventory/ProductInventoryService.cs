@@ -69,7 +69,7 @@ public sealed class ProductInventoryService : IProductInventoryService
 
             if (balanceResult.Success && balanceResult.Value is not null)
             {
-                var balances = new Dictionary<string, StockBalanceItemDTO>(
+                var balances = new Dictionary<string, rpt_StockBalanceByBranchByItemsDM>(
                     balanceResult.Value,
                     StringComparer.OrdinalIgnoreCase);
 

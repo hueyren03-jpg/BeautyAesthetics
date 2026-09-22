@@ -45,7 +45,7 @@ public sealed class InventoryAC
             cancellationToken);
     }
 
-    public async Task<ApiCallResult<Dictionary<string, StockBalanceItemDTO>>> GetStockBalanceByBranchAndByItemAsync(
+    public async Task<ApiCallResult<Dictionary<string, rpt_StockBalanceByBranchByItemsDM>>> GetStockBalanceByBranchAndByItemAsync(
         StockBalanceRequestDTO requestDto,
         CancellationToken cancellationToken = default)
     {
@@ -55,7 +55,7 @@ public sealed class InventoryAC
         };
 
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
-        return await ReadApiResponseAsync<Dictionary<string, StockBalanceItemDTO>>(
+        return await ReadApiResponseAsync<Dictionary<string, rpt_StockBalanceByBranchByItemsDM>>(
             response,
             "Stock balance response was invalid.",
             cancellationToken);
