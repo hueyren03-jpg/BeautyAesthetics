@@ -254,7 +254,7 @@
                                         <label>Brand</label>
                                         <select @bind="NewProduct.Brand" required>
                                             <option value="">Select Brand</option>
-                                            @foreach (var brand in Brands)
+                                            @foreach (var brand in Brands.Where(brand => brand.Active))
                                             {
                                                 <option value="@brand.Name">@brand.Name</option>
                                             }
@@ -264,11 +264,11 @@
                                 <div class="inventory__form-row">
                                     <div class="inventory__form-group">
                                         <label>Category</label>
-                                        <select @bind="NewProduct.Category" required>
+                                        <select @bind="NewProduct.CategoryId" required>
                                             <option value="">Select Category</option>
-                                            @foreach (var category in Categories)
+                                            @foreach (var category in Categories.Where(category => category.Active))
                                             {
-                                                <option value="@category.Name">@category.Name</option>
+                                                <option value="@category.Id">@category.Name</option>
                                             }
                                         </select>
                                     </div>
@@ -404,7 +404,8 @@
                                         <label>Brand</label>
                                         <select @bind="EditProduct.Brand" required>
                                             <option value="">Select Brand</option>
-                                            @foreach (var brand in Brands)
+                                            @foreach (var brand in Brands.Where(brand =>
+                                                brand.Active || string.Equals(brand.Name, EditProduct.Brand, StringComparison.OrdinalIgnoreCase)))
                                             {
                                                 <option value="@brand.Name">@brand.Name</option>
                                             }
@@ -412,11 +413,12 @@
                                     </div>
                                     <div class="inventory__form-group">
                                         <label>Category</label>
-                                        <select @bind="EditProduct.Category" required>
+                                        <select @bind="EditProduct.CategoryId" required>
                                             <option value="">Select Category</option>
-                                            @foreach (var category in Categories)
+                                            @foreach (var category in Categories.Where(category =>
+                                                category.Active || string.Equals(category.Id, EditProduct.CategoryId, StringComparison.OrdinalIgnoreCase)))
                                             {
-                                                <option value="@category.Name">@category.Name</option>
+                                                <option value="@category.Id">@category.Name</option>
                                             }
                                         </select>
                                     </div>
@@ -724,16 +726,19 @@
                                         <th class='@GetSortHeaderClass(BrandSortColumn, BrandSortAscending, "ProductCount")' @onclick="@(() => ToggleBrandSort("ProductCount"))">
                                             Product Count
                                         </th>
+                                        <th class='@GetSortHeaderClass(BrandSortColumn, BrandSortAscending, "Active")' @onclick="@(() => ToggleBrandSort("Active"))">
+                                            Status
+                                        </th>
                                         <th class="inventory-option-actions-column">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @foreach (var brand in PaginatedBrands)
                                     {
-                                        <tr>
+                                        <tr @onclick="() => HandleBrandRowClick(brand)">
                                             @if (IsBrandDeleteMode)
                                             {
-                                                <td class="inventory-options__checkbox-col">
+                                                <td class="inventory-options__checkbox-col" @onclick:stopPropagation="true">
                                                     <input type="checkbox"
                                                            checked="@SelectedBrandsForDeletion.Contains(brand)"
                                                            @onchange="@(() => ToggleBrandSelection(brand))" />
@@ -741,9 +746,17 @@
                                             }
                                             <td>@brand.Name</td>
                                             <td class="inventory-plain-value">@brand.ProductCount</td>
+                                            <td>
+                                                <span class="inventory-status-indicator inventory-status-indicator--@(brand.Active ? "success" : "danger")">
+                                                    @(brand.Active ? "Active" : "Inactive")
+                                                </span>
+                                            </td>
                                             <td class="inventory-option-actions-column" @onclick:stopPropagation="true">
                                                 <button type="button" class="product-row-action" title="View brand details" aria-label="View brand details" @onclick="() => ShowBrandDetails(brand)">
                                                     <i class="bi bi-eye"></i>
+                                                </button>
+                                                <button type="button" class="tab-btn inventory-options__add-btn" title="Edit Brand" aria-label="Edit brand" @onclick="() => ShowEditBrandForm(brand)">
+                                                    <i class="bi bi-pencil"></i>
                                                 </button>
                                             </td>
                                         </tr>
@@ -811,6 +824,9 @@
                                         <th class='@GetSortHeaderClass(CategorySortColumn, CategorySortAscending, "ExternalCode")' @onclick="@(() => ToggleCategorySort("ExternalCode"))">
                                             External Code
                                         </th>
+                                        <th class='@GetSortHeaderClass(CategorySortColumn, CategorySortAscending, "Active")' @onclick="@(() => ToggleCategorySort("Active"))">
+                                            Status
+                                        </th>
                                         <th class="inventory-option-actions-column">Actions</th>
                                     </tr>
                                 </thead>
@@ -828,6 +844,11 @@
                                             }
                                             <td>@category.Name</td>
                                             <td class="inventory-plain-value">@category.ExternalCode</td>
+                                            <td>
+                                                <span class="inventory-status-indicator inventory-status-indicator--@(category.Active ? "success" : "danger")">
+                                                    @(category.Active ? "Active" : "Inactive")
+                                                </span>
+                                            </td>
 
                                             <td class="inventory-option-actions-column">
                                                 <button type="button"
@@ -1005,21 +1026,21 @@
                 </div>
             </div>
         }
-        @* Add Brand Modal *@
+        @* Add/Edit Brand Modal *@
         @if (IsAddBrandFormVisible)
         {
-            <div class="brand-modal-overlay" @onclick="CloseAddBrandForm">
+            <div class="brand-modal-overlay" @onclick="() => CloseBrandForm()">
                 <div class="brand-modal" @onclick:stopPropagation="true">
                     <div class="brand-modal__header">
                         <div class="brand-modal__title">
                             <i class="bi bi-tag"></i>
-                            <h2>Add New Brand</h2>
+                            <h2>@(IsBrandEditMode ? "Edit Brand" : "Add New Brand")</h2>
                         </div>
                         <div class="brand-modal__actions">
-                            <button type="button" class="brand-modal__btn brand-modal__btn--save" @onclick="HandleAddBrand">
-                                Save
+                            <button type="button" class="brand-modal__btn brand-modal__btn--save" @onclick="HandleSaveBrand" disabled="@IsBrandSaving">
+                                @(IsBrandSaving ? "Saving..." : "Save")
                             </button>
-                            <button type="button" class="brand-modal__btn brand-modal__btn--cancel" @onclick="CloseAddBrandForm">
+                            <button type="button" class="brand-modal__btn brand-modal__btn--cancel" @onclick="() => CloseBrandForm()" disabled="@IsBrandSaving">
                                 Cancel
                             </button>
                         </div>
@@ -1030,6 +1051,17 @@
                                 <label>Brand Name</label>
                                 <input type="text" @bind="NewBrandName" required />
                             </div>
+                            <label class="inventory-option-active-toggle" for="brandActive">
+                                <input id="brandActive" type="checkbox" @bind="NewBrandActive" />
+                                <span>
+                                    <strong>Active</strong>
+                                    <small>Available for product selection</small>
+                                </span>
+                            </label>
+                            @if (!string.IsNullOrWhiteSpace(BrandApiError))
+                            {
+                                <div class="inventory__alert inventory__alert--error">@BrandApiError</div>
+                            }
                         </form>
                     </div>
                 </div>
@@ -1065,6 +1097,13 @@
                                 <label>External Code</label>
                                 <input type="text" @bind="NewCategoryExternalCode" placeholder="Optional" />
                             </div>
+                            <label class="inventory-option-active-toggle" for="categoryActive">
+                                <input id="categoryActive" type="checkbox" @bind="NewCategoryActive" />
+                                <span>
+                                    <strong>Active</strong>
+                                    <small>Available for product selection</small>
+                                </span>
+                            </label>
                         </form>
                     </div>
                 </div>
@@ -1100,6 +1139,13 @@
                                 <label>External Code</label>
                                 <input type="text" @bind="EditCategoryExternalCode" placeholder="Optional" />
                             </div>
+                            <label class="inventory-option-active-toggle" for="editCategoryActive">
+                                <input id="editCategoryActive" type="checkbox" @bind="EditCategoryActive" />
+                                <span>
+                                    <strong>Active</strong>
+                                    <small>Available for product selection</small>
+                                </span>
+                            </label>
                         </form>
                     </div>
                 </div>
@@ -4029,6 +4075,7 @@
         public string ConversionFactor { get; set; } = string.Empty;
         public decimal Price { get; set; }
         public string Brand { get; set; } = string.Empty;
+        public string CategoryId { get; set; } = string.Empty;
         public string Category { get; set; } = string.Empty;
         public string Supplier { get; set; } = string.Empty;
         public bool Locked { get; set; }
@@ -4050,6 +4097,7 @@
         public string ConversionFactor { get; set; } = string.Empty;
         public decimal Price { get; set; }
         public string Brand { get; set; } = string.Empty;
+        public string CategoryId { get; set; } = string.Empty;
         public string Category { get; set; } = string.Empty;
         public string Supplier { get; set; } = string.Empty;
         public bool Locked { get; set; }
@@ -4149,6 +4197,11 @@
 
         switch (tab)
         {
+            case "InventoryOptions":
+                await Task.WhenAll(
+                    LoadBrandsAsync(),
+                    LoadCategoriesAsync());
+                break;
             case "GRN":
                 await LoadGRNsAsync();
                 break;
@@ -4201,7 +4254,7 @@
         await Task.CompletedTask;
     }
 
-    private static InventoryViewModel.InventoryItem ToInventoryItem(NewProductModel product) =>
+    private InventoryViewModel.InventoryItem ToInventoryItem(NewProductModel product) =>
         new(
             product.Sku,
             product.Type,
@@ -4209,7 +4262,9 @@
             product.ConversionFactor,
             product.Price,
             product.Brand,
-            product.Category,
+            Categories.FirstOrDefault(category =>
+                string.Equals(category.Id, product.CategoryId, StringComparison.OrdinalIgnoreCase))?.Name
+                ?? product.Category,
             product.Supplier,
             product.Locked,
             product.StockUom1,
@@ -4219,11 +4274,12 @@
             product.DiscountCap
         )
         {
+            CategoryId = product.CategoryId,
             ImagePath = product.ImagePath,
             ImageFileName = product.ImageFileName
         };
 
-    private static InventoryViewModel.InventoryItem ToInventoryItem(EditProductModel product) =>
+    private InventoryViewModel.InventoryItem ToInventoryItem(EditProductModel product) =>
         new(
             product.Sku,
             product.Type,
@@ -4231,7 +4287,9 @@
             product.ConversionFactor,
             product.Price,
             product.Brand,
-            product.Category,
+            Categories.FirstOrDefault(category =>
+                string.Equals(category.Id, product.CategoryId, StringComparison.OrdinalIgnoreCase))?.Name
+                ?? product.Category,
             product.Supplier,
             product.Locked,
             product.StockUom1,
@@ -4241,6 +4299,7 @@
             product.DiscountCap
         )
         {
+            CategoryId = product.CategoryId,
             StockQuantity = product.StockQuantity,
             MasterAccountId = product.MasterAccountId,
             ImagePath = product.ImagePath,
@@ -4317,6 +4376,13 @@
         if (SelectedItem == null || EditProduct == null)
         {
             CloseEditProductForm();
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(EditProduct.Brand) ||
+            string.IsNullOrWhiteSpace(EditProduct.CategoryId))
+        {
+            ProductApiError = "Brand and category are required.";
             return;
         }
 
@@ -5169,6 +5235,7 @@
     private string? InventoryErrorMessage => new[]
     {
         ProductApiError,
+        BrandApiError,
         CategoryApiError,
         StockTransferApiError,
         StockTransferBranchApiError,
@@ -5179,6 +5246,7 @@
     private void DismissInventoryError()
     {
         ProductApiError = null;
+        BrandApiError = null;
         CategoryApiError = null;
         StockTransferApiError = null;
         StockTransferBranchApiError = null;
@@ -5293,7 +5361,9 @@
             new()
             {
                 new("Name", DisplayProductValue(brand.Name)),
-                new("Products Assigned", brand.ProductCount.ToString("N0"))
+                new("Products Assigned", brand.ProductCount.ToString("N0")),
+                new("Status", brand.Active ? "Active" : "Inactive"),
+                new("Record ID", DisplayProductValue(brand.Id))
             });
     }
 
@@ -5306,6 +5376,7 @@
             {
                 new("Name", DisplayProductValue(category.Name)),
                 new("External Code", DisplayProductValue(category.ExternalCode)),
+                new("Status", category.Active ? "Active" : "Inactive"),
                 new("Record ID", DisplayProductValue(category.Id))
             });
     }
@@ -5552,7 +5623,7 @@
                 await ConfirmDelete();
                 break;
             case "brands":
-                ConfirmBrandDelete();
+                await ConfirmBrandDelete();
                 break;
             case "categories":
                 await ConfirmCategoryDelete();
@@ -5591,6 +5662,7 @@
             LoadGRNsAsync(),
             LoadGINsAsync(),
             LoadPendingStockReceiptsAsync(),
+            LoadBrandsAsync(),
             LoadCategoriesAsync());
     }
 
@@ -5623,6 +5695,31 @@
         await StartGRNBarcodeScannerAsync();
     }
 
+    private async Task LoadBrandsAsync()
+    {
+        BrandApiError = null;
+
+        var result = await InventoryOptionService.GetBrandsAsync();
+        if (!result.Success || result.Value is null)
+        {
+            BrandApiError = result.ErrorMessage ?? "Unable to load brands.";
+            Brands = [];
+            return;
+        }
+
+        Brands = result.Value
+            .Where(brand => !string.IsNullOrWhiteSpace(brand.SupportingTableName))
+            .Select(brand => new BrandItem(
+                brand.SupportingTableID ?? string.Empty,
+                brand.SupportingTableName!.Trim(),
+                0,
+                brand.Active))
+            .ToList();
+
+        RefreshBrandProductCounts();
+        BrandsCurrentPage = 1;
+    }
+
     private async Task LoadCategoriesAsync()
     {
         CategoryApiError = null;
@@ -5642,11 +5739,24 @@
                 category.SupportingTableName!.Trim(),
                 string.IsNullOrWhiteSpace(category.TextField)
                     ? (string.IsNullOrWhiteSpace(category.SupportingTableID) ? "-" : category.SupportingTableID)
-                    : category.TextField))
+                    : category.TextField,
+                category.Active))
             .ToList();
 
         CategoriesCurrentPage = 1;
     }
+
+    private void RefreshBrandProductCounts()
+    {
+        Brands = Brands
+            .Select(brand => brand with
+            {
+                ProductCount = InventoryItems.Count(product =>
+                    string.Equals(product.Brand, brand.Name, StringComparison.OrdinalIgnoreCase))
+            })
+            .ToList();
+    }
+
     private async Task LoadProductsAsync()
     {
         IsProductApiLoading = true;
@@ -5663,6 +5773,7 @@
             }
 
             InventoryItems = result.Value.ToList();
+            RefreshBrandProductCounts();
             StockTransferProducts = InventoryItems.Select(ToStockTransferProduct).ToList();
             StockTransferCurrentPage = 1;
             ProductsCurrentPage = 1;
@@ -6313,15 +6424,22 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
 
     // Add form state
     private bool IsAddBrandFormVisible { get; set; } = false;
+    private bool IsBrandEditMode { get; set; }
+    private bool IsBrandSaving { get; set; }
     private bool IsAddCategoryFormVisible { get; set; } = false;
     private bool IsEditCategoryFormVisible { get; set; } = false;
     private bool IsAddSupplierFormVisible { get; set; } = false;
     private string NewBrandName { get; set; } = string.Empty;
+    private bool NewBrandActive { get; set; } = true;
+    private string EditBrandId { get; set; } = string.Empty;
+    private string? BrandApiError { get; set; }
     private string NewCategoryName { get; set; } = string.Empty;
     private string NewCategoryExternalCode { get; set; } = string.Empty;
+    private bool NewCategoryActive { get; set; } = true;
     private string EditCategoryId { get; set; } = string.Empty;
     private string EditCategoryName { get; set; } = string.Empty;
     private string EditCategoryExternalCode { get; set; } = string.Empty;
+    private bool EditCategoryActive { get; set; } = true;
     private bool IsCategorySaving { get; set; }
     private string? CategoryApiError { get; set; }
     private string NewSupplierName { get; set; } = string.Empty;
@@ -6376,34 +6494,7 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
     private bool IsAllSuppliersSelected =>
         FilteredSuppliers.Any() && SelectedSuppliersForDeletion.Count == FilteredSuppliers.Count();
 
-    private List<BrandItem> Brands { get; set; } = new()
-    {
-        new("3M", 25),
-        new("AESOP", 11),
-        new("BLACKMORES", 14),
-        new("Brand A", 24),
-        new("Brand B", 18),
-        new("Brand C", 32),
-        new("Brand D", 40),
-        new("L'Oreal", 28),
-        new("Estee Lauder", 19),
-        new("Clinique", 22),
-        new("MAC Cosmetics", 35),
-        new("Maybelline", 41),
-        new("Revlon", 16),
-        new("Covergirl", 13),
-        new("NYX", 27),
-        new("Urban Decay", 21),
-        new("Too Faced", 15),
-        new("Benefit", 18),
-        new("NARS", 23),
-        new("Bobbi Brown", 20),
-        new("Shiseido", 17),
-        new("SK-II", 12),
-        new("La Mer", 8),
-        new("Chanel", 31),
-        new("Dior", 29)
-    };
+    private List<BrandItem> Brands { get; set; } = new();
 
     private List<CategoryItem> Categories { get; set; } = new();
 
@@ -6493,8 +6584,8 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
 
     private sealed record InventoryOptionDetailField(string Label, string Value);
     private sealed record InventoryOptionDetailsModel(string Title, string IconClass, List<InventoryOptionDetailField> Fields);
-    private record BrandItem(string Name, int ProductCount);
-    private record CategoryItem(string Id, string Name, string ExternalCode);
+    private record BrandItem(string Id, string Name, int ProductCount, bool Active);
+    private record CategoryItem(string Id, string Name, string ExternalCode, bool Active);
     private record SupplierItem(string Name, string ContactNumber, string Address, string Description, int ProductCount);
     private record UomItem(string Name, int ProductCount);
     private record UomConversionItem(string FromUom, string ToUom, string ConversionFactor);
@@ -6529,6 +6620,7 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
                 {
                     "Name" => BrandSortAscending ? items.OrderBy(b => b.Name) : items.OrderByDescending(b => b.Name),
                     "ProductCount" => BrandSortAscending ? items.OrderBy(b => b.ProductCount) : items.OrderByDescending(b => b.ProductCount),
+                    "Active" => BrandSortAscending ? items.OrderByDescending(b => b.Active) : items.OrderBy(b => b.Active),
                     _ => items
                 };
             }
@@ -6551,6 +6643,7 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
                 {
                     "Name" => CategorySortAscending ? items.OrderBy(c => c.Name) : items.OrderByDescending(c => c.Name),
                     "ExternalCode" => CategorySortAscending ? items.OrderBy(c => c.ExternalCode) : items.OrderByDescending(c => c.ExternalCode),
+                    "Active" => CategorySortAscending ? items.OrderByDescending(c => c.Active) : items.OrderBy(c => c.Active),
 
                     _ => items
                 };
@@ -6910,30 +7003,89 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
             ? "inventory-sort-header is-sorted is-ascending"
             : "inventory-sort-header is-sorted is-descending";
     }
-private void ShowAddBrandForm()
+    private void ShowAddBrandForm()
     {
+        IsBrandEditMode = false;
+        EditBrandId = string.Empty;
         IsAddBrandFormVisible = true;
         NewBrandName = string.Empty;
+        NewBrandActive = true;
+        BrandApiError = null;
     }
 
-    private void CloseAddBrandForm()
+    private void ShowEditBrandForm(BrandItem brand)
     {
-        IsAddBrandFormVisible = false;
-        NewBrandName = string.Empty;
-    }
-
-    private void HandleAddBrand()
-    {
-        if (string.IsNullOrWhiteSpace(NewBrandName))
+        if (string.IsNullOrWhiteSpace(brand.Id))
         {
-            Feedback.Warning("Brand name is required.", "Brand not added");
+            BrandApiError = "Brand id is missing.";
+            return;
+        }
+
+        IsBrandEditMode = true;
+        EditBrandId = brand.Id;
+        NewBrandName = brand.Name;
+        NewBrandActive = brand.Active;
+        BrandApiError = null;
+        IsAddBrandFormVisible = true;
+    }
+
+    private void CloseBrandForm(bool force = false)
+    {
+        if (IsBrandSaving && !force)
+        {
+            return;
+        }
+
+        IsAddBrandFormVisible = false;
+        IsBrandEditMode = false;
+        EditBrandId = string.Empty;
+        NewBrandName = string.Empty;
+        NewBrandActive = true;
+        BrandApiError = null;
+    }
+
+    private async Task HandleSaveBrand()
+    {
+        if (IsBrandSaving)
+        {
             return;
         }
 
         var brandName = NewBrandName.Trim();
-        Brands.Add(new BrandItem(brandName, 0));
-        CloseAddBrandForm();
-        Feedback.Success($"{brandName} was added.", "Brand added");
+        if (string.IsNullOrWhiteSpace(brandName))
+        {
+            BrandApiError = "Brand name is required.";
+            return;
+        }
+
+        if (IsBrandEditMode && string.IsNullOrWhiteSpace(EditBrandId))
+        {
+            BrandApiError = "Brand id is missing.";
+            return;
+        }
+
+        IsBrandSaving = true;
+        BrandApiError = null;
+
+        try
+        {
+            var result = IsBrandEditMode
+                ? await InventoryOptionService.UpdateBrandAsync(EditBrandId, brandName, NewBrandActive)
+                : await InventoryOptionService.CreateBrandAsync(brandName, NewBrandActive);
+
+            if (!result.Success)
+            {
+                BrandApiError = result.ErrorMessage ?? "Unable to save brand.";
+                return;
+            }
+
+            CloseBrandForm(force: true);
+            await LoadBrandsAsync();
+        }
+        finally
+        {
+            IsBrandSaving = false;
+        }
     }
 
     private void ShowAddCategoryForm()
@@ -6941,6 +7093,7 @@ private void ShowAddBrandForm()
         IsAddCategoryFormVisible = true;
         NewCategoryName = string.Empty;
         NewCategoryExternalCode = string.Empty;
+        NewCategoryActive = true;
         CategoryApiError = null;
     }
 
@@ -6954,6 +7107,7 @@ private void ShowAddBrandForm()
         IsAddCategoryFormVisible = false;
         NewCategoryName = string.Empty;
         NewCategoryExternalCode = string.Empty;
+        NewCategoryActive = true;
         CategoryApiError = null;
     }
 
@@ -6978,20 +7132,18 @@ private void ShowAddBrandForm()
 
         try
         {
-            var result = await InventoryOptionService.CreateCategoryAsync(categoryName, externalCode);
+            var result = await InventoryOptionService.CreateCategoryAsync(
+                categoryName,
+                externalCode,
+                NewCategoryActive);
             if (!result.Success)
             {
                 CategoryApiError = result.ErrorMessage ?? "Unable to create category.";
                 return;
             }
 
-            var displayCode = string.IsNullOrWhiteSpace(externalCode)
-                ? result.Value?.Id ?? "-"
-                : externalCode;
-
-            Categories.Insert(0, new CategoryItem(result.Value?.Id ?? string.Empty, categoryName, displayCode));
-            CategoriesCurrentPage = 1;
             CloseAddCategoryForm(force: true);
+            await LoadCategoriesAsync();
         }
         finally
         {
@@ -7011,6 +7163,7 @@ private void ShowAddBrandForm()
         EditCategoryId = category.Id;
         EditCategoryName = category.Name;
         EditCategoryExternalCode = category.ExternalCode == category.Id || category.ExternalCode == "-" ? string.Empty : category.ExternalCode;
+        EditCategoryActive = category.Active;
         CategoryApiError = null;
         Feedback.Info($"Editing category {category.Name}.", "Edit category", 2200);
     }
@@ -7026,6 +7179,7 @@ private void ShowAddBrandForm()
         EditCategoryId = string.Empty;
         EditCategoryName = string.Empty;
         EditCategoryExternalCode = string.Empty;
+        EditCategoryActive = true;
         CategoryApiError = null;
     }
 
@@ -7057,7 +7211,11 @@ private void ShowAddBrandForm()
 
         try
         {
-            var result = await InventoryOptionService.UpdateCategoryAsync(categoryId, categoryName, externalCode);
+            var result = await InventoryOptionService.UpdateCategoryAsync(
+                categoryId,
+                categoryName,
+                externalCode,
+                EditCategoryActive);
             if (!result.Success)
             {
                 CategoryApiError = result.ErrorMessage ?? "Unable to update category.";
@@ -7211,19 +7369,25 @@ private void ShowAddBrandForm()
         SelectedBrandsForDeletion.Clear();
     }
 
-    private void ConfirmBrandDelete()
+    private async Task ConfirmBrandDelete()
     {
-        var count = SelectedBrandsForDeletion.Count;
-        foreach (var brand in SelectedBrandsForDeletion.ToList())
+        var selectedBrands = SelectedBrandsForDeletion.ToList();
+        BrandApiError = null;
+
+        foreach (var brand in selectedBrands)
         {
+            var result = await InventoryOptionService.DeleteBrandAsync(brand.Id);
+            if (!result.Success)
+            {
+                BrandApiError = result.ErrorMessage ?? $"Unable to delete {brand.Name}.";
+                break;
+            }
+
             Brands.Remove(brand);
         }
+
         SelectedBrandsForDeletion.Clear();
         IsBrandDeleteMode = false;
-        if (count > 0)
-        {
-            Feedback.Success($"{count} brand record{(count == 1 ? string.Empty : "s")} deleted.", "Brands deleted");
-        }
     }
 
     // Category delete mode methods
@@ -7356,16 +7520,6 @@ private void ShowAddBrandForm()
         {
             Feedback.Success($"{count} supplier record{(count == 1 ? string.Empty : "s")} deleted.", "Suppliers deleted");
         }
-    }
-
-    private void DeleteBrand(string name)
-    {
-        Brands.RemoveAll(b => b.Name == name);
-    }
-
-    private void DeleteCategory(string name)
-    {
-        Categories.RemoveAll(c => c.Name == name);
     }
 
     private void DeleteSupplier(string name)
@@ -7725,8 +7879,9 @@ private void ShowAddBrandForm()
         }
     }
 
-    private void ShowAddProductForm()
+    private async Task ShowAddProductForm()
     {
+        await EnsureProductOptionsLoadedAsync();
         NewProduct = new NewProductModel();
         NewProductImagePreview = string.Empty;
         ProductImageError = null;
@@ -7745,6 +7900,13 @@ private void ShowAddBrandForm()
     {
         if (IsProductSaving)
         {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(NewProduct.Brand) ||
+            string.IsNullOrWhiteSpace(NewProduct.CategoryId))
+        {
+            ProductApiError = "Brand and category are required.";
             return;
         }
 
@@ -7772,6 +7934,8 @@ private void ShowAddBrandForm()
     private async Task ShowEditProductForm()
     {
         if (SelectedItem == null) return;
+
+        await EnsureProductOptionsLoadedAsync();
 
         ProductApiError = null;
         ProductImageError = null;
@@ -7805,6 +7969,11 @@ private void ShowAddBrandForm()
             ConversionFactor = product.ConversionFactor,
             Price = product.Price,
             Brand = product.Brand,
+            CategoryId = !string.IsNullOrWhiteSpace(product.CategoryId)
+                ? product.CategoryId
+                : Categories.FirstOrDefault(category =>
+                    string.Equals(category.Name, product.Category, StringComparison.OrdinalIgnoreCase))?.Id
+                    ?? string.Empty,
             Category = product.Category,
             Supplier = product.Supplier,
             Locked = product.Locked,
@@ -7820,6 +7989,25 @@ private void ShowAddBrandForm()
 
         ShowEditForm = true;
         Feedback.Info($"Editing product {product.Type}.", "Edit product", 2200);
+    }
+
+    private async Task EnsureProductOptionsLoadedAsync()
+    {
+        var loadTasks = new List<Task>(2);
+        if (Brands.Count == 0)
+        {
+            loadTasks.Add(LoadBrandsAsync());
+        }
+
+        if (Categories.Count == 0)
+        {
+            loadTasks.Add(LoadCategoriesAsync());
+        }
+
+        if (loadTasks.Count > 0)
+        {
+            await Task.WhenAll(loadTasks);
+        }
     }
 
     private void CloseEditProductForm()

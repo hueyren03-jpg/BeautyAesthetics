@@ -2,6 +2,16 @@ using System.Text.Json.Serialization;
 
 namespace Beauty_Aesthetics_WebPos.Models.DTOs;
 
+public sealed class SupportingTableListItemDTO
+{
+    public string? SupportingTableID { get; set; }
+    public string? SupportingTableName { get; set; }
+    public int SupportingTableTypeID { get; set; }
+    public bool Active { get; set; }
+    public string? TextField { get; set; }
+    public string? ParentID { get; set; }
+}
+
 public sealed class SupportingTableDM
 {
     public bool IsLoading { get; set; }
@@ -20,10 +30,12 @@ public sealed class SupportingTableDM
     public string? ParentID { get; set; }
     public string? ImagePath { get; set; }
     public string? Createdby { get; set; }
-    public DateTime CreatedDateTime { get; set; }
+    public DateTime? CreatedDateTime { get; set; }
     public string? Modifiedby { get; set; }
-    public DateTime ModifiedDateTime { get; set; }
-    public int SaveAction { get; set; } = 1;
+    public DateTime? ModifiedDateTime { get; set; }
+
+    [JsonConverter(typeof(StringOrNumberActionConverter))]
+    public string SaveAction { get; set; } = "Added";
     public bool IsDirty { get; set; }
 
     [JsonPropertyName("intSelectedInventoryTypeID")]
@@ -43,12 +55,13 @@ public sealed class SupportingTableExchangeRateDM
     public bool IsLoading { get; set; }
     public string? ExchangeRateID { get; set; }
     public string? CurrencyID { get; set; }
-    public DateTime FromDate { get; set; }
+    public DateTime? FromDate { get; set; }
     public decimal ExchangeRate { get; set; }
     public string? GroupID { get; set; }
-    public int SaveAction { get; set; } = 1;
+    [JsonConverter(typeof(StringOrNumberActionConverter))]
+    public string SaveAction { get; set; } = "Added";
     public bool IsDirty { get; set; }
-    public DateTime ToDate { get; set; }
+    public DateTime? ToDate { get; set; }
 }
 
 public sealed class SupportingTableSaveResultDTO

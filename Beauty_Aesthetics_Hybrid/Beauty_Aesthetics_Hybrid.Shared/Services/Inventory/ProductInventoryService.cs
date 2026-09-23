@@ -244,7 +244,7 @@ public sealed class ProductInventoryService : IProductInventoryService
             record.QuantityFactor > 0 ? record.QuantityFactor.ToString("0.##") : string.Empty,
             record.SalesPrice,
             record.BrandName ?? string.Empty,
-            First(record.ItemGroupName, record.ItemCategoryName),
+            First(record.ItemCategoryName, record.ItemGroupName),
             First(record.SupplierName, record.PreferredVendorAccountID),
             string.Equals(record.AccountStatus, "Inactive", StringComparison.OrdinalIgnoreCase) || string.Equals(record.strStatus, "Locked", StringComparison.OrdinalIgnoreCase),
             string.IsNullOrWhiteSpace(stockUnit) ? "-" : $"- {stockUnit}",
@@ -256,6 +256,7 @@ public sealed class ProductInventoryService : IProductInventoryService
             MasterAccountId = record.MasterAccountID ?? string.Empty,
             UnitOfMeasurementId = record.UnitOfMeasureID ?? string.Empty,
             SupplierAccountId = record.PreferredVendorAccountID ?? string.Empty,
+            CategoryId = First(record.ItemCategoryID, record.ItemGroupID),
             InventoryTypeId = record.InventoryTypeID,
             ImagePath = record.ImagePath ?? string.Empty,
             ImageFileName = record.ImageFileName ?? string.Empty
@@ -303,7 +304,12 @@ public sealed class ProductInventoryService : IProductInventoryService
         record.PurchaseDescription = product.Type.Trim();
         record.SalesPrice = product.Price;
         record.BrandName = product.Brand.Trim();
-        record.ItemGroupName = product.Category.Trim();
+        record.ItemCategoryID = string.IsNullOrWhiteSpace(product.CategoryId)
+            ? null
+            : product.CategoryId.Trim();
+        record.ItemCategoryName = product.Category.Trim();
+        record.ItemGroupID = null;
+        record.ItemGroupName = null;
         record.SupplierName = product.Supplier.Trim();
         record.Rack = product.Location.Trim();
         record.StockReorderLevel = ParseDecimal(product.LowAlertCount);

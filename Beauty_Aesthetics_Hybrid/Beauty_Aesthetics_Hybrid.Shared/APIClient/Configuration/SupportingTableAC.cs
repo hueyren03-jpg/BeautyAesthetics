@@ -25,16 +25,31 @@ public sealed class SupportingTableAC
         this.authService = authService;
     }
 
-    public async Task<ApiCallResult<List<SupportingTableDM>>> LoadListByTypeAsync(
+    public async Task<ApiCallResult<List<SupportingTableListItemDTO>>> LoadListByTypeAsync(
         int typeId,
         CancellationToken cancellationToken = default)
     {
         using var request = CreatePostRequest("/api/SupportingTable/LoadListByType", new { id = typeId });
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
 
-        return await ReadApiResponseAsync<List<SupportingTableDM>>(
+        return await ReadApiResponseAsync<List<SupportingTableListItemDTO>>(
             response,
             "Supporting table list response was invalid.",
+            cancellationToken);
+    }
+
+    public async Task<ApiCallResult<SupportingTableDM>> LoadRecordAsync(
+        string supportingTableId,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = CreatePostRequest(
+            "/api/SupportingTable/LoadRecord",
+            new { id = supportingTableId });
+        using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+
+        return await ReadApiResponseAsync<SupportingTableDM>(
+            response,
+            "Supporting table record response was invalid.",
             cancellationToken);
     }
 
@@ -42,10 +57,12 @@ public sealed class SupportingTableAC
         SupportingTableDM payload,
         CancellationToken cancellationToken = default)
     {
+        payload.SaveAction = "Added";
+        payload.IsDirty = true;
         using var request = CreatePostRequest("/api/SupportingTable/Create", payload);
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
 
-        return await ReadApiResponseAsync<SupportingTableSaveResultDTO>(
+        return await ReadSaveResponseAsync(
             response,
             "Supporting table create response was invalid.",
             cancellationToken);
@@ -55,6 +72,8 @@ public sealed class SupportingTableAC
         SupportingTableDM payload,
         CancellationToken cancellationToken = default)
     {
+        payload.SaveAction = "Changed";
+        payload.IsDirty = true;
         using var request = CreatePutRequest("/api/SupportingTable/Update", payload);
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
 

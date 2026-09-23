@@ -53,6 +53,7 @@ public sealed class InventoryViewModel
         public string MasterAccountId { get; init; } = string.Empty;
         public string UnitOfMeasurementId { get; init; } = string.Empty;
         public string SupplierAccountId { get; init; } = string.Empty;
+        public string CategoryId { get; init; } = string.Empty;
         public int InventoryTypeId { get; init; } = 1;
         public decimal? StockQuantity { get; init; }
         public string ImagePath { get; init; } = string.Empty;
