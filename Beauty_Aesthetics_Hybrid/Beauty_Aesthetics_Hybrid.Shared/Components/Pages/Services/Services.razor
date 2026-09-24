@@ -16,6 +16,7 @@
 @inject IServiceItemService ServiceItemService
 @inject IProductInventoryService ProductInventoryService
 @inject Beauty_Aesthetics_WebPos.APIClient.SupportingTableAC SupportingTableAC
+@inject IBranchLookupService BranchLookupService
 @inject IMemberCreditService MemberCreditService
 @inject IPackageService PackageService
 @inject IMembershipTypeService MembershipTypeService
@@ -337,7 +338,12 @@
                             <div class="service-modal__body">
                                 <form class="service-form" @onsubmit:preventDefault>
                                     <div class="bundle-form__section">
-                                        <h3 class="bundle-form__section-title">Info</h3>
+                                        <h3 class="bundle-form__section-title">Service Information</h3>
+
+                                        <div class="service-form__field">
+                                            <label>Service Name <span class="service-form__required">*</span></label>
+                                            <input type="text" @bind="NewServiceName" placeholder="Service name" required />
+                                        </div>
 
                                         <div class="service-form__field">
                                             <label>Display Code</label>
@@ -345,14 +351,9 @@
                                         </div>
 
                                         <div class="service-form__field">
-                                            <label>Name <span class="service-form__required">*</span></label>
-                                            <input type="text" @bind="NewServiceName" placeholder="Service Name" required />
-                                        </div>
-
-                                        <div class="service-form__field">
-                                            <label>Select Section <span class="service-form__required">*</span></label>
+                                            <label>Item Group <span class="service-form__required">*</span></label>
                                             <select value="@NewServiceSectionId" @onchange="OnServiceSectionChanged" required>
-                                                <option value="">Select Section</option>
+                                                <option value="">Select item group</option>
                                                 @foreach (var section in ServiceSections.Where(section => section.Active))
                                                 {
                                                     <option value="@section.SupportingTableID">@section.SupportingTableName</option>
@@ -360,19 +361,9 @@
                                             </select>
                                         </div>
 
-                                        <div class="service-form__field service-form__field--toggle">
-                                            <label>isActive</label>
-                                            <div class="service-form__toggle-container">
-                                                <label class="service-form__toggle">
-                                                    <input type="checkbox" @bind="NewServiceIsActive" />
-                                                    <span class="service-form__toggle-slider"></span>
-                                                </label>
-                                            </div>
-                                        </div>
-
                                         <div class="service-form__field">
                                             <label>Tax Code</label>
-                                            <input type="text" @bind="NewServiceTaxCode" placeholder="Tax Code" />
+                                            <input type="text" @bind="NewServiceTaxCode" placeholder="Tax code" />
                                         </div>
 
                                         <div class="service-form__field">
@@ -392,15 +383,20 @@
                                             <label>Cost (MYR)</label>
                                             <input type="number" step="0.01" min="0" @bind="NewServiceCost" />
                                         </div>
+
+                                        <div class="service-form__field">
+                                            <label>Visible at Branch</label>
+                                            <select @bind="NewServiceVisibleBranchId">
+                                                @foreach (var branchItem in VisibleBranches)
+                                                {
+                                                    <option value="@branchItem.Id">@branchItem.DisplayName</option>
+                                                }
+                                            </select>
+                                        </div>
                                     </div>
 
                                     <div class="bundle-form__section">
                                         <h3 class="bundle-form__section-title">Advance</h3>
-
-                                        <div class="service-form__field">
-                                            <label>Barcode</label>
-                                            <input type="text" @bind="NewServiceBarcode" placeholder="Scan or Type Barcode" />
-                                        </div>
 
                                         <div class="service-form__field">
                                             <label>UOM</label>
@@ -422,18 +418,13 @@
                                         </div>
 
                                         <div class="service-form__field">
-                                            <label>Point Balance</label>
-                                            <input type="number" step="1" min="0" @bind="NewServicePointBalance" />
+                                            <label>Duration (Minutes)</label>
+                                            <input type="number" min="0" step="1" @bind="NewServiceDuration" />
                                         </div>
 
                                         <div class="service-form__field">
                                             <label>Redeem Point</label>
                                             <input type="number" step="1" min="0" @bind="NewServiceRedeemPoint" />
-                                        </div>
-
-                                        <div class="service-form__field">
-                                            <label>Bill of Material</label>
-                                            <input type="text" @bind="NewServiceBillOfMaterial" placeholder="Bill of Material" />
                                         </div>
                                     </div>
                                 </form>
@@ -1791,193 +1782,119 @@
                             <div class="bundle-modal__body">
                                 <form class="bundle-form" @onsubmit:preventDefault>
                                     <div class="bundle-form__section">
-                                        <h3 class="bundle-form__section-title">Info</h3>
+                                        <h3 class="bundle-form__section-title">Package Information</h3>
 
                                         <div class="bundle-form__field">
-                                            <label>Name</label>
-                                            <input type="text" @bind="NewBundleName" placeholder="Package Name" />
+                                            <label>Package Name <span class="bundle-form__required">*</span></label>
+                                            <input type="text" @bind="NewBundleName" placeholder="Package name" required />
                                         </div>
 
                                         <div class="bundle-form__field">
-                                            <label>Section</label>
-                                            <input type="text" @bind="NewBundleSection" placeholder="Section" />
+                                            <label>Display Code</label>
+                                            <input type="text" @bind="NewBundleSKU" placeholder="Display code" />
                                         </div>
 
                                         <div class="bundle-form__field">
-                                            <label>Image URL (Folder)</label>
-                                            <input type="text" @bind="NewBundleImagePath" placeholder="Image URL / folder" />
+                                            <label>Item Group</label>
+                                            <select @bind="NewBundleSection">
+                                                <option value="">Select item group</option>
+                                                @foreach (var section in ServiceSections.Where(section => section.Active))
+                                                {
+                                                    <option value="@section.SupportingTableName">@section.SupportingTableName</option>
+                                                }
+                                            </select>
+                                        </div>
+
+                                        <div class="bundle-form__field service-form__field--toggle">
+                                            <label>Is Active</label>
+                                            <div class="service-form__toggle-container">
+                                                <label class="service-form__toggle">
+                                                    <input type="checkbox" @bind="NewBundleIsActive" />
+                                                    <span class="service-form__toggle-slider"></span>
+                                                </label>
+                                            </div>
                                         </div>
 
                                         <div class="bundle-form__field">
-                                            <label>Credits</label>
-                                            <input type="number" step="0.01" min="0" @bind="NewBundleMemberCredit" />
+                                            <label>Tax Code</label>
+                                            <input type="text" @bind="NewBundleTaxCode" placeholder="Tax code" />
                                         </div>
 
                                         <div class="bundle-form__field">
-                                            <label>Points</label>
-                                            <input type="number" step="1" min="0" @bind="NewBundlePoints" />
-                                        </div>
-
-                                        <div class="bundle-form__field">
-                                            <label>Package Value</label>
-                                            <input type="text" value="@BundlePackageValue.ToString("N2")" readonly />
+                                            <label>Inclusive Tax</label>
+                                            <div class="service-form__toggle-container">
+                                                <label><input type="radio" name="packageInclusiveTax" checked="@NewBundleTaxInclusive" @onchange="() => NewBundleTaxInclusive = true" /> Yes</label>
+                                                <label><input type="radio" name="packageInclusiveTax" checked="@(!NewBundleTaxInclusive)" @onchange="() => NewBundleTaxInclusive = false" /> No</label>
+                                            </div>
                                         </div>
 
                                         <div class="bundle-form__field">
                                             <label>Price (MYR)</label>
                                             <input type="number" step="0.01" min="0" @bind="NewBundlePrice" />
                                         </div>
+
+                                        <div class="bundle-form__field">
+                                            <label>Cost (MYR)</label>
+                                            <input type="number" step="0.01" min="0" @bind="NewBundleCost" />
+                                        </div>
+
+                                        <div class="bundle-form__field">
+                                            <label>Visible at Branch</label>
+                                            <select @bind="NewBundleVisibleBranchId">
+                                                @foreach (var branchItem in VisibleBranches)
+                                                {
+                                                    <option value="@branchItem.Id">@branchItem.DisplayName</option>
+                                                }
+                                            </select>
+                                        </div>
                                     </div>
 
                                     <div class="bundle-form__section">
-                                        <h3 class="bundle-form__section-title">Items</h3>
-                                        <p class="bundle-form__section-subtitle">Add Service</p>
+                                        <h3 class="bundle-form__section-title">Package Items</h3>
+
+                                        <div class="bundle-form__field">
+                                            <label>Item Type</label>
+                                            <select @bind="BundleItemPickerType">
+                                                <option value="Service">Service</option>
+                                                <option value="Product">Product</option>
+                                            </select>
+                                        </div>
 
                                         <div class="bundle-form__services-list">
-                                            @foreach (var service in ServiceItems)
+                                            @if (BundleItemPickerType == "Service")
                                             {
-                                                <div class="bundle-form__service-item">
-                                                    <label class="bundle-form__service-checkbox">
-                                                        <input type="checkbox"
-                                                               checked="@SelectedBundleServices.Contains(service)"
-                                                               @onchange="() => ToggleServiceSelection(service)" />
-                                                        <span class="bundle-form__service-info">
-                                                            <span class="bundle-form__service-name">@service.ServiceName</span>
-                                                            <span class="bundle-form__service-details">@service.Category</span>
-                                                        </span>
-                                                    </label>
-                                                </div>
-
-                                                @if (SelectedBundleServices.Contains(service))
+                                                @foreach (var service in ServiceItems)
                                                 {
-                                                    var lineKey = BundleServiceKey(service);
-                                                    <div class="bundle-form__summary">
-                                                        <label>Deferred
+                                                    <div class="bundle-form__service-item">
+                                                        <label class="bundle-form__service-checkbox">
                                                             <input type="checkbox"
-                                                                   checked="@BundleDeferredItemIds.Contains(lineKey)"
-                                                                   @onchange="e => SetBundleDeferred(lineKey, e.Value is true)" />
-                                                        </label>
-                                                        <label>Unit PV
-                                                            <input type="number" step="0.01" min="0" @bind="BundleLineUnitPrices[lineKey]" />
-                                                        </label>
-                                                        <label>UOM
-                                                            <select @bind="BundleLineUoms[lineKey]">
-                                                                <option value="unit">unit</option>
-                                                                <option value="session">session</option>
-                                                                <option value="piece">piece</option>
-                                                                <option value="set">set</option>
-                                                                <option value="bottle">bottle</option>
-                                                                <option value="box">box</option>
-                                                                <option value="gram">gram</option>
-                                                                <option value="ml">ml</option>
-                                                            </select>
-                                                        </label>
-                                                        <label>Qty
-                                                            <input type="number" step="1" min="1" @bind="BundleLineQuantities[lineKey]" />
+                                                                   checked="@SelectedBundleServices.Contains(service)"
+                                                                   @onchange="() => ToggleServiceSelection(service)" />
+                                                            <span class="bundle-form__service-info">
+                                                                <span class="bundle-form__service-name">@service.ServiceName</span>
+                                                                <span class="bundle-form__service-details">@service.Sku · @service.Category</span>
+                                                            </span>
                                                         </label>
                                                     </div>
                                                 }
                                             }
-                                        </div>
-
-                                        <p class="bundle-form__section-subtitle">Add Product</p>
-                                        <div class="bundle-form__services-list">
-                                            @foreach (var product in InventoryItems)
+                                            else
                                             {
-                                                <div class="bundle-form__service-item">
-                                                    <label class="bundle-form__service-checkbox">
-                                                        <input type="checkbox"
-                                                               checked="@SelectedBundleProducts.Contains(product)"
-                                                               @onchange="() => ToggleProductSelection(product)" />
-                                                        <span class="bundle-form__service-info">
-                                                            <span class="bundle-form__service-name">@product.Type</span>
-                                                            <span class="bundle-form__service-details">@product.Sku · @product.Category</span>
-                                                        </span>
-                                                    </label>
-                                                </div>
-
-                                                @if (SelectedBundleProducts.Contains(product))
+                                                @foreach (var product in InventoryItems)
                                                 {
-                                                    var lineKey = BundleProductKey(product);
-                                                    <div class="bundle-form__summary">
-                                                        <label>Deferred
+                                                    <div class="bundle-form__service-item">
+                                                        <label class="bundle-form__service-checkbox">
                                                             <input type="checkbox"
-                                                                   checked="@BundleDeferredItemIds.Contains(lineKey)"
-                                                                   @onchange="e => SetBundleDeferred(lineKey, e.Value is true)" />
-                                                        </label>
-                                                        <label>Unit PV
-                                                            <input type="number" step="0.01" min="0" @bind="BundleLineUnitPrices[lineKey]" />
-                                                        </label>
-                                                        <label>UOM
-                                                            <select @bind="BundleLineUoms[lineKey]">
-                                                                <option value="unit">unit</option>
-                                                                <option value="session">session</option>
-                                                                <option value="piece">piece</option>
-                                                                <option value="set">set</option>
-                                                                <option value="bottle">bottle</option>
-                                                                <option value="box">box</option>
-                                                                <option value="gram">gram</option>
-                                                                <option value="ml">ml</option>
-                                                            </select>
-                                                        </label>
-                                                        <label>Qty
-                                                            <input type="number" step="1" min="1" @bind="BundleLineQuantities[lineKey]" />
+                                                                   checked="@SelectedBundleProducts.Contains(product)"
+                                                                   @onchange="() => ToggleProductSelection(product)" />
+                                                            <span class="bundle-form__service-info">
+                                                                <span class="bundle-form__service-name">@product.Type</span>
+                                                                <span class="bundle-form__service-details">@product.Sku · @product.Category</span>
+                                                            </span>
                                                         </label>
                                                     </div>
                                                 }
                                             }
-                                        </div>
-                                    </div>
-
-                                    <div class="bundle-form__section">
-                                        <h3 class="bundle-form__section-title">Advance</h3>
-
-                                        <div class="bundle-form__field">
-                                            <label>Barcode</label>
-                                            <input type="text" @bind="NewBundleBarcode" />
-                                        </div>
-
-                                        <div class="bundle-form__field">
-                                            <label>Price Range (Min - Max)</label>
-                                            <input type="checkbox" @bind="IsBundleMinMaxPriceEnabled" />
-                                        </div>
-
-                                        @if (IsBundleMinMaxPriceEnabled)
-                                        {
-                                            <div class="bundle-form__field">
-                                                <label>Min Price</label>
-                                                <input type="number" step="0.01" min="0" @bind="NewBundleMinPrice" />
-                                            </div>
-                                            <div class="bundle-form__field">
-                                                <label>Max Price</label>
-                                                <input type="number" step="0.01" min="0" @bind="NewBundleMaxPrice" />
-                                            </div>
-                                        }
-
-                                        <div class="bundle-form__field">
-                                            <label>Outlet Availability</label>
-                                            <input type="text" value="HQ" readonly />
-                                        </div>
-                                    </div>
-
-                                    <div class="bundle-form__section">
-                                        <h3 class="bundle-form__section-title">T&amp;C</h3>
-
-                                        <div class="bundle-form__field">
-                                            <label>Policy</label>
-                                            <textarea @bind="NewBundlePolicy"></textarea>
-                                        </div>
-                                        <div class="bundle-form__field">
-                                            <label>Term &amp; Conditions 1</label>
-                                            <input type="text" @bind="NewBundleTermCondition1" />
-                                        </div>
-                                        <div class="bundle-form__field">
-                                            <label>Term &amp; Conditions 2</label>
-                                            <input type="text" @bind="NewBundleTermCondition2" />
-                                        </div>
-                                        <div class="bundle-form__field">
-                                            <label>Term &amp; Conditions 3</label>
-                                            <input type="text" @bind="NewBundleTermCondition3" />
                                         </div>
                                     </div>
 
@@ -1985,23 +1902,7 @@
                                         <h3 class="bundle-form__section-title">Membership</h3>
 
                                         <div class="bundle-form__field">
-                                            <label>Credit Expiry (Days)</label>
-                                            <input type="number" min="1" @bind="NewBundleMemberExpiryDays" />
-                                        </div>
-
-                                        <div class="bundle-form__field">
-                                            <label>Member Type</label>
-                                            <select @bind="NewBundleTriggeredMemberTypeId">
-                                                <option value="">No member type</option>
-                                                @foreach (var memberType in MemberTypeItems.Where(item => item.Active))
-                                                {
-                                                    <option value="@memberType.MemberTypeID">@memberType.MemberTypeName</option>
-                                                }
-                                            </select>
-                                        </div>
-
-                                        <div class="bundle-form__field">
-                                            <label>Credit Amount</label>
+                                            <label>Membership Credit</label>
                                             <input type="number" min="0" step="0.01" @bind="NewBundleMemberCredit" />
                                         </div>
                                     </div>
@@ -2441,11 +2342,13 @@
     private bool NewServiceIsActive { get; set; } = true;
     private string NewServiceBarcode { get; set; } = string.Empty;
     private string NewServiceUom { get; set; } = "unit";
+    private string NewServiceVisibleBranchId { get; set; } = "HQ";
     private decimal NewServicePointBalance { get; set; }
     private decimal NewServiceRedeemPoint { get; set; }
     private string NewServiceBillOfMaterial { get; set; } = string.Empty;
     private bool NewServiceAddToBundle { get; set; } = false;
     private List<SupportingTableDM> ServiceSections { get; set; } = new();
+    private List<BranchLookupItem> VisibleBranches { get; set; } = new();
     private bool IsSavingService { get; set; }
 
     // Delete mode properties
@@ -2529,6 +2432,11 @@
     private int NewBundleMemberExpiryDays { get; set; } = 365;
     private string NewBundleTriggeredMemberTypeId { get; set; } = string.Empty;
     private decimal NewBundleMemberCredit { get; set; }
+    private decimal NewBundleCost { get; set; }
+    private string NewBundleTaxCode { get; set; } = string.Empty;
+    private bool NewBundleTaxInclusive { get; set; }
+    private string NewBundleVisibleBranchId { get; set; } = "HQ";
+    private string BundleItemPickerType { get; set; } = "Service";
     private decimal NewBundlePoints { get; set; }
     private bool IsBundleMinMaxPriceEnabled { get; set; }
     private decimal NewBundleMinPrice { get; set; }
@@ -2870,6 +2778,7 @@
         MemberCreditItems.Clear();
         Bundles.Clear();
         await LoadServiceSectionsAsync();
+        await LoadVisibleBranchesAsync();
         await LoadProductsForPackageAsync();
         await LoadServiceItemsFromApiAsync();
         await LoadMemberCreditsFromApiAsync();
@@ -2888,6 +2797,27 @@
                 .ToList()
             : new List<SupportingTableDM>();
     }
+
+    private async Task LoadVisibleBranchesAsync()
+    {
+        var result = await BranchLookupService.LoadBranchesAsync();
+        VisibleBranches = result.Success && result.Value is not null
+            ? result.Value.ToList()
+            : new List<BranchLookupItem>();
+
+        if (!VisibleBranches.Any(branch => string.Equals(branch.Id, "HQ", StringComparison.OrdinalIgnoreCase)))
+        {
+            VisibleBranches.Insert(0, new BranchLookupItem("HQ", "HQ", "HQ"));
+        }
+    }
+
+    private string DefaultVisibleBranchId() =>
+        VisibleBranches.FirstOrDefault()?.Id ?? "HQ";
+
+    private string BranchGroupIdFor(string branchId) =>
+        VisibleBranches.FirstOrDefault(branch =>
+            string.Equals(branch.Id, branchId, StringComparison.OrdinalIgnoreCase))?.GroupId
+        ?? branchId;
 
     private async Task LoadProductsForPackageAsync()
     {
