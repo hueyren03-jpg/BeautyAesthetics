@@ -25,6 +25,14 @@ public interface IPackageService
         CancellationToken cancellationToken = default);
 }
 
+public sealed record InventoryPackageLineSummary(
+    string ServiceId,
+    string Description,
+    decimal Quantity,
+    decimal UnitPrice,
+    bool IsDeferred,
+    string? AutoId = null);
+
 public sealed record InventoryPackageSummary(
     string MasterAccountId,
     string Name,
@@ -43,13 +51,37 @@ public sealed record InventoryPackageSummary(
     TimeSpan? AvailableTimeTo = null,
     string EInvoiceClassificationCode = "",
     string ImagePath = "",
-    string ImageFileName = "");
+    string ImageFileName = "",
+    string Section = "",
+    bool IsActive = true,
+    string Barcode = "",
+    string UnitOfMeasure = "unit",
+    int ValidityDays = 0,
+    int MemberExpiryDays = 0,
+    string TriggeredMemberTypeId = "",
+    decimal MemberMainAccountCredit = 0m,
+    IReadOnlyList<InventoryPackageLineSummary>? Lines = null);
+
+public sealed record InventoryPackageLineEdit(
+    ServiceViewModel.ServiceItem Service,
+    decimal Quantity,
+    decimal UnitPrice,
+    bool IsDeferred);
 
 public sealed record InventoryPackageEdit(
     string? MasterAccountId,
     string Name,
     string Sku,
     decimal Price,
-    IReadOnlyCollection<ServiceViewModel.ServiceItem> Services);
+    IReadOnlyCollection<ServiceViewModel.ServiceItem> Services,
+    string Section = "",
+    bool IsActive = true,
+    string Barcode = "",
+    string UnitOfMeasure = "unit",
+    int ValidityDays = 0,
+    int MemberExpiryDays = 0,
+    string TriggeredMemberTypeId = "",
+    decimal MemberMainAccountCredit = 0m,
+    IReadOnlyCollection<InventoryPackageLineEdit>? Lines = null);
 
 
