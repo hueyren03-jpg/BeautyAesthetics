@@ -134,7 +134,8 @@ public sealed class PackageService : IPackageService
                 package is not null && package.MemberMainAccountCredit != 0
                     ? package.MemberMainAccountCredit
                     : GetInventoryDecimal(header, "MemberMainAccountCredit"),
-                lineSummaries));
+                lineSummaries,
+                GetInventoryDecimal(package ?? header, "Points")));
         }
 
         return ApiCallResult<IReadOnlyList<InventoryPackageSummary>>.Ok(
@@ -299,6 +300,7 @@ public sealed class PackageService : IPackageService
         SetInventoryProperty(record, "MemberExpiryDays", Math.Max(0, package.MemberExpiryDays));
         SetInventoryProperty(record, "TriggeredMemberTypeID", package.TriggeredMemberTypeId?.Trim() ?? string.Empty);
         SetInventoryProperty(record, "MemberMainAccountCredit", Math.Max(0, package.MemberMainAccountCredit));
+        SetInventoryProperty(record, "Points", Math.Max(0m, package.Points));
         record.BranchID = branchId;
         record.HasPackage = (package.Lines?.Count ?? package.Services.Count) > 0;
         record.AccountStatus = package.IsActive ? "Active" : "Inactive";
