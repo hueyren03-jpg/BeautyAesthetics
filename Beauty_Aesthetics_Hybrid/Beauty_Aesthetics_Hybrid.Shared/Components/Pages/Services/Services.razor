@@ -19,6 +19,9 @@
 @inject IPackageService PackageService
 @inject IMembershipTypeService MembershipTypeService
 @inject IPointConversionService PointConversionService
+@inject Beauty_Aesthetics_WebPos.APIClient.SupportingTableAC SupportingTableAC
+@inject Beauty_Aesthetics_WebPos.APIClient.FileUploadAC FileUploadAC
+@inject ProductImageService ProductImageService
 @inject AppFeedbackService Feedback
 @inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResource> L
 @implements IAsyncDisposable
@@ -2067,7 +2070,12 @@
         BranchSession.CurrentBranch?.Id?.Trim() is { Length: > 0 } branchId
             ? branchId
             : "HQ";
+    private string ServiceBranchGroupId =>
+        BranchSession.CurrentBranch?.GroupId?.Trim() is { Length: > 0 } groupId
+            ? groupId
+            : ServiceBranchId;
     private string? ServiceApiError { get; set; }
+    private List<SupportingTableListItemDTO> ServiceSections { get; set; } = new();
 
     // Backing list for API-loaded services.
     private List<ServiceViewModel.ServiceItem> ServiceItems { get; set; } = new();
@@ -2080,6 +2088,7 @@
     private string NewServiceName { get; set; } = string.Empty;
     private string NewServiceSKU { get; set; } = string.Empty;
     private string NewServiceCategory { get; set; } = string.Empty;
+    private string NewServiceSectionId { get; set; } = string.Empty;
     private int NewServiceDuration { get; set; } = 0;
     private int NewServiceBufferTime { get; set; } = 0;
     private decimal NewServicePrice { get; set; } = 0.00m;
@@ -2090,6 +2099,11 @@
     private string NewServiceBarcode { get; set; } = string.Empty;
     private string NewServiceUom { get; set; } = "unit";
     private string NewServiceDescription { get; set; } = string.Empty;
+    private string NewServiceImagePath { get; set; } = string.Empty;
+    private string NewServiceImageFileName { get; set; } = string.Empty;
+    private string ServiceImagePreview { get; set; } = string.Empty;
+    private bool IsServiceImageUploading { get; set; }
+    private string? ServiceImageError { get; set; }
     private bool NewServiceAddToBundle { get; set; } = false;
     private bool IsSavingService { get; set; }
     private string ServiceEditorTab { get; set; } = "Info";
@@ -2171,6 +2185,11 @@
     private bool NewBundleIsActive { get; set; } = true;
     private string NewBundleBarcode { get; set; } = string.Empty;
     private string NewBundleUom { get; set; } = "unit";
+    private string NewBundleImagePath { get; set; } = string.Empty;
+    private string NewBundleImageFileName { get; set; } = string.Empty;
+    private string BundleImagePreview { get; set; } = string.Empty;
+    private bool IsBundleImageUploading { get; set; }
+    private string? BundleImageError { get; set; }
     private int NewBundleValidityDays { get; set; }
     private int NewBundleMemberExpiryDays { get; set; } = 365;
     private string NewBundleTriggeredMemberTypeId { get; set; } = string.Empty;
@@ -2374,11 +2393,39 @@
         // persisted/current branch before issuing the service API request.
         await BranchSession.InitializeAsync();
 
+        await LoadServiceSectionsAsync();
         await LoadServiceItemsFromApiAsync();
         await LoadMemberCreditsFromApiAsync();
         await LoadPackagesFromApiAsync();
         await LoadMemberTypesFromApiAsync();
         await LoadMemberPointsFromApiAsync();
+    }
+
+    private async Task LoadServiceSectionsAsync()
+    {
+        try
+        {
+            var result = await SupportingTableAC.LoadListByTypeAsync(4);
+            ServiceSections = result.Success && result.Value is not null
+                ? result.Value
+                    .Where(section => section.Active && !string.IsNullOrWhiteSpace(section.SupportingTableName))
+                    .OrderBy(section => section.SupportingTableName)
+                    .ToList()
+                : new List<SupportingTableListItemDTO>();
+
+            if (!result.Success && string.IsNullOrWhiteSpace(ServiceApiError))
+            {
+                ServiceApiError = result.ErrorMessage ?? "Unable to load service sections.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ServiceSections.Clear();
+            if (string.IsNullOrWhiteSpace(ServiceApiError))
+            {
+                ServiceApiError = $"Unable to load service sections. {ex.Message}";
+            }
+        }
     }
 
     private async Task LoadServiceItemsFromApiAsync()
