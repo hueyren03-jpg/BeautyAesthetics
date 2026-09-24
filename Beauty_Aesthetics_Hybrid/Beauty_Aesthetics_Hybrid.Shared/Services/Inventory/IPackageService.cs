@@ -69,7 +69,9 @@ public sealed record InventoryPackageSummary(
     string Policy = "",
     string TermCondition1 = "",
     string TermCondition2 = "",
-    string TermCondition3 = "");
+    string TermCondition3 = "",
+    decimal MinPrice = 0m,
+    decimal MaxPrice = 0m);
 
 public sealed record InventoryPackageLineEdit(
     string InventoryId,
@@ -101,6 +103,8 @@ public sealed record InventoryPackageEdit(
     string Policy = "",
     string TermCondition1 = "",
     string TermCondition2 = "",
-    string TermCondition3 = "");
+    string TermCondition3 = "",
+    decimal MinPrice = 0m,
+    decimal MaxPrice = 0m);
 
 
