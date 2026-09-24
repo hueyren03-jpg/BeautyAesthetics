@@ -34,7 +34,8 @@ public sealed record InventoryPackageLineSummary(
     decimal UnitPrice,
     bool IsDeferred,
     int InventoryTypeId = 3,
-    string? AutoId = null);
+    string? AutoId = null,
+    string UnitOfMeasure = "unit");
 
 public sealed record InventoryPackageSummary(
     string MasterAccountId,
@@ -76,7 +77,8 @@ public sealed record InventoryPackageLineEdit(
     int InventoryTypeId,
     decimal Quantity,
     decimal UnitPrice,
-    bool IsDeferred);
+    bool IsDeferred,
+    string UnitOfMeasure = "unit");
 
 public sealed record InventoryPackageEdit(
     string? MasterAccountId,
