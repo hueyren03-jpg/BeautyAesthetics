@@ -53,6 +53,25 @@ public sealed class ServiceItemService : IServiceItemService
         return ApiCallResult<IReadOnlyList<ServiceViewModel.ServiceItem>>.Ok(result.StatusCode, services);
     }
 
+    public async Task<ApiCallResult<ServiceViewModel.ServiceItem>> LoadServiceAsync(
+        string masterAccountId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(masterAccountId))
+        {
+            return ApiCallResult<ServiceViewModel.ServiceItem>.Failure(
+                HttpStatusCode.BadRequest,
+                "The selected service has no record ID.");
+        }
+
+        var result = await serviceInventoryAC.LoadRecordAsync(masterAccountId, cancellationToken);
+        return result.Success && result.Value is not null
+            ? ApiCallResult<ServiceViewModel.ServiceItem>.Ok(result.StatusCode, ToServiceItem(result.Value))
+            : ApiCallResult<ServiceViewModel.ServiceItem>.Failure(
+                result.StatusCode,
+                result.ErrorMessage ?? "Unable to load service details.");
+    }
+
     public async Task<ApiCallResult<bool>> CreateServiceAsync(
         ServiceViewModel.ServiceItem service,
         string branchId = "hq",
