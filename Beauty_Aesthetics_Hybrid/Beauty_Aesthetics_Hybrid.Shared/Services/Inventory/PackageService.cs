@@ -76,14 +76,18 @@ public sealed class PackageService : IPackageService
                     line.Quantity,
                     line.UnitPrice,
                     line.IsDeferred,
+                    line.InventoryTypeId,
                     line.AutoId.ValueKind is System.Text.Json.JsonValueKind.Null
                         or System.Text.Json.JsonValueKind.Undefined
                         ? null
                         : line.AutoId.ToString()))
                 .ToList();
 
-            var totalDuration = serviceIds.Sum(id =>
-                serviceById.TryGetValue(id, out var service)
+            var totalDuration = packageLines
+                .Where(line => line.InventoryTypeId == ServiceInventoryTypeId && !string.IsNullOrWhiteSpace(line.InventoryId))
+                .Select(line => line.InventoryId!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Sum(id => serviceById.TryGetValue(id, out var service)
                     ? ParseDuration(service.DurationSpend)
                     : 0);
 
@@ -296,42 +300,53 @@ public sealed class PackageService : IPackageService
         SetInventoryProperty(record, "TriggeredMemberTypeID", package.TriggeredMemberTypeId?.Trim() ?? string.Empty);
         SetInventoryProperty(record, "MemberMainAccountCredit", Math.Max(0, package.MemberMainAccountCredit));
         record.BranchID = branchId;
-        record.HasPackage = package.Services.Count > 0;
+        record.HasPackage = (package.Lines?.Count ?? package.Services.Count) > 0;
         record.AccountStatus = package.IsActive ? "Active" : "Inactive";
         record.IsSold = true;
         record.SaveAction = isUpdate ? EntityState.Changed : EntityState.Added;
         record.IsDirty = true;
 
         var existingLines = record.lstPackage?.ToList() ?? new List<Inventory_PackageItemDM>();
-        var selectedIds = package.Services
-            .Where(service => !string.IsNullOrWhiteSpace(service.MasterAccountId))
-            .Select(service => service.MasterAccountId!)
+
+        var editedLines = package.Lines?.Where(line => !string.IsNullOrWhiteSpace(line.InventoryId)).ToList()
+            ?? package.Services
+                .Where(service => !string.IsNullOrWhiteSpace(service.MasterAccountId))
+                .Select(service => new InventoryPackageLineEdit(
+                    service.MasterAccountId!,
+                    service.ServiceName,
+                    ServiceInventoryTypeId,
+                    1m,
+                    Math.Max(0m, service.Price),
+                    false))
+                .ToList();
+
+        var selectedIds = editedLines
+            .Select(line => line.InventoryId)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         record.lstPackage ??= new System.Collections.ObjectModel.ObservableCollection<Inventory_PackageItemDM>();
         record.lstPackage.Clear();
 
-        foreach (var service in package.Services.Where(service =>
-                     !string.IsNullOrWhiteSpace(service.MasterAccountId)))
+        foreach (var lineEdit in editedLines)
         {
             var existing = existingLines.FirstOrDefault(line =>
-                string.Equals(line.InventoryID, service.MasterAccountId, StringComparison.OrdinalIgnoreCase));
-            var lineEdit = package.Lines?.FirstOrDefault(item =>
-                string.Equals(item.Service.MasterAccountId, service.MasterAccountId, StringComparison.OrdinalIgnoreCase));
+                string.Equals(line.InventoryID, lineEdit.InventoryId, StringComparison.OrdinalIgnoreCase));
 
-            var quantity = lineEdit is null ? 1m : Math.Max(1m, lineEdit.Quantity);
-            var unitPrice = lineEdit is null ? Math.Max(0, service.Price) : Math.Max(0, lineEdit.UnitPrice);
+            var quantity = Math.Max(1m, lineEdit.Quantity);
+            var unitPrice = Math.Max(0m, lineEdit.UnitPrice);
 
             var line = existing ?? new Inventory_PackageItemDM();
-            line.InventoryID = service.MasterAccountId;
-            line.Description = service.ServiceName;
+            line.InventoryID = lineEdit.InventoryId;
+            line.Description = lineEdit.Description;
             line.Quantity = quantity;
             line.UnitPrice = unitPrice;
             line.TotalPrice = unitPrice * quantity;
             line.UnitActualValue = unitPrice;
             line.TotalActualValue = unitPrice * quantity;
-            line.InventoryTypeID = ServiceInventoryTypeId;
-            line.IsDeferred = lineEdit?.IsDeferred ?? false;
+            line.InventoryTypeID = lineEdit.InventoryTypeId > 0
+                ? lineEdit.InventoryTypeId
+                : ServiceInventoryTypeId;
+            line.IsDeferred = lineEdit.IsDeferred;
             line.IsVoided = false;
             line.IsConfirmed = true;
             line.PackageQuantityTypeID = 0;
