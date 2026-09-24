@@ -9,10 +9,20 @@ public interface IServiceItemService
         string branchId = "hq",
         CancellationToken cancellationToken = default);
 
+    Task<ApiCallResult<ServiceViewModel.ServiceItem>> LoadServiceAsync(
+        string masterAccountId,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiCallResult<ServiceEditorDetails>> LoadServiceEditorDetailsAsync(
+        string masterAccountId,
+        CancellationToken cancellationToken = default);
+
     Task<ApiCallResult<bool>> CreateServiceAsync(
         ServiceViewModel.ServiceItem service,
         string branchId = "hq",
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string branchGroupId = "",
+        ServiceEditorDetails? editorDetails = null);
 
     Task<ApiCallResult<bool>> DeleteServiceAsync(
         string masterAccountId,
@@ -20,5 +30,13 @@ public interface IServiceItemService
     Task<ApiCallResult<bool>> UpdateServiceAsync(
         ServiceViewModel.ServiceItem service,
         string branchId = "hq",
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string branchGroupId = "",
+        ServiceEditorDetails? editorDetails = null);
 }
+
+public sealed record ServiceEditorDetails(
+    decimal PointBalance = 0m,
+    decimal RedeemPoint = 0m,
+    string BillOfMaterial = "");
+
