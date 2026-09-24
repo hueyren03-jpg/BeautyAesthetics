@@ -458,7 +458,7 @@
                                         </div>
                                         <div class="senang-editor__field">
                                             <label>UOM</label>
-                                            <select @bind="NewServiceUom">
+                                            <select value="@NewServiceUom" @onchange="OnServiceUomChanged">
                                                 <option value="unit">unit</option>
                                                 <option value="pcs">pcs</option>
                                                 <option value="set">set</option>
@@ -2252,6 +2252,7 @@
     private bool NewServiceIsActive { get; set; } = true;
     private string NewServiceBarcode { get; set; } = string.Empty;
     private string NewServiceUom { get; set; } = "unit";
+    private string NewServiceUomId { get; set; } = string.Empty;
     private string NewServiceDescription { get; set; } = string.Empty;
     private string NewServiceImagePath { get; set; } = string.Empty;
     private string NewServiceImageFileName { get; set; } = string.Empty;
@@ -2489,6 +2490,12 @@
         NewServiceCategory = ServiceSections.FirstOrDefault(section =>
             string.Equals(section.SupportingTableID, NewServiceSectionId, StringComparison.OrdinalIgnoreCase))
             ?.SupportingTableName?.Trim() ?? string.Empty;
+    }
+
+    private void OnServiceUomChanged(ChangeEventArgs e)
+    {
+        NewServiceUom = e.Value?.ToString()?.Trim() ?? "unit";
+        NewServiceUomId = NewServiceUom;
     }
 
     private void OnMemberCreditSearchChanged(ChangeEventArgs e)
@@ -3883,9 +3890,23 @@
         ShowMemberCreditDetails(memberCredit);
     }
 
-    private void EditService(ServiceViewModel.ServiceItem service)
+    private async Task EditService(ServiceViewModel.ServiceItem service)
     {
         SelectedService = service;
+
+        if (!string.IsNullOrWhiteSpace(service.MasterAccountId))
+        {
+            var result = await ServiceItemService.LoadServiceAsync(service.MasterAccountId);
+            if (!result.Success || result.Value is null)
+            {
+                ServiceApiError = result.ErrorMessage ?? "Unable to load the full service record for editing.";
+                Feedback.Error(ServiceApiError, "Service not opened");
+                return;
+            }
+
+            SelectedService = result.Value;
+        }
+
         ShowEditServiceForm();
     }
 
@@ -3901,9 +3922,23 @@
         ShowEditBundleForm();
     }
 
-    private void ShowServiceDetails(ServiceViewModel.ServiceItem service)
+    private async Task ShowServiceDetails(ServiceViewModel.ServiceItem service)
     {
         ServiceDetailsItem = service;
+
+        if (!string.IsNullOrWhiteSpace(service.MasterAccountId))
+        {
+            var result = await ServiceItemService.LoadServiceAsync(service.MasterAccountId);
+            if (result.Success && result.Value is not null)
+            {
+                ServiceDetailsItem = result.Value;
+            }
+            else
+            {
+                ServiceApiError = result.ErrorMessage ?? "Unable to refresh the full service record.";
+            }
+        }
+
         MemberCreditDetailsItem = null;
         BundleDetailsItem = null;
     }
@@ -4228,6 +4263,7 @@
         NewServiceIsActive = true;
         NewServiceBarcode = string.Empty;
         NewServiceUom = "unit";
+        NewServiceUomId = string.Empty;
         NewServiceDescription = string.Empty;
         NewServiceImagePath = string.Empty;
         NewServiceImageFileName = string.Empty;
@@ -4278,7 +4314,7 @@
                 ImagePath: NewServiceImagePath,
                 ImageFileName: NewServiceImageFileName,
                 SectionId: NewServiceSectionId,
-                UnitOfMeasureId: NewServiceUom);
+                UnitOfMeasureId: string.IsNullOrWhiteSpace(NewServiceUomId) ? NewServiceUom : NewServiceUomId);
 
             var result = IsEditMode
                 ? await ServiceItemService.UpdateServiceAsync(
@@ -4338,9 +4374,12 @@
         NewServiceTaxInclusive = SelectedService.IsTaxInclusive;
         NewServiceIsActive = SelectedService.IsActive;
         NewServiceBarcode = SelectedService.Barcode;
-        NewServiceUom = !string.IsNullOrWhiteSpace(SelectedService.UnitOfMeasureId)
+        NewServiceUom = string.IsNullOrWhiteSpace(SelectedService.UnitOfMeasure)
+            ? "unit"
+            : SelectedService.UnitOfMeasure;
+        NewServiceUomId = !string.IsNullOrWhiteSpace(SelectedService.UnitOfMeasureId)
             ? SelectedService.UnitOfMeasureId
-            : string.IsNullOrWhiteSpace(SelectedService.UnitOfMeasure) ? "unit" : SelectedService.UnitOfMeasure;
+            : NewServiceUom;
         NewServiceDescription = SelectedService.Description;
         NewServiceImagePath = SelectedService.ImagePath;
         NewServiceImageFileName = SelectedService.ImageFileName;
