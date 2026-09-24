@@ -326,30 +326,36 @@
 
             @if (ShowEditForm && EditProduct != null)
             {
-                <div class="product-modal-overlay" @onclick="CloseEditProductForm">
-                    <div class="product-modal" @onclick:stopPropagation="true">
-                        <div class="product-modal__header">
-                            <div class="product-modal__title">
+                <div class="product-modal-overlay edit-product-modal-overlay" @onclick="CloseEditProductForm">
+                    <div class="product-modal edit-product-modal" @onclick:stopPropagation="true">
+                        <div class="edit-product-modal__header">
+                            <div class="edit-product-modal__title">
                                 <i class="bi bi-pencil-square"></i>
-                                <h2>Edit Product</h2>
+                                <div>
+                                    <h2>Edit Product</h2>
+                                    <span>@DisplayProductValue(EditProduct.Sku)</span>
+                                </div>
                             </div>
-                            <div class="product-modal__actions">
-                                <button type="button" class="product-modal__btn product-modal__btn--save" @onclick="HandleEditProduct" disabled="@(IsProductSaving || IsProductImageUploading)">
-                                    @(IsProductSaving ? "Saving..." : "Save")
-                                </button>
-                                <button type="button" class="product-modal__btn product-modal__btn--cancel" @onclick="CloseEditProductForm">
-                                    Cancel
-                                </button>
-                            </div>
+                            <button type="button"
+                                    class="edit-product-modal__close"
+                                    title="Close"
+                                    aria-label="Close edit product"
+                                    @onclick="CloseEditProductForm">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
                         </div>
-                        <div class="product-modal__body">
-                            <form class="product-form" @onsubmit:preventDefault>
-                                @if (!string.IsNullOrWhiteSpace(ProductApiError))
-                                {
-                                    <div class="inventory__alert inventory__alert--error">@ProductApiError</div>
-                                }
-                                <div class="product-image-editor">
-                                    <div class="product-image-editor__preview">
+
+                        <div class="edit-product-modal__body">
+                            @if (!string.IsNullOrWhiteSpace(ProductApiError))
+                            {
+                                <div class="inventory__alert inventory__alert--error">@ProductApiError</div>
+                            }
+
+                            <form class="edit-product-form" @onsubmit:preventDefault>
+                                <div class="edit-product-image-section">
+                                    <label for="edit-product-image"
+                                           class="edit-product-image-picker"
+                                           title="Change product image">
                                         @if (!string.IsNullOrWhiteSpace(EditProductImageUrl))
                                         {
                                             <img src="@EditProductImageUrl" alt="@EditProduct.Type" />
@@ -357,132 +363,230 @@
                                         else
                                         {
                                             <i class="bi bi-image"></i>
+                                            <span>Add image</span>
                                         }
-                                    </div>
-                                    <div class="product-image-editor__content">
+                                        <span class="edit-product-image-picker__overlay">
+                                            <i class="bi bi-camera"></i>
+                                            Change
+                                        </span>
+                                    </label>
+                                    <InputFile id="edit-product-image"
+                                               OnChange="HandleEditProductImageSelected"
+                                               accept="image/jpeg,image/png,image/webp"
+                                               disabled="@IsProductImageUploading" />
+
+                                    <div class="edit-product-image-section__meta">
                                         <strong>Product image</strong>
-                                        <span>Current image is loaded from the product record. Choose a file to replace it.</span>
-                                        <div class="product-image-editor__actions">
-                                            <label for="edit-product-image" class="product-image-editor__choose">
-                                                <i class="bi bi-upload"></i>
-                                                @(IsProductImageUploading ? "Uploading..." : "Change image")
-                                            </label>
-                                            <InputFile id="edit-product-image" OnChange="HandleEditProductImageSelected" accept="image/jpeg,image/png,image/webp" disabled="@IsProductImageUploading" />
-                                            @if (!string.IsNullOrWhiteSpace(EditProductImageUrl))
-                                            {
-                                                <button type="button" class="product-image-editor__remove" @onclick="RemoveEditProductImage"><i class="bi bi-trash3"></i> Remove</button>
-                                            }
-                                        </div>
+                                        <span>JPG, PNG or WEBP, up to 5 MB.</span>
+                                        @if (!string.IsNullOrWhiteSpace(EditProductImageUrl))
+                                        {
+                                            <button type="button"
+                                                    class="edit-product-image-remove"
+                                                    @onclick="RemoveEditProductImage">
+                                                <i class="bi bi-trash3"></i>
+                                                Remove image
+                                            </button>
+                                        }
                                         @if (!string.IsNullOrWhiteSpace(ProductImageError))
                                         {
                                             <small class="product-image-editor__error" role="alert">@ProductImageError</small>
                                         }
                                     </div>
                                 </div>
-                                <div class="inventory__form-row">
-                                    <div class="inventory__form-group">
-                                        <label>Product Name</label>
-                                        <input type="text" @bind="EditProduct.Type" required />
-                                    </div>
-                                    <div class="inventory__form-group">
-                                        <label>SKU</label>
-                                        <input type="text" @bind="EditProduct.Sku" required />
-                                    </div>
+
+                                <div class="edit-product-tabs" role="tablist" aria-label="Edit product sections">
+                                    <button type="button"
+                                            class="edit-product-tab @(EditProductTab == "Info" ? "active" : string.Empty)"
+                                            aria-selected="@(EditProductTab == "Info")"
+                                            @onclick='() => EditProductTab = "Info"'>
+                                        Info
+                                    </button>
+                                    <button type="button"
+                                            class="edit-product-tab @(EditProductTab == "SellingUnits" ? "active" : string.Empty)"
+                                            aria-selected="@(EditProductTab == "SellingUnits")"
+                                            @onclick='() => EditProductTab = "SellingUnits"'>
+                                        Selling Units
+                                    </button>
+                                    <button type="button"
+                                            class="edit-product-tab @(EditProductTab == "Advance" ? "active" : string.Empty)"
+                                            aria-selected="@(EditProductTab == "Advance")"
+                                            @onclick='() => EditProductTab = "Advance"'>
+                                        Advance
+                                    </button>
                                 </div>
-                                <div class="inventory__form-row">
-                                    <div class="inventory__form-group">
-                                        <label>Barcode</label>
-                                        <input type="text" @bind="EditProduct.Barcode" required />
-                                    </div>
-                                    <div class="inventory__form-group">
-                                        <label>Price (MYR)</label>
-                                        <input type="number" step="0.01" @bind="EditProduct.Price" required />
-                                    </div>
-                                </div>
-                                <div class="inventory__form-row">
-                                    <div class="inventory__form-group">
-                                        <label>Brand</label>
-                                        <select @bind="EditProduct.Brand" required>
-                                            <option value="">Select Brand</option>
-                                            @foreach (var brand in Brands.Where(brand =>
-                                                brand.Active || string.Equals(brand.Name, EditProduct.Brand, StringComparison.OrdinalIgnoreCase)))
-                                            {
-                                                <option value="@brand.Name">@brand.Name</option>
-                                            }
-                                        </select>
-                                    </div>
-                                    <div class="inventory__form-group">
-                                        <label>Category</label>
-                                        <select @bind="EditProduct.CategoryId" required>
-                                            <option value="">Select Category</option>
-                                            @foreach (var category in Categories.Where(category =>
-                                                category.Active || string.Equals(category.Id, EditProduct.CategoryId, StringComparison.OrdinalIgnoreCase)))
-                                            {
-                                                <option value="@category.Id">@category.Name</option>
-                                            }
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="inventory__form-row">
-                                    <div class="inventory__form-group">
-                                        <label>Supplier</label>
-                                        <select @bind="EditProduct.Supplier" required>
-                                            <option value="">Select Supplier</option>
-                                            @foreach (var supplier in Suppliers)
-                                            {
-                                                <option value="@supplier.Name">@supplier.Name</option>
-                                            }
-                                        </select>
-                                    </div>
-                                    <div class="inventory__form-group">
-                                        <label>Conversion Factor</label>
-                                        <input type="text" @bind="EditProduct.ConversionFactor" placeholder="e.g., 1 box = 10 bottles" required />
-                                    </div>
-                                </div>
-                                <div class="inventory__form-row">
-                                    <div class="inventory__form-group">
-                                        <label>UOM 1</label>
-                                        <input type="text" @bind="EditProduct.StockUom1" placeholder="e.g., UNIT" required />
-                                    </div>
-                                    <div class="inventory__form-group">
-                                        <label>UOM 2</label>
-                                        <input type="text" @bind="EditProduct.StockUom2" placeholder="Optional secondary UOM" />
-                                    </div>
-                                </div>
-                                <div class="inventory__form-row">
-                                    <div class="inventory__form-group">
-                                        <label>Current Stock</label>
-                                        <input class="inventory__readonly-field" type="text" value="@GetProductStockDisplay(EditProduct)" readonly />
-                                    </div>
-                                    <div class="inventory__form-group">
-                                        <label>Location</label>
-                                        <input type="text" @bind="EditProduct.Location" required />
-                                    </div>
-                                </div>
-                                <div class="inventory__form-row">
-                                    <div class="inventory__form-group">
-                                        <label>Low Alert Count</label>
-                                        <input type="text" @bind="EditProduct.LowAlertCount" placeholder="e.g., 50 bottles" required />
-                                    </div>
-                                    <div class="inventory__form-group">
-                                        <label>Discount Cap</label>
-                                        <input type="number" step="0.01" @bind="EditProduct.DiscountCap" required />
-                                    </div>
-                                </div>
-                                <div class="inventory__form-row">
-                                    <div class="inventory__form-group">
-                                        <label>IsLocked</label>
-                                        <select @bind="EditProduct.Locked">
-                                            <option value="false">No</option>
-                                            <option value="true">Yes</option>
-                                        </select>
-                                    </div>
-                                    <div class="inventory__form-group">
-                                        <label>Record ID</label>
-                                        <input class="inventory__readonly-field" type="text" value="@DisplayProductValue(EditProduct.MasterAccountId)" readonly />
-                                    </div>
+
+                                <div class="edit-product-tab-content">
+                                    @if (EditProductTab == "Info")
+                                    {
+                                        <div class="edit-product-form-section">
+                                            <div class="edit-product-field edit-product-field--full">
+                                                <label>Product Name <span class="edit-product-required">*</span></label>
+                                                <input type="text" @bind="EditProduct.Type" required />
+                                            </div>
+
+                                            <div class="edit-product-field">
+                                                <label>SKU <span class="edit-product-required">*</span></label>
+                                                <input type="text" @bind="EditProduct.Sku" required />
+                                            </div>
+                                            <div class="edit-product-field">
+                                                <label>Price (MYR) <span class="edit-product-required">*</span></label>
+                                                <div class="edit-product-money">
+                                                    <span>RM</span>
+                                                    <input type="number" min="0" step="0.01" @bind="EditProduct.Price" required />
+                                                </div>
+                                            </div>
+
+                                            <div class="edit-product-field">
+                                                <label>Category <span class="edit-product-required">*</span></label>
+                                                <select @bind="EditProduct.CategoryId" required>
+                                                    <option value="">Select Category</option>
+                                                    @foreach (var category in Categories.Where(category =>
+                                                        category.Active || string.Equals(category.Id, EditProduct.CategoryId, StringComparison.OrdinalIgnoreCase)))
+                                                    {
+                                                        <option value="@category.Id">@category.Name</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                            <div class="edit-product-field">
+                                                <label>Brand <span class="edit-product-required">*</span></label>
+                                                <select @bind="EditProduct.Brand" required>
+                                                    <option value="">Select Brand</option>
+                                                    @foreach (var brand in Brands.Where(brand =>
+                                                        brand.Active || string.Equals(brand.Name, EditProduct.Brand, StringComparison.OrdinalIgnoreCase)))
+                                                    {
+                                                        <option value="@brand.Name">@brand.Name</option>
+                                                    }
+                                                </select>
+                                            </div>
+
+                                            <div class="edit-product-field edit-product-field--full">
+                                                <label>Supplier <span class="edit-product-required">*</span></label>
+                                                <select @bind="EditProduct.Supplier" required>
+                                                    <option value="">Select Supplier</option>
+                                                    @foreach (var supplier in Suppliers)
+                                                    {
+                                                        <option value="@supplier.Name">@supplier.Name</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                        </div>
+                                    }
+                                    else if (EditProductTab == "SellingUnits")
+                                    {
+                                        <div class="edit-product-form-section">
+                                            <div class="edit-product-section-heading edit-product-field--full">
+                                                <div>
+                                                    <h3>Selling Units</h3>
+                                                    <span>Maintain the barcode and unit conversion used when this product is sold.</span>
+                                                </div>
+                                            </div>
+
+                                            <div class="edit-product-field edit-product-field--full">
+                                                <label>Barcode <span class="edit-product-required">*</span></label>
+                                                <div class="edit-product-icon-input">
+                                                    <input type="text" @bind="EditProduct.Barcode" required />
+                                                    <i class="bi bi-upc-scan"></i>
+                                                </div>
+                                            </div>
+
+                                            <div class="edit-product-field">
+                                                <label>UOM 1 <span class="edit-product-required">*</span></label>
+                                                <input type="text" @bind="EditProduct.StockUom1" placeholder="e.g., UNIT" required />
+                                                <small>Base inventory unit</small>
+                                            </div>
+                                            <div class="edit-product-field">
+                                                <label>UOM 2</label>
+                                                <input type="text" @bind="EditProduct.StockUom2" placeholder="Optional secondary UOM" />
+                                                <small>Optional selling unit</small>
+                                            </div>
+
+                                            <div class="edit-product-field">
+                                                <label>Conversion Factor <span class="edit-product-required">*</span></label>
+                                                <input type="text"
+                                                       @bind="EditProduct.ConversionFactor"
+                                                       placeholder="e.g., 1 box = 10 bottles"
+                                                       required />
+                                            </div>
+                                            <div class="edit-product-field">
+                                                <label>Current Stock</label>
+                                                <input class="inventory__readonly-field"
+                                                       type="text"
+                                                       value="@GetProductStockDisplay(EditProduct)"
+                                                       readonly />
+                                                <small>Read-only branch stock balance</small>
+                                            </div>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="edit-product-form-section">
+                                            <div class="edit-product-section-heading edit-product-field--full">
+                                                <div>
+                                                    <h3>Advance</h3>
+                                                    <span>Inventory controls and product-level limits.</span>
+                                                </div>
+                                            </div>
+
+                                            <div class="edit-product-field">
+                                                <label>Location <span class="edit-product-required">*</span></label>
+                                                <input type="text" @bind="EditProduct.Location" required />
+                                            </div>
+                                            <div class="edit-product-field">
+                                                <label>Low Alert Count <span class="edit-product-required">*</span></label>
+                                                <input type="text"
+                                                       @bind="EditProduct.LowAlertCount"
+                                                       placeholder="e.g., 50 bottles"
+                                                       required />
+                                            </div>
+
+                                            <div class="edit-product-field">
+                                                <label>Discount Cap <span class="edit-product-required">*</span></label>
+                                                <input type="number" min="0" step="0.01" @bind="EditProduct.DiscountCap" required />
+                                            </div>
+                                            <div class="edit-product-field">
+                                                <label>Locked</label>
+                                                <select @bind="EditProduct.Locked">
+                                                    <option value="false">No</option>
+                                                    <option value="true">Yes</option>
+                                                </select>
+                                            </div>
+
+                                            <div class="edit-product-field edit-product-field--full">
+                                                <label>Record ID</label>
+                                                <input class="inventory__readonly-field"
+                                                       type="text"
+                                                       value="@DisplayProductValue(EditProduct.MasterAccountId)"
+                                                       readonly />
+                                                <small>System record identifier</small>
+                                            </div>
+                                        </div>
+                                    }
                                 </div>
                             </form>
+                        </div>
+
+                        <div class="edit-product-modal__footer">
+                            <button type="button"
+                                    class="edit-product-modal__cancel"
+                                    @onclick="CloseEditProductForm"
+                                    disabled="@IsProductSaving">
+                                Cancel
+                            </button>
+                            <button type="button"
+                                    class="edit-product-modal__save"
+                                    @onclick="HandleEditProduct"
+                                    disabled="@(IsProductSaving || IsProductImageUploading)">
+                                @if (IsProductSaving)
+                                {
+                                    <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                    <span>Saving...</span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-check-lg"></i>
+                                    <span>Save</span>
+                                }
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -5313,6 +5417,7 @@
     private bool ShowEditForm { get; set; } = false;
     private NewProductModel NewProduct { get; set; } = new();
     private EditProductModel? EditProduct { get; set; }
+    private string EditProductTab { get; set; } = "Info";
     private InventoryViewModel.InventoryItem? SelectedItem { get; set; }
     private bool IsProductApiLoading { get; set; }
     private bool IsProductSaving { get; set; }
@@ -7940,6 +8045,7 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
         ProductApiError = null;
         ProductImageError = null;
         EditProductImagePreview = string.Empty;
+        EditProductTab = "Info";
         IsProductApiLoading = true;
 
         var product = SelectedItem;
@@ -8014,6 +8120,7 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
     {
         ShowEditForm = false;
         EditProduct = null;
+        EditProductTab = "Info";
         EditProductImagePreview = string.Empty;
         ProductImageError = null;
     }
