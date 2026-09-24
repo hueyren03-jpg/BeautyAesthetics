@@ -94,10 +94,19 @@ public sealed class PackageService : IPackageService
 
             var packagePoints = package is not null
                 ? GetInventoryDecimal(package, "Points")
-                : GetInventoryDecimal(header, "Points");
+                : 0m;
+            if (packagePoints == 0m)
+            {
+                packagePoints = GetInventoryDecimal(header, "Points");
+            }
+
             var packageRemarks = package is not null
                 ? GetInventoryString(package, "Remarks")
-                : GetInventoryString(header, "Remarks");
+                : null;
+            if (string.IsNullOrWhiteSpace(packageRemarks))
+            {
+                packageRemarks = GetInventoryString(header, "Remarks");
+            }
 
             summaries.Add(new InventoryPackageSummary(
                 package?.MasterAccountId ?? header.MasterAccountID ?? string.Empty,
