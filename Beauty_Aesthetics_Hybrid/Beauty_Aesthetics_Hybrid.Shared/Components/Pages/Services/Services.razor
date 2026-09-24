@@ -14,6 +14,7 @@
 @using Beauty_Aesthetics_WebPos.APIClient.ResultPattern
 @inject IJSRuntime JSRuntime
 @inject IServiceItemService ServiceItemService
+@inject IProductInventoryService ProductInventoryService
 @inject IBranchSessionService BranchSession
 @inject IMemberCreditService MemberCreditService
 @inject IPackageService PackageService
@@ -1615,9 +1616,9 @@
                                         class="@(BundleEditorTab == "Items" ? "active" : string.Empty)"
                                         @onclick='() => BundleEditorTab = "Items"'>
                                     Items
-                                    @if (SelectedBundleServices.Any())
+                                    @if (SelectedBundleItemCount > 0)
                                     {
-                                        <span class="senang-editor__tab-badge">@SelectedBundleServices.Count</span>
+                                        <span class="senang-editor__tab-badge">@SelectedBundleItemCount</span>
                                     }
                                 </button>
                                 <button type="button"
@@ -1667,66 +1668,131 @@
                                         <div class="senang-package-items__heading">
                                             <div>
                                                 <h3>Package Items</h3>
-                                                <p>Select services, then maintain the Senang package-line values.</p>
+                                                <p>Add Services or Products, then maintain Deferred, Unit Price and Qty for each line.</p>
                                             </div>
-                                            <span>@SelectedBundleServices.Count selected</span>
+                                            <span>@SelectedBundleItemCount selected</span>
                                         </div>
 
-                                        @if (!BundleEligibleServices.Any())
+                                        <div class="senang-package-item-type-actions">
+                                            <button type="button"
+                                                    class="@(BundleItemPickerType == "Service" ? "active" : string.Empty)"
+                                                    @onclick='() => BundleItemPickerType = "Service"'>
+                                                <i class="bi bi-scissors"></i>
+                                                + Add Service
+                                            </button>
+                                            <button type="button"
+                                                    class="@(BundleItemPickerType == "Product" ? "active" : string.Empty)"
+                                                    @onclick='() => BundleItemPickerType = "Product"'>
+                                                <i class="bi bi-box"></i>
+                                                + Add Product
+                                            </button>
+                                        </div>
+
+                                        @if (BundleItemPickerType == "Service")
                                         {
-                                            <div class="senang-record-list__empty">
-                                                <i class="bi bi-inbox"></i>
-                                                <strong>No package-eligible services</strong>
-                                                <span>Enable “Add To Package List” on a service first.</span>
-                                            </div>
+                                            @if (!BundleEligibleServices.Any())
+                                            {
+                                                <div class="senang-record-list__empty">
+                                                    <i class="bi bi-inbox"></i>
+                                                    <strong>No package-eligible services</strong>
+                                                    <span>Enable “Add To Package List” on a service first.</span>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <div class="senang-package-items__list">
+                                                    @foreach (var service in BundleEligibleServices)
+                                                    {
+                                                        var lineKey = BundleServiceKey(service);
+                                                        var selected = SelectedBundleServices.Contains(service);
+                                                        <div class="senang-package-item @(selected ? "is-selected" : string.Empty)">
+                                                            <label class="senang-package-item__select">
+                                                                <input type="checkbox"
+                                                                       checked="@selected"
+                                                                       @onchange="() => ToggleServiceSelection(service)" />
+                                                                <span class="senang-package-item__icon"><i class="bi bi-scissors"></i></span>
+                                                                <span class="senang-package-item__body">
+                                                                    <strong>@service.ServiceName</strong>
+                                                                    <small>@service.Category • @service.DurationSpend</small>
+                                                                </span>
+                                                            </label>
+
+                                                            @if (selected)
+                                                            {
+                                                                <div class="senang-package-item__fields">
+                                                                    <label>
+                                                                        <span>Deferred</span>
+                                                                        <input type="checkbox"
+                                                                               checked="@BundleDeferredServiceIds.Contains(lineKey)"
+                                                                               @onchange="(ChangeEventArgs e) => SetBundleDeferred(lineKey, e.Value is true)" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Unit Price</span>
+                                                                        <input type="number" min="0" step="0.01" @bind="BundleLineUnitPrices[lineKey]" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Qty</span>
+                                                                        <input type="number" min="1" step="1" @bind="BundleLineQuantities[lineKey]" />
+                                                                    </label>
+                                                                </div>
+                                                            }
+                                                        </div>
+                                                    }
+                                                </div>
+                                            }
                                         }
                                         else
                                         {
-                                            <div class="senang-package-items__list">
-                                                @foreach (var service in BundleEligibleServices)
-                                                {
-                                                    var lineKey = BundleServiceKey(service);
-                                                    var selected = SelectedBundleServices.Contains(service);
-                                                    <div class="senang-package-item @(selected ? "is-selected" : string.Empty)">
-                                                        <label class="senang-package-item__select">
-                                                            <input type="checkbox"
-                                                                   checked="@selected"
-                                                                   @onchange="() => ToggleServiceSelection(service)" />
-                                                            <span class="senang-package-item__icon"><i class="bi bi-scissors"></i></span>
-                                                            <span class="senang-package-item__body">
-                                                                <strong>@service.ServiceName</strong>
-                                                                <small>@service.Category • @service.DurationSpend</small>
-                                                            </span>
-                                                        </label>
+                                            @if (!BundleEligibleProducts.Any())
+                                            {
+                                                <div class="senang-record-list__empty">
+                                                    <i class="bi bi-inbox"></i>
+                                                    <strong>No products available</strong>
+                                                    <span>No API product records are available for the selected branch.</span>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <div class="senang-package-items__list">
+                                                    @foreach (var product in BundleEligibleProducts)
+                                                    {
+                                                        var lineKey = BundleProductKey(product);
+                                                        var selected = SelectedBundleProducts.Contains(product);
+                                                        <div class="senang-package-item @(selected ? "is-selected" : string.Empty)">
+                                                            <label class="senang-package-item__select">
+                                                                <input type="checkbox"
+                                                                       checked="@selected"
+                                                                       @onchange="() => ToggleProductSelection(product)" />
+                                                                <span class="senang-package-item__icon senang-package-item__icon--product"><i class="bi bi-box"></i></span>
+                                                                <span class="senang-package-item__body">
+                                                                    <strong>@product.Type</strong>
+                                                                    <small>@product.Category • @product.Sku</small>
+                                                                </span>
+                                                            </label>
 
-                                                        @if (selected)
-                                                        {
-                                                            <div class="senang-package-item__fields">
-                                                                <label>
-                                                                    <span>Deferred</span>
-                                                                    <input type="checkbox"
-                                                                           checked="@BundleDeferredServiceIds.Contains(lineKey)"
-                                                                           @onchange="(ChangeEventArgs e) => SetBundleDeferred(service, e.Value is true)" />
-                                                                </label>
-                                                                <label>
-                                                                    <span>Unit Price</span>
-                                                                    <input type="number"
-                                                                           min="0"
-                                                                           step="0.01"
-                                                                           @bind="BundleLineUnitPrices[lineKey]" />
-                                                                </label>
-                                                                <label>
-                                                                    <span>Qty</span>
-                                                                    <input type="number"
-                                                                           min="1"
-                                                                           step="1"
-                                                                           @bind="BundleLineQuantities[lineKey]" />
-                                                                </label>
-                                                            </div>
-                                                        }
-                                                    </div>
-                                                }
-                                            </div>
+                                                            @if (selected)
+                                                            {
+                                                                <div class="senang-package-item__fields">
+                                                                    <label>
+                                                                        <span>Deferred</span>
+                                                                        <input type="checkbox"
+                                                                               checked="@BundleDeferredServiceIds.Contains(lineKey)"
+                                                                               @onchange="(ChangeEventArgs e) => SetBundleDeferred(lineKey, e.Value is true)" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Unit Price</span>
+                                                                        <input type="number" min="0" step="0.01" @bind="BundleLineUnitPrices[lineKey]" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Qty</span>
+                                                                        <input type="number" min="1" step="1" @bind="BundleLineQuantities[lineKey]" />
+                                                                    </label>
+                                                                </div>
+                                                            }
+                                                        </div>
+                                                    }
+                                                </div>
+                                            }
                                         }
                                     </div>
                                 }
@@ -1996,7 +2062,7 @@
                             <strong>MYR @BundleDetailsItem.Price.ToString("N2")</strong>
                         </div>
                         <div class="service-record-view__metric">
-                            <span>Services included</span>
+                            <span>Items included</span>
                             <strong>@BundleDetailsItem.ServicesCount</strong>
                         </div>
                         <div class="service-record-view__metric">
@@ -2039,18 +2105,25 @@
                         {
                             <div class="senang-package-view-lines">
                                 <div class="senang-package-view-lines__header">
-                                    <span>Service</span>
+                                    <span>Item</span>
+                                    <span>Type</span>
                                     <span>Deferred</span>
                                     <span>Unit Price</span>
                                     <span>Qty</span>
                                 </div>
                                 @foreach (var line in BundleDetailsItem.ServiceLines)
                                 {
-                                    var serviceName = ServiceItems.FirstOrDefault(service =>
-                                        string.Equals(service.MasterAccountId, line.ServiceId, StringComparison.OrdinalIgnoreCase))?.ServiceName
-                                        ?? line.Description;
+                                    var product = InventoryItems.FirstOrDefault(item =>
+                                        string.Equals(item.MasterAccountId, line.ServiceId, StringComparison.OrdinalIgnoreCase));
+                                    var service = ServiceItems.FirstOrDefault(item =>
+                                        string.Equals(item.MasterAccountId, line.ServiceId, StringComparison.OrdinalIgnoreCase));
+                                    var isProduct = line.InventoryTypeId == 1 || (line.InventoryTypeId <= 0 && product is not null);
+                                    var itemName = isProduct
+                                        ? product?.Type ?? line.Description
+                                        : service?.ServiceName ?? line.Description;
                                     <div class="senang-package-view-lines__row">
-                                        <strong>@FormatDisplay(serviceName)</strong>
+                                        <strong>@FormatDisplay(itemName)</strong>
+                                        <span>@(isProduct ? "Product" : "Service")</span>
                                         <span>@(line.IsDeferred ? "Yes" : "No")</span>
                                         <span>MYR @line.UnitPrice.ToString("N2")</span>
                                         <span>@line.Quantity.ToString("N0")</span>
@@ -2277,6 +2350,9 @@
     private decimal NewBundleMemberCredit { get; set; }
     private decimal NewBundlePrice { get; set; } = 0.00m;
     private HashSet<ServiceViewModel.ServiceItem> SelectedBundleServices { get; set; } = new();
+    private HashSet<InventoryViewModel.InventoryItem> SelectedBundleProducts { get; set; } = new();
+    private string BundleItemPickerType { get; set; } = "Service";
+    private int SelectedBundleItemCount => SelectedBundleServices.Count + SelectedBundleProducts.Count;
     private Dictionary<string, decimal> BundleLineQuantities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, decimal> BundleLineUnitPrices { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> BundleDeferredServiceIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -2474,16 +2550,16 @@
 
     protected override async Task OnInitializedAsync()
     {
-        InventoryItems = InventoryViewModel.Items.ToList();
+        InventoryItems.Clear();
         MemberCreditItems.Clear();
         Bundles.Clear();
 
-        // Services are branch-scoped just like Inventory records. Initialize the
-        // persisted/current branch before issuing the service API request.
+        // Service/package records and package-item choices follow the selected branch.
         await BranchSession.InitializeAsync();
 
         await LoadServiceSectionsAsync();
         await LoadServiceItemsFromApiAsync();
+        await LoadPackageProductsFromApiAsync();
         await LoadMemberCreditsFromApiAsync();
         await LoadPackagesFromApiAsync();
         await LoadMemberTypesFromApiAsync();
@@ -2577,6 +2653,28 @@
         finally
         {
             IsMemberCreditApiLoading = false;
+        }
+    }
+
+    private async Task LoadPackageProductsFromApiAsync()
+    {
+        try
+        {
+            var result = await ProductInventoryService.LoadProductsAsync(ServiceBranchId);
+            if (result.Success && result.Value is not null)
+            {
+                InventoryItems = result.Value.ToList();
+            }
+            else
+            {
+                InventoryItems.Clear();
+                BundleApiError ??= result.ErrorMessage ?? "Unable to load products for package items.";
+            }
+        }
+        catch (Exception ex)
+        {
+            InventoryItems.Clear();
+            BundleApiError ??= $"Unable to load products for package items. {ex.Message}";
         }
     }
 
@@ -4337,7 +4435,13 @@
 
     // Bundle Management computed properties
     private IEnumerable<ServiceViewModel.ServiceItem> BundleEligibleServices =>
-        ServiceItems.Where(s => s.IsBundle);
+        ServiceItems.Where(service =>
+            service.IsBundle &&
+            !string.IsNullOrWhiteSpace(service.MasterAccountId));
+
+    private IEnumerable<InventoryViewModel.InventoryItem> BundleEligibleProducts =>
+        InventoryItems.Where(product =>
+            !string.IsNullOrWhiteSpace(product.MasterAccountId));
 
     private IEnumerable<BundleItem> PaginatedBundles
     {
@@ -4584,6 +4688,8 @@
         NewBundleMemberCredit = 0m;
         NewBundlePrice = 0.00m;
         SelectedBundleServices.Clear();
+        SelectedBundleProducts.Clear();
+        BundleItemPickerType = "Service";
         BundleLineQuantities.Clear();
         BundleLineUnitPrices.Clear();
         BundleDeferredServiceIds.Clear();
@@ -4605,9 +4711,9 @@
             return;
         }
 
-        if (SelectedBundleServices.Count == 0)
+        if (SelectedBundleItemCount == 0)
         {
-            BundleApiError = "Select at least one service for this package.";
+            BundleApiError = "Select at least one service or product for this package.";
             return;
         }
 
@@ -4616,18 +4722,35 @@
 
         try
         {
-            var packageLines = SelectedBundleServices
+            var serviceLines = SelectedBundleServices
                 .Where(service => !string.IsNullOrWhiteSpace(service.MasterAccountId))
                 .Select(service =>
                 {
                     var key = BundleServiceKey(service);
                     return new InventoryPackageLineEdit(
-                        service,
+                        service.MasterAccountId!,
+                        service.ServiceName,
+                        3,
                         BundleLineQuantities.TryGetValue(key, out var quantity) ? Math.Max(1m, quantity) : 1m,
                         BundleLineUnitPrices.TryGetValue(key, out var unitPrice) ? Math.Max(0m, unitPrice) : Math.Max(0m, service.Price),
                         BundleDeferredServiceIds.Contains(key));
-                })
-                .ToList();
+                });
+
+            var productLines = SelectedBundleProducts
+                .Where(product => !string.IsNullOrWhiteSpace(product.MasterAccountId))
+                .Select(product =>
+                {
+                    var key = BundleProductKey(product);
+                    return new InventoryPackageLineEdit(
+                        product.MasterAccountId,
+                        product.Type,
+                        product.InventoryTypeId > 0 ? product.InventoryTypeId : 1,
+                        BundleLineQuantities.TryGetValue(key, out var quantity) ? Math.Max(1m, quantity) : 1m,
+                        BundleLineUnitPrices.TryGetValue(key, out var unitPrice) ? Math.Max(0m, unitPrice) : Math.Max(0m, product.Price),
+                        BundleDeferredServiceIds.Contains(key));
+                });
+
+            var packageLines = serviceLines.Concat(productLines).ToList();
 
             var package = new InventoryPackageEdit(
                 IsBundleEditMode ? SelectedBundle?.MasterAccountID : null,
@@ -4696,19 +4819,51 @@
         NewBundleMemberCredit = SelectedBundle.MemberMainAccountCredit;
         NewBundlePrice = SelectedBundle.Price;
 
+        var savedLines = SelectedBundle.ServiceLines;
+
         SelectedBundleServices = ServiceItems
             .Where(service =>
-                !string.IsNullOrWhiteSpace(service.MasterAccountId) &&
-                SelectedBundle.ServiceIDs.Contains(service.MasterAccountId))
+            {
+                if (string.IsNullOrWhiteSpace(service.MasterAccountId))
+                {
+                    return false;
+                }
+
+                var line = savedLines.FirstOrDefault(item =>
+                    string.Equals(item.ServiceId, service.MasterAccountId, StringComparison.OrdinalIgnoreCase));
+
+                return line is not null &&
+                       (line.InventoryTypeId == 3 ||
+                        (line.InventoryTypeId <= 0 &&
+                         !InventoryItems.Any(product =>
+                             string.Equals(product.MasterAccountId, line.ServiceId, StringComparison.OrdinalIgnoreCase))));
+            })
+            .ToHashSet();
+
+        SelectedBundleProducts = InventoryItems
+            .Where(product =>
+            {
+                if (string.IsNullOrWhiteSpace(product.MasterAccountId))
+                {
+                    return false;
+                }
+
+                var line = savedLines.FirstOrDefault(item =>
+                    string.Equals(item.ServiceId, product.MasterAccountId, StringComparison.OrdinalIgnoreCase));
+
+                return line is not null &&
+                       (line.InventoryTypeId == 1 || line.InventoryTypeId == product.InventoryTypeId);
+            })
             .ToHashSet();
 
         BundleLineQuantities.Clear();
         BundleLineUnitPrices.Clear();
         BundleDeferredServiceIds.Clear();
+
         foreach (var service in SelectedBundleServices)
         {
             var key = BundleServiceKey(service);
-            var line = SelectedBundle.ServiceLines.FirstOrDefault(item =>
+            var line = savedLines.FirstOrDefault(item =>
                 string.Equals(item.ServiceId, service.MasterAccountId, StringComparison.OrdinalIgnoreCase));
             BundleLineQuantities[key] = line is null ? 1m : Math.Max(1m, line.Quantity);
             BundleLineUnitPrices[key] = line is null ? Math.Max(0m, service.Price) : Math.Max(0m, line.UnitPrice);
@@ -4717,6 +4872,21 @@
                 BundleDeferredServiceIds.Add(key);
             }
         }
+
+        foreach (var product in SelectedBundleProducts)
+        {
+            var key = BundleProductKey(product);
+            var line = savedLines.FirstOrDefault(item =>
+                string.Equals(item.ServiceId, product.MasterAccountId, StringComparison.OrdinalIgnoreCase));
+            BundleLineQuantities[key] = line is null ? 1m : Math.Max(1m, line.Quantity);
+            BundleLineUnitPrices[key] = line is null ? Math.Max(0m, product.Price) : Math.Max(0m, line.UnitPrice);
+            if (line?.IsDeferred == true)
+            {
+                BundleDeferredServiceIds.Add(key);
+            }
+        }
+
+        BundleItemPickerType = "Service";
 
         BundleApiError = null;
         BundleEditorTab = "Info";
@@ -4845,9 +5015,10 @@
     }
 
     private static string BundleServiceKey(ServiceViewModel.ServiceItem service) =>
-        !string.IsNullOrWhiteSpace(service.MasterAccountId)
-            ? service.MasterAccountId!
-            : service.Sku;
+        $"S:{(!string.IsNullOrWhiteSpace(service.MasterAccountId) ? service.MasterAccountId : service.Sku)}";
+
+    private static string BundleProductKey(InventoryViewModel.InventoryItem product) =>
+        $"P:{(!string.IsNullOrWhiteSpace(product.MasterAccountId) ? product.MasterAccountId : product.Sku)}";
 
     private void ToggleServiceSelection(ServiceViewModel.ServiceItem service)
     {
@@ -4856,9 +5027,7 @@
         if (SelectedBundleServices.Contains(service))
         {
             SelectedBundleServices.Remove(service);
-            BundleLineQuantities.Remove(key);
-            BundleLineUnitPrices.Remove(key);
-            BundleDeferredServiceIds.Remove(key);
+            RemoveBundleLineState(key);
         }
         else
         {
@@ -4868,9 +5037,32 @@
         }
     }
 
-    private void SetBundleDeferred(ServiceViewModel.ServiceItem service, bool isDeferred)
+    private void ToggleProductSelection(InventoryViewModel.InventoryItem product)
     {
-        var key = BundleServiceKey(service);
+        var key = BundleProductKey(product);
+
+        if (SelectedBundleProducts.Contains(product))
+        {
+            SelectedBundleProducts.Remove(product);
+            RemoveBundleLineState(key);
+        }
+        else
+        {
+            SelectedBundleProducts.Add(product);
+            BundleLineQuantities[key] = 1m;
+            BundleLineUnitPrices[key] = Math.Max(0m, product.Price);
+        }
+    }
+
+    private void RemoveBundleLineState(string key)
+    {
+        BundleLineQuantities.Remove(key);
+        BundleLineUnitPrices.Remove(key);
+        BundleDeferredServiceIds.Remove(key);
+    }
+
+    private void SetBundleDeferred(string key, bool isDeferred)
+    {
         if (isDeferred)
         {
             BundleDeferredServiceIds.Add(key);
