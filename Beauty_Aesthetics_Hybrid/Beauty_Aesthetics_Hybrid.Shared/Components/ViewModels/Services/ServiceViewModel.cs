@@ -52,7 +52,16 @@ public sealed class ServiceViewModel
         TimeSpan? AvailableTimeTo = null,
         string EInvoiceClassificationCode = "",
         string ImagePath = "",
-        string ImageFileName = ""
+        string ImageFileName = "",
+        decimal Cost = 0m,
+        string TaxCode = "",
+        bool IsTaxInclusive = false,
+        bool IsActive = true,
+        string Barcode = "",
+        string UnitOfMeasure = "unit",
+        string Description = "",
+        string SectionId = "",
+        string UnitOfMeasureId = ""
     );
 }
 
