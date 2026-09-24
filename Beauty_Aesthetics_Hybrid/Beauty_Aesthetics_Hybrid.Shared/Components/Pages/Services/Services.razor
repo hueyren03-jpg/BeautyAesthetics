@@ -1448,7 +1448,7 @@
                                                                     <span>Deferred</span>
                                                                     <input type="checkbox"
                                                                            checked="@BundleDeferredServiceIds.Contains(lineKey)"
-                                                                           @onchange="e => SetBundleDeferred(service, e.Value is true)" />
+                                                                           @onchange="(ChangeEventArgs e) => SetBundleDeferred(service, e.Value is true)" />
                                                                 </label>
                                                                 <label>
                                                                     <span>Unit Price</span>
@@ -1729,38 +1729,58 @@
 
                     <section class="service-record-view__section">
                         <div class="service-record-view__section-heading">
-                            <i class="bi bi-collection" aria-hidden="true"></i>
-                            <h3>Package contents</h3>
-                        </div>
-                        <dl class="service-record-view__fields">
-                            <div class="service-record-view__field--wide"><dt>Included services</dt><dd>@GetBundleServiceNames(BundleDetailsItem)</dd></div>
-                        </dl>
-                    </section>
-
-                    <section class="service-record-view__section">
-                        <div class="service-record-view__section-heading">
                             <i class="bi bi-card-list" aria-hidden="true"></i>
-                            <h3>Package details</h3>
+                            <h3>Package fields</h3>
                         </div>
                         <dl class="service-record-view__fields">
-                            <div><dt>Branch</dt><dd>@FormatDisplay(BundleDetailsItem.BranchId)</dd></div>
-                            <div><dt>Inventory type</dt><dd>@FormatDisplay(BundleDetailsItem.InventoryTypeName)</dd></div>
-                            <div><dt>E-Invoice code</dt><dd>@FormatDisplay(BundleDetailsItem.EInvoiceClassificationCode)</dd></div>
-                            <div><dt>SKU</dt><dd>@FormatDisplay(BundleDetailsItem.SKU)</dd></div>
+                            <div><dt>Package Name</dt><dd>@FormatDisplay(BundleDetailsItem.BundleName)</dd></div>
+                            <div><dt>Package SKU</dt><dd>@FormatDisplay(BundleDetailsItem.SKU)</dd></div>
+                            <div><dt>Section</dt><dd>@FormatDisplay(BundleDetailsItem.Section)</dd></div>
+                            <div><dt>Status</dt><dd>@(BundleDetailsItem.IsActive ? "Active" : "Inactive")</dd></div>
+                            <div><dt>Barcode</dt><dd>@FormatDisplay(BundleDetailsItem.Barcode)</dd></div>
+                            <div><dt>UOM</dt><dd>@FormatDisplay(BundleDetailsItem.UnitOfMeasure)</dd></div>
+                            <div><dt>Validity Days</dt><dd>@BundleDetailsItem.ValidityDays</dd></div>
+                            <div><dt>Working Branch</dt><dd>@FormatDisplay(BundleDetailsItem.BranchId)</dd></div>
+                            <div><dt>Credit Expiry (Days)</dt><dd>@BundleDetailsItem.MemberExpiryDays</dd></div>
+                            <div><dt>Member Type</dt><dd>@FormatDisplay(GetMemberTypeName(BundleDetailsItem.TriggeredMemberTypeId))</dd></div>
+                            <div><dt>Member Credit Amount</dt><dd>MYR @BundleDetailsItem.MemberMainAccountCredit.ToString("N2")</dd></div>
                         </dl>
                     </section>
 
                     <section class="service-record-view__section">
                         <div class="service-record-view__section-heading">
-                            <i class="bi bi-file-text" aria-hidden="true"></i>
-                            <h3>Record information</h3>
+                            <i class="bi bi-collection" aria-hidden="true"></i>
+                            <h3>Package Items</h3>
                         </div>
-                        <dl class="service-record-view__fields">
-                            <div class="service-record-view__field--wide"><dt>Sales description</dt><dd>@FormatDisplay(BundleDetailsItem.SalesDescription)</dd></div>
-                            <div class="service-record-view__field--wide"><dt>Record ID</dt><dd>@FormatDisplay(BundleDetailsItem.MasterAccountID)</dd></div>
-                        </dl>
-                    </section>
 
+                        @if (!BundleDetailsItem.ServiceLines.Any())
+                        {
+                            <div class="senang-record-list__empty">No package items saved.</div>
+                        }
+                        else
+                        {
+                            <div class="senang-package-view-lines">
+                                <div class="senang-package-view-lines__header">
+                                    <span>Service</span>
+                                    <span>Deferred</span>
+                                    <span>Unit Price</span>
+                                    <span>Qty</span>
+                                </div>
+                                @foreach (var line in BundleDetailsItem.ServiceLines)
+                                {
+                                    var serviceName = ServiceItems.FirstOrDefault(service =>
+                                        string.Equals(service.MasterAccountId, line.ServiceId, StringComparison.OrdinalIgnoreCase))?.ServiceName
+                                        ?? line.Description;
+                                    <div class="senang-package-view-lines__row">
+                                        <strong>@FormatDisplay(serviceName)</strong>
+                                        <span>@(line.IsDeferred ? "Yes" : "No")</span>
+                                        <span>MYR @line.UnitPrice.ToString("N2")</span>
+                                        <span>@line.Quantity.ToString("N0")</span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </section>
                 </div>
                 <div class="service-record-view__footer">
                     <button type="button" @onclick="CloseDetailModals">Done</button>
