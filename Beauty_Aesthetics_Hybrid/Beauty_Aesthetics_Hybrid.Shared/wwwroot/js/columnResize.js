@@ -1,34 +1,40 @@
 ﻿window.initColumnResize = () => {
-    const table = document.querySelector('.resizable-table');
-    if (!table) return;
+    const tables = document.querySelectorAll('.resizable-table');
+    if (!tables.length) return;
 
-    const ths = table.querySelectorAll('th');
+    tables.forEach(table => {
+        const ths = table.querySelectorAll('th');
 
-    ths.forEach((th, index) => {
-        const handle = th.querySelector('.resize-handle');
-        if (!handle) return;
+        ths.forEach((th, index) => {
+            const handle = th.querySelector('.resize-handle');
+            if (!handle || handle.dataset.resizeBound === 'true') return;
 
-        let startX, startWidth;
+            handle.dataset.resizeBound = 'true';
 
-        handle.addEventListener('mousedown', e => {
-            startX = e.pageX;
-            startWidth = th.offsetWidth;
+            let startX = 0;
+            let startWidth = 0;
 
-            document.addEventListener('mousemove', onMouseMove);
-            document.addEventListener('mouseup', onMouseUp);
+            const onMouseMove = e => {
+                const newWidth = Math.max(48, startWidth + (e.pageX - startX));
+                th.style.width = newWidth + 'px';
+
+                table.querySelectorAll(`td:nth-child(${index + 1})`)
+                    .forEach(td => td.style.width = newWidth + 'px');
+            };
+
+            const onMouseUp = () => {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+            };
+
+            handle.addEventListener('mousedown', e => {
+                e.preventDefault();
+                startX = e.pageX;
+                startWidth = th.offsetWidth;
+
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            });
         });
-
-        function onMouseMove(e) {
-            const newWidth = startWidth + (e.pageX - startX);
-            th.style.width = newWidth + 'px';
-
-            table.querySelectorAll(`td:nth-child(${index + 1})`)
-                .forEach(td => td.style.width = newWidth + 'px');
-        }
-
-        function onMouseUp() {
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
-        }
     });
 };
