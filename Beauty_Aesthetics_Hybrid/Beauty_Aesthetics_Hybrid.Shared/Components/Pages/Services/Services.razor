@@ -104,27 +104,27 @@
     <div class="services__content">
         @if (ActiveTab == "Services")
         {
-            <div class="services__section senang-module">
+            <div class="services__section">
                 @if (!IsAddServiceFormVisible)
                 {
-                    <div class="senang-module__topbar">
-                        <div>
-                            <h2>Services</h2>
-                            <span>Management</span>
-                        </div>
-                        <button type="button" class="senang-module__add" @onclick="ShowAddServiceForm" title="@L["AddService"]">
-                            <i class="bi bi-plus-lg"></i>
-                        </button>
-                    </div>
-
-                    <div class="senang-module__toolbar">
-                        <div class="services__search-container senang-module__search">
-                            <input class="services__search"
-                                   type="search"
-                                   placeholder="Search services..."
-                                   value="@SearchQuery"
-                                   @oninput="OnServiceSearchChanged" />
-                            <i class="bi bi-search services__search-icon"></i>
+                    <div class="services__toolbar">
+                        <div class="services__toolbar-primary">
+                            <div class="services__action-buttons">
+                                <button class="services__action-btn" title="@L["AddService"]" @onclick="ShowAddServiceForm">
+                                    <i class="bi bi-plus-lg"></i>
+                                </button>
+                                <button class="btn-delete" title="@L["DeleteServices"]" @onclick="ToggleServiceDeleteMode">
+                                    <i class="bi bi-trash3"></i>
+                                </button>
+                            </div>
+                            <div class="services__search-container">
+                                <input class="services__search"
+                                       type="search"
+                                       placeholder="@L["Search"]..."
+                                       value="@SearchQuery"
+                                       @oninput="OnServiceSearchChanged" />
+                                <i class="bi bi-search services__search-icon"></i>
+                            </div>
                         </div>
                         <AdvancedInventoryFilter Columns="@ServiceFilterColumns"
                                                  OnApply="@HandleServiceFiltersApplied"
@@ -132,14 +132,13 @@
                                                  ModuleName="Services"
                                                  ContextLabel="Services"
                                                  ResultCount="@FilteredServices.Count()" />
-                        <button type="button" class="senang-module__tool" title="@L["DeleteServices"]" @onclick="ToggleServiceDeleteMode">
-                            <i class="bi bi-trash3"></i>
-                        </button>
                     </div>
 
                     @if (IsServiceApiLoading)
                     {
-                        <div class="services__api-message services__api-message--loading">Loading services...</div>
+                        <div class="services__api-message services__api-message--loading">
+                            Loading services...
+                        </div>
                     }
 
                     @if (IsServiceDeleteMode)
@@ -152,7 +151,9 @@
                                 <span>@SelectedServicesForDeletion.Count @L["ItemsSelected"]</span>
                             </div>
                             <div class="services__delete-actions">
-                                <button class="services__btn services__btn--secondary" @onclick="CancelServiceDeleteMode">@L["Cancel"]</button>
+                                <button class="services__btn services__btn--secondary" @onclick="CancelServiceDeleteMode">
+                                    @L["Cancel"]
+                                </button>
                                 <button class="services__btn services__btn--danger"
                                         disabled="@(!SelectedServicesForDeletion.Any())"
                                         @onclick='() => RequestSelectedDeleteConfirmation("services", SelectedServicesForDeletion.Count, "service(s)")'>
@@ -162,45 +163,134 @@
                         </div>
                     }
 
-                    <div class="senang-record-list">
+                    <div class="services__table-wrapper desktop-view">
+                        <table class="services__table resizable-table">
+                            <thead>
+                                <tr>
+                                    @if (IsServiceDeleteMode)
+                                    {
+                                        <th class="services__checkbox-col"></th>
+                                    }
+                                    <th class="services__image-col">Image</th>
+                                    <th class='@GetServiceSortHeaderClass(SortColumn, SortAscending, "ServiceName")' @onclick='() => ToggleSort("ServiceName")'>
+                                        Service Name <span class="resize-handle"></span>
+                                    </th>
+                                    <th class='@GetServiceSortHeaderClass(SortColumn, SortAscending, "Category")' @onclick='() => ToggleSort("Category")'>
+                                        Section <span class="resize-handle"></span>
+                                    </th>
+                                    <th class='@GetServiceSortHeaderClass(SortColumn, SortAscending, "Price")' @onclick='() => ToggleSort("Price")'>
+                                        @L["PriceMyr"] <span class="resize-handle"></span>
+                                    </th>
+                                    <th class="services__actions-col">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (!PaginatedServices.Any())
+                                {
+                                    <tr>
+                                        <td colspan="@(IsServiceDeleteMode ? 6 : 5)" class="services__empty-cell">
+                                            No services found.
+                                        </td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    @foreach (var service in PaginatedServices)
+                                    {
+                                        <tr class="@(SelectedService == service ? "selected" : "")" @onclick="() => HandleRowClick(service)">
+                                            @if (IsServiceDeleteMode)
+                                            {
+                                                <td class="services__checkbox-col" @onclick:stopPropagation="true">
+                                                    <input type="checkbox"
+                                                           checked="@SelectedServicesForDeletion.Contains(service)"
+                                                           @onchange="() => ToggleServiceForDeletion(service)" />
+                                                </td>
+                                            }
+                                            <td class="services__image-col">
+                                                @{
+                                                    var serviceImage = BuildRecordImageUrl(service.ImagePath, service.ImageFileName);
+                                                }
+                                                @if (!string.IsNullOrWhiteSpace(serviceImage))
+                                                {
+                                                    <img class="services__record-image" src="@serviceImage" alt="@service.ServiceName" />
+                                                }
+                                                else
+                                                {
+                                                    <span class="services__record-image-placeholder" aria-hidden="true"><i class="bi bi-scissors"></i></span>
+                                                }
+                                            </td>
+                                            <td>@service.ServiceName</td>
+                                            <td>@service.Category</td>
+                                            <td class="services-money-value">@service.Price.ToString("N2")</td>
+                                            <td class="services__actions-col" @onclick:stopPropagation="true">
+                                                <div class="services__row-actions">
+                                                    <button type="button" class="services__action-btn services__action-btn--view" title="View details" @onclick="() => ShowServiceDetails(service)">
+                                                        <i class="bi bi-eye"></i>
+                                                    </button>
+                                                    <button type="button" class="services__action-btn services__action-btn--edit" title="@L["EditService"]" @onclick="() => EditService(service)">
+                                                        <i class="bi bi-pencil"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="service-mobile-records mobile-view">
                         @if (!PaginatedServices.Any())
                         {
-                            <div class="senang-record-list__empty">No services found. Add a service to get started.</div>
+                            <div class="service-mobile-records__empty">No services found. Tap the + button to add a new service.</div>
                         }
                         else
                         {
                             @foreach (var service in PaginatedServices)
                             {
-                                <article class="senang-record-card @(SelectedService == service && !IsServiceDeleteMode ? "is-selected" : string.Empty)"
-                                         @onclick="() => ShowServiceDetails(service)">
-                                    @if (IsServiceDeleteMode)
-                                    {
-                                        <label class="senang-record-card__select" @onclick:stopPropagation="true">
-                                            <input type="checkbox"
-                                                   checked="@SelectedServicesForDeletion.Contains(service)"
-                                                   @onchange="() => ToggleServiceForDeletion(service)" />
-                                        </label>
-                                    }
-                                    <div class="senang-record-card__icon">
-                                        <i class="bi bi-scissors"></i>
-                                    </div>
-                                    <div class="senang-record-card__body">
-                                        <strong>@service.ServiceName</strong>
-                                        <div class="senang-record-card__meta">
-                                            <span>@service.Category</span>
-                                            <span>• @service.Sku</span>
-                                            <span>• @service.DurationSpend</span>
-                                            <span>• Buffer @service.BufferTimeMinutes min</span>
+                                var serviceImage = BuildRecordImageUrl(service.ImagePath, service.ImageFileName);
+                                <article class="service-mobile-record @(SelectedService == service && !IsServiceDeleteMode ? "is-selected" : string.Empty)"
+                                         @onclick="() => HandleMobileServiceCardClick(service)">
+                                    <div class="service-mobile-record__header">
+                                        @if (IsServiceDeleteMode)
+                                        {
+                                            <label class="service-mobile-record__select" @onclick:stopPropagation="true">
+                                                <input type="checkbox"
+                                                       aria-label="Select @service.ServiceName"
+                                                       checked="@SelectedServicesForDeletion.Contains(service)"
+                                                       @onchange="() => ToggleServiceForDeletion(service)" />
+                                            </label>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(serviceImage))
+                                        {
+                                            <img class="service-mobile-record__image" src="@serviceImage" alt="@service.ServiceName" />
+                                        }
+                                        else
+                                        {
+                                            <div class="service-mobile-record__icon" aria-hidden="true"><i class="bi bi-scissors"></i></div>
+                                        }
+                                        <div class="service-mobile-record__identity">
+                                            <h3>@service.ServiceName</h3>
+                                            <p>@service.Category</p>
                                         </div>
                                     </div>
-                                    <div class="senang-record-card__amount">MYR @service.Price.ToString("N2")</div>
+                                    <div class="service-mobile-record__facts">
+                                        <div class="service-mobile-record__fact service-mobile-record__fact--wide">
+                                            <span>Section</span>
+                                            <strong>@service.Category</strong>
+                                        </div>
+                                        <div class="service-mobile-record__fact service-mobile-record__fact--wide">
+                                            <span>@L["Price"]</span>
+                                            <strong>MYR @service.Price.ToString("N2")</strong>
+                                        </div>
+                                    </div>
                                     @if (!IsServiceDeleteMode)
                                     {
-                                        <div class="senang-record-card__actions" @onclick:stopPropagation="true">
-                                            <button type="button" title="View details" @onclick="() => ShowServiceDetails(service)">
-                                                <i class="bi bi-info-circle"></i>
+                                        <div class="service-mobile-record__actions" @onclick:stopPropagation="true">
+                                            <button type="button" class="services__action-btn services__action-btn--view" title="View details" aria-label="View service details" @onclick="() => ShowServiceDetails(service)">
+                                                <i class="bi bi-eye"></i>
                                             </button>
-                                            <button type="button" title="@L["EditService"]" @onclick="() => EditService(service)">
+                                            <button type="button" class="services__action-btn services__action-btn--edit" title="@L["EditService"]" aria-label="@L["EditService"]" @onclick="() => EditService(service)">
                                                 <i class="bi bi-pencil"></i>
                                             </button>
                                         </div>
@@ -214,7 +304,9 @@
                                 ItemsPerPage="5"
                                 TotalItems="@FilteredServices.Count()"
                                 OnPageChanged="@HandleServicePageChanged" />
-                    <div class="pagination-summary">@L["TotalItems"]: @FilteredServices.Count()</div>
+                    <div class="pagination-summary">
+                        @L["TotalItems"]: @FilteredServices.Count()
+                    </div>
                 }
                 else
                 {
@@ -1204,27 +1296,27 @@
         }
         else if (ActiveTab == "Bundle")
         {
-            <div class="services__section senang-module">
+            <div class="services__section">
                 @if (!IsAddBundleFormVisible)
                 {
-                    <div class="senang-module__topbar">
-                        <div>
-                            <h2>Packages</h2>
-                            <span>Management</span>
-                        </div>
-                        <button type="button" class="senang-module__add" @onclick="ShowAddBundleForm" title="@L["AddPackage"]">
-                            <i class="bi bi-plus-lg"></i>
-                        </button>
-                    </div>
-
-                    <div class="senang-module__toolbar">
-                        <div class="services__search-container senang-module__search">
-                            <input class="services__search"
-                                   type="search"
-                                   placeholder="Search packages..."
-                                   value="@BundleSearchQuery"
-                                   @oninput="OnBundleSearchChanged" />
-                            <i class="bi bi-search services__search-icon"></i>
+                    <div class="services__toolbar">
+                        <div class="services__toolbar-primary">
+                            <div class="services__action-buttons">
+                                <button class="services__action-btn" title="@L["AddPackage"]" @onclick="ShowAddBundleForm">
+                                    <i class="bi bi-plus-lg"></i>
+                                </button>
+                                <button class="btn-delete" title="@L["DeletePackages"]" @onclick="ToggleBundleDeleteMode">
+                                    <i class="bi bi-trash3"></i>
+                                </button>
+                            </div>
+                            <div class="services__search-container">
+                                <input class="services__search"
+                                       type="search"
+                                       placeholder="@L["Search"]..."
+                                       value="@BundleSearchQuery"
+                                       @oninput="OnBundleSearchChanged" />
+                                <i class="bi bi-search services__search-icon"></i>
+                            </div>
                         </div>
                         <AdvancedInventoryFilter Columns="@BundleFilterColumns"
                                                  OnApply="@HandleBundleFiltersApplied"
@@ -1232,14 +1324,13 @@
                                                  ModuleName="Packages"
                                                  ContextLabel="Services"
                                                  ResultCount="@FilteredBundles.Count()" />
-                        <button type="button" class="senang-module__tool" title="@L["DeletePackages"]" @onclick="ToggleBundleDeleteMode">
-                            <i class="bi bi-trash3"></i>
-                        </button>
                     </div>
 
                     @if (IsBundleApiLoading)
                     {
-                        <div class="services__api-message services__api-message--loading">Loading packages...</div>
+                        <div class="services__api-message services__api-message--loading">
+                            Loading packages...
+                        </div>
                     }
 
                     @if (IsBundleDeleteMode)
@@ -1248,9 +1339,13 @@
                             <button type="button" class="selected-delete-banner-close" @onclick="CancelBundleDeleteMode" title="Cancel delete mode">
                                 <i class="bi bi-x-lg"></i>
                             </button>
-                            <div class="services__delete-info"><span>@SelectedBundlesForDeletion.Count @L["ItemsSelected"]</span></div>
+                            <div class="services__delete-info">
+                                <span>@SelectedBundlesForDeletion.Count @L["ItemsSelected"]</span>
+                            </div>
                             <div class="services__delete-actions">
-                                <button class="services__btn services__btn--secondary" @onclick="CancelBundleDeleteMode">@L["Cancel"]</button>
+                                <button class="services__btn services__btn--secondary" @onclick="CancelBundleDeleteMode">
+                                    @L["Cancel"]
+                                </button>
                                 <button class="services__btn services__btn--danger"
                                         disabled="@(!SelectedBundlesForDeletion.Any())"
                                         @onclick='() => RequestSelectedDeleteConfirmation("bundles", SelectedBundlesForDeletion.Count, "package(s)")'>
@@ -1260,44 +1355,141 @@
                         </div>
                     }
 
-                    <div class="senang-record-list">
+                    <div class="services__table-wrapper desktop-view">
+                        <table class="services__table">
+                            <thead>
+                                <tr>
+                                    @if (IsBundleDeleteMode)
+                                    {
+                                        <th class="services__checkbox-col"></th>
+                                    }
+                                    <th class="services__image-col">Image</th>
+                                    <th class='@GetServiceSortHeaderClass(BundleSortColumn, BundleSortAscending, "BundleName")' @onclick='() => ToggleBundleSort("BundleName")'>
+                                        Package Name
+                                    </th>
+                                    <th>Section</th>
+                                    <th class='@GetServiceSortHeaderClass(BundleSortColumn, BundleSortAscending, "TotalDuration")' @onclick='() => ToggleBundleSort("TotalDuration")'>
+                                        Duration
+                                    </th>
+                                    <th class='@GetServiceSortHeaderClass(BundleSortColumn, BundleSortAscending, "Price")' @onclick='() => ToggleBundleSort("Price")'>
+                                        @L["PriceMyr"]
+                                    </th>
+                                    <th class="services__actions-col">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (!PaginatedBundles.Any())
+                                {
+                                    <tr>
+                                        <td colspan="@(IsBundleDeleteMode ? 7 : 6)" class="services__empty-cell">
+                                            @L["NoPackagesFoundCreateFirst"]
+                                        </td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    @foreach (var bundle in PaginatedBundles)
+                                    {
+                                        var isSelected = SelectedBundle == bundle && !IsBundleDeleteMode;
+                                        <tr @onclick="() => ToggleMobileBundleRow(bundle)" class="@(isSelected ? "selected" : "")">
+                                            @if (IsBundleDeleteMode)
+                                            {
+                                                <td class="services__checkbox-col" @onclick:stopPropagation="true">
+                                                    <input type="checkbox"
+                                                           checked="@SelectedBundlesForDeletion.Contains(bundle)"
+                                                           @onchange="() => ToggleBundleForDeletion(bundle)" />
+                                                </td>
+                                            }
+                                            <td class="services__image-col">
+                                                @{
+                                                    var packageImage = BuildRecordImageUrl(bundle.ImagePath, bundle.ImageFileName);
+                                                }
+                                                @if (!string.IsNullOrWhiteSpace(packageImage))
+                                                {
+                                                    <img class="services__record-image" src="@packageImage" alt="@bundle.BundleName" />
+                                                }
+                                                else
+                                                {
+                                                    <span class="services__record-image-placeholder services__record-image-placeholder--package" aria-hidden="true"><i class="bi bi-box-seam"></i></span>
+                                                }
+                                            </td>
+                                            <td>@bundle.BundleName</td>
+                                            <td>@FormatDisplay(bundle.Section)</td>
+                                            <td>@bundle.TotalDuration @L["Min"]</td>
+                                            <td class="services-money-value">@bundle.Price.ToString("N2")</td>
+                                            <td class="services__actions-col" @onclick:stopPropagation="true">
+                                                <div class="services__row-actions">
+                                                    <button type="button" class="services__action-btn services__action-btn--view" title="View details" @onclick="() => ShowBundleDetails(bundle)">
+                                                        <i class="bi bi-eye"></i>
+                                                    </button>
+                                                    <button type="button" class="services__action-btn services__action-btn--edit" title="@L["EditPackage"]" @onclick="() => EditBundle(bundle)">
+                                                        <i class="bi bi-pencil"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="service-mobile-records mobile-view">
                         @if (!PaginatedBundles.Any())
                         {
-                            <div class="senang-record-list__empty">@L["NoPackagesFoundCreateFirst"]</div>
+                            <div class="service-mobile-records__empty">@L["NoPackagesFoundCreateFirst"]</div>
                         }
                         else
                         {
                             @foreach (var bundle in PaginatedBundles)
                             {
-                                <article class="senang-record-card @(SelectedBundle == bundle && !IsBundleDeleteMode ? "is-selected" : string.Empty)"
-                                         @onclick="() => ShowBundleDetails(bundle)">
-                                    @if (IsBundleDeleteMode)
-                                    {
-                                        <label class="senang-record-card__select" @onclick:stopPropagation="true">
-                                            <input type="checkbox"
-                                                   checked="@SelectedBundlesForDeletion.Contains(bundle)"
-                                                   @onchange="() => ToggleBundleForDeletion(bundle)" />
-                                        </label>
-                                    }
-                                    <div class="senang-record-card__icon senang-record-card__icon--package">
-                                        <i class="bi bi-box-seam"></i>
-                                    </div>
-                                    <div class="senang-record-card__body">
-                                        <strong>@bundle.BundleName</strong>
-                                        <div class="senang-record-card__meta">
-                                            <span>@bundle.SKU</span>
-                                            <span>• @bundle.ServicesCount services</span>
-                                            <span>• @bundle.TotalDuration min</span>
+                                var packageImage = BuildRecordImageUrl(bundle.ImagePath, bundle.ImageFileName);
+                                <article class="service-mobile-record @(SelectedBundle == bundle && !IsBundleDeleteMode ? "is-selected" : string.Empty)"
+                                         @onclick="() => HandleMobileBundleCardClick(bundle)">
+                                    <div class="service-mobile-record__header">
+                                        @if (IsBundleDeleteMode)
+                                        {
+                                            <label class="service-mobile-record__select" @onclick:stopPropagation="true">
+                                                <input type="checkbox"
+                                                       aria-label="Select @bundle.BundleName"
+                                                       checked="@SelectedBundlesForDeletion.Contains(bundle)"
+                                                       @onchange="() => ToggleBundleForDeletion(bundle)" />
+                                            </label>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(packageImage))
+                                        {
+                                            <img class="service-mobile-record__image" src="@packageImage" alt="@bundle.BundleName" />
+                                        }
+                                        else
+                                        {
+                                            <div class="service-mobile-record__icon" aria-hidden="true"><i class="bi bi-box-seam"></i></div>
+                                        }
+                                        <div class="service-mobile-record__identity">
+                                            <h3>@bundle.BundleName</h3>
+                                            <p>@FormatDisplay(bundle.Section)</p>
                                         </div>
                                     </div>
-                                    <div class="senang-record-card__amount">MYR @bundle.Price.ToString("N2")</div>
+                                    <div class="service-mobile-record__facts">
+                                        <div class="service-mobile-record__fact">
+                                            <span>Section</span>
+                                            <strong>@FormatDisplay(bundle.Section)</strong>
+                                        </div>
+                                        <div class="service-mobile-record__fact">
+                                            <span>Duration</span>
+                                            <strong>@bundle.TotalDuration @L["Min"]</strong>
+                                        </div>
+                                        <div class="service-mobile-record__fact service-mobile-record__fact--wide">
+                                            <span>@L["PriceMyr"]</span>
+                                            <strong>MYR @bundle.Price.ToString("N2")</strong>
+                                        </div>
+                                    </div>
                                     @if (!IsBundleDeleteMode)
                                     {
-                                        <div class="senang-record-card__actions" @onclick:stopPropagation="true">
-                                            <button type="button" title="View details" @onclick="() => ShowBundleDetails(bundle)">
-                                                <i class="bi bi-info-circle"></i>
+                                        <div class="service-mobile-record__actions" @onclick:stopPropagation="true">
+                                            <button type="button" class="services__action-btn services__action-btn--view" title="View details" aria-label="View package details" @onclick="() => ShowBundleDetails(bundle)">
+                                                <i class="bi bi-eye"></i>
                                             </button>
-                                            <button type="button" title="@L["EditPackage"]" @onclick="() => EditBundle(bundle)">
+                                            <button type="button" class="services__action-btn services__action-btn--edit" title="@L["EditPackage"]" aria-label="@L["EditPackage"]" @onclick="() => EditBundle(bundle)">
                                                 <i class="bi bi-pencil"></i>
                                             </button>
                                         </div>
@@ -1311,7 +1503,9 @@
                                 ItemsPerPage="5"
                                 TotalItems="@FilteredBundles.Count()"
                                 OnPageChanged="@HandleBundlePageChanged" />
-                    <div class="pagination-summary">@L["TotalItems"]: @FilteredBundles.Count()</div>
+                    <div class="pagination-summary">
+                        @L["TotalItems"]: @FilteredBundles.Count()
+                    </div>
                 }
                 else
                 {
@@ -2282,6 +2476,8 @@
                     AvailableTimeFrom = package.AvailableTimeFrom,
                     AvailableTimeTo = package.AvailableTimeTo,
                     EInvoiceClassificationCode = package.EInvoiceClassificationCode,
+                    ImagePath = package.ImagePath,
+                    ImageFileName = package.ImageFileName,
                     Section = package.Section,
                     IsActive = package.IsActive,
                     Barcode = package.Barcode,
@@ -3515,6 +3711,41 @@
         }
 
         return $"{(from?.ToString("dd/MM/yyyy") ?? "-")} - {(to?.ToString("dd/MM/yyyy") ?? "-")}";
+    }
+
+    private static string BuildRecordImageUrl(string? imagePath, string? imageFileName)
+    {
+        if (string.IsNullOrWhiteSpace(imagePath) && string.IsNullOrWhiteSpace(imageFileName))
+        {
+            return string.Empty;
+        }
+
+        if (!string.IsNullOrWhiteSpace(imageFileName) &&
+            (imageFileName.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+             imageFileName.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+             imageFileName.StartsWith("data:", StringComparison.OrdinalIgnoreCase)))
+        {
+            return imageFileName;
+        }
+
+        if (!string.IsNullOrWhiteSpace(imagePath) &&
+            (imagePath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+             imagePath.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+             imagePath.StartsWith("data:", StringComparison.OrdinalIgnoreCase)))
+        {
+            return string.IsNullOrWhiteSpace(imageFileName)
+                ? imagePath
+                : $"{imagePath.TrimEnd('/')}/{imageFileName.TrimStart('/')}";
+        }
+
+        if (string.IsNullOrWhiteSpace(imageFileName))
+        {
+            return imagePath ?? string.Empty;
+        }
+
+        return string.IsNullOrWhiteSpace(imagePath)
+            ? imageFileName
+            : $"{imagePath.TrimEnd('/', '\\')}/{imageFileName.TrimStart('/', '\\')}";
     }
 
     private static string FormatDisplay(string? value) =>
@@ -5141,6 +5372,8 @@
         public TimeSpan? AvailableTimeFrom { get; set; }
         public TimeSpan? AvailableTimeTo { get; set; }
         public string EInvoiceClassificationCode { get; set; } = string.Empty;
+        public string ImagePath { get; set; } = string.Empty;
+        public string ImageFileName { get; set; } = string.Empty;
         public string Section { get; set; } = string.Empty;
         public bool IsActive { get; set; } = true;
         public string Barcode { get; set; } = string.Empty;
