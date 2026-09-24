@@ -71,7 +71,10 @@ public sealed record InventoryPackageSummary(
     string TermCondition2 = "",
     string TermCondition3 = "",
     decimal MinPrice = 0m,
-    decimal MaxPrice = 0m);
+    decimal MaxPrice = 0m,
+    decimal Cost = 0m,
+    string TaxCode = "",
+    bool IsTaxInclusive = false);
 
 public sealed record InventoryPackageLineEdit(
     string InventoryId,
@@ -105,6 +108,9 @@ public sealed record InventoryPackageEdit(
     string TermCondition2 = "",
     string TermCondition3 = "",
     decimal MinPrice = 0m,
-    decimal MaxPrice = 0m);
+    decimal MaxPrice = 0m,
+    decimal Cost = 0m,
+    string TaxCode = "",
+    bool IsTaxInclusive = false);
 
 
