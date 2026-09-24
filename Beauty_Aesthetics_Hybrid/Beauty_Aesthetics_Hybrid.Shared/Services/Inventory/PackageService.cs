@@ -141,11 +141,17 @@ public sealed class PackageService : IPackageService
     public async Task<ApiCallResult<bool>> CreatePackageAsync(
         InventoryPackageEdit package,
         string branchId = "hq",
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string branchGroupId = "")
     {
         var normalizedBranchId = NormalizeBranchId(branchId);
         var record = CreatePackageRecord(package, normalizedBranchId);
-        var request = CreatePackageRequest(record, normalizedBranchId, package.Price);
+        var request = CreatePackageRequest(
+            record,
+            normalizedBranchId,
+            package.Price,
+            NormalizeBranchGroupId(branchGroupId, normalizedBranchId),
+            "Added");
         var result = ToSaveResult(
             await serviceInventoryAC.CreateFullAsync(request, cancellationToken),
             "Unable to create package.");
@@ -161,7 +167,8 @@ public sealed class PackageService : IPackageService
     public async Task<ApiCallResult<bool>> UpdatePackageAsync(
         InventoryPackageEdit package,
         string branchId = "hq",
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string branchGroupId = "")
     {
         if (string.IsNullOrWhiteSpace(package.MasterAccountId))
         {
@@ -199,7 +206,12 @@ public sealed class PackageService : IPackageService
 
         ApplyPackageValues(record, package, normalizedBranchId, isUpdate: true);
 
-        var request = CreatePackageRequest(record, normalizedBranchId, package.Price);
+        var request = CreatePackageRequest(
+            record,
+            normalizedBranchId,
+            package.Price,
+            NormalizeBranchGroupId(branchGroupId, normalizedBranchId),
+            "Changed");
 
         var result = ToSaveResult(
             await serviceInventoryAC.UpdateFullAsync(request, cancellationToken),
@@ -272,6 +284,13 @@ public sealed class PackageService : IPackageService
         record.UnitOfMeasureID = string.IsNullOrWhiteSpace(package.UnitOfMeasure)
             ? "unit"
             : package.UnitOfMeasure.Trim();
+        record.UnitOfMeasureName = record.UnitOfMeasureID;
+        record.ImagePath = string.IsNullOrWhiteSpace(package.ImagePath)
+            ? null
+            : package.ImagePath.Trim();
+        record.ImageFileName = string.IsNullOrWhiteSpace(package.ImageFileName)
+            ? null
+            : package.ImageFileName.Trim();
         record.ValidityDays = Math.Max(0, package.ValidityDays);
         SetInventoryProperty(record, "MemberExpiryDays", Math.Max(0, package.MemberExpiryDays));
         SetInventoryProperty(record, "TriggeredMemberTypeID", package.TriggeredMemberTypeId?.Trim() ?? string.Empty);
@@ -360,7 +379,9 @@ public sealed class PackageService : IPackageService
     private static InventoryPackageRequestDTO CreatePackageRequest(
         InventoryDM record,
         string branchId,
-        decimal price)
+        decimal price,
+        string branchGroupId,
+        string saveAction)
     {
         return new InventoryPackageRequestDTO
         {
@@ -373,7 +394,8 @@ public sealed class PackageService : IPackageService
                     BranchId = branchId,
                     BranchPrice = price,
                     IsEnabled = true,
-                    SaveAction = "Added",
+                    GroupId = branchGroupId,
+                    SaveAction = saveAction,
                     IsDirty = true
                 }
             ]
@@ -385,6 +407,13 @@ public sealed class PackageService : IPackageService
         return string.IsNullOrWhiteSpace(branchId)
             ? "HQ"
             : branchId.Trim().ToUpperInvariant();
+    }
+
+    private static string NormalizeBranchGroupId(string branchGroupId, string branchId)
+    {
+        return string.IsNullOrWhiteSpace(branchGroupId)
+            ? branchId
+            : branchGroupId.Trim();
     }
 
     private static int ParseDuration(string duration)
