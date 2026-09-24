@@ -2056,7 +2056,18 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await JSRuntime.InvokeVoidAsync("initColumnResize");
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("initColumnResize");
+        }
+        catch (JSDisconnectedException)
+        {
+            // The browser/server circuit is already disconnecting.
+        }
+        catch (JSException ex)
+        {
+            Console.WriteLine($"[Services] Column resize initialization failed: {ex.Message}");
+        }
     }
 
     private void OnServiceSearchChanged(ChangeEventArgs e)
@@ -2192,6 +2203,11 @@
                 MemberCreditApiError = result.ErrorMessage ?? "Unable to load member credits.";
             }
         }
+        catch (Exception ex)
+        {
+            MemberCreditItems.Clear();
+            MemberCreditApiError = $"Unable to load member credits. {ex.Message}";
+        }
         finally
         {
             IsMemberCreditApiLoading = false;
@@ -2205,7 +2221,7 @@
 
         try
         {
-            var result = await PackageService.LoadPackagesAsync(ServiceItems, "hq");
+            var result = await PackageService.LoadPackagesAsync(ServiceItems, ServiceBranchId);
             if (result.Success && result.Value is not null)
             {
                 Bundles = result.Value.Select(package => new BundleItem
@@ -2238,6 +2254,11 @@
                 BundleApiError = result.ErrorMessage ?? "Unable to load packages.";
             }
         }
+        catch (Exception ex)
+        {
+            Bundles.Clear();
+            BundleApiError = $"Unable to load packages. {ex.Message}";
+        }
         finally
         {
             IsBundleApiLoading = false;
@@ -2263,6 +2284,11 @@
                 MemberTypeItems.Clear();
                 MemberTypeApiError = result.ErrorMessage ?? "Unable to load membership types.";
             }
+        }
+        catch (Exception ex)
+        {
+            MemberTypeItems.Clear();
+            MemberTypeApiError = $"Unable to load membership types. {ex.Message}";
         }
         finally
         {
@@ -2298,6 +2324,11 @@
             SelectedMemberPoint = null;
             ViewingMemberPoint = null;
             MemberPointCurrentPage = 1;
+        }
+        catch (Exception ex)
+        {
+            MemberPointItems.Clear();
+            MemberPointApiError = $"Unable to load member point rules. {ex.Message}";
         }
         finally
         {
