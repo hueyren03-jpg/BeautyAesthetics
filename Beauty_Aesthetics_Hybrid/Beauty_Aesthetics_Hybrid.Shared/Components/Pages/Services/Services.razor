@@ -2932,6 +2932,9 @@
                     TermCondition1 = package.TermCondition1,
                     TermCondition2 = package.TermCondition2,
                     TermCondition3 = package.TermCondition3,
+                    Cost = package.Cost,
+                    TaxCode = package.TaxCode,
+                    IsTaxInclusive = package.IsTaxInclusive,
                     ServiceLines = package.Lines?.ToList() ?? new List<InventoryPackageLineSummary>(),
                     ServiceIDs = package.ServiceIds.ToHashSet(StringComparer.OrdinalIgnoreCase)
                 }).ToList();
@@ -4327,6 +4330,7 @@
         NewServiceIsActive = true;
         NewServiceBarcode = string.Empty;
         NewServiceUom = "unit";
+        NewServiceVisibleBranchId = DefaultVisibleBranchId();
         NewServicePointBalance = 0m;
         NewServiceRedeemPoint = 0m;
         NewServiceBillOfMaterial = string.Empty;
@@ -4343,7 +4347,7 @@
 
         if (string.IsNullOrWhiteSpace(NewServiceName) || string.IsNullOrWhiteSpace(NewServiceCategory))
         {
-            ServiceApiError = "Name and Select Section are compulsory fields.";
+            ServiceApiError = "Service Name and Item Group are compulsory fields.";
             return;
         }
 
@@ -4356,11 +4360,12 @@
                 NewServiceSKU.Trim(),
                 NewServiceName.Trim(),
                 NewServiceCategory.Trim(),
-                "0 mins",
+                $"{Math.Max(0, NewServiceDuration)} mins",
                 0,
                 false,
                 Math.Max(0, NewServicePrice),
                 IsEditMode ? SelectedService?.MasterAccountId : null,
+                BranchId: NewServiceVisibleBranchId,
                 Cost: Math.Max(0, NewServiceCost),
                 TaxCode: NewServiceTaxCode.Trim(),
                 IsTaxInclusive: NewServiceTaxInclusive,
@@ -4376,9 +4381,22 @@
                 Math.Max(0m, NewServiceRedeemPoint),
                 NewServiceBillOfMaterial.Trim());
 
+            var serviceBranchId = string.IsNullOrWhiteSpace(NewServiceVisibleBranchId)
+                ? DefaultVisibleBranchId()
+                : NewServiceVisibleBranchId;
+            var serviceBranchGroupId = BranchGroupIdFor(serviceBranchId);
+
             var result = IsEditMode
-                ? await ServiceItemService.UpdateServiceAsync(service, "hq", editorDetails: editorDetails)
-                : await ServiceItemService.CreateServiceAsync(service, "hq", editorDetails: editorDetails);
+                ? await ServiceItemService.UpdateServiceAsync(
+                    service,
+                    serviceBranchId,
+                    branchGroupId: serviceBranchGroupId,
+                    editorDetails: editorDetails)
+                : await ServiceItemService.CreateServiceAsync(
+                    service,
+                    serviceBranchId,
+                    branchGroupId: serviceBranchGroupId,
+                    editorDetails: editorDetails);
 
             if (!result.Success)
             {
@@ -4408,6 +4426,8 @@
             : ServiceSections.FirstOrDefault(section =>
                 string.Equals(section.SupportingTableName, SelectedService.Category, StringComparison.OrdinalIgnoreCase))
                 ?.SupportingTableID ?? string.Empty;
+        var durationPart = SelectedService.DurationSpend.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        NewServiceDuration = int.TryParse(durationPart, out var duration) ? Math.Max(0, duration) : 0;
         NewServicePrice = SelectedService.Price;
         NewServiceCost = SelectedService.Cost;
         NewServiceTaxCode = SelectedService.TaxCode;
@@ -4415,6 +4435,9 @@
         NewServiceIsActive = SelectedService.IsActive;
         NewServiceBarcode = SelectedService.Barcode;
         NewServiceUom = string.IsNullOrWhiteSpace(SelectedService.UnitOfMeasure) ? "unit" : SelectedService.UnitOfMeasure;
+        NewServiceVisibleBranchId = string.IsNullOrWhiteSpace(SelectedService.BranchId)
+            ? DefaultVisibleBranchId()
+            : SelectedService.BranchId;
         NewServicePointBalance = 0m;
         NewServiceRedeemPoint = 0m;
         NewServiceBillOfMaterial = string.Empty;
@@ -4751,6 +4774,11 @@
         NewBundleMemberExpiryDays = 365;
         NewBundleTriggeredMemberTypeId = string.Empty;
         NewBundleMemberCredit = 0m;
+        NewBundleCost = 0m;
+        NewBundleTaxCode = string.Empty;
+        NewBundleTaxInclusive = false;
+        NewBundleVisibleBranchId = DefaultVisibleBranchId();
+        BundleItemPickerType = "Service";
         NewBundlePoints = 0m;
         IsBundleMinMaxPriceEnabled = false;
         NewBundleMinPrice = 0m;
@@ -4842,11 +4870,25 @@
                 TermCondition2: NewBundleTermCondition2.Trim(),
                 TermCondition3: NewBundleTermCondition3.Trim(),
                 MinPrice: IsBundleMinMaxPriceEnabled ? Math.Max(0m, NewBundleMinPrice) : 0m,
-                MaxPrice: IsBundleMinMaxPriceEnabled ? Math.Max(0m, NewBundleMaxPrice) : 0m);
+                MaxPrice: IsBundleMinMaxPriceEnabled ? Math.Max(0m, NewBundleMaxPrice) : 0m,
+                Cost: Math.Max(0m, NewBundleCost),
+                TaxCode: NewBundleTaxCode.Trim(),
+                IsTaxInclusive: NewBundleTaxInclusive);
+
+            var packageBranchId = string.IsNullOrWhiteSpace(NewBundleVisibleBranchId)
+                ? DefaultVisibleBranchId()
+                : NewBundleVisibleBranchId;
+            var packageBranchGroupId = BranchGroupIdFor(packageBranchId);
 
             var result = IsBundleEditMode
-                ? await PackageService.UpdatePackageAsync(package, "hq")
-                : await PackageService.CreatePackageAsync(package, "hq");
+                ? await PackageService.UpdatePackageAsync(
+                    package,
+                    packageBranchId,
+                    branchGroupId: packageBranchGroupId)
+                : await PackageService.CreatePackageAsync(
+                    package,
+                    packageBranchId,
+                    branchGroupId: packageBranchGroupId);
 
             if (!result.Success)
             {
@@ -4872,6 +4914,13 @@
         NewBundleSKU = SelectedBundle.SKU;
         NewBundleSection = SelectedBundle.Section;
         NewBundleIsActive = SelectedBundle.IsActive;
+        NewBundleCost = SelectedBundle.Cost;
+        NewBundleTaxCode = SelectedBundle.TaxCode;
+        NewBundleTaxInclusive = SelectedBundle.IsTaxInclusive;
+        NewBundleVisibleBranchId = string.IsNullOrWhiteSpace(SelectedBundle.BranchId)
+            ? DefaultVisibleBranchId()
+            : SelectedBundle.BranchId;
+        BundleItemPickerType = "Service";
         NewBundleBarcode = SelectedBundle.Barcode;
         NewBundleImagePath = SelectedBundle.ImagePath;
         NewBundleMemberExpiryDays = SelectedBundle.MemberExpiryDays > 0 ? SelectedBundle.MemberExpiryDays : 365;
@@ -5874,6 +5923,9 @@
         public string TermCondition1 { get; set; } = string.Empty;
         public string TermCondition2 { get; set; } = string.Empty;
         public string TermCondition3 { get; set; } = string.Empty;
+        public decimal Cost { get; set; }
+        public string TaxCode { get; set; } = string.Empty;
+        public bool IsTaxInclusive { get; set; }
         public List<InventoryPackageLineSummary> ServiceLines { get; set; } = new();
         public HashSet<string> ServiceIDs { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     }
