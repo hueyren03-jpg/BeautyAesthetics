@@ -72,14 +72,43 @@ public sealed class ServiceItemService : IServiceItemService
                 result.ErrorMessage ?? "Unable to load service details.");
     }
 
+    public async Task<ApiCallResult<ServiceEditorDetails>> LoadServiceEditorDetailsAsync(
+        string masterAccountId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(masterAccountId))
+        {
+            return ApiCallResult<ServiceEditorDetails>.Failure(
+                HttpStatusCode.BadRequest,
+                "The selected service has no record ID.");
+        }
+
+        var result = await serviceInventoryAC.LoadRecordAsync(masterAccountId, cancellationToken);
+        if (!result.Success || result.Value is null)
+        {
+            return ApiCallResult<ServiceEditorDetails>.Failure(
+                result.StatusCode,
+                result.ErrorMessage ?? "Unable to load service editor details.");
+        }
+
+        return ApiCallResult<ServiceEditorDetails>.Ok(
+            result.StatusCode,
+            new ServiceEditorDetails(
+                GetFirstInventoryDecimal(result.Value, "FreePoint", "PointBalance", "Points"),
+                GetFirstInventoryDecimal(result.Value, "RedeemPoint", "PointToRedeem"),
+                GetFirstInventoryString(result.Value, "BillOfMaterial", "MaterialConsumed")));
+    }
+
     public async Task<ApiCallResult<bool>> CreateServiceAsync(
         ServiceViewModel.ServiceItem service,
         string branchId = "hq",
         CancellationToken cancellationToken = default,
-        string branchGroupId = "")
+        string branchGroupId = "",
+        ServiceEditorDetails? editorDetails = null)
     {
         var normalizedBranchId = NormalizeBranchId(branchId);
         var record = CreateServiceRecord(service, normalizedBranchId);
+        ApplyServiceEditorDetails(record, editorDetails);
         record.SaveAction = EntityState.Added;
         record.IsDirty = true;
 
@@ -108,7 +137,8 @@ public sealed class ServiceItemService : IServiceItemService
         ServiceViewModel.ServiceItem service,
         string branchId = "hq",
         CancellationToken cancellationToken = default,
-        string branchGroupId = "")
+        string branchGroupId = "",
+        ServiceEditorDetails? editorDetails = null)
     {
         if (string.IsNullOrWhiteSpace(service.MasterAccountId))
         {
@@ -127,6 +157,7 @@ public sealed class ServiceItemService : IServiceItemService
 
         var normalizedBranchId = NormalizeBranchId(branchId);
         ApplyServiceValues(loadResult.Value, service, normalizedBranchId);
+        ApplyServiceEditorDetails(loadResult.Value, editorDetails);
         loadResult.Value.SaveAction = EntityState.Changed;
         loadResult.Value.IsDirty = true;
 
@@ -280,6 +311,125 @@ public sealed class ServiceItemService : IServiceItemService
             ? null
             : service.ImageFileName.Trim();
         record.BranchID = NormalizeBranchId(branchId);
+    }
+
+    private static void ApplyServiceEditorDetails(InventoryDM record, ServiceEditorDetails? details)
+    {
+        if (details is null)
+        {
+            return;
+        }
+
+        SetFirstInventoryProperty(
+            record,
+            Math.Max(0m, details.PointBalance),
+            "FreePoint",
+            "PointBalance",
+            "Points");
+        SetFirstInventoryProperty(
+            record,
+            Math.Max(0m, details.RedeemPoint),
+            "RedeemPoint",
+            "PointToRedeem");
+        SetFirstInventoryProperty(
+            record,
+            details.BillOfMaterial?.Trim() ?? string.Empty,
+            "BillOfMaterial",
+            "MaterialConsumed");
+    }
+
+    private static decimal GetFirstInventoryDecimal(InventoryDM record, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            var property = record.GetType().GetProperty(propertyName);
+            if (property is null || !property.CanRead)
+            {
+                continue;
+            }
+
+            var value = property.GetValue(record);
+            if (value is null)
+            {
+                continue;
+            }
+
+            if (value is decimal decimalValue)
+            {
+                return decimalValue;
+            }
+
+            if (decimal.TryParse(
+                    Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture),
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var parsed))
+            {
+                return parsed;
+            }
+        }
+
+        return 0m;
+    }
+
+    private static string GetFirstInventoryString(InventoryDM record, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            var property = record.GetType().GetProperty(propertyName);
+            if (property is null || !property.CanRead)
+            {
+                continue;
+            }
+
+            var value = property.GetValue(record)?.ToString();
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static void SetFirstInventoryProperty(InventoryDM record, object? value, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            var property = record.GetType().GetProperty(propertyName);
+            if (property is null || !property.CanWrite)
+            {
+                continue;
+            }
+
+            try
+            {
+                if (value is null)
+                {
+                    property.SetValue(record, null);
+                    return;
+                }
+
+                var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+                var converted = targetType.IsInstanceOfType(value)
+                    ? value
+                    : Convert.ChangeType(
+                        value,
+                        targetType,
+                        System.Globalization.CultureInfo.InvariantCulture);
+                property.SetValue(record, converted);
+                return;
+            }
+            catch (InvalidCastException)
+            {
+            }
+            catch (FormatException)
+            {
+            }
+            catch (OverflowException)
+            {
+            }
+        }
     }
 
     private static string NormalizeBranchId(string branchId)
