@@ -1878,6 +1878,19 @@
                                                                         <input type="number" min="0" step="0.01" @bind="BundleLineUnitPrices[lineKey]" />
                                                                     </label>
                                                                     <label>
+                                                                        <span>UOM</span>
+                                                                        <select @bind="BundleLineUoms[lineKey]">
+                                                                            <option value="unit">unit</option>
+                                                                            <option value="session">session</option>
+                                                                            <option value="piece">piece</option>
+                                                                            <option value="set">set</option>
+                                                                            <option value="bottle">bottle</option>
+                                                                            <option value="box">box</option>
+                                                                            <option value="gram">gram</option>
+                                                                            <option value="ml">ml</option>
+                                                                        </select>
+                                                                    </label>
+                                                                    <label>
                                                                         <span>Qty</span>
                                                                         <input type="number" min="1" step="1" @bind="BundleLineQuantities[lineKey]" />
                                                                     </label>
@@ -1929,6 +1942,19 @@
                                                                     <label>
                                                                         <span>Unit PV</span>
                                                                         <input type="number" min="0" step="0.01" @bind="BundleLineUnitPrices[lineKey]" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>UOM</span>
+                                                                        <select @bind="BundleLineUoms[lineKey]">
+                                                                            <option value="unit">unit</option>
+                                                                            <option value="session">session</option>
+                                                                            <option value="piece">piece</option>
+                                                                            <option value="set">set</option>
+                                                                            <option value="bottle">bottle</option>
+                                                                            <option value="box">box</option>
+                                                                            <option value="gram">gram</option>
+                                                                            <option value="ml">ml</option>
+                                                                        </select>
                                                                     </label>
                                                                     <label>
                                                                         <span>Qty</span>
@@ -2545,6 +2571,7 @@
     private int SelectedBundleItemCount => SelectedBundleServices.Count + SelectedBundleProducts.Count;
     private Dictionary<string, decimal> BundleLineQuantities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, decimal> BundleLineUnitPrices { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, string> BundleLineUoms { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> BundleDeferredServiceIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     private bool IsBundleApiLoading { get; set; }
     private bool IsSavingBundle { get; set; }
@@ -4964,6 +4991,7 @@
         BundleItemPickerType = "Service";
         BundleLineQuantities.Clear();
         BundleLineUnitPrices.Clear();
+        BundleLineUoms.Clear();
         BundleDeferredServiceIds.Clear();
         IsBundleEditMode = false;
     }
@@ -5005,7 +5033,8 @@
                         3,
                         BundleLineQuantities.TryGetValue(key, out var quantity) ? Math.Max(1m, quantity) : 1m,
                         BundleLineUnitPrices.TryGetValue(key, out var unitPrice) ? Math.Max(0m, unitPrice) : Math.Max(0m, service.Price),
-                        BundleDeferredServiceIds.Contains(key));
+                        BundleDeferredServiceIds.Contains(key),
+                        BundleLineUoms.TryGetValue(key, out var uom) && !string.IsNullOrWhiteSpace(uom) ? uom : "unit");
                 });
 
             var productLines = SelectedBundleProducts
@@ -5019,7 +5048,8 @@
                         product.InventoryTypeId > 0 ? product.InventoryTypeId : 1,
                         BundleLineQuantities.TryGetValue(key, out var quantity) ? Math.Max(1m, quantity) : 1m,
                         BundleLineUnitPrices.TryGetValue(key, out var unitPrice) ? Math.Max(0m, unitPrice) : Math.Max(0m, product.Price),
-                        BundleDeferredServiceIds.Contains(key));
+                        BundleDeferredServiceIds.Contains(key),
+                        BundleLineUoms.TryGetValue(key, out var uom) && !string.IsNullOrWhiteSpace(uom) ? uom : "unit");
                 });
 
             var packageLines = serviceLines.Concat(productLines).ToList();
@@ -5140,6 +5170,7 @@
 
         BundleLineQuantities.Clear();
         BundleLineUnitPrices.Clear();
+        BundleLineUoms.Clear();
         BundleDeferredServiceIds.Clear();
 
         foreach (var service in SelectedBundleServices)
@@ -5149,6 +5180,9 @@
                 string.Equals(item.ServiceId, service.MasterAccountId, StringComparison.OrdinalIgnoreCase));
             BundleLineQuantities[key] = line is null ? 1m : Math.Max(1m, line.Quantity);
             BundleLineUnitPrices[key] = line is null ? Math.Max(0m, service.Price) : Math.Max(0m, line.UnitPrice);
+            BundleLineUoms[key] = line is null || string.IsNullOrWhiteSpace(line.UnitOfMeasure)
+                ? "unit"
+                : line.UnitOfMeasure;
             if (line?.IsDeferred == true)
             {
                 BundleDeferredServiceIds.Add(key);
@@ -5162,6 +5196,9 @@
                 string.Equals(item.ServiceId, product.MasterAccountId, StringComparison.OrdinalIgnoreCase));
             BundleLineQuantities[key] = line is null ? 1m : Math.Max(1m, line.Quantity);
             BundleLineUnitPrices[key] = line is null ? Math.Max(0m, product.Price) : Math.Max(0m, line.UnitPrice);
+            BundleLineUoms[key] = line is null || string.IsNullOrWhiteSpace(line.UnitOfMeasure)
+                ? "unit"
+                : line.UnitOfMeasure;
             if (line?.IsDeferred == true)
             {
                 BundleDeferredServiceIds.Add(key);
@@ -5378,6 +5415,7 @@
             SelectedBundleServices.Add(service);
             BundleLineQuantities[key] = 1m;
             BundleLineUnitPrices[key] = Math.Max(0m, service.Price);
+            BundleLineUoms[key] = string.IsNullOrWhiteSpace(service.UnitOfMeasure) ? "unit" : service.UnitOfMeasure;
         }
     }
 
@@ -5395,6 +5433,7 @@
             SelectedBundleProducts.Add(product);
             BundleLineQuantities[key] = 1m;
             BundleLineUnitPrices[key] = Math.Max(0m, product.Price);
+            BundleLineUoms[key] = "unit";
         }
     }
 
@@ -5402,6 +5441,7 @@
     {
         BundleLineQuantities.Remove(key);
         BundleLineUnitPrices.Remove(key);
+        BundleLineUoms.Remove(key);
         BundleDeferredServiceIds.Remove(key);
     }
 
