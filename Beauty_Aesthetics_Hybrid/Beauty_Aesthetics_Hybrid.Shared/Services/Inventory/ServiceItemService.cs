@@ -104,7 +104,8 @@ public sealed class ServiceItemService : IServiceItemService
         string branchId = "hq",
         CancellationToken cancellationToken = default,
         string branchGroupId = "",
-        ServiceEditorDetails? editorDetails = null)
+        ServiceEditorDetails? editorDetails = null,
+        IReadOnlyCollection<ServiceBranchSelection>? visibleBranches = null)
     {
         var normalizedBranchId = NormalizeBranchId(branchId);
         var record = CreateServiceRecord(service, normalizedBranchId);
@@ -117,7 +118,8 @@ public sealed class ServiceItemService : IServiceItemService
             normalizedBranchId,
             service.Price,
             "Added",
-            NormalizeBranchGroupId(branchGroupId, normalizedBranchId));
+            NormalizeBranchGroupId(branchGroupId, normalizedBranchId),
+            visibleBranches);
         var result = await serviceInventoryAC.CreateFullAsync(request, cancellationToken);
 
         var saveResult = ToSaveResult(result, "Unable to create service.");
@@ -138,7 +140,8 @@ public sealed class ServiceItemService : IServiceItemService
         string branchId = "hq",
         CancellationToken cancellationToken = default,
         string branchGroupId = "",
-        ServiceEditorDetails? editorDetails = null)
+        ServiceEditorDetails? editorDetails = null,
+        IReadOnlyCollection<ServiceBranchSelection>? visibleBranches = null)
     {
         if (string.IsNullOrWhiteSpace(service.MasterAccountId))
         {
@@ -166,7 +169,8 @@ public sealed class ServiceItemService : IServiceItemService
             normalizedBranchId,
             service.Price,
             "Changed",
-            NormalizeBranchGroupId(branchGroupId, normalizedBranchId));
+            NormalizeBranchGroupId(branchGroupId, normalizedBranchId),
+            visibleBranches);
         var result = await serviceInventoryAC.UpdateFullAsync(request, cancellationToken);
 
         var saveResult = ToSaveResult(result, "Unable to update service.");
@@ -457,24 +461,40 @@ public sealed class ServiceItemService : IServiceItemService
         string branchId,
         decimal price,
         string branchSaveAction,
-        string branchGroupId)
+        string branchGroupId,
+        IReadOnlyCollection<ServiceBranchSelection>? visibleBranches = null)
     {
+        var selections = visibleBranches?
+            .Where(item => !string.IsNullOrWhiteSpace(item.BranchId))
+            .GroupBy(item => item.BranchId.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
+
+        if (selections is null || selections.Count == 0)
+        {
+            selections =
+            [
+                new ServiceBranchSelection(branchId, branchGroupId)
+            ];
+        }
+
         return new InventoryPackageRequestDTO
         {
             ObjInventory = record,
-            Branches =
-            [
-                new InventoryBranchDTO
+            Branches = selections
+                .Select(selection => new InventoryBranchDTO
                 {
                     MasterAccountId = record.MasterAccountID,
-                    BranchId = branchId,
+                    BranchId = selection.BranchId.Trim(),
                     BranchPrice = Math.Max(0, price),
                     IsEnabled = true,
-                    GroupId = branchGroupId,
+                    GroupId = string.IsNullOrWhiteSpace(selection.GroupId)
+                        ? selection.BranchId.Trim()
+                        : selection.GroupId.Trim(),
                     SaveAction = branchSaveAction,
                     IsDirty = true
-                }
-            ]
+                })
+                .ToList()
         };
     }
 
