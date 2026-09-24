@@ -59,7 +59,9 @@ public sealed class ServiceViewModel
         bool IsActive = true,
         string Barcode = "",
         string UnitOfMeasure = "unit",
-        string Description = ""
+        string Description = "",
+        string SectionId = "",
+        string UnitOfMeasureId = ""
     );
 }
 
