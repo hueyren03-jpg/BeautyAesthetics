@@ -2118,6 +2118,12 @@
         BranchSession.CurrentBranch?.GroupId?.Trim() is { Length: > 0 } groupId
             ? groupId
             : ServiceBranchId;
+    private string BranchGroupIdFor(string branchId) =>
+        BranchSession.AvailableBranches.FirstOrDefault(branch =>
+            string.Equals(branch.Id, branchId, StringComparison.OrdinalIgnoreCase))?.GroupId?.Trim()
+        is { Length: > 0 } groupId
+            ? groupId
+            : branchId;
     private string? ServiceApiError { get; set; }
     private List<SupportingTableListItemDTO> ServiceSections { get; set; } = new();
 
@@ -2143,6 +2149,7 @@
     private string NewServiceBarcode { get; set; } = string.Empty;
     private string NewServiceUom { get; set; } = "unit";
     private string NewServiceUomId { get; set; } = string.Empty;
+    private string NewServiceVisibleBranchId { get; set; } = "HQ";
     private string NewServiceDescription { get; set; } = string.Empty;
     private string NewServiceImagePath { get; set; } = string.Empty;
     private string NewServiceImageFileName { get; set; } = string.Empty;
@@ -2244,6 +2251,10 @@
     private int NewBundleMemberExpiryDays { get; set; } = 365;
     private string NewBundleTriggeredMemberTypeId { get; set; } = string.Empty;
     private decimal NewBundleMemberCredit { get; set; }
+    private decimal NewBundleCost { get; set; }
+    private string NewBundleTaxCode { get; set; } = string.Empty;
+    private bool NewBundleTaxInclusive { get; set; }
+    private string NewBundleVisibleBranchId { get; set; } = "HQ";
     private decimal NewBundlePoints { get; set; }
     private bool IsBundleMinMaxPriceEnabled { get; set; }
     private decimal NewBundleMinPrice { get; set; }
@@ -2633,6 +2644,9 @@
                     TermCondition1 = package.TermCondition1,
                     TermCondition2 = package.TermCondition2,
                     TermCondition3 = package.TermCondition3,
+                    Cost = package.Cost,
+                    TaxCode = package.TaxCode,
+                    IsTaxInclusive = package.IsTaxInclusive,
                     ServiceLines = package.Lines?.ToList() ?? new List<InventoryPackageLineSummary>(),
                     ServiceIDs = package.ServiceIds.ToHashSet(StringComparer.OrdinalIgnoreCase)
                 }).ToList();
@@ -4192,6 +4206,7 @@
         NewServiceBarcode = string.Empty;
         NewServiceUom = "unit";
         NewServiceUomId = string.Empty;
+        NewServiceVisibleBranchId = ServiceBranchId;
         NewServiceDescription = string.Empty;
         NewServiceImagePath = string.Empty;
         NewServiceImageFileName = string.Empty;
@@ -4214,10 +4229,9 @@
         }
 
         if (string.IsNullOrWhiteSpace(NewServiceName) ||
-            string.IsNullOrWhiteSpace(NewServiceSKU) ||
             string.IsNullOrWhiteSpace(NewServiceCategory))
         {
-            ServiceApiError = "Service name, item code and section are required.";
+            ServiceApiError = "Service name and item group are required.";
             return;
         }
 
@@ -4251,19 +4265,24 @@
 
             var editorDetails = new ServiceEditorDetails(
                 Math.Max(0m, NewServicePointBalance),
-                IsServiceRedeemPointEnabled ? Math.Max(0m, NewServiceRedeemPoint) : 0m,
+                Math.Max(0m, NewServiceRedeemPoint),
                 string.Join(",", SelectedServiceBomProductIds.OrderBy(id => id, StringComparer.OrdinalIgnoreCase)));
+
+            var visibleBranchId = string.IsNullOrWhiteSpace(NewServiceVisibleBranchId)
+                ? ServiceBranchId
+                : NewServiceVisibleBranchId;
+            var visibleBranchGroupId = BranchGroupIdFor(visibleBranchId);
 
             var result = IsEditMode
                 ? await ServiceItemService.UpdateServiceAsync(
                     service,
-                    ServiceBranchId,
-                    branchGroupId: ServiceBranchGroupId,
+                    visibleBranchId,
+                    branchGroupId: visibleBranchGroupId,
                     editorDetails: editorDetails)
                 : await ServiceItemService.CreateServiceAsync(
                     service,
-                    ServiceBranchId,
-                    branchGroupId: ServiceBranchGroupId,
+                    visibleBranchId,
+                    branchGroupId: visibleBranchGroupId,
                     editorDetails: editorDetails);
 
             if (!result.Success)
@@ -4320,6 +4339,9 @@
         NewServiceUomId = !string.IsNullOrWhiteSpace(SelectedService.UnitOfMeasureId)
             ? SelectedService.UnitOfMeasureId
             : NewServiceUom;
+        NewServiceVisibleBranchId = string.IsNullOrWhiteSpace(SelectedService.BranchId)
+            ? ServiceBranchId
+            : SelectedService.BranchId;
         NewServiceDescription = SelectedService.Description;
         NewServiceImagePath = SelectedService.ImagePath;
         NewServiceImageFileName = SelectedService.ImageFileName;
@@ -4670,6 +4692,10 @@
         NewBundleMemberExpiryDays = 365;
         NewBundleTriggeredMemberTypeId = string.Empty;
         NewBundleMemberCredit = 0m;
+        NewBundleCost = 0m;
+        NewBundleTaxCode = string.Empty;
+        NewBundleTaxInclusive = false;
+        NewBundleVisibleBranchId = ServiceBranchId;
         NewBundlePoints = 0m;
         IsBundleMinMaxPriceEnabled = false;
         NewBundleMinPrice = 0m;
@@ -4769,17 +4795,25 @@
                 TermCondition2: NewBundleTermCondition2.Trim(),
                 TermCondition3: NewBundleTermCondition3.Trim(),
                 MinPrice: IsBundleMinMaxPriceEnabled ? Math.Max(0m, NewBundleMinPrice) : 0m,
-                MaxPrice: IsBundleMinMaxPriceEnabled ? Math.Max(0m, NewBundleMaxPrice) : 0m);
+                MaxPrice: IsBundleMinMaxPriceEnabled ? Math.Max(0m, NewBundleMaxPrice) : 0m,
+                Cost: Math.Max(0m, NewBundleCost),
+                TaxCode: NewBundleTaxCode.Trim(),
+                IsTaxInclusive: NewBundleTaxInclusive);
+
+            var visibleBranchId = string.IsNullOrWhiteSpace(NewBundleVisibleBranchId)
+                ? ServiceBranchId
+                : NewBundleVisibleBranchId;
+            var visibleBranchGroupId = BranchGroupIdFor(visibleBranchId);
 
             var result = IsBundleEditMode
                 ? await PackageService.UpdatePackageAsync(
                     package,
-                    ServiceBranchId,
-                    branchGroupId: ServiceBranchGroupId)
+                    visibleBranchId,
+                    branchGroupId: visibleBranchGroupId)
                 : await PackageService.CreatePackageAsync(
                     package,
-                    ServiceBranchId,
-                    branchGroupId: ServiceBranchGroupId);
+                    visibleBranchId,
+                    branchGroupId: visibleBranchGroupId);
 
             if (!result.Success)
             {
@@ -4805,6 +4839,12 @@
         NewBundleSKU = SelectedBundle.SKU;
         NewBundleSection = SelectedBundle.Section;
         NewBundleIsActive = SelectedBundle.IsActive;
+        NewBundleCost = SelectedBundle.Cost;
+        NewBundleTaxCode = SelectedBundle.TaxCode;
+        NewBundleTaxInclusive = SelectedBundle.IsTaxInclusive;
+        NewBundleVisibleBranchId = string.IsNullOrWhiteSpace(SelectedBundle.BranchId)
+            ? ServiceBranchId
+            : SelectedBundle.BranchId;
         NewBundleBarcode = SelectedBundle.Barcode;
         NewBundleUom = string.IsNullOrWhiteSpace(SelectedBundle.UnitOfMeasure) ? "unit" : SelectedBundle.UnitOfMeasure;
         NewBundleImagePath = SelectedBundle.ImagePath;
@@ -5941,6 +5981,9 @@
         public string TermCondition1 { get; set; } = string.Empty;
         public string TermCondition2 { get; set; } = string.Empty;
         public string TermCondition3 { get; set; } = string.Empty;
+        public decimal Cost { get; set; }
+        public string TaxCode { get; set; } = string.Empty;
+        public bool IsTaxInclusive { get; set; }
         public List<InventoryPackageLineSummary> ServiceLines { get; set; } = new();
         public HashSet<string> ServiceIDs { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     }
