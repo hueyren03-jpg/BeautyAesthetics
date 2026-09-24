@@ -33,6 +33,7 @@ public sealed record InventoryPackageLineSummary(
     decimal Quantity,
     decimal UnitPrice,
     bool IsDeferred,
+    int InventoryTypeId = 3,
     string? AutoId = null);
 
 public sealed record InventoryPackageSummary(
@@ -65,7 +66,9 @@ public sealed record InventoryPackageSummary(
     IReadOnlyList<InventoryPackageLineSummary>? Lines = null);
 
 public sealed record InventoryPackageLineEdit(
-    ServiceViewModel.ServiceItem Service,
+    string InventoryId,
+    string Description,
+    int InventoryTypeId,
     decimal Quantity,
     decimal UnitPrice,
     bool IsDeferred);
