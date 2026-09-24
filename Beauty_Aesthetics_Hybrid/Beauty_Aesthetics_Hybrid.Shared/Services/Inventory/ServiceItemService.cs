@@ -1,9 +1,9 @@
 using System.Net;
-using System.Text.Json;
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.ViewModels;
 using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
+using Beauty_Aesthetics_WebPos.Models.DTOs;
 using EBI.DM;
 using EBI.Enum;
 
@@ -29,7 +29,9 @@ public sealed class ServiceItemService : IServiceItemService
         string branchId = "hq",
         CancellationToken cancellationToken = default)
     {
-        var result = await serviceInventoryAC.LoadProxyByItemGroupAsync(branchId, cancellationToken);
+        // Services are master records. Load the normal inventory proxy and use the
+        // current branch only to prefer that branch when the API returns duplicates.
+        var result = await serviceInventoryAC.LoadProxyAsync(null, cancellationToken);
         if (!result.Success || result.Value is null)
         {
             return ApiCallResult<IReadOnlyList<ServiceViewModel.ServiceItem>>.Failure(
@@ -37,9 +39,13 @@ public sealed class ServiceItemService : IServiceItemService
                 result.ErrorMessage ?? "Unable to load service records.");
         }
 
+        var normalizedBranchId = NormalizeBranchId(branchId);
         var services = result.Value
-            .SelectMany(group => group.Value ?? new List<InventoryDM>())
             .Where(record => record.InventoryTypeID == ServiceInventoryTypeId)
+            .GroupBy(ServiceRecordKey, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.FirstOrDefault(record =>
+                                 string.Equals(record.BranchID, normalizedBranchId, StringComparison.OrdinalIgnoreCase))
+                             ?? group.First())
             .Select(ToServiceItem)
             .OrderBy(service => service.ServiceName)
             .ToList();
@@ -47,16 +53,72 @@ public sealed class ServiceItemService : IServiceItemService
         return ApiCallResult<IReadOnlyList<ServiceViewModel.ServiceItem>>.Ok(result.StatusCode, services);
     }
 
+    public async Task<ApiCallResult<ServiceViewModel.ServiceItem>> LoadServiceAsync(
+        string masterAccountId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(masterAccountId))
+        {
+            return ApiCallResult<ServiceViewModel.ServiceItem>.Failure(
+                HttpStatusCode.BadRequest,
+                "The selected service has no record ID.");
+        }
+
+        var result = await serviceInventoryAC.LoadRecordAsync(masterAccountId, cancellationToken);
+        return result.Success && result.Value is not null
+            ? ApiCallResult<ServiceViewModel.ServiceItem>.Ok(result.StatusCode, ToServiceItem(result.Value))
+            : ApiCallResult<ServiceViewModel.ServiceItem>.Failure(
+                result.StatusCode,
+                result.ErrorMessage ?? "Unable to load service details.");
+    }
+
+    public async Task<ApiCallResult<ServiceEditorDetails>> LoadServiceEditorDetailsAsync(
+        string masterAccountId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(masterAccountId))
+        {
+            return ApiCallResult<ServiceEditorDetails>.Failure(
+                HttpStatusCode.BadRequest,
+                "The selected service has no record ID.");
+        }
+
+        var result = await serviceInventoryAC.LoadRecordAsync(masterAccountId, cancellationToken);
+        if (!result.Success || result.Value is null)
+        {
+            return ApiCallResult<ServiceEditorDetails>.Failure(
+                result.StatusCode,
+                result.ErrorMessage ?? "Unable to load service editor details.");
+        }
+
+        return ApiCallResult<ServiceEditorDetails>.Ok(
+            result.StatusCode,
+            new ServiceEditorDetails(
+                GetFirstInventoryDecimal(result.Value, "FreePoint", "PointBalance", "Points"),
+                GetFirstInventoryDecimal(result.Value, "RedeemPoint", "PointToRedeem"),
+                GetFirstInventoryString(result.Value, "BillOfMaterial", "MaterialConsumed")));
+    }
+
     public async Task<ApiCallResult<bool>> CreateServiceAsync(
         ServiceViewModel.ServiceItem service,
         string branchId = "hq",
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string branchGroupId = "",
+        ServiceEditorDetails? editorDetails = null)
     {
-        var record = CreateServiceRecord(service, branchId);
+        var normalizedBranchId = NormalizeBranchId(branchId);
+        var record = CreateServiceRecord(service, normalizedBranchId);
+        ApplyServiceEditorDetails(record, editorDetails);
         record.SaveAction = EntityState.Added;
         record.IsDirty = true;
 
-        var result = await serviceInventoryAC.CreateSimpleAsync(record, cancellationToken);
+        var request = CreateServiceRequest(
+            record,
+            normalizedBranchId,
+            service.Price,
+            "Added",
+            NormalizeBranchGroupId(branchGroupId, normalizedBranchId));
+        var result = await serviceInventoryAC.CreateFullAsync(request, cancellationToken);
 
         var saveResult = ToSaveResult(result, "Unable to create service.");
         if (saveResult.Success)
@@ -74,7 +136,9 @@ public sealed class ServiceItemService : IServiceItemService
     public async Task<ApiCallResult<bool>> UpdateServiceAsync(
         ServiceViewModel.ServiceItem service,
         string branchId = "hq",
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string branchGroupId = "",
+        ServiceEditorDetails? editorDetails = null)
     {
         if (string.IsNullOrWhiteSpace(service.MasterAccountId))
         {
@@ -91,11 +155,19 @@ public sealed class ServiceItemService : IServiceItemService
                 loadResult.ErrorMessage ?? "Unable to load the service before updating it.");
         }
 
-        ApplyServiceValues(loadResult.Value, service, branchId);
+        var normalizedBranchId = NormalizeBranchId(branchId);
+        ApplyServiceValues(loadResult.Value, service, normalizedBranchId);
+        ApplyServiceEditorDetails(loadResult.Value, editorDetails);
         loadResult.Value.SaveAction = EntityState.Changed;
         loadResult.Value.IsDirty = true;
 
-        var result = await serviceInventoryAC.UpdateSimpleAsync(loadResult.Value, cancellationToken);
+        var request = CreateServiceRequest(
+            loadResult.Value,
+            normalizedBranchId,
+            service.Price,
+            "Changed",
+            NormalizeBranchGroupId(branchGroupId, normalizedBranchId));
+        var result = await serviceInventoryAC.UpdateFullAsync(request, cancellationToken);
 
         var saveResult = ToSaveResult(result, "Unable to update service.");
         if (saveResult.Success)
@@ -121,7 +193,7 @@ public sealed class ServiceItemService : IServiceItemService
                 "The selected service has no record ID.");
         }
 
-        var result = await serviceInventoryAC.DeleteSimpleAsync(masterAccountId, cancellationToken);
+        var result = await serviceInventoryAC.DeleteFullAsync(masterAccountId, cancellationToken);
         if (result.Success)
         {
             feedback.Success("Service deleted successfully.", "Service deleted");
@@ -160,7 +232,16 @@ public sealed class ServiceItemService : IServiceItemService
             record.AvailableTimeTo,
             record.eInvoiceClassificationCode ?? string.Empty,
             record.ImagePath ?? string.Empty,
-            record.ImageFileName ?? string.Empty);
+            record.ImageFileName ?? string.Empty,
+            record.PurchasePrice,
+            record.TaxCodeID ?? string.Empty,
+            record.IsTaxInclusive,
+            string.Equals(record.AccountStatus, "Active", StringComparison.OrdinalIgnoreCase),
+            record.VendorItemCode ?? string.Empty,
+            FirstNonEmpty(record.UnitOfMeasureName, record.UnitOfMeasureID, "unit") ?? "unit",
+            record.SalesDescription ?? string.Empty,
+            record.ItemGroupID ?? string.Empty,
+            record.UnitOfMeasureID ?? string.Empty);
     }
 
     private static InventoryDM CreateServiceRecord(
@@ -170,7 +251,7 @@ public sealed class ServiceItemService : IServiceItemService
         var record = new InventoryDM();
         ApplyServiceValues(record, service, branchId);
         record.AccountTypeID = 4;
-        record.AccountStatus = "Active";
+        record.AccountStatus = string.IsNullOrWhiteSpace(record.AccountStatus) ? "Active" : record.AccountStatus;
         record.IsSold = true;
         record.IsPurchased = false;
         record.CreatedDateTime = DateTime.Now;
@@ -179,7 +260,7 @@ public sealed class ServiceItemService : IServiceItemService
         record.AvailableTimeFrom = TimeSpan.Zero;
         record.AvailableTimeTo = new TimeSpan(23, 59, 59);
         record.QuantityFactor = 1;
-        record.UnitOfMeasureID = "UNIT";
+        record.UnitOfMeasureID = string.IsNullOrWhiteSpace(record.UnitOfMeasureID) ? "unit" : record.UnitOfMeasureID;
         record.ValidityDays = 8888;
         record.MemberCreditSettlementRatio = 1;
         record.KitchenCopies = 1;
@@ -198,14 +279,157 @@ public sealed class ServiceItemService : IServiceItemService
         record.InventoryTypeID = ServiceInventoryTypeId;
         record.InventoryTypeName = ServiceInventoryTypeName;
         record.AccountName = service.ServiceName.Trim();
-        record.SalesDescription = service.ServiceName.Trim();
+        record.SalesDescription = string.IsNullOrWhiteSpace(service.Description)
+            ? service.ServiceName.Trim()
+            : service.Description.Trim();
         record.DisplayCode = service.Sku.Trim();
+        record.ItemGroupID = string.IsNullOrWhiteSpace(service.SectionId)
+            ? null
+            : service.SectionId.Trim();
         record.ItemGroupName = service.Category.Trim();
         record.ServiceMinutes = ParseDuration(service.DurationSpend);
         record.BufferMinutes = Math.Max(0, service.BufferTimeMinutes);
         record.HasPackage = service.IsBundle;
-        record.SalesPrice = service.Price;
+        record.SalesPrice = Math.Max(0, service.Price);
+        record.PurchasePrice = Math.Max(0, service.Cost);
+        record.TaxCodeID = service.TaxCode?.Trim() ?? string.Empty;
+        record.IsTaxInclusive = service.IsTaxInclusive;
+        record.AccountStatus = service.IsActive ? "Active" : "Inactive";
+        record.VendorItemCode = service.Barcode?.Trim() ?? string.Empty;
+        record.UnitOfMeasureID = !string.IsNullOrWhiteSpace(service.UnitOfMeasureId)
+            ? service.UnitOfMeasureId.Trim()
+            : string.IsNullOrWhiteSpace(service.UnitOfMeasure)
+                ? "unit"
+                : service.UnitOfMeasure.Trim();
+        record.UnitOfMeasureName = string.IsNullOrWhiteSpace(service.UnitOfMeasure)
+            ? record.UnitOfMeasureID
+            : service.UnitOfMeasure.Trim();
+        record.ImagePath = string.IsNullOrWhiteSpace(service.ImagePath)
+            ? null
+            : service.ImagePath.Trim();
+        record.ImageFileName = string.IsNullOrWhiteSpace(service.ImageFileName)
+            ? null
+            : service.ImageFileName.Trim();
         record.BranchID = NormalizeBranchId(branchId);
+    }
+
+    private static void ApplyServiceEditorDetails(InventoryDM record, ServiceEditorDetails? details)
+    {
+        if (details is null)
+        {
+            return;
+        }
+
+        SetFirstInventoryProperty(
+            record,
+            Math.Max(0m, details.PointBalance),
+            "FreePoint",
+            "PointBalance",
+            "Points");
+        SetFirstInventoryProperty(
+            record,
+            Math.Max(0m, details.RedeemPoint),
+            "RedeemPoint",
+            "PointToRedeem");
+        SetFirstInventoryProperty(
+            record,
+            details.BillOfMaterial?.Trim() ?? string.Empty,
+            "BillOfMaterial",
+            "MaterialConsumed");
+    }
+
+    private static decimal GetFirstInventoryDecimal(InventoryDM record, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            var property = record.GetType().GetProperty(propertyName);
+            if (property is null || !property.CanRead)
+            {
+                continue;
+            }
+
+            var value = property.GetValue(record);
+            if (value is null)
+            {
+                continue;
+            }
+
+            if (value is decimal decimalValue)
+            {
+                return decimalValue;
+            }
+
+            if (decimal.TryParse(
+                    Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture),
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var parsed))
+            {
+                return parsed;
+            }
+        }
+
+        return 0m;
+    }
+
+    private static string GetFirstInventoryString(InventoryDM record, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            var property = record.GetType().GetProperty(propertyName);
+            if (property is null || !property.CanRead)
+            {
+                continue;
+            }
+
+            var value = property.GetValue(record)?.ToString();
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static void SetFirstInventoryProperty(InventoryDM record, object? value, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            var property = record.GetType().GetProperty(propertyName);
+            if (property is null || !property.CanWrite)
+            {
+                continue;
+            }
+
+            try
+            {
+                if (value is null)
+                {
+                    property.SetValue(record, null);
+                    return;
+                }
+
+                var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+                var converted = targetType.IsInstanceOfType(value)
+                    ? value
+                    : Convert.ChangeType(
+                        value,
+                        targetType,
+                        System.Globalization.CultureInfo.InvariantCulture);
+                property.SetValue(record, converted);
+                return;
+            }
+            catch (InvalidCastException)
+            {
+            }
+            catch (FormatException)
+            {
+            }
+            catch (OverflowException)
+            {
+            }
+        }
     }
 
     private static string NormalizeBranchId(string branchId)
@@ -215,14 +439,53 @@ public sealed class ServiceItemService : IServiceItemService
             : branchId.Trim().ToUpperInvariant();
     }
 
+    private static string NormalizeBranchGroupId(string branchGroupId, string branchId)
+    {
+        return string.IsNullOrWhiteSpace(branchGroupId)
+            ? branchId
+            : branchGroupId.Trim();
+    }
+
     private static int ParseDuration(string duration)
     {
         var firstPart = duration.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
         return int.TryParse(firstPart, out var minutes) ? Math.Max(0, minutes) : 0;
     }
 
+    private static InventoryPackageRequestDTO CreateServiceRequest(
+        InventoryDM record,
+        string branchId,
+        decimal price,
+        string branchSaveAction,
+        string branchGroupId)
+    {
+        return new InventoryPackageRequestDTO
+        {
+            ObjInventory = record,
+            Branches =
+            [
+                new InventoryBranchDTO
+                {
+                    MasterAccountId = record.MasterAccountID,
+                    BranchId = branchId,
+                    BranchPrice = Math.Max(0, price),
+                    IsEnabled = true,
+                    GroupId = branchGroupId,
+                    SaveAction = branchSaveAction,
+                    IsDirty = true
+                }
+            ]
+        };
+    }
+
+    private static string ServiceRecordKey(InventoryDM record)
+    {
+        return FirstNonEmpty(record.MasterAccountID, record.DisplayCode, record.AccountName)
+               ?? $"service-{record.GetHashCode()}";
+    }
+
     private static ApiCallResult<bool> ToSaveResult(
-        ApiCallResult<JsonElement> result,
+        ApiCallResult<InventorySaveResultDTO> result,
         string fallbackMessage)
     {
         return result.Success
