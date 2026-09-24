@@ -174,7 +174,14 @@ public sealed class ServiceItemService : IServiceItemService
             record.AvailableTimeTo,
             record.eInvoiceClassificationCode ?? string.Empty,
             record.ImagePath ?? string.Empty,
-            record.ImageFileName ?? string.Empty);
+            record.ImageFileName ?? string.Empty,
+            record.PurchasePrice,
+            record.TaxCodeID ?? string.Empty,
+            record.IsTaxInclusive,
+            string.Equals(record.AccountStatus, "Active", StringComparison.OrdinalIgnoreCase),
+            record.VendorItemCode ?? string.Empty,
+            FirstNonEmpty(record.UnitOfMeasureName, record.UnitOfMeasureID, "unit") ?? "unit",
+            record.SalesDescription ?? string.Empty);
     }
 
     private static InventoryDM CreateServiceRecord(
@@ -184,7 +191,7 @@ public sealed class ServiceItemService : IServiceItemService
         var record = new InventoryDM();
         ApplyServiceValues(record, service, branchId);
         record.AccountTypeID = 4;
-        record.AccountStatus = "Active";
+        record.AccountStatus = string.IsNullOrWhiteSpace(record.AccountStatus) ? "Active" : record.AccountStatus;
         record.IsSold = true;
         record.IsPurchased = false;
         record.CreatedDateTime = DateTime.Now;
@@ -193,7 +200,7 @@ public sealed class ServiceItemService : IServiceItemService
         record.AvailableTimeFrom = TimeSpan.Zero;
         record.AvailableTimeTo = new TimeSpan(23, 59, 59);
         record.QuantityFactor = 1;
-        record.UnitOfMeasureID = "UNIT";
+        record.UnitOfMeasureID = string.IsNullOrWhiteSpace(record.UnitOfMeasureID) ? "unit" : record.UnitOfMeasureID;
         record.ValidityDays = 8888;
         record.MemberCreditSettlementRatio = 1;
         record.KitchenCopies = 1;
@@ -212,13 +219,23 @@ public sealed class ServiceItemService : IServiceItemService
         record.InventoryTypeID = ServiceInventoryTypeId;
         record.InventoryTypeName = ServiceInventoryTypeName;
         record.AccountName = service.ServiceName.Trim();
-        record.SalesDescription = service.ServiceName.Trim();
+        record.SalesDescription = string.IsNullOrWhiteSpace(service.Description)
+            ? service.ServiceName.Trim()
+            : service.Description.Trim();
         record.DisplayCode = service.Sku.Trim();
         record.ItemGroupName = service.Category.Trim();
         record.ServiceMinutes = ParseDuration(service.DurationSpend);
         record.BufferMinutes = Math.Max(0, service.BufferTimeMinutes);
         record.HasPackage = service.IsBundle;
-        record.SalesPrice = service.Price;
+        record.SalesPrice = Math.Max(0, service.Price);
+        record.PurchasePrice = Math.Max(0, service.Cost);
+        record.TaxCodeID = service.TaxCode?.Trim() ?? string.Empty;
+        record.IsTaxInclusive = service.IsTaxInclusive;
+        record.AccountStatus = service.IsActive ? "Active" : "Inactive";
+        record.VendorItemCode = service.Barcode?.Trim() ?? string.Empty;
+        record.UnitOfMeasureID = string.IsNullOrWhiteSpace(service.UnitOfMeasure)
+            ? "unit"
+            : service.UnitOfMeasure.Trim();
         record.BranchID = NormalizeBranchId(branchId);
     }
 
