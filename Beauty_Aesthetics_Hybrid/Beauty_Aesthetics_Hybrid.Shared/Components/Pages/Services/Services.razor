@@ -1568,7 +1568,7 @@
                                 <button type="button"
                                         class="@(BundleEditorTab == "Items" ? "active" : string.Empty)"
                                         @onclick='() => BundleEditorTab = "Items"'>
-                                    Package Items
+                                    Items
                                     @if (SelectedBundleItemCount > 0)
                                     {
                                         <span class="senang-editor__tab-badge">@SelectedBundleItemCount</span>
@@ -1578,49 +1578,59 @@
                                         class="@(BundleEditorTab == "Membership" ? "active" : string.Empty)"
                                         @onclick='() => BundleEditorTab = "Membership"'>
                                     Membership
+                                    @if (!string.IsNullOrWhiteSpace(NewBundleTriggeredMemberTypeId))
+                                    {
+                                        <span class="senang-editor__tab-badge">1</span>
+                                    }
                                 </button>
                             </div>
 
-                            <div class="senang-editor__panel">
+                            <div class="senang-editor__panel senang-package-editor">
                                 @if (BundleEditorTab == "Info")
                                 {
-                                    <div class="senang-editor__form-stack">
-                                        <div class="senang-editor__row senang-editor__row--code-name">
-                                            <div class="senang-editor__field senang-editor__field--code">
+                                    <div class="senang-package-form-section">
+                                        <div class="senang-package-form-group">
+                                            <label>Package Name <span>*</span></label>
+                                            <input type="text" @bind="NewBundleName" placeholder="Package name" />
+                                        </div>
+
+                                        <div class="senang-package-row-group">
+                                            <div class="senang-package-form-group">
                                                 <label>Display Code</label>
                                                 <input type="text" @bind="NewBundleSKU" placeholder="Display code" />
                                             </div>
-                                            <div class="senang-editor__field senang-editor__field--grow">
-                                                <label>Package Name <span>*</span></label>
-                                                <input type="text" @bind="NewBundleName" placeholder="Package name" />
+                                            <div class="senang-package-form-group">
+                                                <label>Item Group</label>
+                                                <button type="button"
+                                                        class="senang-package-selector"
+                                                        @onclick="OpenBundleSectionPicker">
+                                                    <span>@(string.IsNullOrWhiteSpace(NewBundleSection) ? "Select item group" : NewBundleSection)</span>
+                                                    <i class="bi bi-chevron-down"></i>
+                                                </button>
                                             </div>
                                         </div>
 
-                                        <div class="senang-editor__row senang-editor__row--section-status">
-                                            <div class="senang-editor__field senang-editor__field--grow">
-                                                <label>Item Group</label>
-                                                <select @bind="NewBundleSection">
-                                                    <option value="">Select item group</option>
-                                                    @foreach (var section in ServiceSections)
+                                        <div class="senang-package-row-group">
+                                            <div class="senang-package-form-group">
+                                                <label>Is Active</label>
+                                                <label class="senang-package-status-control">
+                                                    <input type="checkbox" @bind="NewBundleIsActive" />
+                                                    <span>@(NewBundleIsActive ? "Active" : "Inactive")</span>
+                                                </label>
+                                            </div>
+                                            <div class="senang-package-form-group">
+                                                <label>Visible at Branch</label>
+                                                <select @bind="NewBundleVisibleBranchId">
+                                                    @foreach (var branchItem in BranchSession.AvailableBranches)
                                                     {
-                                                        <option value="@section.SupportingTableName">@section.SupportingTableName</option>
+                                                        <option value="@branchItem.Id">@branchItem.DisplayName</option>
                                                     }
                                                 </select>
                                             </div>
-                                            <div class="senang-editor__field senang-editor__field--status">
-                                                <label>Is Active</label>
-                                                <label class="senang-editor__status-control">
-                                                    <input type="checkbox" @bind="NewBundleIsActive" />
-                                                    <span>
-                                                        <strong>@(NewBundleIsActive ? "Active" : "Inactive")</strong>
-                                                        <small>Available for sale</small>
-                                                    </span>
-                                                </label>
-                                            </div>
                                         </div>
 
-                                        <div class="senang-editor__row">
-                                            <div class="senang-editor__field">
+                                        <div class="senang-package-row-group">
+                                            <div class="senang-package-form-group">
                                                 <label>Tax Code</label>
                                                 <select @bind="NewBundleTaxCode">
                                                     <option value="">Select Tax Code</option>
@@ -1630,9 +1640,9 @@
                                                     <option value="NA">NA</option>
                                                 </select>
                                             </div>
-                                            <div class="senang-editor__field">
+                                            <div class="senang-package-form-group">
                                                 <label>Inclusive Tax</label>
-                                                <div class="senang-editor__radio-group">
+                                                <div class="senang-package-radio-group">
                                                     <label>
                                                         <input type="radio"
                                                                name="package-inclusive-tax"
@@ -1651,199 +1661,227 @@
                                             </div>
                                         </div>
 
-                                        <div class="senang-editor__row">
-                                            <div class="senang-editor__field">
-                                                <label>Price (MYR)</label>
+                                        <div class="senang-package-row-group">
+                                            <div class="senang-package-form-group">
+                                                <label>Price (MYR) <span>*</span></label>
                                                 <input type="number" step="0.01" min="0" @bind="NewBundlePrice" />
                                             </div>
-                                            <div class="senang-editor__field">
+                                            <div class="senang-package-form-group">
                                                 <label>Cost (MYR)</label>
                                                 <input type="number" step="0.01" min="0" @bind="NewBundleCost" />
                                             </div>
                                         </div>
 
-                                        <div class="senang-editor__field">
-                                            <label>Visible at Branch</label>
-                                            <select @bind="NewBundleVisibleBranchId">
-                                                @foreach (var branchItem in BranchSession.AvailableBranches)
-                                                {
-                                                    <option value="@branchItem.Id">@branchItem.DisplayName</option>
-                                                }
-                                            </select>
+                                        <div class="senang-package-quick-actions">
+                                            <button type="button" @onclick='() => OpenBundleItemPicker("Service")'>
+                                                <i class="bi bi-scissors"></i>
+                                                + Add Service
+                                            </button>
+                                            <button type="button" @onclick='() => OpenBundleItemPicker("Product")'>
+                                                <i class="bi bi-box"></i>
+                                                + Add Product
+                                            </button>
                                         </div>
+
+                                        @if (SelectedBundleItemCount > 0)
+                                        {
+                                            <div class="senang-package-selected-summary">
+                                                <span>Added Items</span>
+                                                <strong>@SelectedBundleItemCount</strong>
+                                            </div>
+                                        }
                                     </div>
                                 }
                                 else if (BundleEditorTab == "Items")
                                 {
-                                    <div class="senang-package-items">
-                                        <div class="senang-package-items__heading">
-                                            <div>
-                                                <h3>Package Items</h3>
-                                                <p>Select the services or products included in this package.</p>
-                                            </div>
-                                            <span>@SelectedBundleItemCount selected</span>
-                                        </div>
-
-                                        <div class="senang-package-item-type-actions">
+                                    <div class="senang-package-form-section">
+                                        <div class="senang-package-row-group senang-package-row-group--actions">
                                             <button type="button"
-                                                    class="@(BundleItemPickerType == "Service" ? "active" : string.Empty)"
-                                                    @onclick='() => BundleItemPickerType = "Service"'>
-                                                <i class="bi bi-scissors"></i>
-                                                Service
+                                                    class="senang-package-add-type-btn"
+                                                    @onclick='() => OpenBundleItemPicker("Service")'>
+                                                + Add Service
                                             </button>
                                             <button type="button"
-                                                    class="@(BundleItemPickerType == "Product" ? "active" : string.Empty)"
-                                                    @onclick='() => BundleItemPickerType = "Product"'>
-                                                <i class="bi bi-box"></i>
-                                                Product
+                                                    class="senang-package-add-type-btn"
+                                                    @onclick='() => OpenBundleItemPicker("Product")'>
+                                                + Add Product
                                             </button>
                                         </div>
 
-                                        @if (BundleItemPickerType == "Service")
+                                        @if (SelectedBundleItemCount == 0)
                                         {
-                                            @if (!BundleEligibleServices.Any())
-                                            {
-                                                <div class="senang-record-list__empty">No active services available for this branch.</div>
-                                            }
-                                            else
-                                            {
-                                                <div class="senang-package-items__list">
-                                                    @foreach (var service in BundleEligibleServices)
-                                                    {
-                                                        var lineKey = BundleServiceKey(service);
-                                                        var selected = SelectedBundleServices.Contains(service);
-                                                        <div class="senang-package-item @(selected ? "is-selected" : string.Empty)">
-                                                            <label class="senang-package-item__select">
-                                                                <input type="checkbox"
-                                                                       checked="@selected"
-                                                                       @onchange="() => ToggleServiceSelection(service)" />
-                                                                <span class="senang-package-item__icon"><i class="bi bi-scissors"></i></span>
-                                                                <span class="senang-package-item__body">
-                                                                    <strong>@service.ServiceName</strong>
-                                                                    <small>@service.Sku · @service.Category</small>
-                                                                </span>
-                                                            </label>
-
-                                                            @if (selected)
-                                                            {
-                                                                <div class="senang-package-item__fields">
-                                                                    <label>
-                                                                        <span>Deferred</span>
-                                                                        <input type="checkbox"
-                                                                               checked="@BundleDeferredServiceIds.Contains(lineKey)"
-                                                                               @onchange="(ChangeEventArgs e) => SetBundleDeferred(lineKey, e.Value is true)" />
-                                                                    </label>
-                                                                    <label>
-                                                                        <span>Unit PV</span>
-                                                                        <input type="number" min="0" step="0.01" @bind="BundleLineUnitPrices[lineKey]" />
-                                                                    </label>
-                                                                    <label>
-                                                                        <span>UOM</span>
-                                                                        <select @bind="BundleLineUoms[lineKey]">
-                                                                            <option value="unit">unit</option>
-                                                                            <option value="session">session</option>
-                                                                            <option value="piece">piece</option>
-                                                                            <option value="set">set</option>
-                                                                            <option value="bottle">bottle</option>
-                                                                            <option value="box">box</option>
-                                                                            <option value="gram">gram</option>
-                                                                            <option value="ml">ml</option>
-                                                                        </select>
-                                                                    </label>
-                                                                    <label>
-                                                                        <span>Qty</span>
-                                                                        <input type="number" min="1" step="1" @bind="BundleLineQuantities[lineKey]" />
-                                                                    </label>
-                                                                </div>
-                                                            }
-                                                        </div>
-                                                    }
-                                                </div>
-                                            }
+                                            <div class="senang-package-empty">
+                                                No items added yet. Add services or products to build this package.
+                                            </div>
                                         }
                                         else
                                         {
-                                            @if (!BundleEligibleProducts.Any())
-                                            {
-                                                <div class="senang-record-list__empty">No products available for this branch.</div>
-                                            }
-                                            else
-                                            {
-                                                <div class="senang-package-items__list">
-                                                    @foreach (var product in BundleEligibleProducts)
-                                                    {
-                                                        var lineKey = BundleProductKey(product);
-                                                        var selected = SelectedBundleProducts.Contains(product);
-                                                        <div class="senang-package-item @(selected ? "is-selected" : string.Empty)">
-                                                            <label class="senang-package-item__select">
-                                                                <input type="checkbox"
-                                                                       checked="@selected"
-                                                                       @onchange="() => ToggleProductSelection(product)" />
-                                                                <span class="senang-package-item__icon senang-package-item__icon--product"><i class="bi bi-box"></i></span>
-                                                                <span class="senang-package-item__body">
-                                                                    <strong>@product.Type</strong>
-                                                                    <small>@product.Sku · @product.Category</small>
-                                                                </span>
-                                                            </label>
-
-                                                            @if (selected)
-                                                            {
-                                                                <div class="senang-package-item__fields">
-                                                                    <label>
-                                                                        <span>Deferred</span>
-                                                                        <input type="checkbox"
-                                                                               checked="@BundleDeferredServiceIds.Contains(lineKey)"
-                                                                               @onchange="(ChangeEventArgs e) => SetBundleDeferred(lineKey, e.Value is true)" />
-                                                                    </label>
-                                                                    <label>
-                                                                        <span>Unit PV</span>
-                                                                        <input type="number" min="0" step="0.01" @bind="BundleLineUnitPrices[lineKey]" />
-                                                                    </label>
-                                                                    <label>
-                                                                        <span>UOM</span>
-                                                                        <select @bind="BundleLineUoms[lineKey]">
-                                                                            <option value="unit">unit</option>
-                                                                            <option value="session">session</option>
-                                                                            <option value="piece">piece</option>
-                                                                            <option value="set">set</option>
-                                                                            <option value="bottle">bottle</option>
-                                                                            <option value="box">box</option>
-                                                                            <option value="gram">gram</option>
-                                                                            <option value="ml">ml</option>
-                                                                        </select>
-                                                                    </label>
-                                                                    <label>
-                                                                        <span>Qty</span>
-                                                                        <input type="number" min="1" step="1" @bind="BundleLineQuantities[lineKey]" />
-                                                                    </label>
-                                                                </div>
-                                                            }
-                                                        </div>
-                                                    }
+                                            <div class="senang-package-items-table">
+                                                <div class="senang-package-items-header">
+                                                    <span class="senang-package-col-item">Item</span>
+                                                    <span>Deferred</span>
+                                                    <span>Unit PV</span>
+                                                    <span>UOM</span>
+                                                    <span>Qty</span>
+                                                    <span></span>
                                                 </div>
-                                            }
+
+                                                @foreach (var service in SelectedBundleServices.OrderBy(item => item.ServiceName))
+                                                {
+                                                    var lineKey = BundleServiceKey(service);
+                                                    <div class="senang-package-item-row">
+                                                        <div class="senang-package-col-item">
+                                                            <strong>@service.ServiceName</strong>
+                                                            <small>Service · @service.Category</small>
+                                                        </div>
+                                                        <div class="senang-package-cell-center">
+                                                            <input class="senang-package-checkbox"
+                                                                   type="checkbox"
+                                                                   checked="@BundleDeferredServiceIds.Contains(lineKey)"
+                                                                   @onchange="(ChangeEventArgs e) => SetBundleDeferred(lineKey, e.Value is true)" />
+                                                        </div>
+                                                        <div>
+                                                            <input class="senang-package-item-input"
+                                                                   type="number"
+                                                                   min="0"
+                                                                   step="0.01"
+                                                                   @bind="BundleLineUnitPrices[lineKey]" />
+                                                        </div>
+                                                        <div>
+                                                            <select class="senang-package-item-input" @bind="BundleLineUoms[lineKey]">
+                                                                <option value="unit">unit</option>
+                                                                <option value="session">session</option>
+                                                                <option value="piece">piece</option>
+                                                                <option value="set">set</option>
+                                                                <option value="bottle">bottle</option>
+                                                                <option value="box">box</option>
+                                                                <option value="gram">gram</option>
+                                                                <option value="ml">ml</option>
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <input class="senang-package-item-input"
+                                                                   type="number"
+                                                                   min="1"
+                                                                   step="1"
+                                                                   @bind="BundleLineQuantities[lineKey]" />
+                                                        </div>
+                                                        <div class="senang-package-cell-center">
+                                                            <button type="button"
+                                                                    class="senang-package-remove-btn"
+                                                                    title="Remove"
+                                                                    @onclick="() => RemoveBundleService(service)">
+                                                                &times;
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                }
+
+                                                @foreach (var product in SelectedBundleProducts.OrderBy(item => item.Type))
+                                                {
+                                                    var lineKey = BundleProductKey(product);
+                                                    <div class="senang-package-item-row">
+                                                        <div class="senang-package-col-item">
+                                                            <strong>@product.Type</strong>
+                                                            <small>Product · @product.Category</small>
+                                                        </div>
+                                                        <div class="senang-package-cell-center">
+                                                            <input class="senang-package-checkbox"
+                                                                   type="checkbox"
+                                                                   checked="@BundleDeferredServiceIds.Contains(lineKey)"
+                                                                   @onchange="(ChangeEventArgs e) => SetBundleDeferred(lineKey, e.Value is true)" />
+                                                        </div>
+                                                        <div>
+                                                            <input class="senang-package-item-input"
+                                                                   type="number"
+                                                                   min="0"
+                                                                   step="0.01"
+                                                                   @bind="BundleLineUnitPrices[lineKey]" />
+                                                        </div>
+                                                        <div>
+                                                            <select class="senang-package-item-input" @bind="BundleLineUoms[lineKey]">
+                                                                <option value="unit">unit</option>
+                                                                <option value="session">session</option>
+                                                                <option value="piece">piece</option>
+                                                                <option value="set">set</option>
+                                                                <option value="bottle">bottle</option>
+                                                                <option value="box">box</option>
+                                                                <option value="gram">gram</option>
+                                                                <option value="ml">ml</option>
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <input class="senang-package-item-input"
+                                                                   type="number"
+                                                                   min="1"
+                                                                   step="1"
+                                                                   @bind="BundleLineQuantities[lineKey]" />
+                                                        </div>
+                                                        <div class="senang-package-cell-center">
+                                                            <button type="button"
+                                                                    class="senang-package-remove-btn"
+                                                                    title="Remove"
+                                                                    @onclick="() => RemoveBundleProduct(product)">
+                                                                &times;
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                }
+                                            </div>
                                         }
                                     </div>
                                 }
                                 else
                                 {
-                                    <div class="senang-editor__form-stack">
-                                        <div class="senang-editor__row">
-                                            <div class="senang-editor__field">
-                                                <label>Member Type</label>
-                                                <select @bind="NewBundleTriggeredMemberTypeId">
-                                                    <option value="">Select member type</option>
-                                                    @foreach (var memberType in MemberTypeItems.Where(item => item.Active))
-                                                    {
-                                                        <option value="@memberType.MemberTypeID">@memberType.MemberTypeName</option>
-                                                    }
-                                                </select>
-                                            </div>
-                                            <div class="senang-editor__field">
-                                                <label>Membership Credit</label>
-                                                <input type="number" min="0" step="0.01" @bind="NewBundleMemberCredit" />
-                                            </div>
+                                    <div class="senang-package-form-section">
+                                        <div class="senang-package-form-group">
+                                            <label>Credit Expiry (Days)</label>
+                                            <input type="number"
+                                                   min="1"
+                                                   placeholder="365"
+                                                   @bind="NewBundleMemberExpiryDays" />
+                                            <small>Number of days before the credited amount expires after purchase.</small>
                                         </div>
+
+                                        @if (!string.IsNullOrWhiteSpace(NewBundleTriggeredMemberTypeId))
+                                        {
+                                            <div class="senang-package-membership-header">
+                                                <span class="senang-package-col-member">Member Type</span>
+                                                <span>Credit Amount</span>
+                                                <span></span>
+                                            </div>
+                                            <div class="senang-package-membership-row">
+                                                <div class="senang-package-col-member">
+                                                    <strong>@SelectedBundleMemberTypeName</strong>
+                                                </div>
+                                                <div>
+                                                    <input class="senang-package-item-input"
+                                                           type="number"
+                                                           min="0"
+                                                           step="0.01"
+                                                           @bind="NewBundleMemberCredit" />
+                                                </div>
+                                                <div class="senang-package-cell-center">
+                                                    <button type="button"
+                                                            class="senang-package-remove-btn"
+                                                            title="Remove"
+                                                            @onclick="RemoveBundleMemberType">
+                                                        &times;
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="senang-package-empty">
+                                                No membership type configured. Add one below.
+                                            </div>
+                                            <button type="button"
+                                                    class="senang-package-add-type-btn senang-package-add-type-btn--single"
+                                                    @onclick="OpenBundleMemberTypePicker">
+                                                + Add Member Type
+                                            </button>
+                                        }
                                     </div>
                                 }
                             </div>
@@ -1855,6 +1893,139 @@
         <!-- ? Added missing closing brace -->
 
     </div>
+
+    @if (IsBundleItemPickerOpen)
+    {
+        <div class="senang-package-picker-overlay" @onclick="CloseBundleItemPicker">
+            <div class="senang-package-picker-modal" @onclick:stopPropagation="true">
+                <div class="senang-package-picker-header">
+                    <button type="button" @onclick="CloseBundleItemPicker" aria-label="Close">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                    <h3>Select @BundleItemPickerType</h3>
+                    <span></span>
+                </div>
+                <div class="senang-package-picker-search">
+                    <i class="bi bi-search"></i>
+                    <input type="search"
+                           placeholder="Search @BundleItemPickerType..."
+                           @bind="BundleItemSearchQuery"
+                           @bind:event="oninput" />
+                </div>
+                <div class="senang-package-picker-list">
+                    @if (BundleItemPickerType == "Service")
+                    {
+                        @foreach (var service in BundlePickerServices)
+                        {
+                            <button type="button"
+                                    class="senang-package-picker-card"
+                                    @onclick="() => AddBundleServiceFromPicker(service)">
+                                <span>
+                                    <strong>@service.ServiceName</strong>
+                                    <small>@service.Category · @service.Sku</small>
+                                </span>
+                                <span class="senang-package-picker-price">MYR @service.Price.ToString("N2")</span>
+                                <span class="senang-package-picker-add">+</span>
+                            </button>
+                        }
+                        @if (!BundlePickerServices.Any())
+                        {
+                            <div class="senang-package-empty">No more services available.</div>
+                        }
+                    }
+                    else
+                    {
+                        @foreach (var product in BundlePickerProducts)
+                        {
+                            <button type="button"
+                                    class="senang-package-picker-card"
+                                    @onclick="() => AddBundleProductFromPicker(product)">
+                                <span>
+                                    <strong>@product.Type</strong>
+                                    <small>@product.Category · @product.Sku</small>
+                                </span>
+                                <span class="senang-package-picker-price">MYR @product.Price.ToString("N2")</span>
+                                <span class="senang-package-picker-add">+</span>
+                            </button>
+                        }
+                        @if (!BundlePickerProducts.Any())
+                        {
+                            <div class="senang-package-empty">No more products available.</div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (IsBundleMemberTypePickerOpen)
+    {
+        <div class="senang-package-picker-overlay" @onclick="() => IsBundleMemberTypePickerOpen = false">
+            <div class="senang-package-picker-modal" @onclick:stopPropagation="true">
+                <div class="senang-package-picker-header">
+                    <button type="button" @onclick="() => IsBundleMemberTypePickerOpen = false" aria-label="Close">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                    <h3>Select Member Type</h3>
+                    <span></span>
+                </div>
+                <div class="senang-package-picker-search">
+                    <i class="bi bi-search"></i>
+                    <input type="search"
+                           placeholder="Search member type..."
+                           @bind="BundleMemberTypeSearchQuery"
+                           @bind:event="oninput" />
+                </div>
+                <div class="senang-package-picker-list">
+                    @foreach (var memberType in BundlePickerMemberTypes)
+                    {
+                        <button type="button"
+                                class="senang-package-picker-card"
+                                @onclick="() => SelectBundleMemberType(memberType)">
+                            <span>
+                                <strong>@memberType.MemberTypeName</strong>
+                                <small>@memberType.MemberTypeID</small>
+                            </span>
+                            <span class="senang-package-picker-add">+</span>
+                        </button>
+                    }
+                    @if (!BundlePickerMemberTypes.Any())
+                    {
+                        <div class="senang-package-empty">No membership types available.</div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (IsBundleSectionPickerOpen)
+    {
+        <div class="senang-package-picker-overlay" @onclick="() => IsBundleSectionPickerOpen = false">
+            <div class="senang-package-picker-modal senang-package-picker-modal--compact" @onclick:stopPropagation="true">
+                <div class="senang-package-picker-header">
+                    <button type="button" @onclick="() => IsBundleSectionPickerOpen = false" aria-label="Close">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                    <h3>Select Item Group</h3>
+                    <span></span>
+                </div>
+                <div class="senang-package-picker-list">
+                    @foreach (var section in ServiceSections)
+                    {
+                        <button type="button"
+                                class="senang-package-picker-card"
+                                @onclick="() => SelectBundleSection(section.SupportingTableName)">
+                            <span>
+                                <strong>@section.SupportingTableName</strong>
+                            </span>
+                            <span class="senang-package-picker-add">+</span>
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
     @if (ShowSelectedDeleteConfirmModal)
     {
         <div class="service-modal-overlay" @onclick="CancelSelectedDeleteConfirmation">
@@ -2374,6 +2545,11 @@
     private HashSet<ServiceViewModel.ServiceItem> SelectedBundleServices { get; set; } = new();
     private HashSet<InventoryViewModel.InventoryItem> SelectedBundleProducts { get; set; } = new();
     private string BundleItemPickerType { get; set; } = "Service";
+    private bool IsBundleItemPickerOpen { get; set; }
+    private string BundleItemSearchQuery { get; set; } = string.Empty;
+    private bool IsBundleMemberTypePickerOpen { get; set; }
+    private string BundleMemberTypeSearchQuery { get; set; } = string.Empty;
+    private bool IsBundleSectionPickerOpen { get; set; }
     private int SelectedBundleItemCount => SelectedBundleServices.Count + SelectedBundleProducts.Count;
     private Dictionary<string, decimal> BundleLineQuantities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, decimal> BundleLineUnitPrices { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -2383,6 +2559,43 @@
     private bool IsSavingBundle { get; set; }
     private string? BundleApiError { get; set; }
     private string BundleEditorTab { get; set; } = "Info";
+
+    private IEnumerable<ServiceViewModel.ServiceItem> BundlePickerServices =>
+        BundleEligibleServices
+            .Where(service =>
+                !SelectedBundleServices.Contains(service) &&
+                (string.IsNullOrWhiteSpace(BundleItemSearchQuery) ||
+                 service.ServiceName.Contains(BundleItemSearchQuery, StringComparison.OrdinalIgnoreCase) ||
+                 service.Sku.Contains(BundleItemSearchQuery, StringComparison.OrdinalIgnoreCase) ||
+                 service.Category.Contains(BundleItemSearchQuery, StringComparison.OrdinalIgnoreCase)))
+            .OrderBy(service => service.ServiceName);
+
+    private IEnumerable<InventoryViewModel.InventoryItem> BundlePickerProducts =>
+        BundleEligibleProducts
+            .Where(product =>
+                !SelectedBundleProducts.Contains(product) &&
+                (string.IsNullOrWhiteSpace(BundleItemSearchQuery) ||
+                 product.Type.Contains(BundleItemSearchQuery, StringComparison.OrdinalIgnoreCase) ||
+                 product.Sku.Contains(BundleItemSearchQuery, StringComparison.OrdinalIgnoreCase) ||
+                 product.Category.Contains(BundleItemSearchQuery, StringComparison.OrdinalIgnoreCase)))
+            .OrderBy(product => product.Type);
+
+    private IEnumerable<MembershipTypeDM> BundlePickerMemberTypes =>
+        MemberTypeItems
+            .Where(item =>
+                item.Active &&
+                (string.IsNullOrWhiteSpace(BundleMemberTypeSearchQuery) ||
+                 item.MemberTypeName.Contains(BundleMemberTypeSearchQuery, StringComparison.OrdinalIgnoreCase) ||
+                 item.MemberTypeID.Contains(BundleMemberTypeSearchQuery, StringComparison.OrdinalIgnoreCase)))
+            .OrderBy(item => item.MemberTypeName);
+
+    private string SelectedBundleMemberTypeName =>
+        string.IsNullOrWhiteSpace(NewBundleTriggeredMemberTypeId)
+            ? string.Empty
+            : MemberTypeItems.FirstOrDefault(item =>
+                string.Equals(item.MemberTypeID, NewBundleTriggeredMemberTypeId, StringComparison.OrdinalIgnoreCase))
+                ?.MemberTypeName
+              ?? NewBundleTriggeredMemberTypeId;
 
     // Bundle delete mode properties
     private bool IsBundleDeleteMode { get; set; }
@@ -4815,6 +5028,11 @@
         SelectedBundleServices.Clear();
         SelectedBundleProducts.Clear();
         BundleItemPickerType = "Service";
+        IsBundleItemPickerOpen = false;
+        BundleItemSearchQuery = string.Empty;
+        IsBundleMemberTypePickerOpen = false;
+        BundleMemberTypeSearchQuery = string.Empty;
+        IsBundleSectionPickerOpen = false;
         BundleLineQuantities.Clear();
         BundleLineUnitPrices.Clear();
         BundleLineUoms.Clear();
@@ -5258,6 +5476,92 @@
 
     private static string BundleProductKey(InventoryViewModel.InventoryItem product) =>
         $"P:{(!string.IsNullOrWhiteSpace(product.MasterAccountId) ? product.MasterAccountId : product.Sku)}";
+
+    private void OpenBundleItemPicker(string itemType)
+    {
+        BundleItemPickerType = itemType;
+        BundleItemSearchQuery = string.Empty;
+        IsBundleItemPickerOpen = true;
+        BundleEditorTab = "Items";
+    }
+
+    private void CloseBundleItemPicker()
+    {
+        IsBundleItemPickerOpen = false;
+        BundleItemSearchQuery = string.Empty;
+    }
+
+    private void AddBundleServiceFromPicker(ServiceViewModel.ServiceItem service)
+    {
+        if (!SelectedBundleServices.Contains(service))
+        {
+            SelectedBundleServices.Add(service);
+            var key = BundleServiceKey(service);
+            BundleLineQuantities[key] = 1m;
+            BundleLineUnitPrices[key] = Math.Max(0m, service.Price);
+            BundleLineUoms[key] = string.IsNullOrWhiteSpace(service.UnitOfMeasure)
+                ? "unit"
+                : service.UnitOfMeasure;
+        }
+
+        CloseBundleItemPicker();
+    }
+
+    private void AddBundleProductFromPicker(InventoryViewModel.InventoryItem product)
+    {
+        if (!SelectedBundleProducts.Contains(product))
+        {
+            SelectedBundleProducts.Add(product);
+            var key = BundleProductKey(product);
+            BundleLineQuantities[key] = 1m;
+            BundleLineUnitPrices[key] = Math.Max(0m, product.Price);
+            BundleLineUoms[key] = "unit";
+        }
+
+        CloseBundleItemPicker();
+    }
+
+    private void RemoveBundleService(ServiceViewModel.ServiceItem service)
+    {
+        SelectedBundleServices.Remove(service);
+        RemoveBundleLineState(BundleServiceKey(service));
+    }
+
+    private void RemoveBundleProduct(InventoryViewModel.InventoryItem product)
+    {
+        SelectedBundleProducts.Remove(product);
+        RemoveBundleLineState(BundleProductKey(product));
+    }
+
+    private void OpenBundleMemberTypePicker()
+    {
+        BundleMemberTypeSearchQuery = string.Empty;
+        IsBundleMemberTypePickerOpen = true;
+    }
+
+    private void SelectBundleMemberType(MembershipTypeDM memberType)
+    {
+        NewBundleTriggeredMemberTypeId = memberType.MemberTypeID;
+        IsBundleMemberTypePickerOpen = false;
+        BundleMemberTypeSearchQuery = string.Empty;
+    }
+
+    private void RemoveBundleMemberType()
+    {
+        NewBundleTriggeredMemberTypeId = string.Empty;
+        NewBundleMemberCredit = 0m;
+    }
+
+    private void OpenBundleSectionPicker()
+    {
+        IsBundleSectionPickerOpen = true;
+    }
+
+    private void SelectBundleSection(string sectionName)
+    {
+        NewBundleSection = sectionName;
+        IsBundleSectionPickerOpen = false;
+    }
 
     private void ToggleServiceSelection(ServiceViewModel.ServiceItem service)
     {
