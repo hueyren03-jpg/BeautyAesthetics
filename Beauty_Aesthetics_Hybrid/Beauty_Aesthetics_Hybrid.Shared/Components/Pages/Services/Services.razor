@@ -353,7 +353,7 @@
                                 @if (ServiceEditorTab == "Info")
                                 {
                                     <div class="senang-editor__form-stack">
-                                        <div class="senang-editor__row senang-editor__row--code-name">
+                                        <div class="senang-editor__row senang-editor__row--code-name service-code-name-row">
                                             <div class="senang-editor__field senang-editor__field--code">
                                                 <label>Display Code</label>
                                                 <input type="text" @bind="NewServiceSKU" placeholder="Display code" />
@@ -420,12 +420,16 @@
 
                                         <div class="senang-editor__field">
                                             <label>Visible at Branch</label>
-                                            <select @bind="NewServiceVisibleBranchId">
-                                                @foreach (var branchItem in BranchSession.AvailableBranches)
-                                                {
-                                                    <option value="@branchItem.Id">@branchItem.DisplayName</option>
-                                                }
-                                            </select>
+                                            <button type="button"
+                                                    class="service-branch-selector"
+                                                    @onclick="OpenServiceBranchSelector">
+                                                <span>
+                                                    @(SelectedServiceVisibleBranchIds.Count > 0
+                                                        ? $"{SelectedServiceVisibleBranchIds.Count} Selected"
+                                                        : "Select Branches")
+                                                </span>
+                                                <i class="bi bi-chevron-right"></i>
+                                            </button>
                                         </div>
                                     </div>
                                 }
@@ -1666,17 +1670,6 @@
                                             </div>
                                         </div>
 
-                                        <div class="senang-package-quick-actions">
-                                            <button type="button" @onclick='() => OpenBundleItemPicker("Service")'>
-                                                <i class="bi bi-scissors"></i>
-                                                + Add Service
-                                            </button>
-                                            <button type="button" @onclick='() => OpenBundleItemPicker("Product")'>
-                                                <i class="bi bi-box"></i>
-                                                + Add Product
-                                            </button>
-                                        </div>
-
                                         @if (SelectedBundleItemCount > 0)
                                         {
                                             <div class="senang-package-selected-summary">
@@ -1691,14 +1684,9 @@
                                     <div class="senang-package-form-section">
                                         <div class="senang-package-row-group senang-package-row-group--actions">
                                             <button type="button"
-                                                    class="senang-package-add-type-btn"
-                                                    @onclick='() => OpenBundleItemPicker("Service")'>
-                                                + Add Service
-                                            </button>
-                                            <button type="button"
-                                                    class="senang-package-add-type-btn"
-                                                    @onclick='() => OpenBundleItemPicker("Product")'>
-                                                + Add Product
+                                                    class="senang-package-add-type-btn senang-package-add-type-btn--single"
+                                                    @onclick="OpenBundleItemPicker">
+                                                + Add Item
                                             </button>
                                         </div>
 
@@ -1849,11 +1837,11 @@
                                                     <strong>@SelectedBundleMemberTypeName</strong>
                                                 </div>
                                                 <div>
-                                                    <input class="senang-package-item-input"
-                                                           type="number"
-                                                           min="0"
-                                                           step="0.01"
-                                                           @bind="NewBundleMemberCredit" />
+                                                    <button type="button"
+                                                            class="senang-package-credit-editor"
+                                                            @onclick="OpenBundleMemberCreditEditor">
+                                                        @NewBundleMemberCredit.ToString("N2")
+                                                    </button>
                                                 </div>
                                                 <div class="senang-package-cell-center">
                                                     <button type="button"
@@ -1888,6 +1876,44 @@
 
     </div>
 
+    @if (IsServiceBranchSelectorOpen)
+    {
+        <div class="senang-package-picker-overlay" @onclick="() => IsServiceBranchSelectorOpen = false">
+            <div class="senang-package-picker-modal senang-package-picker-modal--compact" @onclick:stopPropagation="true">
+                <div class="senang-package-picker-header">
+                    <span></span>
+                    <h3>Visible at Branch</h3>
+                    <button type="button" @onclick="() => IsServiceBranchSelectorOpen = false" aria-label="Close">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+                <div class="service-branch-selection-list">
+                    @foreach (var branchItem in BranchSession.AvailableBranches)
+                    {
+                        var isSelected = SelectedServiceVisibleBranchIds.Contains(branchItem.Id);
+                        <button type="button"
+                                class="service-branch-selection-row"
+                                @onclick="() => ToggleServiceVisibleBranch(branchItem.Id)">
+                            <span class="service-branch-checkbox @(isSelected ? "checked" : string.Empty)">
+                                @if (isSelected)
+                                {
+                                    <i class="bi bi-check-lg"></i>
+                                }
+                            </span>
+                            <span class="service-branch-selection-copy">
+                                <strong>@branchItem.DisplayName</strong>
+                                <small>@branchItem.Id</small>
+                            </span>
+                        </button>
+                    }
+                </div>
+                <div class="service-branch-selection-footer">
+                    <button type="button" @onclick="() => IsServiceBranchSelectorOpen = false">Confirm</button>
+                </div>
+            </div>
+        </div>
+    }
+
     @if (IsBundleItemPickerOpen)
     {
         <div class="senang-package-picker-overlay" @onclick="CloseBundleItemPicker">
@@ -1896,8 +1922,20 @@
                     <button type="button" @onclick="CloseBundleItemPicker" aria-label="Close">
                         <i class="bi bi-x-lg"></i>
                     </button>
-                    <h3>Select @BundleItemPickerType</h3>
+                    <h3>Select Package Item</h3>
                     <span></span>
+                </div>
+                <div class="senang-package-picker-kind">
+                    <button type="button"
+                            class="@(BundleItemPickerType == "Service" ? "active" : string.Empty)"
+                            @onclick='() => BundleItemPickerType = "Service"'>
+                        Service
+                    </button>
+                    <button type="button"
+                            class="@(BundleItemPickerType == "Product" ? "active" : string.Empty)"
+                            @onclick='() => BundleItemPickerType = "Product"'>
+                        Product
+                    </button>
                 </div>
                 <div class="senang-package-picker-search">
                     <i class="bi bi-search"></i>
@@ -1987,6 +2025,40 @@
                     {
                         <div class="senang-package-empty">No membership types available.</div>
                     }
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (IsBundleMemberCreditEditorOpen)
+    {
+        <div class="senang-package-picker-overlay" @onclick="() => IsBundleMemberCreditEditorOpen = false">
+            <div class="senang-package-credit-modal" @onclick:stopPropagation="true">
+                <div class="senang-package-picker-header">
+                    <button type="button" @onclick="() => IsBundleMemberCreditEditorOpen = false" aria-label="Close">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                    <h3>Membership Credit</h3>
+                    <span></span>
+                </div>
+                <div class="senang-package-credit-modal__body">
+                    <label>Credit Amount</label>
+                    <input type="number"
+                           min="0"
+                           step="0.01"
+                           @bind="BundleMemberCreditDraft" />
+                </div>
+                <div class="senang-package-credit-modal__footer">
+                    <button type="button"
+                            class="senang-package-credit-cancel"
+                            @onclick="() => IsBundleMemberCreditEditorOpen = false">
+                        Cancel
+                    </button>
+                    <button type="button"
+                            class="senang-package-credit-save"
+                            @onclick="SaveBundleMemberCredit">
+                        Done
+                    </button>
                 </div>
             </div>
         </div>
@@ -2421,7 +2493,8 @@
     private string NewServiceBarcode { get; set; } = string.Empty;
     private string NewServiceUom { get; set; } = "unit";
     private string NewServiceUomId { get; set; } = string.Empty;
-    private string NewServiceVisibleBranchId { get; set; } = "HQ";
+    private HashSet<string> SelectedServiceVisibleBranchIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    private bool IsServiceBranchSelectorOpen { get; set; }
     private string NewServiceDescription { get; set; } = string.Empty;
     private string NewServiceImagePath { get; set; } = string.Empty;
     private string NewServiceImageFileName { get; set; } = string.Empty;
@@ -2543,6 +2616,8 @@
     private string BundleItemSearchQuery { get; set; } = string.Empty;
     private bool IsBundleMemberTypePickerOpen { get; set; }
     private string BundleMemberTypeSearchQuery { get; set; } = string.Empty;
+    private bool IsBundleMemberCreditEditorOpen { get; set; }
+    private decimal BundleMemberCreditDraft { get; set; }
     private bool IsBundleSectionPickerOpen { get; set; }
     private int SelectedBundleItemCount => SelectedBundleServices.Count + SelectedBundleProducts.Count;
     private Dictionary<string, decimal> BundleLineQuantities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -4520,7 +4595,9 @@
         NewServiceBarcode = string.Empty;
         NewServiceUom = "unit";
         NewServiceUomId = string.Empty;
-        NewServiceVisibleBranchId = ServiceBranchId;
+        SelectedServiceVisibleBranchIds.Clear();
+        SelectedServiceVisibleBranchIds.Add(ServiceBranchId);
+        IsServiceBranchSelectorOpen = false;
         NewServiceDescription = string.Empty;
         NewServiceImagePath = string.Empty;
         NewServiceImageFileName = string.Empty;
@@ -4582,22 +4659,32 @@
                 IsServiceRedeemPointEnabled ? Math.Max(0m, NewServiceRedeemPoint) : 0m,
                 string.Join(",", SelectedServiceBomProductIds.OrderBy(id => id, StringComparer.OrdinalIgnoreCase)));
 
-            var visibleBranchId = string.IsNullOrWhiteSpace(NewServiceVisibleBranchId)
-                ? ServiceBranchId
-                : NewServiceVisibleBranchId;
-            var visibleBranchGroupId = BranchGroupIdFor(visibleBranchId);
+            if (SelectedServiceVisibleBranchIds.Count == 0)
+            {
+                SelectedServiceVisibleBranchIds.Add(ServiceBranchId);
+            }
+
+            var visibleBranches = SelectedServiceVisibleBranchIds
+                .Select(branchId => new ServiceBranchSelection(
+                    branchId,
+                    BranchGroupIdFor(branchId)))
+                .ToList();
+
+            var primaryBranch = visibleBranches.First();
 
             var result = IsEditMode
                 ? await ServiceItemService.UpdateServiceAsync(
                     service,
-                    visibleBranchId,
-                    branchGroupId: visibleBranchGroupId,
-                    editorDetails: editorDetails)
+                    primaryBranch.BranchId,
+                    branchGroupId: primaryBranch.GroupId,
+                    editorDetails: editorDetails,
+                    visibleBranches: visibleBranches)
                 : await ServiceItemService.CreateServiceAsync(
                     service,
-                    visibleBranchId,
-                    branchGroupId: visibleBranchGroupId,
-                    editorDetails: editorDetails);
+                    primaryBranch.BranchId,
+                    branchGroupId: primaryBranch.GroupId,
+                    editorDetails: editorDetails,
+                    visibleBranches: visibleBranches);
 
             if (!result.Success)
             {
@@ -4653,9 +4740,12 @@
         NewServiceUomId = !string.IsNullOrWhiteSpace(SelectedService.UnitOfMeasureId)
             ? SelectedService.UnitOfMeasureId
             : NewServiceUom;
-        NewServiceVisibleBranchId = string.IsNullOrWhiteSpace(SelectedService.BranchId)
-            ? ServiceBranchId
-            : SelectedService.BranchId;
+        SelectedServiceVisibleBranchIds.Clear();
+        SelectedServiceVisibleBranchIds.Add(
+            string.IsNullOrWhiteSpace(SelectedService.BranchId)
+                ? ServiceBranchId
+                : SelectedService.BranchId);
+        IsServiceBranchSelectorOpen = false;
         NewServiceDescription = SelectedService.Description;
         NewServiceImagePath = SelectedService.ImagePath;
         NewServiceImageFileName = SelectedService.ImageFileName;
@@ -5026,6 +5116,8 @@
         BundleItemSearchQuery = string.Empty;
         IsBundleMemberTypePickerOpen = false;
         BundleMemberTypeSearchQuery = string.Empty;
+        IsBundleMemberCreditEditorOpen = false;
+        BundleMemberCreditDraft = 0m;
         IsBundleSectionPickerOpen = false;
         BundleLineQuantities.Clear();
         BundleLineUnitPrices.Clear();
@@ -5471,9 +5563,26 @@
     private static string BundleProductKey(InventoryViewModel.InventoryItem product) =>
         $"P:{(!string.IsNullOrWhiteSpace(product.MasterAccountId) ? product.MasterAccountId : product.Sku)}";
 
-    private void OpenBundleItemPicker(string itemType)
+    private void OpenServiceBranchSelector()
     {
-        BundleItemPickerType = itemType;
+        IsServiceBranchSelectorOpen = true;
+    }
+
+    private void ToggleServiceVisibleBranch(string branchId)
+    {
+        if (SelectedServiceVisibleBranchIds.Contains(branchId))
+        {
+            SelectedServiceVisibleBranchIds.Remove(branchId);
+        }
+        else
+        {
+            SelectedServiceVisibleBranchIds.Add(branchId);
+        }
+    }
+
+    private void OpenBundleItemPicker()
+    {
+        BundleItemPickerType = "Service";
         BundleItemSearchQuery = string.Empty;
         IsBundleItemPickerOpen = true;
         BundleEditorTab = "Items";
@@ -5544,6 +5653,19 @@
     {
         NewBundleTriggeredMemberTypeId = string.Empty;
         NewBundleMemberCredit = 0m;
+        IsBundleMemberCreditEditorOpen = false;
+    }
+
+    private void OpenBundleMemberCreditEditor()
+    {
+        BundleMemberCreditDraft = NewBundleMemberCredit;
+        IsBundleMemberCreditEditorOpen = true;
+    }
+
+    private void SaveBundleMemberCredit()
+    {
+        NewBundleMemberCredit = Math.Max(0m, BundleMemberCreditDraft);
+        IsBundleMemberCreditEditorOpen = false;
     }
 
     private void OpenBundleSectionPicker()
