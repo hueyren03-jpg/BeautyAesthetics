@@ -56,14 +56,20 @@ public sealed class ServiceItemService : IServiceItemService
     public async Task<ApiCallResult<bool>> CreateServiceAsync(
         ServiceViewModel.ServiceItem service,
         string branchId = "hq",
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string branchGroupId = "")
     {
         var normalizedBranchId = NormalizeBranchId(branchId);
         var record = CreateServiceRecord(service, normalizedBranchId);
         record.SaveAction = EntityState.Added;
         record.IsDirty = true;
 
-        var request = CreateServiceRequest(record, normalizedBranchId, service.Price, "Added");
+        var request = CreateServiceRequest(
+            record,
+            normalizedBranchId,
+            service.Price,
+            "Added",
+            NormalizeBranchGroupId(branchGroupId, normalizedBranchId));
         var result = await serviceInventoryAC.CreateFullAsync(request, cancellationToken);
 
         var saveResult = ToSaveResult(result, "Unable to create service.");
@@ -82,7 +88,8 @@ public sealed class ServiceItemService : IServiceItemService
     public async Task<ApiCallResult<bool>> UpdateServiceAsync(
         ServiceViewModel.ServiceItem service,
         string branchId = "hq",
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string branchGroupId = "")
     {
         if (string.IsNullOrWhiteSpace(service.MasterAccountId))
         {
@@ -108,7 +115,8 @@ public sealed class ServiceItemService : IServiceItemService
             loadResult.Value,
             normalizedBranchId,
             service.Price,
-            "Changed");
+            "Changed",
+            NormalizeBranchGroupId(branchGroupId, normalizedBranchId));
         var result = await serviceInventoryAC.UpdateFullAsync(request, cancellationToken);
 
         var saveResult = ToSaveResult(result, "Unable to update service.");
@@ -181,7 +189,9 @@ public sealed class ServiceItemService : IServiceItemService
             string.Equals(record.AccountStatus, "Active", StringComparison.OrdinalIgnoreCase),
             record.VendorItemCode ?? string.Empty,
             FirstNonEmpty(record.UnitOfMeasureName, record.UnitOfMeasureID, "unit") ?? "unit",
-            record.SalesDescription ?? string.Empty);
+            record.SalesDescription ?? string.Empty,
+            record.ItemGroupID ?? string.Empty,
+            record.UnitOfMeasureID ?? string.Empty);
     }
 
     private static InventoryDM CreateServiceRecord(
@@ -223,6 +233,9 @@ public sealed class ServiceItemService : IServiceItemService
             ? service.ServiceName.Trim()
             : service.Description.Trim();
         record.DisplayCode = service.Sku.Trim();
+        record.ItemGroupID = string.IsNullOrWhiteSpace(service.SectionId)
+            ? null
+            : service.SectionId.Trim();
         record.ItemGroupName = service.Category.Trim();
         record.ServiceMinutes = ParseDuration(service.DurationSpend);
         record.BufferMinutes = Math.Max(0, service.BufferTimeMinutes);
@@ -233,9 +246,20 @@ public sealed class ServiceItemService : IServiceItemService
         record.IsTaxInclusive = service.IsTaxInclusive;
         record.AccountStatus = service.IsActive ? "Active" : "Inactive";
         record.VendorItemCode = service.Barcode?.Trim() ?? string.Empty;
-        record.UnitOfMeasureID = string.IsNullOrWhiteSpace(service.UnitOfMeasure)
-            ? "unit"
+        record.UnitOfMeasureID = !string.IsNullOrWhiteSpace(service.UnitOfMeasureId)
+            ? service.UnitOfMeasureId.Trim()
+            : string.IsNullOrWhiteSpace(service.UnitOfMeasure)
+                ? "unit"
+                : service.UnitOfMeasure.Trim();
+        record.UnitOfMeasureName = string.IsNullOrWhiteSpace(service.UnitOfMeasure)
+            ? record.UnitOfMeasureID
             : service.UnitOfMeasure.Trim();
+        record.ImagePath = string.IsNullOrWhiteSpace(service.ImagePath)
+            ? null
+            : service.ImagePath.Trim();
+        record.ImageFileName = string.IsNullOrWhiteSpace(service.ImageFileName)
+            ? null
+            : service.ImageFileName.Trim();
         record.BranchID = NormalizeBranchId(branchId);
     }
 
@@ -244,6 +268,13 @@ public sealed class ServiceItemService : IServiceItemService
         return string.IsNullOrWhiteSpace(branchId)
             ? "HQ"
             : branchId.Trim().ToUpperInvariant();
+    }
+
+    private static string NormalizeBranchGroupId(string branchGroupId, string branchId)
+    {
+        return string.IsNullOrWhiteSpace(branchGroupId)
+            ? branchId
+            : branchGroupId.Trim();
     }
 
     private static int ParseDuration(string duration)
@@ -256,7 +287,8 @@ public sealed class ServiceItemService : IServiceItemService
         InventoryDM record,
         string branchId,
         decimal price,
-        string branchSaveAction)
+        string branchSaveAction,
+        string branchGroupId)
     {
         return new InventoryPackageRequestDTO
         {
@@ -269,7 +301,7 @@ public sealed class ServiceItemService : IServiceItemService
                     BranchId = branchId,
                     BranchPrice = Math.Max(0, price),
                     IsEnabled = true,
-                    GroupId = branchId,
+                    GroupId = branchGroupId,
                     SaveAction = branchSaveAction,
                     IsDirty = true
                 }
