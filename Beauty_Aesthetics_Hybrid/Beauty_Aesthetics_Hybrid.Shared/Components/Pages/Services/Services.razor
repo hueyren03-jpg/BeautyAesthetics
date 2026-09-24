@@ -14,6 +14,8 @@
 @using Beauty_Aesthetics_WebPos.APIClient.ResultPattern
 @inject IJSRuntime JSRuntime
 @inject IServiceItemService ServiceItemService
+@inject IProductInventoryService ProductInventoryService
+@inject Beauty_Aesthetics_WebPos.APIClient.SupportingTableAC SupportingTableAC
 @inject IMemberCreditService MemberCreditService
 @inject IPackageService PackageService
 @inject IMembershipTypeService MembershipTypeService
@@ -334,57 +336,105 @@
                             </div>
                             <div class="service-modal__body">
                                 <form class="service-form" @onsubmit:preventDefault>
-                                    <div class="service-form__field">
-                                        <label>@L["ServiceName"] <span class="service-form__required">*</span></label>
-                                        <input type="text" @bind="NewServiceName" placeholder="@L["EnterServiceName"]" required />
-                                    </div>
+                                    <div class="bundle-form__section">
+                                        <h3 class="bundle-form__section-title">Info</h3>
 
-                                    <div class="service-form__field">
-                                        <label>@L["SkuCode"] <span class="service-form__required">*</span></label>
-                                        <input type="text" @bind="NewServiceSKU" placeholder="@L["EnterSkuCode"]" required />
-                                    </div>
+                                        <div class="service-form__field">
+                                            <label>Display Code</label>
+                                            <input type="text" @bind="NewServiceSKU" placeholder="Display code" />
+                                        </div>
 
-                                    <div class="service-form__field">
-                                        <label>@L["Category"] <span class="service-form__required">*</span></label>
-                                        <select @bind="NewServiceCategory" required>
-                                            <option value="">@L["SelectCategory"]</option>
-                                            <option value="Facial">@L["Facial"]</option>
-                                            <option value="Body">@L["Body"]</option>
-                                            <option value="Hair">@L["Hair"]</option>
-                                            <option value="Massage">@L["Massage"]</option>
-                                            <option value="Spa">@L["Spa"]</option>
-                                        </select>
-                                    </div>
+                                        <div class="service-form__field">
+                                            <label>Name <span class="service-form__required">*</span></label>
+                                            <input type="text" @bind="NewServiceName" placeholder="Service Name" required />
+                                        </div>
 
-                                    <div class="service-form__field">
-                                        <label>@L["DurationMinutes"] <span class="service-form__required">*</span></label>
-                                        <input type="number" @bind="NewServiceDuration" placeholder="0" min="0" required />
-                                    </div>
+                                        <div class="service-form__field">
+                                            <label>Select Section <span class="service-form__required">*</span></label>
+                                            <select value="@NewServiceSectionId" @onchange="OnServiceSectionChanged" required>
+                                                <option value="">Select Section</option>
+                                                @foreach (var section in ServiceSections.Where(section => section.Active))
+                                                {
+                                                    <option value="@section.SupportingTableID">@section.SupportingTableName</option>
+                                                }
+                                            </select>
+                                        </div>
 
-                                    <div class="service-form__field">
-                                        <label>@L["BufferTimeMinutes"] <span class="service-form__required">*</span></label>
-                                        <input type="number" @bind="NewServiceBufferTime" placeholder="0" min="0" required />
-                                    </div>
+                                        <div class="service-form__field service-form__field--toggle">
+                                            <label>isActive</label>
+                                            <div class="service-form__toggle-container">
+                                                <label class="service-form__toggle">
+                                                    <input type="checkbox" @bind="NewServiceIsActive" />
+                                                    <span class="service-form__toggle-slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
 
-                                    <div class="service-form__field">
-                                        <label>@L["PriceMyr"]</label>
-                                        <input type="number" step="0.01" @bind="NewServicePrice" placeholder="0.00" min="0" />
-                                    </div>
+                                        <div class="service-form__field">
+                                            <label>Tax Code</label>
+                                            <input type="text" @bind="NewServiceTaxCode" placeholder="Tax Code" />
+                                        </div>
 
-                                    <div class="service-form__field service-form__field--toggle">
-                                        <label>@L["AddToPackageList"]</label>
-                                        <div class="service-form__toggle-container">
-                                            <label class="service-form__toggle">
-                                                <input type="checkbox" @bind="NewServiceAddToBundle" />
-                                                <span class="service-form__toggle-slider"></span>
-                                            </label>
-                                            <span class="service-form__toggle-label">@(NewServiceAddToBundle ? L["Yes"] : L["No"])</span>
+                                        <div class="service-form__field">
+                                            <label>Inclusive Tax</label>
+                                            <div class="service-form__toggle-container">
+                                                <label><input type="radio" name="serviceInclusiveTax" checked="@NewServiceTaxInclusive" @onchange="() => NewServiceTaxInclusive = true" /> Yes</label>
+                                                <label><input type="radio" name="serviceInclusiveTax" checked="@(!NewServiceTaxInclusive)" @onchange="() => NewServiceTaxInclusive = false" /> No</label>
+                                            </div>
+                                        </div>
+
+                                        <div class="service-form__field">
+                                            <label>Price (MYR)</label>
+                                            <input type="number" step="0.01" min="0" @bind="NewServicePrice" />
+                                        </div>
+
+                                        <div class="service-form__field">
+                                            <label>Cost (MYR)</label>
+                                            <input type="number" step="0.01" min="0" @bind="NewServiceCost" />
                                         </div>
                                     </div>
 
-                                    <div class="service-form__note">
-                                        <i class="bi bi-info-circle"></i>
-                                        <span>@L["AddToPackageListNote"]</span>
+                                    <div class="bundle-form__section">
+                                        <h3 class="bundle-form__section-title">Advance</h3>
+
+                                        <div class="service-form__field">
+                                            <label>Barcode</label>
+                                            <input type="text" @bind="NewServiceBarcode" placeholder="Scan or Type Barcode" />
+                                        </div>
+
+                                        <div class="service-form__field">
+                                            <label>UOM</label>
+                                            <select @bind="NewServiceUom">
+                                                <option value="centimeter">centimeter</option>
+                                                <option value="gram">gram</option>
+                                                <option value="inch">inch</option>
+                                                <option value="kati">kati</option>
+                                                <option value="kilogram">kilogram</option>
+                                                <option value="liter">liter</option>
+                                                <option value="meter">meter</option>
+                                                <option value="miligram">miligram</option>
+                                                <option value="mililiter">mililiter</option>
+                                                <option value="ounce">ounce</option>
+                                                <option value="piece">piece</option>
+                                                <option value="package">package</option>
+                                                <option value="unit">unit</option>
+                                            </select>
+                                        </div>
+
+                                        <div class="service-form__field">
+                                            <label>Point Balance</label>
+                                            <input type="number" step="1" min="0" @bind="NewServicePointBalance" />
+                                        </div>
+
+                                        <div class="service-form__field">
+                                            <label>Redeem Point</label>
+                                            <input type="number" step="1" min="0" @bind="NewServiceRedeemPoint" />
+                                        </div>
+
+                                        <div class="service-form__field">
+                                            <label>Bill of Material</label>
+                                            <input type="text" @bind="NewServiceBillOfMaterial" placeholder="Bill of Material" />
+                                        </div>
                                     </div>
                                 </form>
                             </div>
@@ -2234,10 +2284,21 @@
     private string NewServiceName { get; set; } = string.Empty;
     private string NewServiceSKU { get; set; } = string.Empty;
     private string NewServiceCategory { get; set; } = string.Empty;
+    private string NewServiceSectionId { get; set; } = string.Empty;
     private int NewServiceDuration { get; set; } = 0;
     private int NewServiceBufferTime { get; set; } = 0;
     private decimal NewServicePrice { get; set; } = 0.00m;
+    private decimal NewServiceCost { get; set; }
+    private string NewServiceTaxCode { get; set; } = string.Empty;
+    private bool NewServiceTaxInclusive { get; set; }
+    private bool NewServiceIsActive { get; set; } = true;
+    private string NewServiceBarcode { get; set; } = string.Empty;
+    private string NewServiceUom { get; set; } = "unit";
+    private decimal NewServicePointBalance { get; set; }
+    private decimal NewServiceRedeemPoint { get; set; }
+    private string NewServiceBillOfMaterial { get; set; } = string.Empty;
     private bool NewServiceAddToBundle { get; set; } = false;
+    private List<SupportingTableDM> ServiceSections { get; set; } = new();
     private bool IsSavingService { get; set; }
 
     // Delete mode properties
@@ -2635,14 +2696,43 @@
 
     protected override async Task OnInitializedAsync()
     {
-        InventoryItems = InventoryViewModel.Items.ToList();
+        InventoryItems.Clear();
         MemberCreditItems.Clear();
         Bundles.Clear();
+        await LoadServiceSectionsAsync();
+        await LoadProductsForPackageAsync();
         await LoadServiceItemsFromApiAsync();
         await LoadMemberCreditsFromApiAsync();
         await LoadPackagesFromApiAsync();
         await LoadMemberTypesFromApiAsync();
         await LoadMemberPointsFromApiAsync();
+    }
+
+    private async Task LoadServiceSectionsAsync()
+    {
+        var result = await SupportingTableAC.LoadListByTypeAsync(4);
+        ServiceSections = result.Success && result.Value is not null
+            ? result.Value
+                .Where(section => section.Active && !string.IsNullOrWhiteSpace(section.SupportingTableName))
+                .OrderBy(section => section.SupportingTableName)
+                .ToList()
+            : new List<SupportingTableDM>();
+    }
+
+    private async Task LoadProductsForPackageAsync()
+    {
+        var result = await ProductInventoryService.LoadProductsAsync("HQ");
+        InventoryItems = result.Success && result.Value is not null
+            ? result.Value.Where(item => !string.IsNullOrWhiteSpace(item.MasterAccountId)).ToList()
+            : new List<InventoryViewModel.InventoryItem>();
+    }
+
+    private void OnServiceSectionChanged(ChangeEventArgs args)
+    {
+        NewServiceSectionId = args.Value?.ToString() ?? string.Empty;
+        NewServiceCategory = ServiceSections.FirstOrDefault(section =>
+            string.Equals(section.SupportingTableID, NewServiceSectionId, StringComparison.OrdinalIgnoreCase))
+            ?.SupportingTableName ?? string.Empty;
     }
 
     private async Task LoadServiceItemsFromApiAsync()
@@ -3868,10 +3958,10 @@
         BundleDetailsItem = null;
     }
 
-    private void EditService(ServiceViewModel.ServiceItem service)
+    private async Task EditService(ServiceViewModel.ServiceItem service)
     {
         SelectedService = service;
-        ShowEditServiceForm();
+        await ShowEditServiceForm();
     }
 
     private void EditMemberCredit(MembershipViewModel.MemberCredit memberCredit)
@@ -4109,9 +4199,19 @@
         NewServiceName = string.Empty;
         NewServiceSKU = string.Empty;
         NewServiceCategory = string.Empty;
+        NewServiceSectionId = string.Empty;
         NewServiceDuration = 0;
         NewServiceBufferTime = 0;
         NewServicePrice = 0.00m;
+        NewServiceCost = 0m;
+        NewServiceTaxCode = string.Empty;
+        NewServiceTaxInclusive = false;
+        NewServiceIsActive = true;
+        NewServiceBarcode = string.Empty;
+        NewServiceUom = "unit";
+        NewServicePointBalance = 0m;
+        NewServiceRedeemPoint = 0m;
+        NewServiceBillOfMaterial = string.Empty;
         NewServiceAddToBundle = false;
         IsEditMode = false;
     }
@@ -4123,9 +4223,9 @@
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(NewServiceName) || string.IsNullOrWhiteSpace(NewServiceSKU))
+        if (string.IsNullOrWhiteSpace(NewServiceName) || string.IsNullOrWhiteSpace(NewServiceCategory))
         {
-            ServiceApiError = "Service name and SKU are required.";
+            ServiceApiError = "Name and Select Section are compulsory fields.";
             return;
         }
 
@@ -4138,15 +4238,29 @@
                 NewServiceSKU.Trim(),
                 NewServiceName.Trim(),
                 NewServiceCategory.Trim(),
-                $"{Math.Max(0, NewServiceDuration)} mins",
-                Math.Max(0, NewServiceBufferTime),
-                NewServiceAddToBundle,
+                "0 mins",
+                0,
+                false,
                 Math.Max(0, NewServicePrice),
-                IsEditMode ? SelectedService?.MasterAccountId : null);
+                IsEditMode ? SelectedService?.MasterAccountId : null,
+                Cost: Math.Max(0, NewServiceCost),
+                TaxCode: NewServiceTaxCode.Trim(),
+                IsTaxInclusive: NewServiceTaxInclusive,
+                IsActive: NewServiceIsActive,
+                Barcode: NewServiceBarcode.Trim(),
+                UnitOfMeasure: string.IsNullOrWhiteSpace(NewServiceUom) ? "unit" : NewServiceUom.Trim(),
+                Description: NewServiceName.Trim(),
+                SectionId: NewServiceSectionId,
+                UnitOfMeasureId: string.IsNullOrWhiteSpace(NewServiceUom) ? "unit" : NewServiceUom.Trim());
+
+            var editorDetails = new ServiceEditorDetails(
+                Math.Max(0m, NewServicePointBalance),
+                Math.Max(0m, NewServiceRedeemPoint),
+                NewServiceBillOfMaterial.Trim());
 
             var result = IsEditMode
-                ? await ServiceItemService.UpdateServiceAsync(service, "hq")
-                : await ServiceItemService.CreateServiceAsync(service, "hq");
+                ? await ServiceItemService.UpdateServiceAsync(service, "hq", editorDetails: editorDetails)
+                : await ServiceItemService.CreateServiceAsync(service, "hq", editorDetails: editorDetails);
 
             if (!result.Success)
             {
@@ -4163,7 +4277,7 @@
         }
     }
 
-    private void ShowEditServiceForm()
+    private async Task ShowEditServiceForm()
     {
         if (SelectedService == null) return;
 
@@ -4171,14 +4285,32 @@
         NewServiceName = SelectedService.ServiceName;
         NewServiceSKU = SelectedService.Sku;
         NewServiceCategory = SelectedService.Category;
-
-        // Parse duration from string (e.g., "60 mins" -> 60)
-        var durationStr = SelectedService.DurationSpend.Split(' ')[0];
-        NewServiceDuration = int.TryParse(durationStr, out var duration) ? duration : 0;
-
-        NewServiceBufferTime = SelectedService.BufferTimeMinutes;
+        NewServiceSectionId = !string.IsNullOrWhiteSpace(SelectedService.SectionId)
+            ? SelectedService.SectionId
+            : ServiceSections.FirstOrDefault(section =>
+                string.Equals(section.SupportingTableName, SelectedService.Category, StringComparison.OrdinalIgnoreCase))
+                ?.SupportingTableID ?? string.Empty;
         NewServicePrice = SelectedService.Price;
-        NewServiceAddToBundle = SelectedService.IsBundle;
+        NewServiceCost = SelectedService.Cost;
+        NewServiceTaxCode = SelectedService.TaxCode;
+        NewServiceTaxInclusive = SelectedService.IsTaxInclusive;
+        NewServiceIsActive = SelectedService.IsActive;
+        NewServiceBarcode = SelectedService.Barcode;
+        NewServiceUom = string.IsNullOrWhiteSpace(SelectedService.UnitOfMeasure) ? "unit" : SelectedService.UnitOfMeasure;
+        NewServicePointBalance = 0m;
+        NewServiceRedeemPoint = 0m;
+        NewServiceBillOfMaterial = string.Empty;
+
+        if (!string.IsNullOrWhiteSpace(SelectedService.MasterAccountId))
+        {
+            var details = await ServiceItemService.LoadServiceEditorDetailsAsync(SelectedService.MasterAccountId);
+            if (details.Success && details.Value is not null)
+            {
+                NewServicePointBalance = details.Value.PointBalance;
+                NewServiceRedeemPoint = details.Value.RedeemPoint;
+                NewServiceBillOfMaterial = details.Value.BillOfMaterial;
+            }
+        }
 
         IsAddServiceFormVisible = true;
     }
