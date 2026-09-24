@@ -13,11 +13,16 @@ public interface IServiceItemService
         string masterAccountId,
         CancellationToken cancellationToken = default);
 
+    Task<ApiCallResult<ServiceEditorDetails>> LoadServiceEditorDetailsAsync(
+        string masterAccountId,
+        CancellationToken cancellationToken = default);
+
     Task<ApiCallResult<bool>> CreateServiceAsync(
         ServiceViewModel.ServiceItem service,
         string branchId = "hq",
         CancellationToken cancellationToken = default,
-        string branchGroupId = "");
+        string branchGroupId = "",
+        ServiceEditorDetails? editorDetails = null);
 
     Task<ApiCallResult<bool>> DeleteServiceAsync(
         string masterAccountId,
@@ -26,5 +31,12 @@ public interface IServiceItemService
         ServiceViewModel.ServiceItem service,
         string branchId = "hq",
         CancellationToken cancellationToken = default,
-        string branchGroupId = "");
+        string branchGroupId = "",
+        ServiceEditorDetails? editorDetails = null);
 }
+
+public sealed record ServiceEditorDetails(
+    decimal PointBalance = 0m,
+    decimal RedeemPoint = 0m,
+    string BillOfMaterial = "");
+
