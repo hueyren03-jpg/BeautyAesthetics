@@ -158,7 +158,9 @@ public sealed class PackageService : IPackageService
                     package?.AccountName ?? header.AccountName),
                 GetPackageTerm(packageRemarks, 0),
                 GetPackageTerm(packageRemarks, 1),
-                GetPackageTerm(packageRemarks, 2)));
+                GetPackageTerm(packageRemarks, 2),
+                GetPackagePriceLimit(packageRemarks, "MIN_PRICE"),
+                GetPackagePriceLimit(packageRemarks, "MAX_PRICE")));
         }
 
         return ApiCallResult<IReadOnlyList<InventoryPackageSummary>>.Ok(
@@ -329,7 +331,9 @@ public sealed class PackageService : IPackageService
         SetInventoryProperty(
             record,
             "Remarks",
-            EncodePackageTerms(
+            EncodePackageEditorRemarks(
+                Math.Max(0m, package.MinPrice),
+                Math.Max(0m, package.MaxPrice),
                 package.TermCondition1,
                 package.TermCondition2,
                 package.TermCondition3));
@@ -594,10 +598,22 @@ public sealed class PackageService : IPackageService
         return salesDescription.Trim();
     }
 
-    private static string EncodePackageTerms(params string?[] terms) =>
-        string.Join(
+    private static string EncodePackageEditorRemarks(
+        decimal minPrice,
+        decimal maxPrice,
+        params string?[] terms)
+    {
+        static string Clean(string? value) =>
+            (value ?? string.Empty).Replace("\r", " ").Replace("\n", " ").Trim();
+
+        return string.Join(
             "\n",
-            terms.Select(term => (term ?? string.Empty).Replace("\r", " ").Replace("\n", " ").Trim()));
+            $"MIN_PRICE={minPrice.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+            $"MAX_PRICE={maxPrice.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+            $"TC1={Clean(terms.ElementAtOrDefault(0))}",
+            $"TC2={Clean(terms.ElementAtOrDefault(1))}",
+            $"TC3={Clean(terms.ElementAtOrDefault(2))}");
+    }
 
     private static string GetPackageTerm(string? encodedTerms, int index)
     {
@@ -606,12 +622,48 @@ public sealed class PackageService : IPackageService
             return string.Empty;
         }
 
-        var terms = encodedTerms
-            .Split('\n')
-            .Select(term => term.Trim())
+        var lines = encodedTerms.Split('\n');
+        var prefix = $"TC{index + 1}=";
+        var keyed = lines.FirstOrDefault(line =>
+            line.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+
+        if (keyed is not null)
+        {
+            return keyed[prefix.Length..].Trim();
+        }
+
+        var legacyTerms = lines
+            .Where(line =>
+                !line.StartsWith("MIN_PRICE=", StringComparison.OrdinalIgnoreCase) &&
+                !line.StartsWith("MAX_PRICE=", StringComparison.OrdinalIgnoreCase))
+            .Select(line => line.Trim())
             .ToArray();
 
-        return index >= 0 && index < terms.Length ? terms[index] : string.Empty;
+        return index >= 0 && index < legacyTerms.Length
+            ? legacyTerms[index]
+            : string.Empty;
+    }
+
+    private static decimal GetPackagePriceLimit(string? encodedTerms, string key)
+    {
+        if (string.IsNullOrWhiteSpace(encodedTerms))
+        {
+            return 0m;
+        }
+
+        var prefix = key + "=";
+        var value = encodedTerms
+            .Split('\n')
+            .FirstOrDefault(line => line.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+
+        return value is not null &&
+               decimal.TryParse(
+                   value[prefix.Length..],
+                   System.Globalization.NumberStyles.Any,
+                   System.Globalization.CultureInfo.InvariantCulture,
+                   out var result)
+            ? Math.Max(0m, result)
+            : 0m;
     }
 
     private static string? FirstNonEmpty(params string?[] values)
