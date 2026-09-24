@@ -80,7 +80,8 @@ public sealed class PackageService : IPackageService
                     line.AutoId.ValueKind is System.Text.Json.JsonValueKind.Null
                         or System.Text.Json.JsonValueKind.Undefined
                         ? null
-                        : line.AutoId.ToString()))
+                        : line.AutoId.ToString(),
+                    GetFirstObjectString(line, "UOM", "UnitOfMeasureID", "UnitOfMeasure", "UnitOfMeasureName")))
                 .ToList();
 
             var totalDuration = packageLines
@@ -374,6 +375,13 @@ public sealed class PackageService : IPackageService
             line.IsVoided = false;
             line.IsConfirmed = true;
             line.PackageQuantityTypeID = 0;
+            SetFirstObjectProperty(
+                line,
+                string.IsNullOrWhiteSpace(lineEdit.UnitOfMeasure) ? "unit" : lineEdit.UnitOfMeasure.Trim(),
+                "UOM",
+                "UnitOfMeasureID",
+                "UnitOfMeasure",
+                "UnitOfMeasureName");
             line.SaveAction = existing is null ? EntityState.Added : EntityState.Changed;
             line.IsDirty = true;
             record.lstPackage.Add(line);
@@ -507,6 +515,60 @@ public sealed class PackageService : IPackageService
             ? value
             : Convert.ChangeType(value, targetType);
         property.SetValue(record, converted);
+    }
+
+    private static string GetFirstObjectString(object source, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            var property = source.GetType().GetProperty(propertyName);
+            if (property is null || !property.CanRead)
+            {
+                continue;
+            }
+
+            var value = property.GetValue(source)?.ToString();
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        return "unit";
+    }
+
+    private static void SetFirstObjectProperty(object target, object? value, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            var property = target.GetType().GetProperty(propertyName);
+            if (property is null || !property.CanWrite)
+            {
+                continue;
+            }
+
+            try
+            {
+                var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+                var converted = value is null || targetType.IsInstanceOfType(value)
+                    ? value
+                    : Convert.ChangeType(value, targetType, System.Globalization.CultureInfo.InvariantCulture);
+                property.SetValue(target, converted);
+                return;
+            }
+            catch (InvalidCastException)
+            {
+            }
+            catch (FormatException)
+            {
+            }
+            catch (OverflowException)
+            {
+            }
+            catch (ArgumentException)
+            {
+            }
+        }
     }
 
     private static string GetPackagePolicy(string? salesDescription, string? packageName)
