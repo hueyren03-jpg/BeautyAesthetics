@@ -3755,6 +3755,126 @@
     private string BuildRecordImageUrl(string? imagePath, string? imageFileName) =>
         ProductImageService.ResolveServerImageUrl(imagePath, imageFileName);
 
+    private Task HandleServiceImageSelected(InputFileChangeEventArgs args) =>
+        HandleRecordImageSelectedAsync(args.File, isPackage: false);
+
+    private Task HandlePackageImageSelected(InputFileChangeEventArgs args) =>
+        HandleRecordImageSelectedAsync(args.File, isPackage: true);
+
+    private async Task HandleRecordImageSelectedAsync(IBrowserFile file, bool isPackage)
+    {
+        if (file is null || !file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            if (isPackage) BundleImageError = "Select a valid JPG, PNG or WEBP image.";
+            else ServiceImageError = "Select a valid JPG, PNG or WEBP image.";
+            return;
+        }
+
+        const long maxImageBytes = 5 * 1024 * 1024;
+        if (file.Size > maxImageBytes)
+        {
+            if (isPackage) BundleImageError = "Image must be 5 MB or smaller.";
+            else ServiceImageError = "Image must be 5 MB or smaller.";
+            return;
+        }
+
+        if (isPackage)
+        {
+            IsBundleImageUploading = true;
+            BundleImageError = null;
+        }
+        else
+        {
+            IsServiceImageUploading = true;
+            ServiceImageError = null;
+        }
+
+        try
+        {
+            await using var previewStream = file.OpenReadStream(maxImageBytes);
+            using var previewBuffer = new MemoryStream();
+            await previewStream.CopyToAsync(previewBuffer);
+            var preview = $"data:{file.ContentType};base64,{Convert.ToBase64String(previewBuffer.ToArray())}";
+
+            var upload = await FileUploadAC.UploadImageAsync(file, "Inventory");
+            if (!upload.Success || string.IsNullOrWhiteSpace(upload.Value))
+            {
+                var error = upload.ErrorMessage ?? "Unable to upload the image.";
+                if (isPackage) BundleImageError = error;
+                else ServiceImageError = error;
+                Feedback.Error(error, "Image upload failed");
+                return;
+            }
+
+            var (imagePath, imageFileName) = SplitUploadedImageLocation(upload.Value);
+            if (isPackage)
+            {
+                NewBundleImagePath = imagePath;
+                NewBundleImageFileName = imageFileName;
+                BundleImagePreview = preview;
+            }
+            else
+            {
+                NewServiceImagePath = imagePath;
+                NewServiceImageFileName = imageFileName;
+                ServiceImagePreview = preview;
+            }
+
+            Feedback.Success("Image uploaded and ready to save.", "Image uploaded", 2500);
+        }
+        catch (IOException)
+        {
+            var error = "The selected image could not be read. Please choose another file.";
+            if (isPackage) BundleImageError = error;
+            else ServiceImageError = error;
+            Feedback.Error(error, "Image upload failed");
+        }
+        catch (Exception)
+        {
+            var error = "The image could not be uploaded. Please try again.";
+            if (isPackage) BundleImageError = error;
+            else ServiceImageError = error;
+            Feedback.Error(error, "Image upload failed");
+        }
+        finally
+        {
+            if (isPackage) IsBundleImageUploading = false;
+            else IsServiceImageUploading = false;
+        }
+    }
+
+    private static (string ImagePath, string ImageFileName) SplitUploadedImageLocation(string uploadedLocation)
+    {
+        var normalized = (uploadedLocation ?? string.Empty).Trim().Replace('\\', '/');
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return (string.Empty, string.Empty);
+        }
+
+        var queryIndex = normalized.IndexOfAny(['?', '#']);
+        var locationWithoutQuery = queryIndex >= 0 ? normalized[..queryIndex] : normalized;
+        var separatorIndex = locationWithoutQuery.LastIndexOf('/');
+        return separatorIndex >= 0
+            ? (normalized[..separatorIndex], locationWithoutQuery[(separatorIndex + 1)..])
+            : (string.Empty, locationWithoutQuery);
+    }
+
+    private void RemoveServiceImage()
+    {
+        NewServiceImagePath = string.Empty;
+        NewServiceImageFileName = string.Empty;
+        ServiceImagePreview = string.Empty;
+        ServiceImageError = null;
+    }
+
+    private void RemovePackageImage()
+    {
+        NewBundleImagePath = string.Empty;
+        NewBundleImageFileName = string.Empty;
+        BundleImagePreview = string.Empty;
+        BundleImageError = null;
+    }
+
     private static string FormatDisplay(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "-" : value;
 
