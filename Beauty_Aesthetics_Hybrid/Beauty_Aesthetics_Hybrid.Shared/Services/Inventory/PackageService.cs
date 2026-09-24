@@ -91,6 +91,13 @@ public sealed class PackageService : IPackageService
                     ? ParseDuration(service.DurationSpend)
                     : 0);
 
+            var packagePoints = package is not null
+                ? GetInventoryDecimal(package, "Points")
+                : GetInventoryDecimal(header, "Points");
+            var packageRemarks = package is not null
+                ? GetInventoryString(package, "Remarks")
+                : GetInventoryString(header, "Remarks");
+
             summaries.Add(new InventoryPackageSummary(
                 package?.MasterAccountId ?? header.MasterAccountID ?? string.Empty,
                 FirstNonEmpty(package?.AccountName, package?.SalesDescription, header.AccountName, header.SalesDescription)
@@ -135,13 +142,13 @@ public sealed class PackageService : IPackageService
                     ? package.MemberMainAccountCredit
                     : GetInventoryDecimal(header, "MemberMainAccountCredit"),
                 lineSummaries,
-                GetInventoryDecimal(package ?? header, "Points"),
+                packagePoints,
                 GetPackagePolicy(
                     package?.SalesDescription ?? header.SalesDescription,
                     package?.AccountName ?? header.AccountName),
-                GetPackageTerm(GetInventoryString(package ?? header, "Remarks"), 0),
-                GetPackageTerm(GetInventoryString(package ?? header, "Remarks"), 1),
-                GetPackageTerm(GetInventoryString(package ?? header, "Remarks"), 2)));
+                GetPackageTerm(packageRemarks, 0),
+                GetPackageTerm(packageRemarks, 1),
+                GetPackageTerm(packageRemarks, 2)));
         }
 
         return ApiCallResult<IReadOnlyList<InventoryPackageSummary>>.Ok(
@@ -463,19 +470,19 @@ public sealed class PackageService : IPackageService
             : ApiCallResult<bool>.Failure(result.StatusCode, result.ErrorMessage ?? fallbackMessage);
     }
 
-    private static string? GetInventoryString(InventoryDM record, string propertyName)
+    private static string? GetInventoryString(object record, string propertyName)
     {
         var value = record.GetType().GetProperty(propertyName)?.GetValue(record);
         return value?.ToString();
     }
 
-    private static int GetInventoryInt(InventoryDM record, string propertyName)
+    private static int GetInventoryInt(object record, string propertyName)
     {
         var value = record.GetType().GetProperty(propertyName)?.GetValue(record);
         return value is null ? 0 : Convert.ToInt32(value);
     }
 
-    private static decimal GetInventoryDecimal(InventoryDM record, string propertyName)
+    private static decimal GetInventoryDecimal(object record, string propertyName)
     {
         var value = record.GetType().GetProperty(propertyName)?.GetValue(record);
         return value is null ? 0m : Convert.ToDecimal(value);
