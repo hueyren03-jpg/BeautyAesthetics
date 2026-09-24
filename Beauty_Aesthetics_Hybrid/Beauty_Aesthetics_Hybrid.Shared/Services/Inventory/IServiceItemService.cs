@@ -22,7 +22,8 @@ public interface IServiceItemService
         string branchId = "hq",
         CancellationToken cancellationToken = default,
         string branchGroupId = "",
-        ServiceEditorDetails? editorDetails = null);
+        ServiceEditorDetails? editorDetails = null,
+        IReadOnlyCollection<ServiceBranchSelection>? visibleBranches = null);
 
     Task<ApiCallResult<bool>> DeleteServiceAsync(
         string masterAccountId,
@@ -32,7 +33,8 @@ public interface IServiceItemService
         string branchId = "hq",
         CancellationToken cancellationToken = default,
         string branchGroupId = "",
-        ServiceEditorDetails? editorDetails = null);
+        ServiceEditorDetails? editorDetails = null,
+        IReadOnlyCollection<ServiceBranchSelection>? visibleBranches = null);
 }
 
 public sealed record ServiceEditorDetails(
@@ -40,3 +42,8 @@ public sealed record ServiceEditorDetails(
     decimal RedeemPoint = 0m,
     string BillOfMaterial = "");
 
+
+
+public sealed record ServiceBranchSelection(
+    string BranchId,
+    string GroupId);
