@@ -13,12 +13,14 @@ public interface IPackageService
     Task<ApiCallResult<bool>> CreatePackageAsync(
         InventoryPackageEdit package,
         string branchId = "hq",
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string branchGroupId = "");
 
     Task<ApiCallResult<bool>> UpdatePackageAsync(
         InventoryPackageEdit package,
         string branchId = "hq",
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string branchGroupId = "");
 
     Task<ApiCallResult<bool>> DeletePackageAsync(
         string masterAccountId,
@@ -82,6 +84,8 @@ public sealed record InventoryPackageEdit(
     int MemberExpiryDays = 0,
     string TriggeredMemberTypeId = "",
     decimal MemberMainAccountCredit = 0m,
-    IReadOnlyCollection<InventoryPackageLineEdit>? Lines = null);
+    IReadOnlyCollection<InventoryPackageLineEdit>? Lines = null,
+    string ImagePath = "",
+    string ImageFileName = "");
 
 
