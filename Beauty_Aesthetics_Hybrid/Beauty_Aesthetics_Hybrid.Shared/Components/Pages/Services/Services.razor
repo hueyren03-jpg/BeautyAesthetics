@@ -4200,7 +4200,14 @@
         NewServiceName = SelectedService.ServiceName;
         NewServiceSKU = SelectedService.Sku;
         NewServiceCategory = SelectedService.Category;
-        NewServiceSectionId = SelectedService.SectionId;
+        NewServiceSectionId = !string.IsNullOrWhiteSpace(SelectedService.SectionId)
+            ? SelectedService.SectionId
+            : ServiceSections.FirstOrDefault(section =>
+                string.Equals(
+                    section.SupportingTableName,
+                    SelectedService.Category,
+                    StringComparison.OrdinalIgnoreCase))
+                ?.SupportingTableID ?? string.Empty;
 
         // Parse duration from string (e.g., "60 mins" -> 60)
         var durationStr = SelectedService.DurationSpend.Split(' ')[0];
