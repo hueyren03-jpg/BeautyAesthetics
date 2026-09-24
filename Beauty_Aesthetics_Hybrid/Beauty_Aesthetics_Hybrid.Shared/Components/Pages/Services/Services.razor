@@ -326,7 +326,7 @@
                             </div>
                             <div class="senang-editor__actions">
                                 <button type="button" class="senang-editor__cancel" @onclick="CloseAddServiceForm" disabled="@IsSavingService">Cancel</button>
-                                <button type="button" class="senang-editor__save" @onclick="HandleSaveService" disabled="@IsSavingService">
+                                <button type="button" class="senang-editor__save" @onclick="HandleSaveService" disabled="@(IsSavingService || IsServiceImageUploading)">
                                     @(IsSavingService ? "Saving..." : "Save")
                                 </button>
                             </div>
@@ -338,10 +338,41 @@
                         }
 
                         <div class="senang-editor__content">
-                            <div class="senang-editor__identity">
-                                <div class="senang-editor__image-placeholder">
-                                    <i class="bi bi-scissors"></i>
-                                    <span>Service</span>
+                            <div class="senang-editor__identity senang-editor__identity--linked">
+                                <label for="service-editor-image" class="senang-editor__image-placeholder senang-editor__image-picker">
+                                    @if (!string.IsNullOrWhiteSpace(ServiceImagePreview))
+                                    {
+                                        <img src="@ServiceImagePreview" alt="@NewServiceName" />
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(NewServiceImagePath) || !string.IsNullOrWhiteSpace(NewServiceImageFileName))
+                                    {
+                                        <img src="@BuildRecordImageUrl(NewServiceImagePath, NewServiceImageFileName)" alt="@NewServiceName" />
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-image"></i>
+                                        <span>Add Image</span>
+                                    }
+                                </label>
+                                <InputFile id="service-editor-image"
+                                           class="senang-editor__image-input"
+                                           OnChange="HandleServiceImageSelected"
+                                           accept="image/jpeg,image/png,image/webp"
+                                           disabled="@IsServiceImageUploading" />
+                                <div class="senang-editor__image-actions">
+                                    <span>@(IsServiceImageUploading ? "Uploading..." : "JPG, PNG or WEBP, up to 5 MB")</span>
+                                    @if (!string.IsNullOrWhiteSpace(ServiceImagePreview) ||
+                                         !string.IsNullOrWhiteSpace(NewServiceImagePath) ||
+                                         !string.IsNullOrWhiteSpace(NewServiceImageFileName))
+                                    {
+                                        <button type="button" @onclick="RemoveServiceImage">
+                                            <i class="bi bi-trash3"></i> Remove
+                                        </button>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(ServiceImageError))
+                                    {
+                                        <small role="alert">@ServiceImageError</small>
+                                    }
                                 </div>
                             </div>
 
@@ -372,13 +403,12 @@
                                         </div>
                                         <div class="senang-editor__field">
                                             <label>Section <span>*</span></label>
-                                            <select @bind="NewServiceCategory">
+                                            <select value="@NewServiceSectionId" @onchange="OnServiceSectionChanged">
                                                 <option value="">Select Section</option>
-                                                <option value="Facial">Facial</option>
-                                                <option value="Body">Body</option>
-                                                <option value="Hair">Hair</option>
-                                                <option value="Massage">Massage</option>
-                                                <option value="Spa">Spa</option>
+                                                @foreach (var section in ServiceSections)
+                                                {
+                                                    <option value="@section.SupportingTableID">@section.SupportingTableName</option>
+                                                }
                                             </select>
                                         </div>
                                         <div class="senang-editor__field">
@@ -1525,7 +1555,7 @@
                             </div>
                             <div class="senang-editor__actions">
                                 <button type="button" class="senang-editor__cancel" @onclick="CloseAddBundleForm" disabled="@IsSavingBundle">Cancel</button>
-                                <button type="button" class="senang-editor__save" @onclick="HandleSaveBundle" disabled="@IsSavingBundle">
+                                <button type="button" class="senang-editor__save" @onclick="HandleSaveBundle" disabled="@(IsSavingBundle || IsBundleImageUploading)">
                                     @(IsSavingBundle ? "Saving..." : "Save")
                                 </button>
                             </div>
@@ -1537,10 +1567,41 @@
                         }
 
                         <div class="senang-editor__content">
-                            <div class="senang-editor__identity">
-                                <div class="senang-editor__image-placeholder senang-editor__image-placeholder--package">
-                                    <i class="bi bi-box-seam"></i>
-                                    <span>Package</span>
+                            <div class="senang-editor__identity senang-editor__identity--linked">
+                                <label for="package-editor-image" class="senang-editor__image-placeholder senang-editor__image-placeholder--package senang-editor__image-picker">
+                                    @if (!string.IsNullOrWhiteSpace(BundleImagePreview))
+                                    {
+                                        <img src="@BundleImagePreview" alt="@NewBundleName" />
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(NewBundleImagePath) || !string.IsNullOrWhiteSpace(NewBundleImageFileName))
+                                    {
+                                        <img src="@BuildRecordImageUrl(NewBundleImagePath, NewBundleImageFileName)" alt="@NewBundleName" />
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-image"></i>
+                                        <span>Add Image</span>
+                                    }
+                                </label>
+                                <InputFile id="package-editor-image"
+                                           class="senang-editor__image-input"
+                                           OnChange="HandlePackageImageSelected"
+                                           accept="image/jpeg,image/png,image/webp"
+                                           disabled="@IsBundleImageUploading" />
+                                <div class="senang-editor__image-actions">
+                                    <span>@(IsBundleImageUploading ? "Uploading..." : "JPG, PNG or WEBP, up to 5 MB")</span>
+                                    @if (!string.IsNullOrWhiteSpace(BundleImagePreview) ||
+                                         !string.IsNullOrWhiteSpace(NewBundleImagePath) ||
+                                         !string.IsNullOrWhiteSpace(NewBundleImageFileName))
+                                    {
+                                        <button type="button" @onclick="RemovePackageImage">
+                                            <i class="bi bi-trash3"></i> Remove
+                                        </button>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(BundleImageError))
+                                    {
+                                        <small role="alert">@BundleImageError</small>
+                                    }
                                 </div>
                             </div>
 
@@ -2324,6 +2385,14 @@
         SearchQuery = e.Value?.ToString() ?? string.Empty;
         ServiceCurrentPage = 1;
         ExpandedMobileServiceSku = null;
+    }
+
+    private void OnServiceSectionChanged(ChangeEventArgs e)
+    {
+        NewServiceSectionId = e.Value?.ToString()?.Trim() ?? string.Empty;
+        NewServiceCategory = ServiceSections.FirstOrDefault(section =>
+            string.Equals(section.SupportingTableID, NewServiceSectionId, StringComparison.OrdinalIgnoreCase))
+            ?.SupportingTableName?.Trim() ?? string.Empty;
     }
 
     private void OnMemberCreditSearchChanged(ChangeEventArgs e)
