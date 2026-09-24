@@ -54,6 +54,15 @@ public sealed class InventoryPackageLoadRecordDTO
     [JsonPropertyName("salesPrice")]
     public decimal SalesPrice { get; set; }
 
+    [JsonPropertyName("purchasePrice")]
+    public decimal PurchasePrice { get; set; }
+
+    [JsonPropertyName("taxCodeID")]
+    public string? TaxCodeId { get; set; }
+
+    [JsonPropertyName("isTaxInclusive")]
+    public bool IsTaxInclusive { get; set; }
+
     [JsonPropertyName("accountStatus")]
     public string? AccountStatus { get; set; }
 
