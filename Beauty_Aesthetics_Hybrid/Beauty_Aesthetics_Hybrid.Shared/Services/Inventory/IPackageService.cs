@@ -13,17 +13,29 @@ public interface IPackageService
     Task<ApiCallResult<bool>> CreatePackageAsync(
         InventoryPackageEdit package,
         string branchId = "hq",
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string branchGroupId = "");
 
     Task<ApiCallResult<bool>> UpdatePackageAsync(
         InventoryPackageEdit package,
         string branchId = "hq",
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string branchGroupId = "");
 
     Task<ApiCallResult<bool>> DeletePackageAsync(
         string masterAccountId,
         CancellationToken cancellationToken = default);
 }
+
+public sealed record InventoryPackageLineSummary(
+    string ServiceId,
+    string Description,
+    decimal Quantity,
+    decimal UnitPrice,
+    bool IsDeferred,
+    int InventoryTypeId = 3,
+    string? AutoId = null,
+    string UnitOfMeasure = "unit");
 
 public sealed record InventoryPackageSummary(
     string MasterAccountId,
@@ -43,13 +55,56 @@ public sealed record InventoryPackageSummary(
     TimeSpan? AvailableTimeTo = null,
     string EInvoiceClassificationCode = "",
     string ImagePath = "",
-    string ImageFileName = "");
+    string ImageFileName = "",
+    string Section = "",
+    bool IsActive = true,
+    string Barcode = "",
+    string UnitOfMeasure = "unit",
+    int ValidityDays = 0,
+    int MemberExpiryDays = 0,
+    string TriggeredMemberTypeId = "",
+    decimal MemberMainAccountCredit = 0m,
+    IReadOnlyList<InventoryPackageLineSummary>? Lines = null,
+    decimal Points = 0m,
+    string Policy = "",
+    string TermCondition1 = "",
+    string TermCondition2 = "",
+    string TermCondition3 = "",
+    decimal MinPrice = 0m,
+    decimal MaxPrice = 0m);
+
+public sealed record InventoryPackageLineEdit(
+    string InventoryId,
+    string Description,
+    int InventoryTypeId,
+    decimal Quantity,
+    decimal UnitPrice,
+    bool IsDeferred,
+    string UnitOfMeasure = "unit");
 
 public sealed record InventoryPackageEdit(
     string? MasterAccountId,
     string Name,
     string Sku,
     decimal Price,
-    IReadOnlyCollection<ServiceViewModel.ServiceItem> Services);
+    IReadOnlyCollection<ServiceViewModel.ServiceItem> Services,
+    string Section = "",
+    bool IsActive = true,
+    string Barcode = "",
+    string UnitOfMeasure = "unit",
+    int ValidityDays = 0,
+    int MemberExpiryDays = 0,
+    string TriggeredMemberTypeId = "",
+    decimal MemberMainAccountCredit = 0m,
+    IReadOnlyCollection<InventoryPackageLineEdit>? Lines = null,
+    string ImagePath = "",
+    string ImageFileName = "",
+    decimal Points = 0m,
+    string Policy = "",
+    string TermCondition1 = "",
+    string TermCondition2 = "",
+    string TermCondition3 = "",
+    decimal MinPrice = 0m,
+    decimal MaxPrice = 0m);
 
 
