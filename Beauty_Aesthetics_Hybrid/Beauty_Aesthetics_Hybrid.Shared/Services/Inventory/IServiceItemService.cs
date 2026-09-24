@@ -12,7 +12,8 @@ public interface IServiceItemService
     Task<ApiCallResult<bool>> CreateServiceAsync(
         ServiceViewModel.ServiceItem service,
         string branchId = "hq",
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string branchGroupId = "");
 
     Task<ApiCallResult<bool>> DeleteServiceAsync(
         string masterAccountId,
@@ -20,5 +21,6 @@ public interface IServiceItemService
     Task<ApiCallResult<bool>> UpdateServiceAsync(
         ServiceViewModel.ServiceItem service,
         string branchId = "hq",
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string branchGroupId = "");
 }
