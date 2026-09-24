@@ -60,6 +60,24 @@ public sealed class InventoryPackageLoadRecordDTO
     [JsonPropertyName("branchID")]
     public string? BranchId { get; set; }
 
+    [JsonPropertyName("itemGroupName")]
+    public string? ItemGroupName { get; set; }
+
+    [JsonPropertyName("unitOfMeasureID")]
+    public string? UnitOfMeasureId { get; set; }
+
+    [JsonPropertyName("validityDays")]
+    public int ValidityDays { get; set; }
+
+    [JsonPropertyName("memberExpiryDays")]
+    public int MemberExpiryDays { get; set; }
+
+    [JsonPropertyName("triggeredMemberTypeID")]
+    public string? TriggeredMemberTypeId { get; set; }
+
+    [JsonPropertyName("memberMainAccountCredit")]
+    public decimal MemberMainAccountCredit { get; set; }
+
     [JsonPropertyName("lstPackage")]
     public List<InventoryPackageLineDTO>? PackageLines { get; set; }
 }
