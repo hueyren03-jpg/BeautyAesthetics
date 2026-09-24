@@ -1791,72 +1791,219 @@
                             <div class="bundle-modal__body">
                                 <form class="bundle-form" @onsubmit:preventDefault>
                                     <div class="bundle-form__section">
-                                        <h3 class="bundle-form__section-title">@L["PackageInformation"]</h3>
+                                        <h3 class="bundle-form__section-title">Info</h3>
 
                                         <div class="bundle-form__field">
-                                            <label>@L["PackageName"] <span class="bundle-form__required">*</span></label>
-                                            <input type="text" @bind="NewBundleName" placeholder="@L["EnterPackageName"]" required />
+                                            <label>Name</label>
+                                            <input type="text" @bind="NewBundleName" placeholder="Package Name" />
                                         </div>
 
                                         <div class="bundle-form__field">
-                                            <label>@L["PackageSKU"] <span class="bundle-form__required">*</span></label>
-                                            <input type="text" @bind="NewBundleSKU" placeholder="@L["EnterPackageSKU"]" required />
+                                            <label>Section</label>
+                                            <input type="text" @bind="NewBundleSection" placeholder="Section" />
                                         </div>
 
                                         <div class="bundle-form__field">
-                                            <label>@L["PackagePriceMyr"] <span class="bundle-form__required">*</span></label>
-                                            <input type="number" step="0.01" @bind="NewBundlePrice" placeholder="0.00" min="0" required />
+                                            <label>Image URL (Folder)</label>
+                                            <input type="text" @bind="NewBundleImagePath" placeholder="Image URL / folder" />
+                                        </div>
+
+                                        <div class="bundle-form__field">
+                                            <label>Credits</label>
+                                            <input type="number" step="0.01" min="0" @bind="NewBundleMemberCredit" />
+                                        </div>
+
+                                        <div class="bundle-form__field">
+                                            <label>Points</label>
+                                            <input type="number" step="1" min="0" @bind="NewBundlePoints" />
+                                        </div>
+
+                                        <div class="bundle-form__field">
+                                            <label>Package Value</label>
+                                            <input type="text" value="@BundlePackageValue.ToString("N2")" readonly />
+                                        </div>
+
+                                        <div class="bundle-form__field">
+                                            <label>Price (MYR)</label>
+                                            <input type="number" step="0.01" min="0" @bind="NewBundlePrice" />
                                         </div>
                                     </div>
 
                                     <div class="bundle-form__section">
-                                        <h3 class="bundle-form__section-title">@L["SelectServices"]</h3>
-                                        <p class="bundle-form__section-subtitle">@L["ChooseServicesToInclude"]</p>
+                                        <h3 class="bundle-form__section-title">Items</h3>
+                                        <p class="bundle-form__section-subtitle">Add Service</p>
 
                                         <div class="bundle-form__services-list">
-                                            @if (!BundleEligibleServices.Any())
+                                            @foreach (var service in ServiceItems)
                                             {
-                                                <div class="bundle-form__empty-state">
-                                                    <i class="bi bi-inbox"></i>
-                                                    <p>@L["NoPackageEligibleServices"]</p>
-                                                    <p class="bundle-form__empty-hint">@L["AddServicesWithAddToPackageListFirst"]</p>
+                                                <div class="bundle-form__service-item">
+                                                    <label class="bundle-form__service-checkbox">
+                                                        <input type="checkbox"
+                                                               checked="@SelectedBundleServices.Contains(service)"
+                                                               @onchange="() => ToggleServiceSelection(service)" />
+                                                        <span class="bundle-form__service-info">
+                                                            <span class="bundle-form__service-name">@service.ServiceName</span>
+                                                            <span class="bundle-form__service-details">@service.Category</span>
+                                                        </span>
+                                                    </label>
                                                 </div>
-                                            }
-                                            else
-                                            {
-                                                @foreach (var service in BundleEligibleServices)
+
+                                                @if (SelectedBundleServices.Contains(service))
                                                 {
-                                                    <div class="bundle-form__service-item">
-                                                        <label class="bundle-form__service-checkbox">
+                                                    var lineKey = BundleServiceKey(service);
+                                                    <div class="bundle-form__summary">
+                                                        <label>Deferred
                                                             <input type="checkbox"
-                                                                   checked="@SelectedBundleServices.Contains(service)"
-                                                                   @onchange="() => ToggleServiceSelection(service)" />
-                                                            <span class="bundle-form__service-info">
-                                                                <span class="bundle-form__service-name">@service.ServiceName</span>
-                                                                <span class="bundle-form__service-details">
-                                                                    <span class="bundle-form__service-badge">@service.Category</span>
-                                                                    <span class="bundle-form__service-duration">@service.DurationSpend @L["Min"]</span>
-                                                                </span>
-                                                            </span>
+                                                                   checked="@BundleDeferredItemIds.Contains(lineKey)"
+                                                                   @onchange="e => SetBundleDeferred(lineKey, e.Value is true)" />
+                                                        </label>
+                                                        <label>Unit PV
+                                                            <input type="number" step="0.01" min="0" @bind="BundleLineUnitPrices[lineKey]" />
+                                                        </label>
+                                                        <label>UOM
+                                                            <select @bind="BundleLineUoms[lineKey]">
+                                                                <option value="unit">unit</option>
+                                                                <option value="session">session</option>
+                                                                <option value="piece">piece</option>
+                                                                <option value="set">set</option>
+                                                                <option value="bottle">bottle</option>
+                                                                <option value="box">box</option>
+                                                                <option value="gram">gram</option>
+                                                                <option value="ml">ml</option>
+                                                            </select>
+                                                        </label>
+                                                        <label>Qty
+                                                            <input type="number" step="1" min="1" @bind="BundleLineQuantities[lineKey]" />
                                                         </label>
                                                     </div>
                                                 }
                                             }
                                         </div>
 
-                                        @if (SelectedBundleServices.Any())
+                                        <p class="bundle-form__section-subtitle">Add Product</p>
+                                        <div class="bundle-form__services-list">
+                                            @foreach (var product in InventoryItems)
+                                            {
+                                                <div class="bundle-form__service-item">
+                                                    <label class="bundle-form__service-checkbox">
+                                                        <input type="checkbox"
+                                                               checked="@SelectedBundleProducts.Contains(product)"
+                                                               @onchange="() => ToggleProductSelection(product)" />
+                                                        <span class="bundle-form__service-info">
+                                                            <span class="bundle-form__service-name">@product.Type</span>
+                                                            <span class="bundle-form__service-details">@product.Sku · @product.Category</span>
+                                                        </span>
+                                                    </label>
+                                                </div>
+
+                                                @if (SelectedBundleProducts.Contains(product))
+                                                {
+                                                    var lineKey = BundleProductKey(product);
+                                                    <div class="bundle-form__summary">
+                                                        <label>Deferred
+                                                            <input type="checkbox"
+                                                                   checked="@BundleDeferredItemIds.Contains(lineKey)"
+                                                                   @onchange="e => SetBundleDeferred(lineKey, e.Value is true)" />
+                                                        </label>
+                                                        <label>Unit PV
+                                                            <input type="number" step="0.01" min="0" @bind="BundleLineUnitPrices[lineKey]" />
+                                                        </label>
+                                                        <label>UOM
+                                                            <select @bind="BundleLineUoms[lineKey]">
+                                                                <option value="unit">unit</option>
+                                                                <option value="session">session</option>
+                                                                <option value="piece">piece</option>
+                                                                <option value="set">set</option>
+                                                                <option value="bottle">bottle</option>
+                                                                <option value="box">box</option>
+                                                                <option value="gram">gram</option>
+                                                                <option value="ml">ml</option>
+                                                            </select>
+                                                        </label>
+                                                        <label>Qty
+                                                            <input type="number" step="1" min="1" @bind="BundleLineQuantities[lineKey]" />
+                                                        </label>
+                                                    </div>
+                                                }
+                                            }
+                                        </div>
+                                    </div>
+
+                                    <div class="bundle-form__section">
+                                        <h3 class="bundle-form__section-title">Advance</h3>
+
+                                        <div class="bundle-form__field">
+                                            <label>Barcode</label>
+                                            <input type="text" @bind="NewBundleBarcode" />
+                                        </div>
+
+                                        <div class="bundle-form__field">
+                                            <label>Price Range (Min - Max)</label>
+                                            <input type="checkbox" @bind="IsBundleMinMaxPriceEnabled" />
+                                        </div>
+
+                                        @if (IsBundleMinMaxPriceEnabled)
                                         {
-                                            <div class="bundle-form__summary">
-                                                <div class="bundle-form__summary-item">
-                                                    <span class="bundle-form__summary-label">@L["SelectedServices"]:</span>
-                                                    <span class="bundle-form__summary-value">@SelectedBundleServices.Count</span>
-                                                </div>
-                                                <div class="bundle-form__summary-item bundle-form__summary-item--highlight">
-                                                    <span class="bundle-form__summary-label">@L["TotalDuration"]:</span>
-                                                    <span class="bundle-form__summary-value">@CalculateTotalDuration() @L["Minutes"]</span>
-                                                </div>
+                                            <div class="bundle-form__field">
+                                                <label>Min Price</label>
+                                                <input type="number" step="0.01" min="0" @bind="NewBundleMinPrice" />
+                                            </div>
+                                            <div class="bundle-form__field">
+                                                <label>Max Price</label>
+                                                <input type="number" step="0.01" min="0" @bind="NewBundleMaxPrice" />
                                             </div>
                                         }
+
+                                        <div class="bundle-form__field">
+                                            <label>Outlet Availability</label>
+                                            <input type="text" value="HQ" readonly />
+                                        </div>
+                                    </div>
+
+                                    <div class="bundle-form__section">
+                                        <h3 class="bundle-form__section-title">T&amp;C</h3>
+
+                                        <div class="bundle-form__field">
+                                            <label>Policy</label>
+                                            <textarea @bind="NewBundlePolicy"></textarea>
+                                        </div>
+                                        <div class="bundle-form__field">
+                                            <label>Term &amp; Conditions 1</label>
+                                            <input type="text" @bind="NewBundleTermCondition1" />
+                                        </div>
+                                        <div class="bundle-form__field">
+                                            <label>Term &amp; Conditions 2</label>
+                                            <input type="text" @bind="NewBundleTermCondition2" />
+                                        </div>
+                                        <div class="bundle-form__field">
+                                            <label>Term &amp; Conditions 3</label>
+                                            <input type="text" @bind="NewBundleTermCondition3" />
+                                        </div>
+                                    </div>
+
+                                    <div class="bundle-form__section">
+                                        <h3 class="bundle-form__section-title">Membership</h3>
+
+                                        <div class="bundle-form__field">
+                                            <label>Credit Expiry (Days)</label>
+                                            <input type="number" min="1" @bind="NewBundleMemberExpiryDays" />
+                                        </div>
+
+                                        <div class="bundle-form__field">
+                                            <label>Member Type</label>
+                                            <select @bind="NewBundleTriggeredMemberTypeId">
+                                                <option value="">No member type</option>
+                                                @foreach (var memberType in MemberTypeItems.Where(item => item.Active))
+                                                {
+                                                    <option value="@memberType.MemberTypeID">@memberType.MemberTypeName</option>
+                                                }
+                                            </select>
+                                        </div>
+
+                                        <div class="bundle-form__field">
+                                            <label>Credit Amount</label>
+                                            <input type="number" min="0" step="0.01" @bind="NewBundleMemberCredit" />
+                                        </div>
                                     </div>
                                 </form>
                             </div>
@@ -2375,8 +2522,31 @@
     private bool IsBundleEditMode { get; set; }
     private string NewBundleName { get; set; } = string.Empty;
     private string NewBundleSKU { get; set; } = string.Empty;
+    private string NewBundleSection { get; set; } = string.Empty;
+    private bool NewBundleIsActive { get; set; } = true;
+    private string NewBundleBarcode { get; set; } = string.Empty;
+    private string NewBundleImagePath { get; set; } = string.Empty;
+    private int NewBundleMemberExpiryDays { get; set; } = 365;
+    private string NewBundleTriggeredMemberTypeId { get; set; } = string.Empty;
+    private decimal NewBundleMemberCredit { get; set; }
+    private decimal NewBundlePoints { get; set; }
+    private bool IsBundleMinMaxPriceEnabled { get; set; }
+    private decimal NewBundleMinPrice { get; set; }
+    private decimal NewBundleMaxPrice { get; set; }
+    private string NewBundlePolicy { get; set; } = string.Empty;
+    private string NewBundleTermCondition1 { get; set; } = string.Empty;
+    private string NewBundleTermCondition2 { get; set; } = string.Empty;
+    private string NewBundleTermCondition3 { get; set; } = string.Empty;
     private decimal NewBundlePrice { get; set; } = 0.00m;
     private HashSet<ServiceViewModel.ServiceItem> SelectedBundleServices { get; set; } = new();
+    private HashSet<InventoryViewModel.InventoryItem> SelectedBundleProducts { get; set; } = new();
+    private Dictionary<string, decimal> BundleLineQuantities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, decimal> BundleLineUnitPrices { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, string> BundleLineUoms { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> BundleDeferredItemIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    private decimal BundlePackageValue =>
+        SelectedBundleServices.Sum(service => GetBundleLineTotal(BundleServiceKey(service), service.Price)) +
+        SelectedBundleProducts.Sum(product => GetBundleLineTotal(BundleProductKey(product), product.Price));
     private bool IsBundleApiLoading { get; set; }
     private bool IsSavingBundle { get; set; }
     private string? BundleApiError { get; set; }
@@ -2815,6 +2985,24 @@
                     AvailableTimeFrom = package.AvailableTimeFrom,
                     AvailableTimeTo = package.AvailableTimeTo,
                     EInvoiceClassificationCode = package.EInvoiceClassificationCode,
+                    ImagePath = package.ImagePath,
+                    ImageFileName = package.ImageFileName,
+                    Section = package.Section,
+                    IsActive = package.IsActive,
+                    Barcode = package.Barcode,
+                    UnitOfMeasure = package.UnitOfMeasure,
+                    ValidityDays = package.ValidityDays,
+                    MemberExpiryDays = package.MemberExpiryDays,
+                    TriggeredMemberTypeId = package.TriggeredMemberTypeId,
+                    MemberMainAccountCredit = package.MemberMainAccountCredit,
+                    Points = package.Points,
+                    MinPrice = package.MinPrice,
+                    MaxPrice = package.MaxPrice,
+                    Policy = package.Policy,
+                    TermCondition1 = package.TermCondition1,
+                    TermCondition2 = package.TermCondition2,
+                    TermCondition3 = package.TermCondition3,
+                    ServiceLines = package.Lines?.ToList() ?? new List<InventoryPackageLineSummary>(),
                     ServiceIDs = package.ServiceIds.ToHashSet(StringComparer.OrdinalIgnoreCase)
                 }).ToList();
 
@@ -4626,8 +4814,28 @@
     {
         NewBundleName = string.Empty;
         NewBundleSKU = string.Empty;
+        NewBundleSection = string.Empty;
+        NewBundleIsActive = true;
+        NewBundleBarcode = string.Empty;
+        NewBundleImagePath = string.Empty;
+        NewBundleMemberExpiryDays = 365;
+        NewBundleTriggeredMemberTypeId = string.Empty;
+        NewBundleMemberCredit = 0m;
+        NewBundlePoints = 0m;
+        IsBundleMinMaxPriceEnabled = false;
+        NewBundleMinPrice = 0m;
+        NewBundleMaxPrice = 0m;
+        NewBundlePolicy = string.Empty;
+        NewBundleTermCondition1 = string.Empty;
+        NewBundleTermCondition2 = string.Empty;
+        NewBundleTermCondition3 = string.Empty;
         NewBundlePrice = 0.00m;
         SelectedBundleServices.Clear();
+        SelectedBundleProducts.Clear();
+        BundleLineQuantities.Clear();
+        BundleLineUnitPrices.Clear();
+        BundleLineUoms.Clear();
+        BundleDeferredItemIds.Clear();
         IsBundleEditMode = false;
     }
 
@@ -4638,17 +4846,9 @@
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(NewBundleName) ||
-            string.IsNullOrWhiteSpace(NewBundleSKU) ||
-            NewBundlePrice < 0)
+        if (string.IsNullOrWhiteSpace(NewBundleName) || NewBundlePrice <= 0)
         {
-            BundleApiError = "Package name, SKU, and a valid price are required.";
-            return;
-        }
-
-        if (SelectedBundleServices.Count == 0)
-        {
-            BundleApiError = "Select at least one service for this package.";
+            BundleApiError = "Please fill in the Name and Price fields.";
             return;
         }
 
@@ -4657,12 +4857,62 @@
 
         try
         {
+            var serviceLines = SelectedBundleServices
+                .Where(service => !string.IsNullOrWhiteSpace(service.MasterAccountId))
+                .Select(service =>
+                {
+                    var key = BundleServiceKey(service);
+                    return new InventoryPackageLineEdit(
+                        service.MasterAccountId!,
+                        service.ServiceName,
+                        3,
+                        BundleLineQuantities.TryGetValue(key, out var qty) ? Math.Max(1m, qty) : 1m,
+                        BundleLineUnitPrices.TryGetValue(key, out var unitPrice) ? Math.Max(0m, unitPrice) : Math.Max(0m, service.Price),
+                        BundleDeferredItemIds.Contains(key),
+                        BundleLineUoms.TryGetValue(key, out var uom) ? uom : "unit");
+                });
+
+            var productLines = SelectedBundleProducts
+                .Where(product => !string.IsNullOrWhiteSpace(product.MasterAccountId))
+                .Select(product =>
+                {
+                    var key = BundleProductKey(product);
+                    return new InventoryPackageLineEdit(
+                        product.MasterAccountId,
+                        product.Type,
+                        product.InventoryTypeId <= 0 ? 1 : product.InventoryTypeId,
+                        BundleLineQuantities.TryGetValue(key, out var qty) ? Math.Max(1m, qty) : 1m,
+                        BundleLineUnitPrices.TryGetValue(key, out var unitPrice) ? Math.Max(0m, unitPrice) : Math.Max(0m, product.Price),
+                        BundleDeferredItemIds.Contains(key),
+                        BundleLineUoms.TryGetValue(key, out var uom) ? uom : "unit");
+                });
+
+            var packageLines = serviceLines.Concat(productLines).ToList();
+
             var package = new InventoryPackageEdit(
                 IsBundleEditMode ? SelectedBundle?.MasterAccountID : null,
                 NewBundleName.Trim(),
                 NewBundleSKU.Trim(),
                 NewBundlePrice,
-                SelectedBundleServices.ToList());
+                SelectedBundleServices.ToList(),
+                Section: NewBundleSection.Trim(),
+                IsActive: NewBundleIsActive,
+                Barcode: NewBundleBarcode.Trim(),
+                UnitOfMeasure: "unit",
+                ValidityDays: 0,
+                MemberExpiryDays: Math.Max(1, NewBundleMemberExpiryDays),
+                TriggeredMemberTypeId: NewBundleTriggeredMemberTypeId.Trim(),
+                MemberMainAccountCredit: Math.Max(0m, NewBundleMemberCredit),
+                Lines: packageLines,
+                ImagePath: NewBundleImagePath.Trim(),
+                ImageFileName: string.Empty,
+                Points: Math.Max(0m, NewBundlePoints),
+                Policy: NewBundlePolicy.Trim(),
+                TermCondition1: NewBundleTermCondition1.Trim(),
+                TermCondition2: NewBundleTermCondition2.Trim(),
+                TermCondition3: NewBundleTermCondition3.Trim(),
+                MinPrice: IsBundleMinMaxPriceEnabled ? Math.Max(0m, NewBundleMinPrice) : 0m,
+                MaxPrice: IsBundleMinMaxPriceEnabled ? Math.Max(0m, NewBundleMaxPrice) : 0m);
 
             var result = IsBundleEditMode
                 ? await PackageService.UpdatePackageAsync(package, "hq")
@@ -4690,20 +4940,64 @@
         IsBundleEditMode = true;
         NewBundleName = SelectedBundle.BundleName;
         NewBundleSKU = SelectedBundle.SKU;
+        NewBundleSection = SelectedBundle.Section;
+        NewBundleIsActive = SelectedBundle.IsActive;
+        NewBundleBarcode = SelectedBundle.Barcode;
+        NewBundleImagePath = SelectedBundle.ImagePath;
+        NewBundleMemberExpiryDays = SelectedBundle.MemberExpiryDays > 0 ? SelectedBundle.MemberExpiryDays : 365;
+        NewBundleTriggeredMemberTypeId = SelectedBundle.TriggeredMemberTypeId;
+        NewBundleMemberCredit = SelectedBundle.MemberMainAccountCredit;
+        NewBundlePoints = SelectedBundle.Points;
+        NewBundleMinPrice = SelectedBundle.MinPrice;
+        NewBundleMaxPrice = SelectedBundle.MaxPrice;
+        IsBundleMinMaxPriceEnabled = NewBundleMinPrice > 0m || NewBundleMaxPrice > 0m;
+        NewBundlePolicy = SelectedBundle.Policy;
+        NewBundleTermCondition1 = SelectedBundle.TermCondition1;
+        NewBundleTermCondition2 = SelectedBundle.TermCondition2;
+        NewBundleTermCondition3 = SelectedBundle.TermCondition3;
         NewBundlePrice = SelectedBundle.Price;
 
         SelectedBundleServices = ServiceItems
-            .Where(service =>
-                !string.IsNullOrWhiteSpace(service.MasterAccountId) &&
-                SelectedBundle.ServiceIDs.Contains(service.MasterAccountId))
+            .Where(service => !string.IsNullOrWhiteSpace(service.MasterAccountId) &&
+                SelectedBundle.ServiceLines.Any(line =>
+                    line.InventoryTypeId == 3 &&
+                    string.Equals(line.ServiceId, service.MasterAccountId, StringComparison.OrdinalIgnoreCase)))
             .ToHashSet();
+
+        SelectedBundleProducts = InventoryItems
+            .Where(product => !string.IsNullOrWhiteSpace(product.MasterAccountId) &&
+                SelectedBundle.ServiceLines.Any(line =>
+                    line.InventoryTypeId != 3 &&
+                    string.Equals(line.ServiceId, product.MasterAccountId, StringComparison.OrdinalIgnoreCase)))
+            .ToHashSet();
+
+        BundleLineQuantities.Clear();
+        BundleLineUnitPrices.Clear();
+        BundleLineUoms.Clear();
+        BundleDeferredItemIds.Clear();
+
+        foreach (var line in SelectedBundle.ServiceLines)
+        {
+            var service = SelectedBundleServices.FirstOrDefault(item =>
+                string.Equals(item.MasterAccountId, line.ServiceId, StringComparison.OrdinalIgnoreCase));
+            var product = SelectedBundleProducts.FirstOrDefault(item =>
+                string.Equals(item.MasterAccountId, line.ServiceId, StringComparison.OrdinalIgnoreCase));
+            var key = service is not null ? BundleServiceKey(service) :
+                      product is not null ? BundleProductKey(product) :
+                      $"line:{line.ServiceId}";
+
+            BundleLineQuantities[key] = Math.Max(1m, line.Quantity);
+            BundleLineUnitPrices[key] = Math.Max(0m, line.UnitPrice);
+            BundleLineUoms[key] = string.IsNullOrWhiteSpace(line.UnitOfMeasure) ? "unit" : line.UnitOfMeasure;
+            if (line.IsDeferred)
+            {
+                BundleDeferredItemIds.Add(key);
+            }
+        }
 
         BundleApiError = null;
         IsAddBundleFormVisible = true;
-        Feedback.Info(
-            SelectedBundle is null ? "Opening package editor." : $"Editing package {SelectedBundle.BundleName}.",
-            "Edit package",
-            2200);
+        Feedback.Info($"Editing package {SelectedBundle.BundleName}.", "Edit package", 2200);
     }
 
     // Bundle delete mode methods
@@ -4832,7 +5126,47 @@
         else
         {
             SelectedBundleServices.Add(service);
+            EnsureBundleLineDefaults(BundleServiceKey(service), service.Price);
         }
+    }
+
+    private void ToggleProductSelection(InventoryViewModel.InventoryItem product)
+    {
+        if (SelectedBundleProducts.Contains(product))
+        {
+            SelectedBundleProducts.Remove(product);
+        }
+        else
+        {
+            SelectedBundleProducts.Add(product);
+            EnsureBundleLineDefaults(BundleProductKey(product), product.Price);
+        }
+    }
+
+    private static string BundleServiceKey(ServiceViewModel.ServiceItem service) =>
+        $"service:{service.MasterAccountId ?? service.Sku}";
+
+    private static string BundleProductKey(InventoryViewModel.InventoryItem product) =>
+        $"product:{product.MasterAccountId ?? product.Sku}";
+
+    private void EnsureBundleLineDefaults(string key, decimal defaultPrice)
+    {
+        if (!BundleLineQuantities.ContainsKey(key)) BundleLineQuantities[key] = 1m;
+        if (!BundleLineUnitPrices.ContainsKey(key)) BundleLineUnitPrices[key] = Math.Max(0m, defaultPrice);
+        if (!BundleLineUoms.ContainsKey(key)) BundleLineUoms[key] = "unit";
+    }
+
+    private void SetBundleDeferred(string key, bool value)
+    {
+        if (value) BundleDeferredItemIds.Add(key);
+        else BundleDeferredItemIds.Remove(key);
+    }
+
+    private decimal GetBundleLineTotal(string key, decimal defaultPrice)
+    {
+        var qty = BundleLineQuantities.TryGetValue(key, out var quantity) ? Math.Max(1m, quantity) : 1m;
+        var price = BundleLineUnitPrices.TryGetValue(key, out var unitPrice) ? Math.Max(0m, unitPrice) : Math.Max(0m, defaultPrice);
+        return qty * price;
     }
 
     private int CalculateTotalDuration()
@@ -5593,6 +5927,24 @@
         public TimeSpan? AvailableTimeFrom { get; set; }
         public TimeSpan? AvailableTimeTo { get; set; }
         public string EInvoiceClassificationCode { get; set; } = string.Empty;
+        public string ImagePath { get; set; } = string.Empty;
+        public string ImageFileName { get; set; } = string.Empty;
+        public string Section { get; set; } = string.Empty;
+        public bool IsActive { get; set; } = true;
+        public string Barcode { get; set; } = string.Empty;
+        public string UnitOfMeasure { get; set; } = "unit";
+        public int ValidityDays { get; set; }
+        public int MemberExpiryDays { get; set; }
+        public string TriggeredMemberTypeId { get; set; } = string.Empty;
+        public decimal MemberMainAccountCredit { get; set; }
+        public decimal Points { get; set; }
+        public decimal MinPrice { get; set; }
+        public decimal MaxPrice { get; set; }
+        public string Policy { get; set; } = string.Empty;
+        public string TermCondition1 { get; set; } = string.Empty;
+        public string TermCondition2 { get; set; } = string.Empty;
+        public string TermCondition3 { get; set; } = string.Empty;
+        public List<InventoryPackageLineSummary> ServiceLines { get; set; } = new();
         public HashSet<string> ServiceIDs { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     }
 }
