@@ -314,7 +314,7 @@
                 }
                 else
                 {
-                    <div class="senang-editor senang-retail-editor">
+                    <div class="senang-editor">
                         <div class="senang-editor__topbar">
                             <div class="senang-editor__heading">
                                 <button type="button" class="senang-editor__back" @onclick="CloseAddServiceForm" title="Back">
@@ -396,7 +396,7 @@
                                     <div class="senang-editor__form-stack">
                                         <div class="senang-editor__row senang-editor__row--code-name">
                                             <div class="senang-editor__field senang-editor__field--code">
-                                                <label>Item Code</label>
+                                                <label>Item Code <span>*</span></label>
                                                 <input type="text" @bind="NewServiceSKU" placeholder="Display / item code" />
                                             </div>
                                             <div class="senang-editor__field senang-editor__field--grow">
@@ -486,18 +486,6 @@
                                             <div class="senang-editor__field">
                                                 <label>UOM</label>
                                                 <select value="@NewServiceUom" @onchange="OnServiceUomChanged">
-                                                    <option value="centimeter">centimeter</option>
-                                                    <option value="gram">gram</option>
-                                                    <option value="inch">inch</option>
-                                                    <option value="kati">kati</option>
-                                                    <option value="kilogram">kilogram</option>
-                                                    <option value="liter">liter</option>
-                                                    <option value="meter">meter</option>
-                                                    <option value="miligram">miligram</option>
-                                                    <option value="mililiter">mililiter</option>
-                                                    <option value="ounce">ounce</option>
-                                                    <option value="piece">piece</option>
-                                                    <option value="package">package</option>
                                                     <option value="unit">unit</option>
                                                     <option value="pcs">pcs</option>
                                                     <option value="set">set</option>
@@ -1634,7 +1622,7 @@
                 }
                 else
                 {
-                    <div class="senang-editor senang-retail-editor">
+                    <div class="senang-editor">
                         <div class="senang-editor__topbar">
                             <div class="senang-editor__heading">
                                 <button type="button" class="senang-editor__back" @onclick="CloseAddBundleForm" title="Back">
@@ -1740,13 +1728,7 @@
 
                                         <div class="senang-editor__field">
                                             <label>Section</label>
-                                            <select @bind="NewBundleSection">
-                                                <option value="">Select Section</option>
-                                                @foreach (var section in BundleSectionOptions)
-                                                {
-                                                    <option value="@section">@section</option>
-                                                }
-                                            </select>
+                                            <input type="text" @bind="NewBundleSection" placeholder="Package section" />
                                         </div>
 
                                         <div class="senang-editor__field">
@@ -1800,11 +1782,8 @@
 
                                         <div class="senang-editor__field">
                                             <label>Package Value</label>
-                                            <div class="senang-editor__value-field">
-                                                <span>MYR</span>
-                                                <strong>@BundlePackageValue.ToString("N2")</strong>
-                                            </div>
-                                            <small class="senang-editor__helper">Calculated from the API-backed package lines (Unit PV × Qty).</small>
+                                            <input type="text" value="@BundlePackageValue.ToString("N2")" readonly />
+                                            <small class="senang-editor__helper">Calculated from selected service/product unit prices × quantity.</small>
                                         </div>
 
                                         <div class="senang-editor__field">
@@ -2061,8 +2040,8 @@
                                     <div class="senang-editor__form-stack">
                                         <div class="senang-editor__field">
                                             <label>Credit Expiry (Days)</label>
-                                            <input type="number" min="1" @bind="NewBundleMemberExpiryDays" />
-                                            <small class="senang-editor__helper">Number of days before the credited amount expires after purchase.</small>
+                                            <input type="number" min="0" @bind="NewBundleMemberExpiryDays" />
+                                            <small class="senang-editor__helper">Number of days before package member credit expires.</small>
                                         </div>
                                         <div class="senang-editor__field">
                                             <label>Member Type</label>
@@ -4555,9 +4534,10 @@
         }
 
         if (string.IsNullOrWhiteSpace(NewServiceName) ||
+            string.IsNullOrWhiteSpace(NewServiceSKU) ||
             string.IsNullOrWhiteSpace(NewServiceCategory))
         {
-            ServiceApiError = "Service name and section are required.";
+            ServiceApiError = "Service name, item code and section are required.";
             return;
         }
 
@@ -4766,16 +4746,6 @@
     private IEnumerable<InventoryViewModel.InventoryItem> BundleEligibleProducts =>
         InventoryItems.Where(product =>
             !string.IsNullOrWhiteSpace(product.MasterAccountId));
-
-    private IEnumerable<string> BundleSectionOptions =>
-        Bundles
-            .Select(bundle => bundle.Section)
-            .Concat(ServiceSections.Select(section => section.SupportingTableName ?? string.Empty))
-            .Append(NewBundleSection)
-            .Where(section => !string.IsNullOrWhiteSpace(section))
-            .Select(section => section.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(section => section);
 
     private IEnumerable<BundleItem> PaginatedBundles
     {
