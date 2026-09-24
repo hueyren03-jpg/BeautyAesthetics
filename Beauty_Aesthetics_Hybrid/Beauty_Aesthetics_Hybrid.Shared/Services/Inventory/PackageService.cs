@@ -135,7 +135,13 @@ public sealed class PackageService : IPackageService
                     ? package.MemberMainAccountCredit
                     : GetInventoryDecimal(header, "MemberMainAccountCredit"),
                 lineSummaries,
-                GetInventoryDecimal(package ?? header, "Points")));
+                GetInventoryDecimal(package ?? header, "Points"),
+                GetPackagePolicy(
+                    package?.SalesDescription ?? header.SalesDescription,
+                    package?.AccountName ?? header.AccountName),
+                GetPackageTerm(GetInventoryString(package ?? header, "Remarks"), 0),
+                GetPackageTerm(GetInventoryString(package ?? header, "Remarks"), 1),
+                GetPackageTerm(GetInventoryString(package ?? header, "Remarks"), 2)));
         }
 
         return ApiCallResult<IReadOnlyList<InventoryPackageSummary>>.Ok(
@@ -281,7 +287,9 @@ public sealed class PackageService : IPackageService
         record.InventoryTypeID = PackageInventoryTypeId;
         record.InventoryTypeName = PackageInventoryTypeName;
         record.AccountName = package.Name.Trim();
-        record.SalesDescription = package.Name.Trim();
+        record.SalesDescription = string.IsNullOrWhiteSpace(package.Policy)
+            ? package.Name.Trim()
+            : package.Policy.Trim();
         record.DisplayCode = package.Sku.Trim();
         record.ItemGroupName = package.Section?.Trim() ?? string.Empty;
         record.SalesPrice = Math.Max(0, package.Price);
@@ -301,6 +309,13 @@ public sealed class PackageService : IPackageService
         SetInventoryProperty(record, "TriggeredMemberTypeID", package.TriggeredMemberTypeId?.Trim() ?? string.Empty);
         SetInventoryProperty(record, "MemberMainAccountCredit", Math.Max(0, package.MemberMainAccountCredit));
         SetInventoryProperty(record, "Points", Math.Max(0m, package.Points));
+        SetInventoryProperty(
+            record,
+            "Remarks",
+            EncodePackageTerms(
+                package.TermCondition1,
+                package.TermCondition2,
+                package.TermCondition3));
         record.BranchID = branchId;
         record.HasPackage = (package.Lines?.Count ?? package.Services.Count) > 0;
         record.AccountStatus = package.IsActive ? "Active" : "Inactive";
@@ -485,6 +500,40 @@ public sealed class PackageService : IPackageService
             ? value
             : Convert.ChangeType(value, targetType);
         property.SetValue(record, converted);
+    }
+
+    private static string GetPackagePolicy(string? salesDescription, string? packageName)
+    {
+        if (string.IsNullOrWhiteSpace(salesDescription) ||
+            string.Equals(
+                salesDescription.Trim(),
+                packageName?.Trim(),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Empty;
+        }
+
+        return salesDescription.Trim();
+    }
+
+    private static string EncodePackageTerms(params string?[] terms) =>
+        string.Join(
+            "\n",
+            terms.Select(term => (term ?? string.Empty).Replace("\r", " ").Replace("\n", " ").Trim()));
+
+    private static string GetPackageTerm(string? encodedTerms, int index)
+    {
+        if (string.IsNullOrWhiteSpace(encodedTerms))
+        {
+            return string.Empty;
+        }
+
+        var terms = encodedTerms
+            .Split('\n')
+            .Select(term => term.Trim())
+            .ToArray();
+
+        return index >= 0 && index < terms.Length ? terms[index] : string.Empty;
     }
 
     private static string? FirstNonEmpty(params string?[] values)
