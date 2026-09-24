@@ -63,7 +63,8 @@ public sealed record InventoryPackageSummary(
     int MemberExpiryDays = 0,
     string TriggeredMemberTypeId = "",
     decimal MemberMainAccountCredit = 0m,
-    IReadOnlyList<InventoryPackageLineSummary>? Lines = null);
+    IReadOnlyList<InventoryPackageLineSummary>? Lines = null,
+    decimal Points = 0m);
 
 public sealed record InventoryPackageLineEdit(
     string InventoryId,
@@ -89,6 +90,7 @@ public sealed record InventoryPackageEdit(
     decimal MemberMainAccountCredit = 0m,
     IReadOnlyCollection<InventoryPackageLineEdit>? Lines = null,
     string ImagePath = "",
-    string ImageFileName = "");
+    string ImageFileName = "",
+    decimal Points = 0m);
 
 
