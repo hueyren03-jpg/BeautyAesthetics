@@ -357,13 +357,13 @@
                                 {
                                     <div class="senang-editor__form-stack">
                                         <div class="senang-editor__row senang-editor__row--code-name">
-                                            <div class="senang-editor__field senang-editor__field--grow">
-                                                <label>Service Name <span>*</span></label>
-                                                <input type="text" @bind="NewServiceName" placeholder="Enter service name" />
-                                            </div>
                                             <div class="senang-editor__field senang-editor__field--code">
                                                 <label>Display Code</label>
                                                 <input type="text" @bind="NewServiceSKU" placeholder="Display code" />
+                                            </div>
+                                            <div class="senang-editor__field senang-editor__field--grow">
+                                                <label>Service Name <span>*</span></label>
+                                                <input type="text" @bind="NewServiceName" placeholder="Enter service name" />
                                             </div>
                                         </div>
 
@@ -438,14 +438,19 @@
                                         <div class="senang-editor__field">
                                             <label>UOM</label>
                                             <select value="@NewServiceUom" @onchange="OnServiceUomChanged">
+                                                <option value="centimeter">centimeter</option>
+                                                <option value="gram">gram</option>
+                                                <option value="inch">inch</option>
+                                                <option value="kati">kati</option>
+                                                <option value="kilogram">kilogram</option>
+                                                <option value="liter">liter</option>
+                                                <option value="meter">meter</option>
+                                                <option value="miligram">miligram</option>
+                                                <option value="mililiter">mililiter</option>
+                                                <option value="ounce">ounce</option>
+                                                <option value="piece">piece</option>
+                                                <option value="package">package</option>
                                                 <option value="unit">unit</option>
-                                                <option value="pcs">pcs</option>
-                                                <option value="set">set</option>
-                                                <option value="box">box</option>
-                                                <option value="kg">kg</option>
-                                                <option value="litre">litre</option>
-                                                <option value="hour">hour</option>
-                                                <option value="session">session</option>
                                             </select>
                                         </div>
 
@@ -456,7 +461,29 @@
 
                                         <div class="senang-editor__field">
                                             <label>Redeem Point</label>
-                                            <input type="number" step="1" min="0" @bind="NewServiceRedeemPoint" />
+                                            <div class="senang-editor__toggle-row">
+                                                <label class="service-form__toggle">
+                                                    <input type="checkbox"
+                                                           checked="@IsServiceRedeemPointEnabled"
+                                                           @onchange="ToggleServiceRedeemPoint" />
+                                                    <span class="service-form__toggle-slider"></span>
+                                                </label>
+                                                <div class="senang-editor__toggle-content">
+                                                    <strong>@(IsServiceRedeemPointEnabled ? "Enabled" : "Off")</strong>
+                                                    @if (IsServiceRedeemPointEnabled)
+                                                    {
+                                                        <input class="senang-editor__inline-number"
+                                                               type="number"
+                                                               step="1"
+                                                               min="0"
+                                                               @bind="NewServiceRedeemPoint" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <small>N/A</small>
+                                                    }
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 }
@@ -1559,13 +1586,13 @@
                                 {
                                     <div class="senang-editor__form-stack">
                                         <div class="senang-editor__row senang-editor__row--code-name">
-                                            <div class="senang-editor__field senang-editor__field--grow">
-                                                <label>Package Name <span>*</span></label>
-                                                <input type="text" @bind="NewBundleName" placeholder="Package name" />
-                                            </div>
                                             <div class="senang-editor__field senang-editor__field--code">
                                                 <label>Display Code</label>
                                                 <input type="text" @bind="NewBundleSKU" placeholder="Display code" />
+                                            </div>
+                                            <div class="senang-editor__field senang-editor__field--grow">
+                                                <label>Package Name <span>*</span></label>
+                                                <input type="text" @bind="NewBundleName" placeholder="Package name" />
                                             </div>
                                         </div>
 
@@ -1683,6 +1710,7 @@
                                                 <div class="senang-package-items__list">
                                                     @foreach (var service in BundleEligibleServices)
                                                     {
+                                                        var lineKey = BundleServiceKey(service);
                                                         var selected = SelectedBundleServices.Contains(service);
                                                         <div class="senang-package-item @(selected ? "is-selected" : string.Empty)">
                                                             <label class="senang-package-item__select">
@@ -1695,6 +1723,39 @@
                                                                     <small>@service.Sku · @service.Category</small>
                                                                 </span>
                                                             </label>
+
+                                                            @if (selected)
+                                                            {
+                                                                <div class="senang-package-item__fields">
+                                                                    <label>
+                                                                        <span>Deferred</span>
+                                                                        <input type="checkbox"
+                                                                               checked="@BundleDeferredServiceIds.Contains(lineKey)"
+                                                                               @onchange="(ChangeEventArgs e) => SetBundleDeferred(lineKey, e.Value is true)" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Unit PV</span>
+                                                                        <input type="number" min="0" step="0.01" @bind="BundleLineUnitPrices[lineKey]" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>UOM</span>
+                                                                        <select @bind="BundleLineUoms[lineKey]">
+                                                                            <option value="unit">unit</option>
+                                                                            <option value="session">session</option>
+                                                                            <option value="piece">piece</option>
+                                                                            <option value="set">set</option>
+                                                                            <option value="bottle">bottle</option>
+                                                                            <option value="box">box</option>
+                                                                            <option value="gram">gram</option>
+                                                                            <option value="ml">ml</option>
+                                                                        </select>
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Qty</span>
+                                                                        <input type="number" min="1" step="1" @bind="BundleLineQuantities[lineKey]" />
+                                                                    </label>
+                                                                </div>
+                                                            }
                                                         </div>
                                                     }
                                                 </div>
@@ -1711,6 +1772,7 @@
                                                 <div class="senang-package-items__list">
                                                     @foreach (var product in BundleEligibleProducts)
                                                     {
+                                                        var lineKey = BundleProductKey(product);
                                                         var selected = SelectedBundleProducts.Contains(product);
                                                         <div class="senang-package-item @(selected ? "is-selected" : string.Empty)">
                                                             <label class="senang-package-item__select">
@@ -1723,6 +1785,39 @@
                                                                     <small>@product.Sku · @product.Category</small>
                                                                 </span>
                                                             </label>
+
+                                                            @if (selected)
+                                                            {
+                                                                <div class="senang-package-item__fields">
+                                                                    <label>
+                                                                        <span>Deferred</span>
+                                                                        <input type="checkbox"
+                                                                               checked="@BundleDeferredServiceIds.Contains(lineKey)"
+                                                                               @onchange="(ChangeEventArgs e) => SetBundleDeferred(lineKey, e.Value is true)" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Unit PV</span>
+                                                                        <input type="number" min="0" step="0.01" @bind="BundleLineUnitPrices[lineKey]" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>UOM</span>
+                                                                        <select @bind="BundleLineUoms[lineKey]">
+                                                                            <option value="unit">unit</option>
+                                                                            <option value="session">session</option>
+                                                                            <option value="piece">piece</option>
+                                                                            <option value="set">set</option>
+                                                                            <option value="bottle">bottle</option>
+                                                                            <option value="box">box</option>
+                                                                            <option value="gram">gram</option>
+                                                                            <option value="ml">ml</option>
+                                                                        </select>
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Qty</span>
+                                                                        <input type="number" min="1" step="1" @bind="BundleLineQuantities[lineKey]" />
+                                                                    </label>
+                                                                </div>
+                                                            }
                                                         </div>
                                                     }
                                                 </div>
@@ -1733,9 +1828,21 @@
                                 else
                                 {
                                     <div class="senang-editor__form-stack">
-                                        <div class="senang-editor__field">
-                                            <label>Membership Credit</label>
-                                            <input type="number" min="0" step="0.01" @bind="NewBundleMemberCredit" />
+                                        <div class="senang-editor__row">
+                                            <div class="senang-editor__field">
+                                                <label>Member Type</label>
+                                                <select @bind="NewBundleTriggeredMemberTypeId">
+                                                    <option value="">Select member type</option>
+                                                    @foreach (var memberType in MemberTypeItems.Where(item => item.Active))
+                                                    {
+                                                        <option value="@memberType.MemberTypeID">@memberType.MemberTypeName</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                            <div class="senang-editor__field">
+                                                <label>Membership Credit</label>
+                                                <input type="number" min="0" step="0.01" @bind="NewBundleMemberCredit" />
+                                            </div>
                                         </div>
                                     </div>
                                 }
@@ -4265,7 +4372,7 @@
 
             var editorDetails = new ServiceEditorDetails(
                 Math.Max(0m, NewServicePointBalance),
-                Math.Max(0m, NewServiceRedeemPoint),
+                IsServiceRedeemPointEnabled ? Math.Max(0m, NewServiceRedeemPoint) : 0m,
                 string.Join(",", SelectedServiceBomProductIds.OrderBy(id => id, StringComparer.OrdinalIgnoreCase)));
 
             var visibleBranchId = string.IsNullOrWhiteSpace(NewServiceVisibleBranchId)
@@ -4723,15 +4830,17 @@
         }
 
         if (string.IsNullOrWhiteSpace(NewBundleName) ||
-            NewBundlePrice < 0)
+            NewBundlePrice <= 0)
         {
-            BundleApiError = "Package name and a valid price are required.";
+            BundleApiError = "Package name and a price greater than 0 are required.";
             return;
         }
 
-        if (SelectedBundleItemCount == 0)
+        if (NewBundleMemberCredit > 0m &&
+            string.IsNullOrWhiteSpace(NewBundleTriggeredMemberTypeId))
         {
-            BundleApiError = "Select at least one service or product for this package.";
+            BundleApiError = "Select a member type for the membership credit.";
+            BundleEditorTab = "Membership";
             return;
         }
 
