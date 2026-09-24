@@ -1758,6 +1758,13 @@
     private int NewServiceDuration { get; set; } = 0;
     private int NewServiceBufferTime { get; set; } = 0;
     private decimal NewServicePrice { get; set; } = 0.00m;
+    private decimal NewServiceCost { get; set; } = 0.00m;
+    private string NewServiceTaxCode { get; set; } = string.Empty;
+    private bool NewServiceTaxInclusive { get; set; }
+    private bool NewServiceIsActive { get; set; } = true;
+    private string NewServiceBarcode { get; set; } = string.Empty;
+    private string NewServiceUom { get; set; } = "unit";
+    private string NewServiceDescription { get; set; } = string.Empty;
     private bool NewServiceAddToBundle { get; set; } = false;
     private bool IsSavingService { get; set; }
     private string ServiceEditorTab { get; set; } = "Info";
@@ -1836,8 +1843,19 @@
     private bool IsBundleEditMode { get; set; }
     private string NewBundleName { get; set; } = string.Empty;
     private string NewBundleSKU { get; set; } = string.Empty;
+    private string NewBundleSection { get; set; } = string.Empty;
+    private bool NewBundleIsActive { get; set; } = true;
+    private string NewBundleBarcode { get; set; } = string.Empty;
+    private string NewBundleUom { get; set; } = "unit";
+    private int NewBundleValidityDays { get; set; }
+    private int NewBundleMemberExpiryDays { get; set; } = 365;
+    private string NewBundleTriggeredMemberTypeId { get; set; } = string.Empty;
+    private decimal NewBundleMemberCredit { get; set; }
     private decimal NewBundlePrice { get; set; } = 0.00m;
     private HashSet<ServiceViewModel.ServiceItem> SelectedBundleServices { get; set; } = new();
+    private Dictionary<string, decimal> BundleLineQuantities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, decimal> BundleLineUnitPrices { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> BundleDeferredServiceIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     private bool IsBundleApiLoading { get; set; }
     private bool IsSavingBundle { get; set; }
     private string? BundleApiError { get; set; }
@@ -3514,6 +3532,13 @@
         NewServiceDuration = 0;
         NewServiceBufferTime = 0;
         NewServicePrice = 0.00m;
+        NewServiceCost = 0.00m;
+        NewServiceTaxCode = string.Empty;
+        NewServiceTaxInclusive = false;
+        NewServiceIsActive = true;
+        NewServiceBarcode = string.Empty;
+        NewServiceUom = "unit";
+        NewServiceDescription = string.Empty;
         NewServiceAddToBundle = false;
         IsEditMode = false;
     }
@@ -3546,7 +3571,16 @@
                 Math.Max(0, NewServiceBufferTime),
                 NewServiceAddToBundle,
                 Math.Max(0, NewServicePrice),
-                IsEditMode ? SelectedService?.MasterAccountId : null);
+                IsEditMode ? SelectedService?.MasterAccountId : null,
+                Cost: Math.Max(0, NewServiceCost),
+                TaxCode: NewServiceTaxCode.Trim(),
+                IsTaxInclusive: NewServiceTaxInclusive,
+                IsActive: NewServiceIsActive,
+                Barcode: NewServiceBarcode.Trim(),
+                UnitOfMeasure: string.IsNullOrWhiteSpace(NewServiceUom) ? "unit" : NewServiceUom.Trim(),
+                Description: string.IsNullOrWhiteSpace(NewServiceDescription)
+                    ? NewServiceName.Trim()
+                    : NewServiceDescription.Trim());
 
             var result = IsEditMode
                 ? await ServiceItemService.UpdateServiceAsync(service, ServiceBranchId)
@@ -3587,6 +3621,13 @@
 
         NewServiceBufferTime = SelectedService.BufferTimeMinutes;
         NewServicePrice = SelectedService.Price;
+        NewServiceCost = SelectedService.Cost;
+        NewServiceTaxCode = SelectedService.TaxCode;
+        NewServiceTaxInclusive = SelectedService.IsTaxInclusive;
+        NewServiceIsActive = SelectedService.IsActive;
+        NewServiceBarcode = SelectedService.Barcode;
+        NewServiceUom = string.IsNullOrWhiteSpace(SelectedService.UnitOfMeasure) ? "unit" : SelectedService.UnitOfMeasure;
+        NewServiceDescription = SelectedService.Description;
         NewServiceAddToBundle = SelectedService.IsBundle;
 
         ServiceEditorTab = "Info";
@@ -3906,8 +3947,19 @@
     {
         NewBundleName = string.Empty;
         NewBundleSKU = string.Empty;
+        NewBundleSection = string.Empty;
+        NewBundleIsActive = true;
+        NewBundleBarcode = string.Empty;
+        NewBundleUom = "unit";
+        NewBundleValidityDays = 0;
+        NewBundleMemberExpiryDays = 365;
+        NewBundleTriggeredMemberTypeId = string.Empty;
+        NewBundleMemberCredit = 0m;
         NewBundlePrice = 0.00m;
         SelectedBundleServices.Clear();
+        BundleLineQuantities.Clear();
+        BundleLineUnitPrices.Clear();
+        BundleDeferredServiceIds.Clear();
         IsBundleEditMode = false;
     }
 
@@ -3937,12 +3989,34 @@
 
         try
         {
+            var packageLines = SelectedBundleServices
+                .Where(service => !string.IsNullOrWhiteSpace(service.MasterAccountId))
+                .Select(service =>
+                {
+                    var key = BundleServiceKey(service);
+                    return new InventoryPackageLineEdit(
+                        service,
+                        BundleLineQuantities.TryGetValue(key, out var quantity) ? Math.Max(1m, quantity) : 1m,
+                        BundleLineUnitPrices.TryGetValue(key, out var unitPrice) ? Math.Max(0m, unitPrice) : Math.Max(0m, service.Price),
+                        BundleDeferredServiceIds.Contains(key));
+                })
+                .ToList();
+
             var package = new InventoryPackageEdit(
                 IsBundleEditMode ? SelectedBundle?.MasterAccountID : null,
                 NewBundleName.Trim(),
                 NewBundleSKU.Trim(),
                 NewBundlePrice,
-                SelectedBundleServices.ToList());
+                SelectedBundleServices.ToList(),
+                NewBundleSection.Trim(),
+                NewBundleIsActive,
+                NewBundleBarcode.Trim(),
+                string.IsNullOrWhiteSpace(NewBundleUom) ? "unit" : NewBundleUom.Trim(),
+                Math.Max(0, NewBundleValidityDays),
+                Math.Max(0, NewBundleMemberExpiryDays),
+                NewBundleTriggeredMemberTypeId.Trim(),
+                Math.Max(0m, NewBundleMemberCredit),
+                packageLines);
 
             var result = IsBundleEditMode
                 ? await PackageService.UpdatePackageAsync(package, ServiceBranchId)
@@ -3970,6 +4044,14 @@
         IsBundleEditMode = true;
         NewBundleName = SelectedBundle.BundleName;
         NewBundleSKU = SelectedBundle.SKU;
+        NewBundleSection = SelectedBundle.Section;
+        NewBundleIsActive = SelectedBundle.IsActive;
+        NewBundleBarcode = SelectedBundle.Barcode;
+        NewBundleUom = string.IsNullOrWhiteSpace(SelectedBundle.UnitOfMeasure) ? "unit" : SelectedBundle.UnitOfMeasure;
+        NewBundleValidityDays = SelectedBundle.ValidityDays;
+        NewBundleMemberExpiryDays = SelectedBundle.MemberExpiryDays;
+        NewBundleTriggeredMemberTypeId = SelectedBundle.TriggeredMemberTypeId;
+        NewBundleMemberCredit = SelectedBundle.MemberMainAccountCredit;
         NewBundlePrice = SelectedBundle.Price;
 
         SelectedBundleServices = ServiceItems
@@ -3977,6 +4059,22 @@
                 !string.IsNullOrWhiteSpace(service.MasterAccountId) &&
                 SelectedBundle.ServiceIDs.Contains(service.MasterAccountId))
             .ToHashSet();
+
+        BundleLineQuantities.Clear();
+        BundleLineUnitPrices.Clear();
+        BundleDeferredServiceIds.Clear();
+        foreach (var service in SelectedBundleServices)
+        {
+            var key = BundleServiceKey(service);
+            var line = SelectedBundle.ServiceLines.FirstOrDefault(item =>
+                string.Equals(item.ServiceId, service.MasterAccountId, StringComparison.OrdinalIgnoreCase));
+            BundleLineQuantities[key] = line is null ? 1m : Math.Max(1m, line.Quantity);
+            BundleLineUnitPrices[key] = line is null ? Math.Max(0m, service.Price) : Math.Max(0m, line.UnitPrice);
+            if (line?.IsDeferred == true)
+            {
+                BundleDeferredServiceIds.Add(key);
+            }
+        }
 
         BundleApiError = null;
         BundleEditorTab = "Info";
@@ -4104,15 +4202,40 @@
         BundleCurrentPage = page;
     }
 
+    private static string BundleServiceKey(ServiceViewModel.ServiceItem service) =>
+        !string.IsNullOrWhiteSpace(service.MasterAccountId)
+            ? service.MasterAccountId!
+            : service.Sku;
+
     private void ToggleServiceSelection(ServiceViewModel.ServiceItem service)
     {
+        var key = BundleServiceKey(service);
+
         if (SelectedBundleServices.Contains(service))
         {
             SelectedBundleServices.Remove(service);
+            BundleLineQuantities.Remove(key);
+            BundleLineUnitPrices.Remove(key);
+            BundleDeferredServiceIds.Remove(key);
         }
         else
         {
             SelectedBundleServices.Add(service);
+            BundleLineQuantities[key] = 1m;
+            BundleLineUnitPrices[key] = Math.Max(0m, service.Price);
+        }
+    }
+
+    private void SetBundleDeferred(ServiceViewModel.ServiceItem service, bool isDeferred)
+    {
+        var key = BundleServiceKey(service);
+        if (isDeferred)
+        {
+            BundleDeferredServiceIds.Add(key);
+        }
+        else
+        {
+            BundleDeferredServiceIds.Remove(key);
         }
     }
 
