@@ -160,7 +160,12 @@ public sealed class PackageService : IPackageService
                 GetPackageTerm(packageRemarks, 1),
                 GetPackageTerm(packageRemarks, 2),
                 GetPackagePriceLimit(packageRemarks, "MIN_PRICE"),
-                GetPackagePriceLimit(packageRemarks, "MAX_PRICE")));
+                GetPackagePriceLimit(packageRemarks, "MAX_PRICE"),
+                package is not null && package.PurchasePrice != 0m
+                    ? package.PurchasePrice
+                    : header.PurchasePrice,
+                FirstNonEmpty(package?.TaxCodeId, header.TaxCodeID) ?? string.Empty,
+                package is not null ? package.IsTaxInclusive : header.IsTaxInclusive));
         }
 
         return ApiCallResult<IReadOnlyList<InventoryPackageSummary>>.Ok(
@@ -312,6 +317,9 @@ public sealed class PackageService : IPackageService
         record.DisplayCode = package.Sku.Trim();
         record.ItemGroupName = package.Section?.Trim() ?? string.Empty;
         record.SalesPrice = Math.Max(0, package.Price);
+        record.PurchasePrice = Math.Max(0, package.Cost);
+        record.TaxCodeID = package.TaxCode?.Trim() ?? string.Empty;
+        record.IsTaxInclusive = package.IsTaxInclusive;
         record.VendorItemCode = package.Barcode?.Trim() ?? string.Empty;
         record.UnitOfMeasureID = string.IsNullOrWhiteSpace(package.UnitOfMeasure)
             ? "unit"
