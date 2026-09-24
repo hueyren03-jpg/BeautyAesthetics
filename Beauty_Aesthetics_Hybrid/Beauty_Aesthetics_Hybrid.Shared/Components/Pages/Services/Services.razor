@@ -3752,40 +3752,8 @@
         return $"{(from?.ToString("dd/MM/yyyy") ?? "-")} - {(to?.ToString("dd/MM/yyyy") ?? "-")}";
     }
 
-    private static string BuildRecordImageUrl(string? imagePath, string? imageFileName)
-    {
-        if (string.IsNullOrWhiteSpace(imagePath) && string.IsNullOrWhiteSpace(imageFileName))
-        {
-            return string.Empty;
-        }
-
-        if (!string.IsNullOrWhiteSpace(imageFileName) &&
-            (imageFileName.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-             imageFileName.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
-             imageFileName.StartsWith("data:", StringComparison.OrdinalIgnoreCase)))
-        {
-            return imageFileName;
-        }
-
-        if (!string.IsNullOrWhiteSpace(imagePath) &&
-            (imagePath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-             imagePath.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
-             imagePath.StartsWith("data:", StringComparison.OrdinalIgnoreCase)))
-        {
-            return string.IsNullOrWhiteSpace(imageFileName)
-                ? imagePath
-                : $"{imagePath.TrimEnd('/')}/{imageFileName.TrimStart('/')}";
-        }
-
-        if (string.IsNullOrWhiteSpace(imageFileName))
-        {
-            return imagePath ?? string.Empty;
-        }
-
-        return string.IsNullOrWhiteSpace(imagePath)
-            ? imageFileName
-            : $"{imagePath.TrimEnd('/', '\\')}/{imageFileName.TrimStart('/', '\\')}";
-    }
+    private string BuildRecordImageUrl(string? imagePath, string? imageFileName) =>
+        ProductImageService.ResolveServerImageUrl(imagePath, imageFileName);
 
     private static string FormatDisplay(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "-" : value;
@@ -3943,6 +3911,7 @@
         NewServiceName = string.Empty;
         NewServiceSKU = string.Empty;
         NewServiceCategory = string.Empty;
+        NewServiceSectionId = string.Empty;
         NewServiceDuration = 0;
         NewServiceBufferTime = 0;
         NewServicePrice = 0.00m;
@@ -3953,6 +3922,10 @@
         NewServiceBarcode = string.Empty;
         NewServiceUom = "unit";
         NewServiceDescription = string.Empty;
+        NewServiceImagePath = string.Empty;
+        NewServiceImageFileName = string.Empty;
+        ServiceImagePreview = string.Empty;
+        ServiceImageError = null;
         NewServiceAddToBundle = false;
         IsEditMode = false;
     }
@@ -3968,7 +3941,7 @@
             string.IsNullOrWhiteSpace(NewServiceSKU) ||
             string.IsNullOrWhiteSpace(NewServiceCategory))
         {
-            ServiceApiError = "Service name, SKU and category are required.";
+            ServiceApiError = "Service name, item code and section are required.";
             return;
         }
 
@@ -3994,11 +3967,21 @@
                 UnitOfMeasure: string.IsNullOrWhiteSpace(NewServiceUom) ? "unit" : NewServiceUom.Trim(),
                 Description: string.IsNullOrWhiteSpace(NewServiceDescription)
                     ? NewServiceName.Trim()
-                    : NewServiceDescription.Trim());
+                    : NewServiceDescription.Trim(),
+                ImagePath: NewServiceImagePath,
+                ImageFileName: NewServiceImageFileName,
+                SectionId: NewServiceSectionId,
+                UnitOfMeasureId: NewServiceUom);
 
             var result = IsEditMode
-                ? await ServiceItemService.UpdateServiceAsync(service, ServiceBranchId)
-                : await ServiceItemService.CreateServiceAsync(service, ServiceBranchId);
+                ? await ServiceItemService.UpdateServiceAsync(
+                    service,
+                    ServiceBranchId,
+                    branchGroupId: ServiceBranchGroupId)
+                : await ServiceItemService.CreateServiceAsync(
+                    service,
+                    ServiceBranchId,
+                    branchGroupId: ServiceBranchGroupId);
 
             if (!result.Success)
             {
@@ -4028,6 +4011,7 @@
         NewServiceName = SelectedService.ServiceName;
         NewServiceSKU = SelectedService.Sku;
         NewServiceCategory = SelectedService.Category;
+        NewServiceSectionId = SelectedService.SectionId;
 
         // Parse duration from string (e.g., "60 mins" -> 60)
         var durationStr = SelectedService.DurationSpend.Split(' ')[0];
@@ -4040,8 +4024,17 @@
         NewServiceTaxInclusive = SelectedService.IsTaxInclusive;
         NewServiceIsActive = SelectedService.IsActive;
         NewServiceBarcode = SelectedService.Barcode;
-        NewServiceUom = string.IsNullOrWhiteSpace(SelectedService.UnitOfMeasure) ? "unit" : SelectedService.UnitOfMeasure;
+        NewServiceUom = !string.IsNullOrWhiteSpace(SelectedService.UnitOfMeasureId)
+            ? SelectedService.UnitOfMeasureId
+            : string.IsNullOrWhiteSpace(SelectedService.UnitOfMeasure) ? "unit" : SelectedService.UnitOfMeasure;
         NewServiceDescription = SelectedService.Description;
+        NewServiceImagePath = SelectedService.ImagePath;
+        NewServiceImageFileName = SelectedService.ImageFileName;
+        ServiceImagePreview = ProductImageService.ResolveImageUrl(
+            SelectedService.MasterAccountId,
+            SelectedService.ImagePath,
+            SelectedService.ImageFileName);
+        ServiceImageError = null;
         NewServiceAddToBundle = SelectedService.IsBundle;
 
         ServiceEditorTab = "Info";
@@ -4365,6 +4358,10 @@
         NewBundleIsActive = true;
         NewBundleBarcode = string.Empty;
         NewBundleUom = "unit";
+        NewBundleImagePath = string.Empty;
+        NewBundleImageFileName = string.Empty;
+        BundleImagePreview = string.Empty;
+        BundleImageError = null;
         NewBundleValidityDays = 0;
         NewBundleMemberExpiryDays = 365;
         NewBundleTriggeredMemberTypeId = string.Empty;
@@ -4430,11 +4427,19 @@
                 Math.Max(0, NewBundleMemberExpiryDays),
                 NewBundleTriggeredMemberTypeId.Trim(),
                 Math.Max(0m, NewBundleMemberCredit),
-                packageLines);
+                packageLines,
+                NewBundleImagePath,
+                NewBundleImageFileName);
 
             var result = IsBundleEditMode
-                ? await PackageService.UpdatePackageAsync(package, ServiceBranchId)
-                : await PackageService.CreatePackageAsync(package, ServiceBranchId);
+                ? await PackageService.UpdatePackageAsync(
+                    package,
+                    ServiceBranchId,
+                    branchGroupId: ServiceBranchGroupId)
+                : await PackageService.CreatePackageAsync(
+                    package,
+                    ServiceBranchId,
+                    branchGroupId: ServiceBranchGroupId);
 
             if (!result.Success)
             {
@@ -4462,6 +4467,13 @@
         NewBundleIsActive = SelectedBundle.IsActive;
         NewBundleBarcode = SelectedBundle.Barcode;
         NewBundleUom = string.IsNullOrWhiteSpace(SelectedBundle.UnitOfMeasure) ? "unit" : SelectedBundle.UnitOfMeasure;
+        NewBundleImagePath = SelectedBundle.ImagePath;
+        NewBundleImageFileName = SelectedBundle.ImageFileName;
+        BundleImagePreview = ProductImageService.ResolveImageUrl(
+            SelectedBundle.MasterAccountID,
+            SelectedBundle.ImagePath,
+            SelectedBundle.ImageFileName);
+        BundleImageError = null;
         NewBundleValidityDays = SelectedBundle.ValidityDays;
         NewBundleMemberExpiryDays = SelectedBundle.MemberExpiryDays;
         NewBundleTriggeredMemberTypeId = SelectedBundle.TriggeredMemberTypeId;
