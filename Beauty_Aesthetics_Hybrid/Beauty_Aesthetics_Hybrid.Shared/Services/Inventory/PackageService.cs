@@ -68,6 +68,20 @@ public sealed class PackageService : IPackageService
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
+            var lineSummaries = packageLines
+                .Where(line => !string.IsNullOrWhiteSpace(line.InventoryId))
+                .Select(line => new InventoryPackageLineSummary(
+                    line.InventoryId!,
+                    line.Description ?? string.Empty,
+                    line.Quantity,
+                    line.UnitPrice,
+                    line.IsDeferred,
+                    line.AutoId.ValueKind is System.Text.Json.JsonValueKind.Null
+                        or System.Text.Json.JsonValueKind.Undefined
+                        ? null
+                        : line.AutoId.ToString()))
+                .ToList();
+
             var totalDuration = serviceIds.Sum(id =>
                 serviceById.TryGetValue(id, out var service)
                     ? ParseDuration(service.DurationSpend)
@@ -98,7 +112,25 @@ public sealed class PackageService : IPackageService
                 header.AvailableTimeTo,
                 header.eInvoiceClassificationCode ?? string.Empty,
                 header.ImagePath ?? string.Empty,
-                header.ImageFileName ?? string.Empty));
+                header.ImageFileName ?? string.Empty,
+                FirstNonEmpty(package?.ItemGroupName, header.ItemGroupName) ?? string.Empty,
+                string.Equals(
+                    FirstNonEmpty(package?.AccountStatus, header.AccountStatus, "Active"),
+                    "Active",
+                    StringComparison.OrdinalIgnoreCase),
+                FirstNonEmpty(package?.VendorItemCode, header.VendorItemCode) ?? string.Empty,
+                FirstNonEmpty(package?.UnitOfMeasureId, header.UnitOfMeasureName, header.UnitOfMeasureID, "unit") ?? "unit",
+                package is not null && package.ValidityDays != 0 ? package.ValidityDays : header.ValidityDays,
+                package is not null && package.MemberExpiryDays != 0
+                    ? package.MemberExpiryDays
+                    : GetInventoryInt(header, "MemberExpiryDays"),
+                FirstNonEmpty(
+                    package?.TriggeredMemberTypeId,
+                    GetInventoryString(header, "TriggeredMemberTypeID")) ?? string.Empty,
+                package is not null && package.MemberMainAccountCredit != 0
+                    ? package.MemberMainAccountCredit
+                    : GetInventoryDecimal(header, "MemberMainAccountCredit"),
+                lineSummaries));
         }
 
         return ApiCallResult<IReadOnlyList<InventoryPackageSummary>>.Ok(
@@ -234,10 +266,19 @@ public sealed class PackageService : IPackageService
         record.AccountName = package.Name.Trim();
         record.SalesDescription = package.Name.Trim();
         record.DisplayCode = package.Sku.Trim();
+        record.ItemGroupName = package.Section?.Trim() ?? string.Empty;
         record.SalesPrice = Math.Max(0, package.Price);
+        record.VendorItemCode = package.Barcode?.Trim() ?? string.Empty;
+        record.UnitOfMeasureID = string.IsNullOrWhiteSpace(package.UnitOfMeasure)
+            ? "unit"
+            : package.UnitOfMeasure.Trim();
+        record.ValidityDays = Math.Max(0, package.ValidityDays);
+        SetInventoryProperty(record, "MemberExpiryDays", Math.Max(0, package.MemberExpiryDays));
+        SetInventoryProperty(record, "TriggeredMemberTypeID", package.TriggeredMemberTypeId?.Trim() ?? string.Empty);
+        SetInventoryProperty(record, "MemberMainAccountCredit", Math.Max(0, package.MemberMainAccountCredit));
         record.BranchID = branchId;
         record.HasPackage = package.Services.Count > 0;
-        record.AccountStatus = string.IsNullOrWhiteSpace(record.AccountStatus) ? "Active" : record.AccountStatus;
+        record.AccountStatus = package.IsActive ? "Active" : "Inactive";
         record.IsSold = true;
         record.SaveAction = isUpdate ? EntityState.Changed : EntityState.Added;
         record.IsDirty = true;
@@ -256,17 +297,22 @@ public sealed class PackageService : IPackageService
         {
             var existing = existingLines.FirstOrDefault(line =>
                 string.Equals(line.InventoryID, service.MasterAccountId, StringComparison.OrdinalIgnoreCase));
+            var lineEdit = package.Lines?.FirstOrDefault(item =>
+                string.Equals(item.Service.MasterAccountId, service.MasterAccountId, StringComparison.OrdinalIgnoreCase));
+
+            var quantity = lineEdit is null ? 1m : Math.Max(1m, lineEdit.Quantity);
+            var unitPrice = lineEdit is null ? Math.Max(0, service.Price) : Math.Max(0, lineEdit.UnitPrice);
 
             var line = existing ?? new Inventory_PackageItemDM();
             line.InventoryID = service.MasterAccountId;
             line.Description = service.ServiceName;
-            line.Quantity = 1;
-            line.UnitPrice = service.Price;
-            line.TotalPrice = service.Price;
-            line.UnitActualValue = service.Price;
-            line.TotalActualValue = service.Price;
+            line.Quantity = quantity;
+            line.UnitPrice = unitPrice;
+            line.TotalPrice = unitPrice * quantity;
+            line.UnitActualValue = unitPrice;
+            line.TotalActualValue = unitPrice * quantity;
             line.InventoryTypeID = ServiceInventoryTypeId;
-            line.IsDeferred = false;
+            line.IsDeferred = lineEdit?.IsDeferred ?? false;
             line.IsVoided = false;
             line.IsConfirmed = true;
             line.PackageQuantityTypeID = 0;
@@ -354,6 +400,45 @@ public sealed class PackageService : IPackageService
         return result.Success
             ? ApiCallResult<bool>.Ok(result.StatusCode, true)
             : ApiCallResult<bool>.Failure(result.StatusCode, result.ErrorMessage ?? fallbackMessage);
+    }
+
+    private static string? GetInventoryString(InventoryDM record, string propertyName)
+    {
+        var value = record.GetType().GetProperty(propertyName)?.GetValue(record);
+        return value?.ToString();
+    }
+
+    private static int GetInventoryInt(InventoryDM record, string propertyName)
+    {
+        var value = record.GetType().GetProperty(propertyName)?.GetValue(record);
+        return value is null ? 0 : Convert.ToInt32(value);
+    }
+
+    private static decimal GetInventoryDecimal(InventoryDM record, string propertyName)
+    {
+        var value = record.GetType().GetProperty(propertyName)?.GetValue(record);
+        return value is null ? 0m : Convert.ToDecimal(value);
+    }
+
+    private static void SetInventoryProperty(InventoryDM record, string propertyName, object? value)
+    {
+        var property = record.GetType().GetProperty(propertyName);
+        if (property is null || !property.CanWrite)
+        {
+            return;
+        }
+
+        if (value is null)
+        {
+            property.SetValue(record, null);
+            return;
+        }
+
+        var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        var converted = targetType.IsInstanceOfType(value)
+            ? value
+            : Convert.ChangeType(value, targetType);
+        property.SetValue(record, converted);
     }
 
     private static string? FirstNonEmpty(params string?[] values)
