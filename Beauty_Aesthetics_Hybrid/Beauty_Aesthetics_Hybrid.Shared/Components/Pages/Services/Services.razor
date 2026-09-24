@@ -1726,15 +1726,9 @@
                                             <input type="text" @bind="NewBundleName" placeholder="Package name" />
                                         </div>
 
-                                        <div class="senang-editor__row">
-                                            <div class="senang-editor__field">
-                                                <label>Package SKU <span>*</span></label>
-                                                <input type="text" @bind="NewBundleSKU" placeholder="Package SKU" />
-                                            </div>
-                                            <div class="senang-editor__field">
-                                                <label>Section</label>
-                                                <input type="text" @bind="NewBundleSection" placeholder="Package section" />
-                                            </div>
+                                        <div class="senang-editor__field">
+                                            <label>Section</label>
+                                            <input type="text" @bind="NewBundleSection" placeholder="Package section" />
                                         </div>
 
                                         <div class="senang-editor__field">
@@ -1797,16 +1791,6 @@
                                             <input type="number" step="0.01" min="0" @bind="NewBundlePrice" />
                                         </div>
 
-                                        <div class="senang-editor__field">
-                                            <label>Status</label>
-                                            <label class="senang-editor__status-control">
-                                                <input type="checkbox" @bind="NewBundleIsActive" />
-                                                <span>
-                                                    <strong>@(NewBundleIsActive ? "Active" : "Inactive")</strong>
-                                                    <small>Available for sale</small>
-                                                </span>
-                                            </label>
-                                        </div>
                                     </div>
                                 }
                                 else if (BundleEditorTab == "Items")
@@ -1988,22 +1972,35 @@
                                             </div>
                                         </div>
 
-                                        <div class="senang-editor__row">
-                                            <div class="senang-editor__field">
-                                                <label>UOM</label>
-                                                <select @bind="NewBundleUom">
-                                                    <option value="unit">unit</option>
-                                                    <option value="piece">piece</option>
-                                                    <option value="set">set</option>
-                                                    <option value="package">package</option>
-                                                    <option value="session">session</option>
-                                                </select>
-                                            </div>
-                                            <div class="senang-editor__field">
-                                                <label>Validity Days</label>
-                                                <input type="number" min="0" @bind="NewBundleValidityDays" />
+                                        <div class="senang-editor__field">
+                                            <label>Min / Max Price Range</label>
+                                            <div class="senang-editor__toggle-row">
+                                                <label class="service-form__toggle">
+                                                    <input type="checkbox"
+                                                           checked="@IsBundleMinMaxPriceEnabled"
+                                                           @onchange="ToggleBundleMinMaxPrice" />
+                                                    <span class="service-form__toggle-slider"></span>
+                                                </label>
+                                                <div>
+                                                    <strong>@(IsBundleMinMaxPriceEnabled ? "Enabled" : "Off")</strong>
+                                                    <small>Set the allowed package price range.</small>
+                                                </div>
                                             </div>
                                         </div>
+
+                                        @if (IsBundleMinMaxPriceEnabled)
+                                        {
+                                            <div class="senang-editor__row">
+                                                <div class="senang-editor__field">
+                                                    <label>Min Price (MYR)</label>
+                                                    <input type="number" min="0" step="0.01" @bind="NewBundleMinPrice" />
+                                                </div>
+                                                <div class="senang-editor__field">
+                                                    <label>Max Price (MYR)</label>
+                                                    <input type="number" min="0" step="0.01" @bind="NewBundleMaxPrice" />
+                                                </div>
+                                            </div>
+                                        }
 
                                         <div class="senang-editor__field">
                                             <label>Outlet Availability</label>
@@ -2568,6 +2565,9 @@
     private string NewBundleTriggeredMemberTypeId { get; set; } = string.Empty;
     private decimal NewBundleMemberCredit { get; set; }
     private decimal NewBundlePoints { get; set; }
+    private bool IsBundleMinMaxPriceEnabled { get; set; }
+    private decimal NewBundleMinPrice { get; set; }
+    private decimal NewBundleMaxPrice { get; set; }
     private string NewBundlePolicy { get; set; } = string.Empty;
     private string NewBundleTermCondition1 { get; set; } = string.Empty;
     private string NewBundleTermCondition2 { get; set; } = string.Empty;
@@ -2947,6 +2947,8 @@
                     TriggeredMemberTypeId = package.TriggeredMemberTypeId,
                     MemberMainAccountCredit = package.MemberMainAccountCredit,
                     Points = package.Points,
+                    MinPrice = package.MinPrice,
+                    MaxPrice = package.MaxPrice,
                     Policy = package.Policy,
                     TermCondition1 = package.TermCondition1,
                     TermCondition2 = package.TermCondition2,
@@ -4989,6 +4991,9 @@
         NewBundleTriggeredMemberTypeId = string.Empty;
         NewBundleMemberCredit = 0m;
         NewBundlePoints = 0m;
+        IsBundleMinMaxPriceEnabled = false;
+        NewBundleMinPrice = 0m;
+        NewBundleMaxPrice = 0m;
         NewBundlePolicy = string.Empty;
         NewBundleTermCondition1 = string.Empty;
         NewBundleTermCondition2 = string.Empty;
@@ -5012,10 +5017,9 @@
         }
 
         if (string.IsNullOrWhiteSpace(NewBundleName) ||
-            string.IsNullOrWhiteSpace(NewBundleSKU) ||
             NewBundlePrice < 0)
         {
-            BundleApiError = "Package name, SKU, and a valid price are required.";
+            BundleApiError = "Package name and a valid price are required.";
             return;
         }
 
@@ -5083,7 +5087,9 @@
                 Policy: NewBundlePolicy.Trim(),
                 TermCondition1: NewBundleTermCondition1.Trim(),
                 TermCondition2: NewBundleTermCondition2.Trim(),
-                TermCondition3: NewBundleTermCondition3.Trim());
+                TermCondition3: NewBundleTermCondition3.Trim(),
+                MinPrice: IsBundleMinMaxPriceEnabled ? Math.Max(0m, NewBundleMinPrice) : 0m,
+                MaxPrice: IsBundleMinMaxPriceEnabled ? Math.Max(0m, NewBundleMaxPrice) : 0m);
 
             var result = IsBundleEditMode
                 ? await PackageService.UpdatePackageAsync(
@@ -5133,6 +5139,9 @@
         NewBundleTriggeredMemberTypeId = SelectedBundle.TriggeredMemberTypeId;
         NewBundleMemberCredit = SelectedBundle.MemberMainAccountCredit;
         NewBundlePoints = SelectedBundle.Points;
+        NewBundleMinPrice = SelectedBundle.MinPrice;
+        NewBundleMaxPrice = SelectedBundle.MaxPrice;
+        IsBundleMinMaxPriceEnabled = NewBundleMinPrice > 0m || NewBundleMaxPrice > 0m;
         NewBundlePolicy = SelectedBundle.Policy;
         NewBundleTermCondition1 = SelectedBundle.TermCondition1;
         NewBundleTermCondition2 = SelectedBundle.TermCondition2;
@@ -5222,6 +5231,18 @@
             SelectedBundle is null ? "Opening package editor." : $"Editing package {SelectedBundle.BundleName}.",
             "Edit package",
             2200);
+    }
+
+    private void ToggleBundleMinMaxPrice(ChangeEventArgs args)
+    {
+        IsBundleMinMaxPriceEnabled = args.Value is true ||
+            string.Equals(args.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+
+        if (!IsBundleMinMaxPriceEnabled)
+        {
+            NewBundleMinPrice = 0m;
+            NewBundleMaxPrice = 0m;
+        }
     }
 
     private void ToggleServiceRedeemPoint(ChangeEventArgs args)
@@ -6234,6 +6255,8 @@
         public string TriggeredMemberTypeId { get; set; } = string.Empty;
         public decimal MemberMainAccountCredit { get; set; }
         public decimal Points { get; set; }
+        public decimal MinPrice { get; set; }
+        public decimal MaxPrice { get; set; }
         public string Policy { get; set; } = string.Empty;
         public string TermCondition1 { get; set; } = string.Empty;
         public string TermCondition2 { get; set; } = string.Empty;
