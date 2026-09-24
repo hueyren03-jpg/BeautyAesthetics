@@ -14,9 +14,6 @@
 @using Beauty_Aesthetics_WebPos.APIClient.ResultPattern
 @inject IJSRuntime JSRuntime
 @inject IServiceItemService ServiceItemService
-@inject IProductInventoryService ProductInventoryService
-@inject Beauty_Aesthetics_WebPos.APIClient.SupportingTableAC SupportingTableAC
-@inject IBranchLookupService BranchLookupService
 @inject IMemberCreditService MemberCreditService
 @inject IPackageService PackageService
 @inject IMembershipTypeService MembershipTypeService
@@ -337,95 +334,57 @@
                             </div>
                             <div class="service-modal__body">
                                 <form class="service-form" @onsubmit:preventDefault>
-                                    <div class="bundle-form__section">
-                                        <h3 class="bundle-form__section-title">Service Information</h3>
+                                    <div class="service-form__field">
+                                        <label>@L["ServiceName"] <span class="service-form__required">*</span></label>
+                                        <input type="text" @bind="NewServiceName" placeholder="@L["EnterServiceName"]" required />
+                                    </div>
 
-                                        <div class="service-form__field">
-                                            <label>Service Name <span class="service-form__required">*</span></label>
-                                            <input type="text" @bind="NewServiceName" placeholder="Service name" required />
-                                        </div>
+                                    <div class="service-form__field">
+                                        <label>@L["SkuCode"] <span class="service-form__required">*</span></label>
+                                        <input type="text" @bind="NewServiceSKU" placeholder="@L["EnterSkuCode"]" required />
+                                    </div>
 
-                                        <div class="service-form__field">
-                                            <label>Display Code</label>
-                                            <input type="text" @bind="NewServiceSKU" placeholder="Display code" />
-                                        </div>
+                                    <div class="service-form__field">
+                                        <label>@L["Category"] <span class="service-form__required">*</span></label>
+                                        <select @bind="NewServiceCategory" required>
+                                            <option value="">@L["SelectCategory"]</option>
+                                            <option value="Facial">@L["Facial"]</option>
+                                            <option value="Body">@L["Body"]</option>
+                                            <option value="Hair">@L["Hair"]</option>
+                                            <option value="Massage">@L["Massage"]</option>
+                                            <option value="Spa">@L["Spa"]</option>
+                                        </select>
+                                    </div>
 
-                                        <div class="service-form__field">
-                                            <label>Item Group <span class="service-form__required">*</span></label>
-                                            <select value="@NewServiceSectionId" @onchange="OnServiceSectionChanged" required>
-                                                <option value="">Select item group</option>
-                                                @foreach (var section in ServiceSections.Where(section => section.Active))
-                                                {
-                                                    <option value="@section.SupportingTableID">@section.SupportingTableName</option>
-                                                }
-                                            </select>
-                                        </div>
+                                    <div class="service-form__field">
+                                        <label>@L["DurationMinutes"] <span class="service-form__required">*</span></label>
+                                        <input type="number" @bind="NewServiceDuration" placeholder="0" min="0" required />
+                                    </div>
 
-                                        <div class="service-form__field">
-                                            <label>Tax Code</label>
-                                            <input type="text" @bind="NewServiceTaxCode" placeholder="Tax code" />
-                                        </div>
+                                    <div class="service-form__field">
+                                        <label>@L["BufferTimeMinutes"] <span class="service-form__required">*</span></label>
+                                        <input type="number" @bind="NewServiceBufferTime" placeholder="0" min="0" required />
+                                    </div>
 
-                                        <div class="service-form__field">
-                                            <label>Inclusive Tax</label>
-                                            <div class="service-form__toggle-container">
-                                                <label><input type="radio" name="serviceInclusiveTax" checked="@NewServiceTaxInclusive" @onchange="() => NewServiceTaxInclusive = true" /> Yes</label>
-                                                <label><input type="radio" name="serviceInclusiveTax" checked="@(!NewServiceTaxInclusive)" @onchange="() => NewServiceTaxInclusive = false" /> No</label>
-                                            </div>
-                                        </div>
+                                    <div class="service-form__field">
+                                        <label>@L["PriceMyr"]</label>
+                                        <input type="number" step="0.01" @bind="NewServicePrice" placeholder="0.00" min="0" />
+                                    </div>
 
-                                        <div class="service-form__field">
-                                            <label>Price (MYR)</label>
-                                            <input type="number" step="0.01" min="0" @bind="NewServicePrice" />
-                                        </div>
-
-                                        <div class="service-form__field">
-                                            <label>Cost (MYR)</label>
-                                            <input type="number" step="0.01" min="0" @bind="NewServiceCost" />
-                                        </div>
-
-                                        <div class="service-form__field">
-                                            <label>Visible at Branch</label>
-                                            <select @bind="NewServiceVisibleBranchId">
-                                                @foreach (var branchItem in VisibleBranches)
-                                                {
-                                                    <option value="@branchItem.Id">@branchItem.DisplayName</option>
-                                                }
-                                            </select>
+                                    <div class="service-form__field service-form__field--toggle">
+                                        <label>@L["AddToPackageList"]</label>
+                                        <div class="service-form__toggle-container">
+                                            <label class="service-form__toggle">
+                                                <input type="checkbox" @bind="NewServiceAddToBundle" />
+                                                <span class="service-form__toggle-slider"></span>
+                                            </label>
+                                            <span class="service-form__toggle-label">@(NewServiceAddToBundle ? L["Yes"] : L["No"])</span>
                                         </div>
                                     </div>
 
-                                    <div class="bundle-form__section">
-                                        <h3 class="bundle-form__section-title">Advance</h3>
-
-                                        <div class="service-form__field">
-                                            <label>UOM</label>
-                                            <select @bind="NewServiceUom">
-                                                <option value="centimeter">centimeter</option>
-                                                <option value="gram">gram</option>
-                                                <option value="inch">inch</option>
-                                                <option value="kati">kati</option>
-                                                <option value="kilogram">kilogram</option>
-                                                <option value="liter">liter</option>
-                                                <option value="meter">meter</option>
-                                                <option value="miligram">miligram</option>
-                                                <option value="mililiter">mililiter</option>
-                                                <option value="ounce">ounce</option>
-                                                <option value="piece">piece</option>
-                                                <option value="package">package</option>
-                                                <option value="unit">unit</option>
-                                            </select>
-                                        </div>
-
-                                        <div class="service-form__field">
-                                            <label>Duration (Minutes)</label>
-                                            <input type="number" min="0" step="1" @bind="NewServiceDuration" />
-                                        </div>
-
-                                        <div class="service-form__field">
-                                            <label>Redeem Point</label>
-                                            <input type="number" step="1" min="0" @bind="NewServiceRedeemPoint" />
-                                        </div>
+                                    <div class="service-form__note">
+                                        <i class="bi bi-info-circle"></i>
+                                        <span>@L["AddToPackageListNote"]</span>
                                     </div>
                                 </form>
                             </div>
@@ -1782,88 +1741,40 @@
                             <div class="bundle-modal__body">
                                 <form class="bundle-form" @onsubmit:preventDefault>
                                     <div class="bundle-form__section">
-                                        <h3 class="bundle-form__section-title">Package Information</h3>
+                                        <h3 class="bundle-form__section-title">@L["PackageInformation"]</h3>
 
                                         <div class="bundle-form__field">
-                                            <label>Package Name <span class="bundle-form__required">*</span></label>
-                                            <input type="text" @bind="NewBundleName" placeholder="Package name" required />
+                                            <label>@L["PackageName"] <span class="bundle-form__required">*</span></label>
+                                            <input type="text" @bind="NewBundleName" placeholder="@L["EnterPackageName"]" required />
                                         </div>
 
                                         <div class="bundle-form__field">
-                                            <label>Display Code</label>
-                                            <input type="text" @bind="NewBundleSKU" placeholder="Display code" />
+                                            <label>@L["PackageSKU"] <span class="bundle-form__required">*</span></label>
+                                            <input type="text" @bind="NewBundleSKU" placeholder="@L["EnterPackageSKU"]" required />
                                         </div>
 
                                         <div class="bundle-form__field">
-                                            <label>Item Group</label>
-                                            <select @bind="NewBundleSection">
-                                                <option value="">Select item group</option>
-                                                @foreach (var section in ServiceSections.Where(section => section.Active))
-                                                {
-                                                    <option value="@section.SupportingTableName">@section.SupportingTableName</option>
-                                                }
-                                            </select>
-                                        </div>
-
-                                        <div class="bundle-form__field service-form__field--toggle">
-                                            <label>Is Active</label>
-                                            <div class="service-form__toggle-container">
-                                                <label class="service-form__toggle">
-                                                    <input type="checkbox" @bind="NewBundleIsActive" />
-                                                    <span class="service-form__toggle-slider"></span>
-                                                </label>
-                                            </div>
-                                        </div>
-
-                                        <div class="bundle-form__field">
-                                            <label>Tax Code</label>
-                                            <input type="text" @bind="NewBundleTaxCode" placeholder="Tax code" />
-                                        </div>
-
-                                        <div class="bundle-form__field">
-                                            <label>Inclusive Tax</label>
-                                            <div class="service-form__toggle-container">
-                                                <label><input type="radio" name="packageInclusiveTax" checked="@NewBundleTaxInclusive" @onchange="() => NewBundleTaxInclusive = true" /> Yes</label>
-                                                <label><input type="radio" name="packageInclusiveTax" checked="@(!NewBundleTaxInclusive)" @onchange="() => NewBundleTaxInclusive = false" /> No</label>
-                                            </div>
-                                        </div>
-
-                                        <div class="bundle-form__field">
-                                            <label>Price (MYR)</label>
-                                            <input type="number" step="0.01" min="0" @bind="NewBundlePrice" />
-                                        </div>
-
-                                        <div class="bundle-form__field">
-                                            <label>Cost (MYR)</label>
-                                            <input type="number" step="0.01" min="0" @bind="NewBundleCost" />
-                                        </div>
-
-                                        <div class="bundle-form__field">
-                                            <label>Visible at Branch</label>
-                                            <select @bind="NewBundleVisibleBranchId">
-                                                @foreach (var branchItem in VisibleBranches)
-                                                {
-                                                    <option value="@branchItem.Id">@branchItem.DisplayName</option>
-                                                }
-                                            </select>
+                                            <label>@L["PackagePriceMyr"] <span class="bundle-form__required">*</span></label>
+                                            <input type="number" step="0.01" @bind="NewBundlePrice" placeholder="0.00" min="0" required />
                                         </div>
                                     </div>
 
                                     <div class="bundle-form__section">
-                                        <h3 class="bundle-form__section-title">Package Items</h3>
-
-                                        <div class="bundle-form__field">
-                                            <label>Item Type</label>
-                                            <select @bind="BundleItemPickerType">
-                                                <option value="Service">Service</option>
-                                                <option value="Product">Product</option>
-                                            </select>
-                                        </div>
+                                        <h3 class="bundle-form__section-title">@L["SelectServices"]</h3>
+                                        <p class="bundle-form__section-subtitle">@L["ChooseServicesToInclude"]</p>
 
                                         <div class="bundle-form__services-list">
-                                            @if (BundleItemPickerType == "Service")
+                                            @if (!BundleEligibleServices.Any())
                                             {
-                                                @foreach (var service in ServiceItems)
+                                                <div class="bundle-form__empty-state">
+                                                    <i class="bi bi-inbox"></i>
+                                                    <p>@L["NoPackageEligibleServices"]</p>
+                                                    <p class="bundle-form__empty-hint">@L["AddServicesWithAddToPackageListFirst"]</p>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                @foreach (var service in BundleEligibleServices)
                                                 {
                                                     <div class="bundle-form__service-item">
                                                         <label class="bundle-form__service-checkbox">
@@ -1872,39 +1783,30 @@
                                                                    @onchange="() => ToggleServiceSelection(service)" />
                                                             <span class="bundle-form__service-info">
                                                                 <span class="bundle-form__service-name">@service.ServiceName</span>
-                                                                <span class="bundle-form__service-details">@service.Sku · @service.Category</span>
-                                                            </span>
-                                                        </label>
-                                                    </div>
-                                                }
-                                            }
-                                            else
-                                            {
-                                                @foreach (var product in InventoryItems)
-                                                {
-                                                    <div class="bundle-form__service-item">
-                                                        <label class="bundle-form__service-checkbox">
-                                                            <input type="checkbox"
-                                                                   checked="@SelectedBundleProducts.Contains(product)"
-                                                                   @onchange="() => ToggleProductSelection(product)" />
-                                                            <span class="bundle-form__service-info">
-                                                                <span class="bundle-form__service-name">@product.Type</span>
-                                                                <span class="bundle-form__service-details">@product.Sku · @product.Category</span>
+                                                                <span class="bundle-form__service-details">
+                                                                    <span class="bundle-form__service-badge">@service.Category</span>
+                                                                    <span class="bundle-form__service-duration">@service.DurationSpend @L["Min"]</span>
+                                                                </span>
                                                             </span>
                                                         </label>
                                                     </div>
                                                 }
                                             }
                                         </div>
-                                    </div>
 
-                                    <div class="bundle-form__section">
-                                        <h3 class="bundle-form__section-title">Membership</h3>
-
-                                        <div class="bundle-form__field">
-                                            <label>Membership Credit</label>
-                                            <input type="number" min="0" step="0.01" @bind="NewBundleMemberCredit" />
-                                        </div>
+                                        @if (SelectedBundleServices.Any())
+                                        {
+                                            <div class="bundle-form__summary">
+                                                <div class="bundle-form__summary-item">
+                                                    <span class="bundle-form__summary-label">@L["SelectedServices"]:</span>
+                                                    <span class="bundle-form__summary-value">@SelectedBundleServices.Count</span>
+                                                </div>
+                                                <div class="bundle-form__summary-item bundle-form__summary-item--highlight">
+                                                    <span class="bundle-form__summary-label">@L["TotalDuration"]:</span>
+                                                    <span class="bundle-form__summary-value">@CalculateTotalDuration() @L["Minutes"]</span>
+                                                </div>
+                                            </div>
+                                        }
                                     </div>
                                 </form>
                             </div>
@@ -2332,23 +2234,10 @@
     private string NewServiceName { get; set; } = string.Empty;
     private string NewServiceSKU { get; set; } = string.Empty;
     private string NewServiceCategory { get; set; } = string.Empty;
-    private string NewServiceSectionId { get; set; } = string.Empty;
     private int NewServiceDuration { get; set; } = 0;
     private int NewServiceBufferTime { get; set; } = 0;
     private decimal NewServicePrice { get; set; } = 0.00m;
-    private decimal NewServiceCost { get; set; }
-    private string NewServiceTaxCode { get; set; } = string.Empty;
-    private bool NewServiceTaxInclusive { get; set; }
-    private bool NewServiceIsActive { get; set; } = true;
-    private string NewServiceBarcode { get; set; } = string.Empty;
-    private string NewServiceUom { get; set; } = "unit";
-    private string NewServiceVisibleBranchId { get; set; } = "HQ";
-    private decimal NewServicePointBalance { get; set; }
-    private decimal NewServiceRedeemPoint { get; set; }
-    private string NewServiceBillOfMaterial { get; set; } = string.Empty;
     private bool NewServiceAddToBundle { get; set; } = false;
-    private List<SupportingTableDM> ServiceSections { get; set; } = new();
-    private List<BranchLookupItem> VisibleBranches { get; set; } = new();
     private bool IsSavingService { get; set; }
 
     // Delete mode properties
@@ -2425,36 +2314,8 @@
     private bool IsBundleEditMode { get; set; }
     private string NewBundleName { get; set; } = string.Empty;
     private string NewBundleSKU { get; set; } = string.Empty;
-    private string NewBundleSection { get; set; } = string.Empty;
-    private bool NewBundleIsActive { get; set; } = true;
-    private string NewBundleBarcode { get; set; } = string.Empty;
-    private string NewBundleImagePath { get; set; } = string.Empty;
-    private int NewBundleMemberExpiryDays { get; set; } = 365;
-    private string NewBundleTriggeredMemberTypeId { get; set; } = string.Empty;
-    private decimal NewBundleMemberCredit { get; set; }
-    private decimal NewBundleCost { get; set; }
-    private string NewBundleTaxCode { get; set; } = string.Empty;
-    private bool NewBundleTaxInclusive { get; set; }
-    private string NewBundleVisibleBranchId { get; set; } = "HQ";
-    private string BundleItemPickerType { get; set; } = "Service";
-    private decimal NewBundlePoints { get; set; }
-    private bool IsBundleMinMaxPriceEnabled { get; set; }
-    private decimal NewBundleMinPrice { get; set; }
-    private decimal NewBundleMaxPrice { get; set; }
-    private string NewBundlePolicy { get; set; } = string.Empty;
-    private string NewBundleTermCondition1 { get; set; } = string.Empty;
-    private string NewBundleTermCondition2 { get; set; } = string.Empty;
-    private string NewBundleTermCondition3 { get; set; } = string.Empty;
     private decimal NewBundlePrice { get; set; } = 0.00m;
     private HashSet<ServiceViewModel.ServiceItem> SelectedBundleServices { get; set; } = new();
-    private HashSet<InventoryViewModel.InventoryItem> SelectedBundleProducts { get; set; } = new();
-    private Dictionary<string, decimal> BundleLineQuantities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-    private Dictionary<string, decimal> BundleLineUnitPrices { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-    private Dictionary<string, string> BundleLineUoms { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-    private HashSet<string> BundleDeferredItemIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-    private decimal BundlePackageValue =>
-        SelectedBundleServices.Sum(service => GetBundleLineTotal(BundleServiceKey(service), service.Price)) +
-        SelectedBundleProducts.Sum(product => GetBundleLineTotal(BundleProductKey(product), product.Price));
     private bool IsBundleApiLoading { get; set; }
     private bool IsSavingBundle { get; set; }
     private string? BundleApiError { get; set; }
@@ -2774,65 +2635,14 @@
 
     protected override async Task OnInitializedAsync()
     {
-        InventoryItems.Clear();
+        InventoryItems = InventoryViewModel.Items.ToList();
         MemberCreditItems.Clear();
         Bundles.Clear();
-        await LoadServiceSectionsAsync();
-        await LoadVisibleBranchesAsync();
-        await LoadProductsForPackageAsync();
         await LoadServiceItemsFromApiAsync();
         await LoadMemberCreditsFromApiAsync();
         await LoadPackagesFromApiAsync();
         await LoadMemberTypesFromApiAsync();
         await LoadMemberPointsFromApiAsync();
-    }
-
-    private async Task LoadServiceSectionsAsync()
-    {
-        var result = await SupportingTableAC.LoadListByTypeAsync(4);
-        ServiceSections = result.Success && result.Value is not null
-            ? result.Value
-                .Where(section => section.Active && !string.IsNullOrWhiteSpace(section.SupportingTableName))
-                .OrderBy(section => section.SupportingTableName)
-                .ToList()
-            : new List<SupportingTableDM>();
-    }
-
-    private async Task LoadVisibleBranchesAsync()
-    {
-        var result = await BranchLookupService.LoadBranchesAsync();
-        VisibleBranches = result.Success && result.Value is not null
-            ? result.Value.ToList()
-            : new List<BranchLookupItem>();
-
-        if (!VisibleBranches.Any(branch => string.Equals(branch.Id, "HQ", StringComparison.OrdinalIgnoreCase)))
-        {
-            VisibleBranches.Insert(0, new BranchLookupItem("HQ", "HQ", "HQ"));
-        }
-    }
-
-    private string DefaultVisibleBranchId() =>
-        VisibleBranches.FirstOrDefault()?.Id ?? "HQ";
-
-    private string BranchGroupIdFor(string branchId) =>
-        VisibleBranches.FirstOrDefault(branch =>
-            string.Equals(branch.Id, branchId, StringComparison.OrdinalIgnoreCase))?.GroupId
-        ?? branchId;
-
-    private async Task LoadProductsForPackageAsync()
-    {
-        var result = await ProductInventoryService.LoadProductsAsync("HQ");
-        InventoryItems = result.Success && result.Value is not null
-            ? result.Value.Where(item => !string.IsNullOrWhiteSpace(item.MasterAccountId)).ToList()
-            : new List<InventoryViewModel.InventoryItem>();
-    }
-
-    private void OnServiceSectionChanged(ChangeEventArgs args)
-    {
-        NewServiceSectionId = args.Value?.ToString() ?? string.Empty;
-        NewServiceCategory = ServiceSections.FirstOrDefault(section =>
-            string.Equals(section.SupportingTableID, NewServiceSectionId, StringComparison.OrdinalIgnoreCase))
-            ?.SupportingTableName ?? string.Empty;
     }
 
     private async Task LoadServiceItemsFromApiAsync()
@@ -2915,27 +2725,6 @@
                     AvailableTimeFrom = package.AvailableTimeFrom,
                     AvailableTimeTo = package.AvailableTimeTo,
                     EInvoiceClassificationCode = package.EInvoiceClassificationCode,
-                    ImagePath = package.ImagePath,
-                    ImageFileName = package.ImageFileName,
-                    Section = package.Section,
-                    IsActive = package.IsActive,
-                    Barcode = package.Barcode,
-                    UnitOfMeasure = package.UnitOfMeasure,
-                    ValidityDays = package.ValidityDays,
-                    MemberExpiryDays = package.MemberExpiryDays,
-                    TriggeredMemberTypeId = package.TriggeredMemberTypeId,
-                    MemberMainAccountCredit = package.MemberMainAccountCredit,
-                    Points = package.Points,
-                    MinPrice = package.MinPrice,
-                    MaxPrice = package.MaxPrice,
-                    Policy = package.Policy,
-                    TermCondition1 = package.TermCondition1,
-                    TermCondition2 = package.TermCondition2,
-                    TermCondition3 = package.TermCondition3,
-                    Cost = package.Cost,
-                    TaxCode = package.TaxCode,
-                    IsTaxInclusive = package.IsTaxInclusive,
-                    ServiceLines = package.Lines?.ToList() ?? new List<InventoryPackageLineSummary>(),
                     ServiceIDs = package.ServiceIds.ToHashSet(StringComparer.OrdinalIgnoreCase)
                 }).ToList();
 
@@ -4079,10 +3868,10 @@
         BundleDetailsItem = null;
     }
 
-    private async Task EditService(ServiceViewModel.ServiceItem service)
+    private void EditService(ServiceViewModel.ServiceItem service)
     {
         SelectedService = service;
-        await ShowEditServiceForm();
+        ShowEditServiceForm();
     }
 
     private void EditMemberCredit(MembershipViewModel.MemberCredit memberCredit)
@@ -4320,20 +4109,9 @@
         NewServiceName = string.Empty;
         NewServiceSKU = string.Empty;
         NewServiceCategory = string.Empty;
-        NewServiceSectionId = string.Empty;
         NewServiceDuration = 0;
         NewServiceBufferTime = 0;
         NewServicePrice = 0.00m;
-        NewServiceCost = 0m;
-        NewServiceTaxCode = string.Empty;
-        NewServiceTaxInclusive = false;
-        NewServiceIsActive = true;
-        NewServiceBarcode = string.Empty;
-        NewServiceUom = "unit";
-        NewServiceVisibleBranchId = DefaultVisibleBranchId();
-        NewServicePointBalance = 0m;
-        NewServiceRedeemPoint = 0m;
-        NewServiceBillOfMaterial = string.Empty;
         NewServiceAddToBundle = false;
         IsEditMode = false;
     }
@@ -4345,9 +4123,9 @@
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(NewServiceName) || string.IsNullOrWhiteSpace(NewServiceCategory))
+        if (string.IsNullOrWhiteSpace(NewServiceName) || string.IsNullOrWhiteSpace(NewServiceSKU))
         {
-            ServiceApiError = "Service Name and Item Group are compulsory fields.";
+            ServiceApiError = "Service name and SKU are required.";
             return;
         }
 
@@ -4361,42 +4139,14 @@
                 NewServiceName.Trim(),
                 NewServiceCategory.Trim(),
                 $"{Math.Max(0, NewServiceDuration)} mins",
-                0,
-                false,
+                Math.Max(0, NewServiceBufferTime),
+                NewServiceAddToBundle,
                 Math.Max(0, NewServicePrice),
-                IsEditMode ? SelectedService?.MasterAccountId : null,
-                BranchId: NewServiceVisibleBranchId,
-                Cost: Math.Max(0, NewServiceCost),
-                TaxCode: NewServiceTaxCode.Trim(),
-                IsTaxInclusive: NewServiceTaxInclusive,
-                IsActive: NewServiceIsActive,
-                Barcode: NewServiceBarcode.Trim(),
-                UnitOfMeasure: string.IsNullOrWhiteSpace(NewServiceUom) ? "unit" : NewServiceUom.Trim(),
-                Description: NewServiceName.Trim(),
-                SectionId: NewServiceSectionId,
-                UnitOfMeasureId: string.IsNullOrWhiteSpace(NewServiceUom) ? "unit" : NewServiceUom.Trim());
-
-            var editorDetails = new ServiceEditorDetails(
-                Math.Max(0m, NewServicePointBalance),
-                Math.Max(0m, NewServiceRedeemPoint),
-                NewServiceBillOfMaterial.Trim());
-
-            var serviceBranchId = string.IsNullOrWhiteSpace(NewServiceVisibleBranchId)
-                ? DefaultVisibleBranchId()
-                : NewServiceVisibleBranchId;
-            var serviceBranchGroupId = BranchGroupIdFor(serviceBranchId);
+                IsEditMode ? SelectedService?.MasterAccountId : null);
 
             var result = IsEditMode
-                ? await ServiceItemService.UpdateServiceAsync(
-                    service,
-                    serviceBranchId,
-                    branchGroupId: serviceBranchGroupId,
-                    editorDetails: editorDetails)
-                : await ServiceItemService.CreateServiceAsync(
-                    service,
-                    serviceBranchId,
-                    branchGroupId: serviceBranchGroupId,
-                    editorDetails: editorDetails);
+                ? await ServiceItemService.UpdateServiceAsync(service, "hq")
+                : await ServiceItemService.CreateServiceAsync(service, "hq");
 
             if (!result.Success)
             {
@@ -4413,7 +4163,7 @@
         }
     }
 
-    private async Task ShowEditServiceForm()
+    private void ShowEditServiceForm()
     {
         if (SelectedService == null) return;
 
@@ -4421,37 +4171,14 @@
         NewServiceName = SelectedService.ServiceName;
         NewServiceSKU = SelectedService.Sku;
         NewServiceCategory = SelectedService.Category;
-        NewServiceSectionId = !string.IsNullOrWhiteSpace(SelectedService.SectionId)
-            ? SelectedService.SectionId
-            : ServiceSections.FirstOrDefault(section =>
-                string.Equals(section.SupportingTableName, SelectedService.Category, StringComparison.OrdinalIgnoreCase))
-                ?.SupportingTableID ?? string.Empty;
-        var durationPart = SelectedService.DurationSpend.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-        NewServiceDuration = int.TryParse(durationPart, out var duration) ? Math.Max(0, duration) : 0;
-        NewServicePrice = SelectedService.Price;
-        NewServiceCost = SelectedService.Cost;
-        NewServiceTaxCode = SelectedService.TaxCode;
-        NewServiceTaxInclusive = SelectedService.IsTaxInclusive;
-        NewServiceIsActive = SelectedService.IsActive;
-        NewServiceBarcode = SelectedService.Barcode;
-        NewServiceUom = string.IsNullOrWhiteSpace(SelectedService.UnitOfMeasure) ? "unit" : SelectedService.UnitOfMeasure;
-        NewServiceVisibleBranchId = string.IsNullOrWhiteSpace(SelectedService.BranchId)
-            ? DefaultVisibleBranchId()
-            : SelectedService.BranchId;
-        NewServicePointBalance = 0m;
-        NewServiceRedeemPoint = 0m;
-        NewServiceBillOfMaterial = string.Empty;
 
-        if (!string.IsNullOrWhiteSpace(SelectedService.MasterAccountId))
-        {
-            var details = await ServiceItemService.LoadServiceEditorDetailsAsync(SelectedService.MasterAccountId);
-            if (details.Success && details.Value is not null)
-            {
-                NewServicePointBalance = details.Value.PointBalance;
-                NewServiceRedeemPoint = details.Value.RedeemPoint;
-                NewServiceBillOfMaterial = details.Value.BillOfMaterial;
-            }
-        }
+        // Parse duration from string (e.g., "60 mins" -> 60)
+        var durationStr = SelectedService.DurationSpend.Split(' ')[0];
+        NewServiceDuration = int.TryParse(durationStr, out var duration) ? duration : 0;
+
+        NewServiceBufferTime = SelectedService.BufferTimeMinutes;
+        NewServicePrice = SelectedService.Price;
+        NewServiceAddToBundle = SelectedService.IsBundle;
 
         IsAddServiceFormVisible = true;
     }
@@ -4767,33 +4494,8 @@
     {
         NewBundleName = string.Empty;
         NewBundleSKU = string.Empty;
-        NewBundleSection = string.Empty;
-        NewBundleIsActive = true;
-        NewBundleBarcode = string.Empty;
-        NewBundleImagePath = string.Empty;
-        NewBundleMemberExpiryDays = 365;
-        NewBundleTriggeredMemberTypeId = string.Empty;
-        NewBundleMemberCredit = 0m;
-        NewBundleCost = 0m;
-        NewBundleTaxCode = string.Empty;
-        NewBundleTaxInclusive = false;
-        NewBundleVisibleBranchId = DefaultVisibleBranchId();
-        BundleItemPickerType = "Service";
-        NewBundlePoints = 0m;
-        IsBundleMinMaxPriceEnabled = false;
-        NewBundleMinPrice = 0m;
-        NewBundleMaxPrice = 0m;
-        NewBundlePolicy = string.Empty;
-        NewBundleTermCondition1 = string.Empty;
-        NewBundleTermCondition2 = string.Empty;
-        NewBundleTermCondition3 = string.Empty;
         NewBundlePrice = 0.00m;
         SelectedBundleServices.Clear();
-        SelectedBundleProducts.Clear();
-        BundleLineQuantities.Clear();
-        BundleLineUnitPrices.Clear();
-        BundleLineUoms.Clear();
-        BundleDeferredItemIds.Clear();
         IsBundleEditMode = false;
     }
 
@@ -4804,9 +4506,17 @@
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(NewBundleName) || NewBundlePrice <= 0)
+        if (string.IsNullOrWhiteSpace(NewBundleName) ||
+            string.IsNullOrWhiteSpace(NewBundleSKU) ||
+            NewBundlePrice < 0)
         {
-            BundleApiError = "Please fill in the Name and Price fields.";
+            BundleApiError = "Package name, SKU, and a valid price are required.";
+            return;
+        }
+
+        if (SelectedBundleServices.Count == 0)
+        {
+            BundleApiError = "Select at least one service for this package.";
             return;
         }
 
@@ -4815,80 +4525,16 @@
 
         try
         {
-            var serviceLines = SelectedBundleServices
-                .Where(service => !string.IsNullOrWhiteSpace(service.MasterAccountId))
-                .Select(service =>
-                {
-                    var key = BundleServiceKey(service);
-                    return new InventoryPackageLineEdit(
-                        service.MasterAccountId!,
-                        service.ServiceName,
-                        3,
-                        BundleLineQuantities.TryGetValue(key, out var qty) ? Math.Max(1m, qty) : 1m,
-                        BundleLineUnitPrices.TryGetValue(key, out var unitPrice) ? Math.Max(0m, unitPrice) : Math.Max(0m, service.Price),
-                        BundleDeferredItemIds.Contains(key),
-                        BundleLineUoms.TryGetValue(key, out var uom) ? uom : "unit");
-                });
-
-            var productLines = SelectedBundleProducts
-                .Where(product => !string.IsNullOrWhiteSpace(product.MasterAccountId))
-                .Select(product =>
-                {
-                    var key = BundleProductKey(product);
-                    return new InventoryPackageLineEdit(
-                        product.MasterAccountId,
-                        product.Type,
-                        product.InventoryTypeId <= 0 ? 1 : product.InventoryTypeId,
-                        BundleLineQuantities.TryGetValue(key, out var qty) ? Math.Max(1m, qty) : 1m,
-                        BundleLineUnitPrices.TryGetValue(key, out var unitPrice) ? Math.Max(0m, unitPrice) : Math.Max(0m, product.Price),
-                        BundleDeferredItemIds.Contains(key),
-                        BundleLineUoms.TryGetValue(key, out var uom) ? uom : "unit");
-                });
-
-            var packageLines = serviceLines.Concat(productLines).ToList();
-
             var package = new InventoryPackageEdit(
                 IsBundleEditMode ? SelectedBundle?.MasterAccountID : null,
                 NewBundleName.Trim(),
                 NewBundleSKU.Trim(),
                 NewBundlePrice,
-                SelectedBundleServices.ToList(),
-                Section: NewBundleSection.Trim(),
-                IsActive: NewBundleIsActive,
-                Barcode: NewBundleBarcode.Trim(),
-                UnitOfMeasure: "unit",
-                ValidityDays: 0,
-                MemberExpiryDays: Math.Max(1, NewBundleMemberExpiryDays),
-                TriggeredMemberTypeId: NewBundleTriggeredMemberTypeId.Trim(),
-                MemberMainAccountCredit: Math.Max(0m, NewBundleMemberCredit),
-                Lines: packageLines,
-                ImagePath: NewBundleImagePath.Trim(),
-                ImageFileName: string.Empty,
-                Points: Math.Max(0m, NewBundlePoints),
-                Policy: NewBundlePolicy.Trim(),
-                TermCondition1: NewBundleTermCondition1.Trim(),
-                TermCondition2: NewBundleTermCondition2.Trim(),
-                TermCondition3: NewBundleTermCondition3.Trim(),
-                MinPrice: IsBundleMinMaxPriceEnabled ? Math.Max(0m, NewBundleMinPrice) : 0m,
-                MaxPrice: IsBundleMinMaxPriceEnabled ? Math.Max(0m, NewBundleMaxPrice) : 0m,
-                Cost: Math.Max(0m, NewBundleCost),
-                TaxCode: NewBundleTaxCode.Trim(),
-                IsTaxInclusive: NewBundleTaxInclusive);
-
-            var packageBranchId = string.IsNullOrWhiteSpace(NewBundleVisibleBranchId)
-                ? DefaultVisibleBranchId()
-                : NewBundleVisibleBranchId;
-            var packageBranchGroupId = BranchGroupIdFor(packageBranchId);
+                SelectedBundleServices.ToList());
 
             var result = IsBundleEditMode
-                ? await PackageService.UpdatePackageAsync(
-                    package,
-                    packageBranchId,
-                    branchGroupId: packageBranchGroupId)
-                : await PackageService.CreatePackageAsync(
-                    package,
-                    packageBranchId,
-                    branchGroupId: packageBranchGroupId);
+                ? await PackageService.UpdatePackageAsync(package, "hq")
+                : await PackageService.CreatePackageAsync(package, "hq");
 
             if (!result.Success)
             {
@@ -4912,71 +4558,20 @@
         IsBundleEditMode = true;
         NewBundleName = SelectedBundle.BundleName;
         NewBundleSKU = SelectedBundle.SKU;
-        NewBundleSection = SelectedBundle.Section;
-        NewBundleIsActive = SelectedBundle.IsActive;
-        NewBundleCost = SelectedBundle.Cost;
-        NewBundleTaxCode = SelectedBundle.TaxCode;
-        NewBundleTaxInclusive = SelectedBundle.IsTaxInclusive;
-        NewBundleVisibleBranchId = string.IsNullOrWhiteSpace(SelectedBundle.BranchId)
-            ? DefaultVisibleBranchId()
-            : SelectedBundle.BranchId;
-        BundleItemPickerType = "Service";
-        NewBundleBarcode = SelectedBundle.Barcode;
-        NewBundleImagePath = SelectedBundle.ImagePath;
-        NewBundleMemberExpiryDays = SelectedBundle.MemberExpiryDays > 0 ? SelectedBundle.MemberExpiryDays : 365;
-        NewBundleTriggeredMemberTypeId = SelectedBundle.TriggeredMemberTypeId;
-        NewBundleMemberCredit = SelectedBundle.MemberMainAccountCredit;
-        NewBundlePoints = SelectedBundle.Points;
-        NewBundleMinPrice = SelectedBundle.MinPrice;
-        NewBundleMaxPrice = SelectedBundle.MaxPrice;
-        IsBundleMinMaxPriceEnabled = NewBundleMinPrice > 0m || NewBundleMaxPrice > 0m;
-        NewBundlePolicy = SelectedBundle.Policy;
-        NewBundleTermCondition1 = SelectedBundle.TermCondition1;
-        NewBundleTermCondition2 = SelectedBundle.TermCondition2;
-        NewBundleTermCondition3 = SelectedBundle.TermCondition3;
         NewBundlePrice = SelectedBundle.Price;
 
         SelectedBundleServices = ServiceItems
-            .Where(service => !string.IsNullOrWhiteSpace(service.MasterAccountId) &&
-                SelectedBundle.ServiceLines.Any(line =>
-                    line.InventoryTypeId == 3 &&
-                    string.Equals(line.ServiceId, service.MasterAccountId, StringComparison.OrdinalIgnoreCase)))
+            .Where(service =>
+                !string.IsNullOrWhiteSpace(service.MasterAccountId) &&
+                SelectedBundle.ServiceIDs.Contains(service.MasterAccountId))
             .ToHashSet();
-
-        SelectedBundleProducts = InventoryItems
-            .Where(product => !string.IsNullOrWhiteSpace(product.MasterAccountId) &&
-                SelectedBundle.ServiceLines.Any(line =>
-                    line.InventoryTypeId != 3 &&
-                    string.Equals(line.ServiceId, product.MasterAccountId, StringComparison.OrdinalIgnoreCase)))
-            .ToHashSet();
-
-        BundleLineQuantities.Clear();
-        BundleLineUnitPrices.Clear();
-        BundleLineUoms.Clear();
-        BundleDeferredItemIds.Clear();
-
-        foreach (var line in SelectedBundle.ServiceLines)
-        {
-            var service = SelectedBundleServices.FirstOrDefault(item =>
-                string.Equals(item.MasterAccountId, line.ServiceId, StringComparison.OrdinalIgnoreCase));
-            var product = SelectedBundleProducts.FirstOrDefault(item =>
-                string.Equals(item.MasterAccountId, line.ServiceId, StringComparison.OrdinalIgnoreCase));
-            var key = service is not null ? BundleServiceKey(service) :
-                      product is not null ? BundleProductKey(product) :
-                      $"line:{line.ServiceId}";
-
-            BundleLineQuantities[key] = Math.Max(1m, line.Quantity);
-            BundleLineUnitPrices[key] = Math.Max(0m, line.UnitPrice);
-            BundleLineUoms[key] = string.IsNullOrWhiteSpace(line.UnitOfMeasure) ? "unit" : line.UnitOfMeasure;
-            if (line.IsDeferred)
-            {
-                BundleDeferredItemIds.Add(key);
-            }
-        }
 
         BundleApiError = null;
         IsAddBundleFormVisible = true;
-        Feedback.Info($"Editing package {SelectedBundle.BundleName}.", "Edit package", 2200);
+        Feedback.Info(
+            SelectedBundle is null ? "Opening package editor." : $"Editing package {SelectedBundle.BundleName}.",
+            "Edit package",
+            2200);
     }
 
     // Bundle delete mode methods
@@ -5105,47 +4700,7 @@
         else
         {
             SelectedBundleServices.Add(service);
-            EnsureBundleLineDefaults(BundleServiceKey(service), service.Price);
         }
-    }
-
-    private void ToggleProductSelection(InventoryViewModel.InventoryItem product)
-    {
-        if (SelectedBundleProducts.Contains(product))
-        {
-            SelectedBundleProducts.Remove(product);
-        }
-        else
-        {
-            SelectedBundleProducts.Add(product);
-            EnsureBundleLineDefaults(BundleProductKey(product), product.Price);
-        }
-    }
-
-    private static string BundleServiceKey(ServiceViewModel.ServiceItem service) =>
-        $"service:{service.MasterAccountId ?? service.Sku}";
-
-    private static string BundleProductKey(InventoryViewModel.InventoryItem product) =>
-        $"product:{product.MasterAccountId ?? product.Sku}";
-
-    private void EnsureBundleLineDefaults(string key, decimal defaultPrice)
-    {
-        if (!BundleLineQuantities.ContainsKey(key)) BundleLineQuantities[key] = 1m;
-        if (!BundleLineUnitPrices.ContainsKey(key)) BundleLineUnitPrices[key] = Math.Max(0m, defaultPrice);
-        if (!BundleLineUoms.ContainsKey(key)) BundleLineUoms[key] = "unit";
-    }
-
-    private void SetBundleDeferred(string key, bool value)
-    {
-        if (value) BundleDeferredItemIds.Add(key);
-        else BundleDeferredItemIds.Remove(key);
-    }
-
-    private decimal GetBundleLineTotal(string key, decimal defaultPrice)
-    {
-        var qty = BundleLineQuantities.TryGetValue(key, out var quantity) ? Math.Max(1m, quantity) : 1m;
-        var price = BundleLineUnitPrices.TryGetValue(key, out var unitPrice) ? Math.Max(0m, unitPrice) : Math.Max(0m, defaultPrice);
-        return qty * price;
     }
 
     private int CalculateTotalDuration()
@@ -5906,27 +5461,6 @@
         public TimeSpan? AvailableTimeFrom { get; set; }
         public TimeSpan? AvailableTimeTo { get; set; }
         public string EInvoiceClassificationCode { get; set; } = string.Empty;
-        public string ImagePath { get; set; } = string.Empty;
-        public string ImageFileName { get; set; } = string.Empty;
-        public string Section { get; set; } = string.Empty;
-        public bool IsActive { get; set; } = true;
-        public string Barcode { get; set; } = string.Empty;
-        public string UnitOfMeasure { get; set; } = "unit";
-        public int ValidityDays { get; set; }
-        public int MemberExpiryDays { get; set; }
-        public string TriggeredMemberTypeId { get; set; } = string.Empty;
-        public decimal MemberMainAccountCredit { get; set; }
-        public decimal Points { get; set; }
-        public decimal MinPrice { get; set; }
-        public decimal MaxPrice { get; set; }
-        public string Policy { get; set; } = string.Empty;
-        public string TermCondition1 { get; set; } = string.Empty;
-        public string TermCondition2 { get; set; } = string.Empty;
-        public string TermCondition3 { get; set; } = string.Empty;
-        public decimal Cost { get; set; }
-        public string TaxCode { get; set; } = string.Empty;
-        public bool IsTaxInclusive { get; set; }
-        public List<InventoryPackageLineSummary> ServiceLines { get; set; } = new();
         public HashSet<string> ServiceIDs { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     }
 }
