@@ -2042,12 +2042,8 @@
 
     private List<MultiTableFilter.FilterColumn> ServiceFilterColumns => new()
     {
-        new() { Value = "ServiceName", Label = "Services", ControlType = "Typeahead", Placeholder = "Search service name", Options = ServiceCountOptions(ServiceItems.Select(s => s.ServiceName)) },
-        new() { Value = "Sku", Label = "SKU", ControlType = "Text", Placeholder = "Search SKU" },
-        new() { Value = "Category", Label = "Category", ControlType = "MultiSelect", Options = ServiceCountOptions(ServiceItems.Select(s => s.Category)) },
-        new() { Value = "DurationSpend", Label = "Duration Spend (min)", ControlType = "NumberRange", IsNumeric = true },
-        new() { Value = "BufferTime", Label = "Buffer Time (min)", ControlType = "NumberRange", IsNumeric = true },
-        new() { Value = "IsBundle", Label = "Package", ControlType = "Chips", IsQuick = true, Options = ServiceFixedOptions(("Yes", "Included"), ("No", "Not Included")) },
+        new() { Value = "ServiceName", Label = "Service Name", ControlType = "Typeahead", Placeholder = "Search service name", Options = ServiceCountOptions(ServiceItems.Select(s => s.ServiceName)) },
+        new() { Value = "Category", Label = "Section", ControlType = "MultiSelect", Options = ServiceCountOptions(ServiceItems.Select(s => s.Category)) },
         new() { Value = "Price", Label = "Price (MYR)", ControlType = "NumberRange", IsNumeric = true }
     };
 
@@ -2160,9 +2156,8 @@
     private List<MultiTableFilter.FilterColumn> BundleFilterColumns => new()
     {
         new() { Value = "BundleName", Label = "Package Name", ControlType = "Typeahead", Placeholder = "Search package name", Options = ServiceCountOptions(Bundles.Select(bundle => bundle.BundleName)) },
-        new() { Value = "SKU", Label = "SKU", ControlType = "Text", Placeholder = "Search SKU" },
-        new() { Value = "ServicesCount", Label = "Services Included", ControlType = "NumberRange", IsNumeric = true },
-        new() { Value = "TotalDuration", Label = "Total Duration (min)", ControlType = "NumberRange", IsNumeric = true },
+        new() { Value = "Section", Label = "Section", ControlType = "MultiSelect", Options = ServiceCountOptions(Bundles.Select(bundle => bundle.Section)) },
+        new() { Value = "TotalDuration", Label = "Duration (min)", ControlType = "NumberRange", IsNumeric = true },
         new() { Value = "Price", Label = "Price (MYR)", ControlType = "NumberRange", IsNumeric = true }
     };
     private string? BundleSortColumn { get; set; }
@@ -2631,8 +2626,7 @@
                 var search = BundleSearchQuery.Trim();
                 bundles = bundles.Where(b =>
                     (b.BundleName?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                    (b.SKU?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                    b.ServicesCount.ToString().Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    (b.Section?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false) ||
                     b.TotalDuration.ToString().Contains(search, StringComparison.OrdinalIgnoreCase) ||
                     b.Price.ToString("N2").Contains(search, StringComparison.OrdinalIgnoreCase));
             }
@@ -2676,8 +2670,7 @@
         return filter.Column switch
         {
             "BundleName" => bundles.Where(bundle => ServiceFilterTextMatches(bundle.BundleName, filter)),
-            "SKU" => bundles.Where(bundle => ServiceFilterTextMatches(bundle.SKU, filter)),
-            "ServicesCount" => bundles.Where(bundle => ServiceFilterInRange(bundle.ServicesCount, filter)),
+            "Section" => bundles.Where(bundle => ServiceFilterTextMatches(bundle.Section, filter)),
             "TotalDuration" => bundles.Where(bundle => ServiceFilterInRange(bundle.TotalDuration, filter)),
             "Price" => bundles.Where(bundle => ServiceFilterInRange(bundle.Price, filter)),
             _ => bundles
@@ -2692,8 +2685,7 @@
         IEnumerable<string> values = column switch
         {
             "BundleName" => Bundles.Select(b => b.BundleName),
-            "SKU" => Bundles.Select(b => b.SKU),
-            "ServicesCount" => Bundles.Select(b => b.ServicesCount.ToString()),
+            "Section" => Bundles.Select(b => b.Section),
             "TotalDuration" => Bundles.Select(b => b.TotalDuration.ToString()),
             "Price" => Bundles.Select(b => b.Price.ToString("N2")),
             _ => Enumerable.Empty<string>()
