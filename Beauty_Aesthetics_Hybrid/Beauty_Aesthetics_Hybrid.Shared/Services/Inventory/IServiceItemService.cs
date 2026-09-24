@@ -9,6 +9,10 @@ public interface IServiceItemService
         string branchId = "hq",
         CancellationToken cancellationToken = default);
 
+    Task<ApiCallResult<ServiceViewModel.ServiceItem>> LoadServiceAsync(
+        string masterAccountId,
+        CancellationToken cancellationToken = default);
+
     Task<ApiCallResult<bool>> CreateServiceAsync(
         ServiceViewModel.ServiceItem service,
         string branchId = "hq",
