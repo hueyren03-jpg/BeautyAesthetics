@@ -9,6 +9,15 @@
 <PageTitle>Medical Certificate</PageTitle>
 
 <div class="mc-container">
+    @if (_isPageInitializing)
+    {
+        <div class="case-module-page-loading" role="status" aria-live="polite">
+            <div class="case-module-page-loading__content">
+                <span class="spinner-border" aria-hidden="true"></span>
+                <span>Loading medical certificate...</span>
+            </div>
+        </div>
+    }
     <!-- Tab Navigation -->
     <div class="tab-navigation">
         <button 
@@ -714,6 +723,7 @@
     private bool _showSignatureModal = false;
     private string _tempSignatureDataUrl = "";
     private bool _canvasInitialized = false;
+    private bool _isPageInitializing = true;
     
     // Signature Canvas
     private ElementReference _signatureCanvas;
@@ -814,7 +824,14 @@
         };
 
         // Load custom reasons
-        await LoadCustomReasons();
+        try
+        {
+            await LoadCustomReasons();
+        }
+        finally
+        {
+            _isPageInitializing = false;
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
