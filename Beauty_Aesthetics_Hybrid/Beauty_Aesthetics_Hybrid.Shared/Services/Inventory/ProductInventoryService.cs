@@ -258,6 +258,13 @@ public sealed class ProductInventoryService : IProductInventoryService
             SupplierAccountId = record.PreferredVendorAccountID ?? string.Empty,
             CategoryId = First(record.ItemCategoryID, record.ItemGroupID),
             InventoryTypeId = record.InventoryTypeID,
+            Cost = record.PurchasePrice,
+            TaxCode = record.TaxCodeID ?? string.Empty,
+            IsTaxInclusive = record.IsTaxInclusive,
+            IsActive = !string.Equals(record.AccountStatus, "Inactive", StringComparison.OrdinalIgnoreCase),
+            Remarks = record.Remarks ?? string.Empty,
+            ItemGroupId = record.ItemGroupID ?? string.Empty,
+            ItemGroupName = record.ItemGroupName ?? string.Empty,
             ImagePath = record.ImagePath ?? string.Empty,
             ImageFileName = record.ImageFileName ?? string.Empty
         };
@@ -303,14 +310,22 @@ public sealed class ProductInventoryService : IProductInventoryService
         record.SalesDescription = product.Type.Trim();
         record.PurchaseDescription = product.Type.Trim();
         record.SalesPrice = product.Price;
+        record.PurchasePrice = Math.Max(0m, product.Cost);
+        record.TaxCodeID = string.IsNullOrWhiteSpace(product.TaxCode) ? null : product.TaxCode.Trim();
+        record.IsTaxInclusive = product.IsTaxInclusive;
         record.BrandName = product.Brand.Trim();
         record.ItemCategoryID = string.IsNullOrWhiteSpace(product.CategoryId)
             ? null
             : product.CategoryId.Trim();
         record.ItemCategoryName = product.Category.Trim();
-        record.ItemGroupID = null;
-        record.ItemGroupName = null;
+        record.ItemGroupID = string.IsNullOrWhiteSpace(product.ItemGroupId)
+            ? record.ItemCategoryID
+            : product.ItemGroupId.Trim();
+        record.ItemGroupName = string.IsNullOrWhiteSpace(product.ItemGroupName)
+            ? record.ItemCategoryName
+            : product.ItemGroupName.Trim();
         record.SupplierName = product.Supplier.Trim();
+        record.Remarks = product.Remarks?.Trim();
         record.Rack = product.Location.Trim();
         record.StockReorderLevel = ParseDecimal(product.LowAlertCount);
         record.MaxDiscountLimit = product.DiscountCap;
@@ -326,8 +341,8 @@ public sealed class ProductInventoryService : IProductInventoryService
         {
             record.QuantityFactor = primaryUom.Quantity / secondaryUom.Quantity;
         }
-        record.AccountStatus = product.Locked ? "Inactive" : "Active";
-        record.strStatus = product.Locked ? "Locked" : "Active";
+        record.AccountStatus = product.IsActive && !product.Locked ? "Active" : "Inactive";
+        record.strStatus = product.IsActive && !product.Locked ? "Active" : "Locked";
         record.BranchID = string.IsNullOrWhiteSpace(branchId) ? "HQ" : branchId.Trim().ToUpperInvariant();
     }
 
