@@ -4715,8 +4715,9 @@
     private bool IsGRNEditMode { get; set; }
     private bool IsStockTransferApiLoading { get; set; }
     private bool IsInventoryOptionsApiLoading { get; set; }
+    private bool IsInventoryPageInitializing { get; set; } = true;
 
-    private bool IsInventoryPageLoading => ActiveTab switch
+    private bool IsInventoryPageLoading => IsInventoryPageInitializing || ActiveTab switch
     {
         "Products" => IsProductApiLoading,
         "InventoryOptions" => IsInventoryOptionsApiLoading,
@@ -4726,7 +4727,9 @@
         _ => false
     };
 
-    private string InventoryPageLoadingMessage => ActiveTab switch
+    private string InventoryPageLoadingMessage => IsInventoryPageInitializing
+        ? "Loading inventory..."
+        : ActiveTab switch
     {
         "Products" => "Loading products...",
         "InventoryOptions" => "Loading inventory options...",
@@ -6303,6 +6306,8 @@
             LoadGINsAsync(),
             LoadPendingStockReceiptsAsync(),
             LoadInventoryOptionsAsync());
+
+        IsInventoryPageInitializing = false;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
