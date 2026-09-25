@@ -117,21 +117,12 @@ public sealed class ProductInventoryService : IProductInventoryService
         {
             var full = fullResult.Value;
             var fullRecord = full.ObjInventory;
-            var commission1 = ParseCommissionFormula(fullRecord?.StaffCommissionA);
-            var commission2 = ParseCommissionFormula(fullRecord?.StaffCommissionB);
-            var commission3 = ParseCommissionFormula(fullRecord?.StaffCommissionC);
 
             product = product with
             {
                 RedeemPoint = full.PointToRedeem
                     ?? fullRecord?.PointToRedeem
                     ?? 0m,
-                Commission1 = commission1.Amount,
-                Commission2 = commission2.Amount,
-                Commission3 = commission3.Amount,
-                Commission1IsPercent = commission1.IsPercent,
-                Commission2IsPercent = commission2.IsPercent,
-                Commission3IsPercent = commission3.IsPercent,
                 VisibleBranchIds = (full.Branches ?? [])
                     .Where(branch => branch.IsEnabled && !string.IsNullOrWhiteSpace(branch.BranchId))
                     .Select(branch => branch.BranchId!.Trim())
@@ -467,43 +458,9 @@ public sealed class ProductInventoryService : IProductInventoryService
                     IsDirty = true
                 })
                 .ToList(),
-            StaffCommissionA = FormatCommissionFormula(product.Commission1, product.Commission1IsPercent),
-            StaffCommissionB = FormatCommissionFormula(product.Commission2, product.Commission2IsPercent),
-            StaffCommissionC = FormatCommissionFormula(product.Commission3, product.Commission3IsPercent),
             PointToRedeem = product.RedeemPoint > 0 ? product.RedeemPoint : null,
             AllowPointRedemption = product.RedeemPoint > 0
         };
-    }
-
-    private static string? FormatCommissionFormula(decimal amount, bool isPercent)
-    {
-        if (amount <= 0m)
-        {
-            return null;
-        }
-
-        var value = amount.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
-        return isPercent ? $"{value}%" : value;
-    }
-
-    private static (decimal Amount, bool IsPercent) ParseCommissionFormula(string? formula)
-    {
-        if (string.IsNullOrWhiteSpace(formula))
-        {
-            return (0m, true);
-        }
-
-        var normalized = formula.Trim().TrimStart('T', 'F').TrimEnd('A');
-        var isPercent = normalized.EndsWith("%", StringComparison.Ordinal);
-        normalized = normalized.TrimEnd('%');
-
-        return decimal.TryParse(
-            normalized,
-            System.Globalization.NumberStyles.Any,
-            System.Globalization.CultureInfo.InvariantCulture,
-            out var value)
-            ? (value, isPercent)
-            : (0m, true);
     }
 
     private static string NormalizeBranchId(string branchId) =>
