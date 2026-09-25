@@ -170,7 +170,8 @@ public sealed class ProductInventoryService : IProductInventoryService
             product,
             normalizedBranchId,
             masterAccountId: null,
-            saveAction: "Added");
+            saveAction: "Added",
+            existingBranchIds: null);
 
         var result = ToBoolean(
             await inventoryAC.CreateFullAsync(request, cancellationToken),
@@ -211,12 +212,22 @@ public sealed class ProductInventoryService : IProductInventoryService
         loadResult.Value.IsDirty = true;
 
         var normalizedBranchId = NormalizeBranchId(branchId);
+        var currentFull = await serviceInventoryAC.LoadFullAsync(product.MasterAccountId, cancellationToken);
+        var existingBranchIds = currentFull.Success && currentFull.Value?.Branches is not null
+            ? currentFull.Value.Branches
+                .Where(branch => branch.IsEnabled && !string.IsNullOrWhiteSpace(branch.BranchId))
+                .Select(branch => branch.BranchId!.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList()
+            : new List<string>();
+
         var request = BuildProductRequest(
             loadResult.Value,
             product,
             normalizedBranchId,
             product.MasterAccountId,
-            "Changed");
+            "Changed",
+            existingBranchIds);
 
         var result = ToBoolean(
             await inventoryAC.UpdateFullAsync(request, cancellationToken),
@@ -390,7 +401,8 @@ public sealed class ProductInventoryService : IProductInventoryService
         InventoryViewModel.InventoryItem product,
         string fallbackBranchId,
         string? masterAccountId,
-        string saveAction)
+        string saveAction,
+        IReadOnlyCollection<string>? existingBranchIds)
     {
         var visibleBranches = (product.VisibleBranchIds ?? Array.Empty<string>())
             .Where(value => !string.IsNullOrWhiteSpace(value))
@@ -403,22 +415,45 @@ public sealed class ProductInventoryService : IProductInventoryService
             visibleBranches.Add(fallbackBranchId);
         }
 
+        var existingBranches = (existingBranchIds ?? Array.Empty<string>())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim().ToUpperInvariant())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var branchEntries = visibleBranches
+            .Select(branch => new InventoryBranchDTO
+            {
+                MasterAccountId = masterAccountId,
+                BranchId = branch,
+                BranchPrice = product.Price,
+                IsEnabled = true,
+                GroupId = branch,
+                SaveAction = existingBranches.Contains(branch) ? "Changed" : saveAction,
+                IsDirty = true
+            })
+            .ToList();
+
+        foreach (var removedBranch in existingBranches.Where(branch =>
+                     !visibleBranches.Contains(branch, StringComparer.OrdinalIgnoreCase)))
+        {
+            branchEntries.Add(new InventoryBranchDTO
+            {
+                MasterAccountId = masterAccountId,
+                BranchId = removedBranch,
+                BranchPrice = product.Price,
+                IsEnabled = false,
+                GroupId = removedBranch,
+                SaveAction = "Deleted",
+                IsDirty = true
+            });
+        }
+
         return new InventoryPackageRequestDTO
         {
             ObjInventory = record,
-            Branches = visibleBranches
-                .Select(branch => new InventoryBranchDTO
-                {
-                    MasterAccountId = masterAccountId,
-                    BranchId = branch,
-                    BranchPrice = product.Price,
-                    IsEnabled = true,
-                    GroupId = branch,
-                    SaveAction = saveAction,
-                    IsDirty = true
-                })
-                .ToList(),
+            Branches = branchEntries,
             SellingUnits = (product.SellingUnits ?? Array.Empty<InventoryViewModel.ProductSellingUnit>())
+                .Where(unit => unit.IsDeleted || !string.IsNullOrWhiteSpace(unit.UnitName))
                 .Select(unit => new InventoryProductSkuDTO
                 {
                     AutoId = unit.AutoId ?? string.Empty,
@@ -428,7 +463,7 @@ public sealed class ProductInventoryService : IProductInventoryService
                     SalesPrice = Math.Max(0m, unit.SalesPrice),
                     PurchasePrice = Math.Max(0m, unit.PurchasePrice),
                     Barcode = unit.Barcode?.Trim() ?? string.Empty,
-                    SaveAction = unit.IsExisting ? "Changed" : "Added",
+                    SaveAction = unit.IsDeleted ? "Deleted" : unit.IsExisting ? "Changed" : "Added",
                     IsDirty = true
                 })
                 .ToList(),
