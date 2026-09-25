@@ -8,6 +8,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.Inventory;
 public sealed class InventoryOptionService : IInventoryOptionService
 {
     private const int BrandSupportingTableTypeId = 34;
+    private const int ItemGroupSupportingTableTypeId = 4;
     private const int CategorySupportingTableTypeId = 55;
     private const string DefaultBranchId = "HQ";
 
@@ -54,6 +55,10 @@ public sealed class InventoryOptionService : IInventoryOptionService
         string brandId,
         CancellationToken cancellationToken = default) =>
         DeleteOptionAsync(brandId, "brand", cancellationToken);
+
+    public Task<ApiCallResult<IReadOnlyList<SupportingTableListItemDTO>>> GetItemGroupsAsync(
+        CancellationToken cancellationToken = default) =>
+        LoadOptionsAsync(ItemGroupSupportingTableTypeId, "item groups", cancellationToken);
 
     public Task<ApiCallResult<IReadOnlyList<SupportingTableListItemDTO>>> GetCategoriesAsync(
         CancellationToken cancellationToken = default) =>
