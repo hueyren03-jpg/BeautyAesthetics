@@ -2627,8 +2627,9 @@
 
     private string ActiveTab { get; set; } = "Services";
     private string MembershipConfigTab { get; set; } = "MemberType";
+    private bool IsServicesPageInitializing { get; set; } = true;
 
-    private bool IsServicesPageLoading => ActiveTab switch
+    private bool IsServicesPageLoading => IsServicesPageInitializing || ActiveTab switch
     {
         "Services" => IsServiceApiLoading,
         "Bundle" => IsBundleApiLoading,
@@ -2642,7 +2643,9 @@
         _ => false
     };
 
-    private string ServicesPageLoadingMessage => ActiveTab switch
+    private string ServicesPageLoadingMessage => IsServicesPageInitializing
+        ? "Loading services..."
+        : ActiveTab switch
     {
         "Services" => "Loading services...",
         "Bundle" => "Loading packages...",
@@ -3133,6 +3136,8 @@
         await LoadPackagesFromApiAsync();
         await LoadMemberTypesFromApiAsync();
         await LoadMemberPointsFromApiAsync();
+
+        IsServicesPageInitializing = false;
     }
 
     private async Task LoadServiceSectionsAsync()
