@@ -13,8 +13,8 @@ public class CaseNotePageViewModel : INotifyPropertyChanged
     }
 
     // Models
-    public record Patient(int Id, string Name, DateOnly Birthday, string Phone);
-    public record CaseNote(int Id, int PatientId, DateTime Date, string Content, string Preview, string PatientName, string? ImageUrl = null, bool IsPinned = false);
+    public record Patient(string Id, string Name, DateTime? Birthday, string Phone, string Email = "", string MembershipType = "");
+    public record CaseNote(int Id, string PatientId, DateTime Date, string Content, string Preview, string PatientName, string? ImageUrl = null, bool IsPinned = false);
 
     // Properties
     private Patient? _selectedPatient;
@@ -58,12 +58,12 @@ public class CaseNotePageViewModel : INotifyPropertyChanged
         }
     }
 
-    public int SelectedPatientId
+    public string SelectedPatientId
     {
-        get => SelectedPatient?.Id ?? (Patients.FirstOrDefault()?.Id ?? 0);
+        get => SelectedPatient?.Id ?? (Patients.FirstOrDefault()?.Id ?? string.Empty);
         set
         {
-            var patient = Patients.FirstOrDefault(p => p.Id == value);
+            var patient = Patients.FirstOrDefault(p => string.Equals(p.Id, value, StringComparison.OrdinalIgnoreCase));
             if (patient != null)
             {
                 SelectedPatient = patient;
@@ -189,64 +189,11 @@ public class CaseNotePageViewModel : INotifyPropertyChanged
         }
     }
 
-    // Constructor with mock data
-    public CaseNotePageViewModel()
+    public void SetPatient(Patient patient)
     {
-        // Initialize mock patients with Malaysian phone numbers
-        Patients.Add(new Patient(1, "Siti Aminah binti Abdullah", new DateOnly(1985, 3, 15), "013-846-3738"));
-        Patients.Add(new Patient(2, "Muhammad Hafiz bin Rahman", new DateOnly(1992, 7, 22), "012-345-6789"));
-        Patients.Add(new Patient(3, "Tan Wei Ling", new DateOnly(1978, 11, 8), "016-789-4321"));
-        Patients.Add(new Patient(4, "Kumar Raj", new DateOnly(1990, 5, 20), "017-234-5678"));
-        Patients.Add(new Patient(5, "Emily Wong", new DateOnly(1988, 9, 12), "019-876-5432"));
-
-        // Initialize mock case history
-        CaseHistory.Add(new CaseNote(
-            1,
-            1,
-            DateTime.Now.AddDays(-5),
-            "<p>Patient reports improvement in skin condition after the treatment. Minimal redness observed. Recommended to continue with prescribed skincare routine.</p>",
-            "Patient reports improvement in skin condition after the treatment...",
-            "Siti Aminah binti Abdullah"
-        ));
-
-        CaseHistory.Add(new CaseNote(
-            2,
-            1,
-            DateTime.Now.AddDays(-12),
-            "<p><strong>Initial consultation</strong> for acne treatment. Patient has moderate acne on cheeks and forehead. Prescribed topical treatment and advised dietary changes.</p>",
-            "Initial consultation for acne treatment. Patient has moderate acne...",
-            "Siti Aminah binti Abdullah"
-        ));
-
-        CaseHistory.Add(new CaseNote(
-            3,
-            2,
-            DateTime.Now.AddDays(-3),
-            "<p>Follow-up visit for laser hair removal. Treatment progressing well. <em>Fourth session completed</em> today. Patient satisfied with results.</p>",
-            "Follow-up visit for laser hair removal. Treatment progressing well...",
-            "Muhammad Hafiz bin Rahman"
-        ));
-
-        CaseHistory.Add(new CaseNote(
-            4,
-            2,
-            DateTime.Now.AddDays(-24),
-            "<p>Started laser hair removal treatment course. Patient tolerated the procedure well. Scheduled for 6 sessions with 3-week intervals.</p>",
-            "Started laser hair removal treatment course. Patient tolerated...",
-            "Muhammad Hafiz bin Rahman"
-        ));
-
-        CaseHistory.Add(new CaseNote(
-            5,
-            3,
-            DateTime.Now.AddDays(-7),
-            "<p>Botox treatment for forehead lines. <strong>20 units administered</strong>. Patient advised to avoid lying down for 4 hours. Follow-up scheduled in 2 weeks.</p>",
-            "Botox treatment for forehead lines. 20 units administered...",
-            "Tan Wei Ling"
-        ));
-
-        // Set default selected patient
-        SelectedPatient = Patients.FirstOrDefault();
+        Patients.Clear();
+        Patients.Add(patient);
+        SelectedPatient = patient;
     }
 
     // Methods

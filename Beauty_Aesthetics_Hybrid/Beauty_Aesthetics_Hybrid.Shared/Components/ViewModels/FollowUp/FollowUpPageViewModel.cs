@@ -13,8 +13,8 @@ public class FollowUpPageViewModel : INotifyPropertyChanged
     }
 
     // Models
-    public record Patient(int Id, string Name, DateOnly Birthday, string Phone);
-    public record FollowUp(int Id, int PatientId, DateTime Date, string Content, string Preview, string PatientName, string? ImageUrl = null, bool IsPinned = false);
+    public record Patient(string Id, string Name, DateTime? Birthday, string Phone, string Email = "", string MembershipType = "");
+    public record FollowUp(int Id, string PatientId, DateTime Date, string Content, string Preview, string PatientName, string? ImageUrl = null, bool IsPinned = false);
 
     // Properties
     private Patient? _selectedPatient;
@@ -56,9 +56,9 @@ public class FollowUpPageViewModel : INotifyPropertyChanged
         }
     }
 
-    public int SelectedPatientId
+    public string SelectedPatientId
     {
-        get => SelectedPatient?.Id ?? (Patients.FirstOrDefault()?.Id ?? 0);
+        get => SelectedPatient?.Id ?? string.Empty;
         set
         {
             var patient = Patients.FirstOrDefault(p => p.Id == value);
@@ -161,49 +161,14 @@ public class FollowUpPageViewModel : INotifyPropertyChanged
         }
     }
 
-    // Constructor with mock data
-    public FollowUpPageViewModel()
+    // Methods
+    public void SetPatient(Patient patient)
     {
-        // Initialize mock patients with Malaysian phone numbers
-        Patients.Add(new Patient(1, "Siti Aminah binti Abdullah", new DateOnly(1985, 3, 15), "013-846-3738"));
-        Patients.Add(new Patient(2, "Muhammad Hafiz bin Rahman", new DateOnly(1992, 7, 22), "012-345-6789"));
-        Patients.Add(new Patient(3, "Tan Wei Ling", new DateOnly(1978, 11, 8), "016-789-4321"));
-        Patients.Add(new Patient(4, "Kumar Raj", new DateOnly(1990, 5, 20), "017-234-5678"));
-        Patients.Add(new Patient(5, "Emily Wong", new DateOnly(1988, 9, 12), "019-876-5432"));
-
-        // Initialize mock follow-up history
-        FollowUpHistory.Add(new FollowUp(
-            1,
-            1,
-            DateTime.Now.AddDays(-2),
-            "<p><strong>Follow-up call:</strong> Patient reports skin condition improving. No adverse reactions. Advised to continue with skincare routine. Next appointment scheduled in 2 weeks.</p>",
-            "Follow-up call: Patient reports skin condition improving. No adverse reactions...",
-            "Siti Aminah binti Abdullah"
-        ));
-
-        FollowUpHistory.Add(new FollowUp(
-            2,
-            2,
-            DateTime.Now.AddDays(-1),
-            "<p><strong>Follow-up appointment:</strong> Patient completed 4th laser session. Progress is excellent. Minimal discomfort reported. Scheduled next session in 3 weeks.</p>",
-            "Follow-up appointment: Patient completed 4th laser session. Progress is excellent...",
-            "Muhammad Hafiz bin Rahman"
-        ));
-
-        FollowUpHistory.Add(new FollowUp(
-            3,
-            3,
-            DateTime.Now.AddDays(-5),
-            "<p><strong>Post-treatment follow-up:</strong> Botox treatment results are visible. Patient satisfied with forehead lines reduction. No side effects reported.</p>",
-            "Post-treatment follow-up: Botox treatment results are visible. Patient satisfied...",
-            "Tan Wei Ling"
-        ));
-
-        // Set default selected patient
-        SelectedPatient = Patients.FirstOrDefault();
+        Patients.Clear();
+        Patients.Add(patient);
+        SelectedPatient = patient;
     }
 
-    // Methods
     public void SelectPatient(Patient patient)
     {
         SelectedPatient = patient;

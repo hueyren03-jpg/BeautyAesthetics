@@ -5,6 +5,7 @@
 @implements IDisposable
 @inject IJSRuntime JS
 @inject AppFeedbackService Feedback
+@inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext PatientContext
 
 <PageTitle>Medical Certificate</PageTitle>
 
@@ -33,7 +34,7 @@
             <span>Time-Off Slip</span>
         </button>
 
-        <a href="/case-notes" class="btn-close">
+        <a href="@(PatientContext.WithCustomer("/case-notes"))" class="btn-close">
             <i class="bi bi-x-lg"></i>
         </a>
     </div>
@@ -63,9 +64,10 @@
                         <input 
                             type="text" 
                             class="form-input" 
-                            placeholder="Enter patient full name"
+                            placeholder="Patient from appointment"
                             @bind="ViewModel.PatientName"
-                            @bind:event="oninput" />
+                            @bind:event="oninput"
+                            readonly />
                     </div>
 
                     <!-- Date Range -->
@@ -112,7 +114,7 @@
                     <div class="form-group">
                         <div class="reason-heading">
                             <label class="form-label">Reason <span class="required">*</span></label>
-                            <a href="/reason-manager" class="btn-manage-reasons" title="Manage Custom Reasons">
+                            <a href="@(PatientContext.WithCustomer("/reason-manager"))" class="btn-manage-reasons" title="Manage Custom Reasons">
                                 <i class="bi bi-gear"></i>
                                 <span>Manage reasons</span>
                             </a>
@@ -170,9 +172,10 @@
                         <input 
                             type="text" 
                             class="form-input" 
-                            placeholder="Enter patient full name"
+                            placeholder="Patient from appointment"
                             @bind="ViewModel.PatientName"
-                            @bind:event="oninput" />
+                            @bind:event="oninput"
+                            readonly />
                     </div>
 
                     <!-- Start Date -->
@@ -344,7 +347,7 @@
                     <div class="form-group">
                         <div class="reason-heading">
                             <label class="form-label">Reason <span class="required">*</span></label>
-                            <a href="/reason-manager" class="btn-manage-reasons" title="Manage Custom Reasons">
+                            <a href="@(PatientContext.WithCustomer("/reason-manager"))" class="btn-manage-reasons" title="Manage Custom Reasons">
                                 <i class="bi bi-gear"></i>
                                 <span>Manage reasons</span>
                             </a>
@@ -698,6 +701,9 @@
 </div>
 
 @code {
+    [SupplyParameterFromQuery(Name = "customerId")]
+    public string? CustomerId { get; set; }
+
     private CaseNoteMedicalCertificationViewModel ViewModel { get; set; } = new();
     private System.Threading.Timer? _messageTimer;
     private bool _showStartTimePicker = false;
@@ -802,6 +808,16 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var customerResult = await PatientContext.LoadAsync(CustomerId);
+        if (customerResult.Success && customerResult.Value is not null)
+        {
+            ViewModel.PatientName = Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext.GetDisplayName(customerResult.Value);
+        }
+        else
+        {
+            Feedback.Error(customerResult.ErrorMessage ?? "Unable to load the appointment patient.", "Patient not loaded");
+        }
+
         ViewModel.PropertyChanged += (sender, args) => 
         {
             StateHasChanged();
@@ -1121,7 +1137,7 @@
         var certificateNumber = $"DC-{DateTime.Now:yyyyMMdd}-{new Random().Next(1000, 9999)}";
         
         // Prepare print data
-        var patientName = "Patient Name"; // TODO: Get from actual patient data
+        var patientName = ViewModel.PatientName;
         var dateIssued = DateTime.Now.ToString("MMMM dd, yyyy");
         var bodyText = "was examined and found to be unfit for work/school.";
         var period = $"{ViewModel.DayOffStartDate:MMM dd, yyyy} to {ViewModel.DayOffEndDate:MMM dd, yyyy}";
@@ -1165,7 +1181,7 @@
         var certificateNumber = $"TC-{DateTime.Now:yyyyMMdd}-{new Random().Next(1000, 9999)}";
         
         // Prepare print data
-        var patientName = "Patient Name"; // TODO: Get from actual patient data
+        var patientName = ViewModel.PatientName;
         var dateIssued = DateTime.Now.ToString("MMMM dd, yyyy");
         var bodyText = "was examined and requires time off from work/school during the following period.";
         var period = $"{ViewModel.TimeOffStartDate:MMM dd, yyyy} from {FormatTime(ViewModel.TimeOffStartTime)} to {FormatTime(ViewModel.TimeOffEndTime)}";

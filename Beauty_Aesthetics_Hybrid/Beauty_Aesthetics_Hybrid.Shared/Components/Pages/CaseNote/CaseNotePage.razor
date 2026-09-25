@@ -10,6 +10,7 @@
 @inject NavigationManager NavigationManager
 @inject CaseNotePageViewModel ViewModel
 @inject AppFeedbackService Feedback
+@inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext PatientContext
 @implements IAsyncDisposable
 
 <PageTitle>Case Notes - Beauty Aesthetics</PageTitle>
@@ -36,6 +37,7 @@
             <button type="button"
                     class="btn-patient-drawer"
                     @onclick="TogglePatientDrawer"
+                    disabled="@(ViewModel.SelectedPatient == null)"
                     title="View Patient Information"
                     aria-label="View Patient Information"
                     aria-expanded="@_isPatientDrawerOpen">
@@ -304,7 +306,7 @@
                                 <i class="bi bi-calendar-heart"></i>
                                 <div class="info-content">
                                     <span class="info-label">Birthday</span>
-                                    <span class="info-value">@ViewModel.SelectedPatient.Birthday.ToString("dd/MM/yyyy")</span>
+                                    <span class="info-value">@PatientBirthdayText</span>
                                 </div>
                             </div>
                             <div class="info-item">
@@ -315,6 +317,27 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="info-card patient-empty-card">
+                    <div class="info-card-header">
+                        <div class="info-card-title">
+                            <i class="bi bi-person-badge"></i>
+                            <span>Patient Information</span>
+                        </div>
+                    </div>
+                    <div class="patient-empty-content">
+                        <div>
+                            <strong>No patient is linked to this appointment</strong>
+                            <span>Return to Appointments and select an appointment with a valid customer.</span>
+                        </div>
+                        <button type="button" class="btn-select-patient" @onclick="NavigateToAppointments">
+                            <i class="bi bi-calendar-check"></i>
+                            <span>Back to Appointments</span>
+                        </button>
                     </div>
                 </div>
             }
@@ -447,12 +470,12 @@
                     }
                         @if (_currentlyViewingNoteId.HasValue)
                         {
-                            <button class="btn-new-note" @onclick="CreateNewNote" disabled="@(_isSaving || !_isEditorReady)" title="Start a new note">
+                            <button class="btn-new-note" @onclick="CreateNewNote" disabled="@(_isSaving || !_isEditorReady || ViewModel.SelectedPatient == null)" title="Start a new note">
                                 <i class="bi bi-file-earmark-plus"></i>
                                 <span>New Note</span>
                             </button>
                         }
-                        <button class="btn-save" @onclick="SaveNote" disabled="@(_isSaving || !_isEditorReady)">
+                        <button class="btn-save" @onclick="SaveNote" disabled="@(_isSaving || !_isEditorReady || ViewModel.SelectedPatient == null)">
                             @if (_isSaving)
                             {
                                 <span class="spinner"></span>
@@ -572,6 +595,9 @@
 }
 
 @code {
+    [Parameter, SupplyParameterFromQuery(Name = "customerId")]
+    public string? CustomerId { get; set; }
+
     // ===== VIEW MODELS & STATE =====
     // Injected via DI
     private DotNetObjectReference<CaseNotePage>? _dotNetRef;
@@ -615,7 +641,7 @@
     private bool _isSuccess = false;
     private CancellationTokenSource? _hideMessageCts;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         Console.WriteLine("[BLAZOR] OnInitialized called");
         
@@ -626,6 +652,8 @@
         _isEditorReady = false;
         _isInitializing = false;
         _editorKey++; // Increment key to force fresh render
+
+        await LoadInitialPatientAsync();
     }
     
     protected override void OnParametersSet()
@@ -633,6 +661,48 @@
         Console.WriteLine("[BLAZOR] OnParametersSet called");
         base.OnParametersSet();
     }
+
+    private string PatientBirthdayText => ViewModel.SelectedPatient?.Birthday?.ToString("dd/MM/yyyy") ?? "-";
+
+    private async Task LoadInitialPatientAsync()
+    {
+        var result = await PatientContext.LoadAsync(CustomerId);
+
+        if (!result.Success || result.Value is null)
+        {
+            Feedback.Error(result.ErrorMessage ?? "Unable to load the appointment patient.", "Patient not loaded");
+            return;
+        }
+
+        ApplySelectedCustomer(result.Value);
+    }
+
+    private void ApplySelectedCustomer(Beauty_Aesthetics_WebPos.Components.Models.Customer customer)
+    {
+        var customerId = customer.SystemID?.Trim();
+        if (string.IsNullOrWhiteSpace(customerId))
+        {
+            return;
+        }
+
+        ViewModel.SetPatient(new CaseNotePageViewModel.Patient(
+            customerId,
+            CustomerDisplayName(customer),
+            customer.DateOfBirth,
+            customer.ContactNumber1 ?? string.Empty,
+            customer.Email ?? string.Empty,
+            customer.MembershipType ?? string.Empty));
+    }
+
+    private static string CustomerDisplayName(Beauty_Aesthetics_WebPos.Components.Models.Customer customer)
+    {
+        var name = $"{customer.FirstName} {customer.LastName}".Trim();
+        if (!string.IsNullOrWhiteSpace(name)) return name;
+        if (!string.IsNullOrWhiteSpace(customer.ExternalCode)) return customer.ExternalCode;
+        if (!string.IsNullOrWhiteSpace(customer.SystemID)) return customer.SystemID;
+        return "Unnamed patient";
+    }
+
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -1290,7 +1360,7 @@
         }
         
         // Navigate directly if no unsaved changes
-        NavigationManager.NavigateTo(url);
+        NavigationManager.NavigateTo(PatientContext.WithCustomer(url));
     }
     
     private void NavigateToDocuments()
@@ -1298,14 +1368,14 @@
         // Check for unsaved changes before navigating away
         if (_hasUnsavedChanges && ViewModel.ActiveTab == "case-notes")
         {
-            _pendingLinkNavigation = "/documents";
+            _pendingLinkNavigation = PatientContext.WithCustomer("/documents");
             _showUnsavedChangesModal = true;
             StateHasChanged();
             return;
         }
         
         // Navigate directly if no unsaved changes
-        NavigationManager.NavigateTo("/documents");
+        NavigationManager.NavigateTo(PatientContext.WithCustomer("/documents"));
     }
     
     private void NavigateToFollowUp()
@@ -1313,14 +1383,14 @@
         // Check for unsaved changes before navigating away
         if (_hasUnsavedChanges && ViewModel.ActiveTab == "case-notes")
         {
-            _pendingLinkNavigation = "/follow-up";
+            _pendingLinkNavigation = PatientContext.WithCustomer("/follow-up");
             _showUnsavedChangesModal = true;
             StateHasChanged();
             return;
         }
         
         // Navigate directly if no unsaved changes
-        NavigationManager.NavigateTo("/follow-up");
+        NavigationManager.NavigateTo(PatientContext.WithCustomer("/follow-up"));
     }
     
     private void NavigateToBilling()
@@ -1328,14 +1398,14 @@
         // Check for unsaved changes before navigating away
         if (_hasUnsavedChanges && ViewModel.ActiveTab == "case-notes")
         {
-            _pendingLinkNavigation = "/billing";
+            _pendingLinkNavigation = PatientContext.WithCustomer("/billing");
             _showUnsavedChangesModal = true;
             StateHasChanged();
             return;
         }
         
         // Navigate directly if no unsaved changes
-        NavigationManager.NavigateTo("/billing");
+        NavigationManager.NavigateTo(PatientContext.WithCustomer("/billing"));
     }
 
     private void NavigateToAppointments()

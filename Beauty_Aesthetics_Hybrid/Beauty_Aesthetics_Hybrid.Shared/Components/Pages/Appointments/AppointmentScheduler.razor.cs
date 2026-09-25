@@ -42,6 +42,9 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
         [Inject]
         public AppFeedbackService Feedback { get; set; } = null!;
 
+        [Inject]
+        public AppState AppState { get; set; } = null!;
+
         private AppointmentViewModel ViewModel { get; set; } = null!;
 
         private DateTime SelectedDate
@@ -911,7 +914,22 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             }
 
             var customer = customerOptions.FirstOrDefault(item =>
-                string.Equals($"{item.FirstName} {item.LastName}".Trim(), appointment.CustomerName.Trim(), StringComparison.OrdinalIgnoreCase));
+                !string.IsNullOrWhiteSpace(appointment.CustomerId) &&
+                string.Equals(item.SystemID, appointment.CustomerId, StringComparison.OrdinalIgnoreCase));
+
+            // Only fall back to name and phone for legacy appointments that do not
+            // contain CustomerID. An explicit API customer ID must never be replaced
+            // by another customer who happens to have the same name.
+            if (customer is null && string.IsNullOrWhiteSpace(appointment.CustomerId))
+            {
+                customer = customerOptions.FirstOrDefault(item =>
+                    string.Equals(
+                        $"{item.FirstName} {item.LastName}".Trim(),
+                        appointment.CustomerName.Trim(),
+                        StringComparison.OrdinalIgnoreCase) &&
+                    (string.IsNullOrWhiteSpace(appointment.Phone) ||
+                     string.Equals(item.ContactNumber1, appointment.Phone, StringComparison.OrdinalIgnoreCase)));
+            }
             if (customer is not null)
             {
                 appointment.CustomerId = customer.SystemID ?? string.Empty;
@@ -2514,8 +2532,39 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
 
         private void NavigateToCaseNotes()
         {
+            PrepareAppointmentReferences(editingAppointment);
+
+            var customer = customerOptions.FirstOrDefault(item =>
+                !string.IsNullOrWhiteSpace(editingAppointment.CustomerId) &&
+                string.Equals(item.SystemID, editingAppointment.CustomerId, StringComparison.OrdinalIgnoreCase));
+
+            if (customer is null && !string.IsNullOrWhiteSpace(editingAppointment.CustomerName))
+            {
+                customer = customerOptions.FirstOrDefault(item =>
+                    string.Equals(
+                        $"{item.FirstName} {item.LastName}".Trim(),
+                        editingAppointment.CustomerName.Trim(),
+                        StringComparison.OrdinalIgnoreCase) &&
+                    (string.IsNullOrWhiteSpace(editingAppointment.Phone) ||
+                     string.Equals(item.ContactNumber1, editingAppointment.Phone, StringComparison.OrdinalIgnoreCase)));
+            }
+
+            if (customer is not null)
+            {
+                editingAppointment.CustomerId = customer.SystemID ?? string.Empty;
+                editingAppointment.CustomerName = $"{customer.FirstName} {customer.LastName}".Trim();
+                editingAppointment.Phone = customer.ContactNumber1;
+                AppState.SelectCustomer(customer);
+            }
+
+            if (string.IsNullOrWhiteSpace(editingAppointment.CustomerId))
+            {
+                Feedback.Warning("This appointment is not linked to a valid customer record.", "Patient unavailable");
+                return;
+            }
+
             CloseModal();
-            NavigationManager.NavigateTo("/case-notes");
+            NavigationManager.NavigateTo($"/case-notes?customerId={Uri.EscapeDataString(editingAppointment.CustomerId)}");
         }
 
         private void SelectTimeSlotNone(int hour, int minute)

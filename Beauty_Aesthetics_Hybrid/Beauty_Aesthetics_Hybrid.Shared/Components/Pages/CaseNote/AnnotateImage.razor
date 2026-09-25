@@ -6,6 +6,7 @@
 @inject IJSRuntime JS
 @inject NavigationManager NavigationManager
 @inject AppFeedbackService Feedback
+@inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext PatientContext
 @implements IAsyncDisposable
 <PageTitle>Annotation Images</PageTitle>
 
@@ -770,6 +771,9 @@
 @using Beauty_Aesthetics_WebPos.Components.ViewModels
 
 @code {
+    [SupplyParameterFromQuery(Name = "customerId")]
+    public string? CustomerId { get; set; }
+
     private AnnotateImageViewModel ViewModel { get; set; } = new();
     private bool _canvasInitialized = false;
     private bool _isPageInitializing = true;
@@ -1231,7 +1235,7 @@
             await Task.Delay(50);
             
             // Navigate to CaseNotePage
-            NavigationManager.NavigateTo("/case-notes", forceLoad: false);
+            NavigationManager.NavigateTo(PatientContext.WithCustomer("/case-notes"), forceLoad: false);
             
             Console.WriteLine("✓ Image exported and navigating to Case Notes");
         }
@@ -1800,14 +1804,14 @@
     {
         if (_hasUnsavedChanges)
         {
-            _pendingNavigation = "/";
+            _pendingNavigation = PatientContext.WithCustomer("/case-notes");
             _showUnsavedChangesModal = true;
             StateHasChanged();
             return;
         }
         
         // Navigate directly if no unsaved changes
-        NavigationManager.NavigateTo("/case-notes");
+        NavigationManager.NavigateTo(PatientContext.WithCustomer("/case-notes"));
     }
     
     private void ContinueEditing()
@@ -1887,6 +1891,12 @@
         _isPageInitializing = true;
         try
         {
+            var customerResult = await PatientContext.LoadAsync(CustomerId);
+            if (!customerResult.Success)
+            {
+                Feedback.Error(customerResult.ErrorMessage ?? "Unable to load the appointment patient.", "Patient not loaded");
+            }
+
             // Load custom colors from localStorage
             await LoadCustomColorsAsync();
         }

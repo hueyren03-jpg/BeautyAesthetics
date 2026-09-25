@@ -6,6 +6,7 @@ using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.Components.Services;
 using Beauty_Aesthetics_WebPos.Components.Services.Auth;
 using Beauty_Aesthetics_WebPos.Components.Services.Customers;
+using Beauty_Aesthetics_WebPos.Components.Services.Clinical;
 using Beauty_Aesthetics_WebPos.Components.Services.Dashboard;
 using Beauty_Aesthetics_WebPos.Components.Services.Employees;
 using Beauty_Aesthetics_WebPos.Components.Services.Inventory;
@@ -42,6 +43,7 @@ builder.Services.AddScoped<ITokenStore, WebProtectedTokenStore>();
 builder.Services.AddScoped<IBranchSessionStore, WebBranchSessionStore>();
 builder.Services.AddScoped<IBranchSessionService, BranchSessionService>();
 builder.Services.AddScoped<AppState>();
+builder.Services.AddScoped<ClinicalPatientContext>();
 builder.Services.AddScoped<AppFeedbackService>();
 builder.Services.AddSingleton(new AuthApiOptions
 {

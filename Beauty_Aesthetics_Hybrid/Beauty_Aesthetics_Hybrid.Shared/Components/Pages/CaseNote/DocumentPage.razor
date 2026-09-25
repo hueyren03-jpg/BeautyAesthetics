@@ -11,6 +11,7 @@
 @inject DocumentTemplateViewModel TemplateViewModel
 @inject IJSRuntime JS
 @inject AppFeedbackService Feedback
+@inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext PatientContext
 @implements IDisposable
 
 <PageTitle>Documents - Beauty Aesthetics</PageTitle>
@@ -33,7 +34,7 @@
                 <i class="bi bi-files header-icon"></i>
                 <h1 class="header-title">Patient Documents</h1>
             </div>
-            <a href="/case-notes" class="btn-close-mobile">
+            <a href="@(PatientContext.WithCustomer("/case-notes"))" class="btn-close-mobile">
                 <i class="bi bi-x-lg"></i>
             </a>
         </div>
@@ -65,7 +66,7 @@
                 <i class="bi bi-tags"></i>
                 <span>Manage Types</span>
             </button>
-            <a href="/case-notes" class="btn-close-header">
+            <a href="@(PatientContext.WithCustomer("/case-notes"))" class="btn-close-header">
                 <i class="bi bi-x-lg"></i>
             </a>
         </div>
@@ -856,12 +857,12 @@
                 {
                     <div class="form-group">
                         <label>Patient Name <span class="required">*</span></label>
-                        <input type="text" class="form-input" @bind="_templateDocument.PatientName" placeholder="Enter patient full name" />
+                        <input type="text" class="form-input" @bind="_templateDocument.PatientName" placeholder="Patient from appointment" readonly />
                     </div>
                     <div class="form-row">
                         <div class="form-group">
                             <label>Patient ID</label>
-                            <input type="text" class="form-input" @bind="_templateDocument.PatientId" placeholder="Patient ID (optional)" />
+                            <input type="text" class="form-input" @bind="_templateDocument.PatientId" placeholder="Patient ID" readonly />
                         </div>
                         <div class="form-group">
                             <label>Date <span class="required">*</span></label>
@@ -982,7 +983,7 @@
                 {
                     <div class="form-group">
                         <label>Patient Name <span class="required">*</span></label>
-                        <input type="text" class="form-input" @bind="_templateDocument.PatientName" placeholder="Enter patient full name" />
+                        <input type="text" class="form-input" @bind="_templateDocument.PatientName" placeholder="Patient from appointment" readonly />
                     </div>
                     <div class="form-row">
                         <div class="form-group">
@@ -1086,7 +1087,7 @@
                 {
                     <div class="form-group">
                         <label>Patient Name <span class="required">*</span></label>
-                        <input type="text" class="form-input" @bind="_templateDocument.PatientName" placeholder="Enter patient full name" />
+                        <input type="text" class="form-input" @bind="_templateDocument.PatientName" placeholder="Patient from appointment" readonly />
                     </div>
                     <div class="form-row">
                         <div class="form-group">
@@ -1190,7 +1191,7 @@
                 {
                     <div class="form-group">
                         <label>Patient Name <span class="required">*</span></label>
-                        <input type="text" class="form-input" @bind="_templateDocument.PatientName" placeholder="Enter patient full name" />
+                        <input type="text" class="form-input" @bind="_templateDocument.PatientName" placeholder="Patient from appointment" readonly />
                     </div>
                     <div class="form-row">
                         <div class="form-group">
@@ -1294,7 +1295,7 @@
                 {
                     <div class="form-group">
                         <label>Patient Name <span class="required">*</span></label>
-                        <input type="text" class="form-input" @bind="_templateDocument.PatientName" placeholder="Enter patient full name" />
+                        <input type="text" class="form-input" @bind="_templateDocument.PatientName" placeholder="Patient from appointment" readonly />
                     </div>
                     <div class="form-row">
                         <div class="form-group">
@@ -1333,7 +1334,7 @@
                 {
                     <div class="form-group">
                         <label>Patient Name <span class="required">*</span></label>
-                        <input type="text" class="form-input" @bind="_templateDocument.PatientName" placeholder="Enter patient full name" />
+                        <input type="text" class="form-input" @bind="_templateDocument.PatientName" placeholder="Patient from appointment" readonly />
                     </div>
                     <div class="form-row">
                         <div class="form-group">
@@ -1376,7 +1377,7 @@
                 {
                     <div class="form-group">
                         <label>Patient Name <span class="required">*</span></label>
-                        <input type="text" class="form-input" @bind="_templateDocument.PatientName" placeholder="Enter patient full name" />
+                        <input type="text" class="form-input" @bind="_templateDocument.PatientName" placeholder="Patient from appointment" readonly />
                     </div>
                     <div class="form-group">
                         <label>Date <span class="required">*</span></label>
@@ -1399,7 +1400,7 @@
                 {
                     <div class="form-group">
                         <label>Patient Name <span class="required">*</span></label>
-                        <input type="text" class="form-input" @bind="_templateDocument.PatientName" placeholder="Enter patient full name" />
+                        <input type="text" class="form-input" @bind="_templateDocument.PatientName" placeholder="Patient from appointment" readonly />
                     </div>
                     <div class="form-group">
                         <label>Date <span class="required">*</span></label>
@@ -1951,6 +1952,9 @@
                OnDismiss="DismissDocumentError" />
 
 @code {
+    [SupplyParameterFromQuery(Name = "customerId")]
+    public string? CustomerId { get; set; }
+
     private string? DocumentErrorMessage => new[]
     {
         _showValidationError ? _validationErrorMessage : null,
@@ -2160,6 +2164,17 @@
         _isPageInitializing = true;
         try
         {
+            var customerResult = await PatientContext.LoadAsync(CustomerId);
+            if (customerResult.Success && customerResult.Value is not null)
+            {
+                _templateDocument.PatientId = customerResult.Value.SystemID ?? string.Empty;
+                _templateDocument.PatientName = Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext.GetDisplayName(customerResult.Value);
+            }
+            else
+            {
+                Feedback.Error(customerResult.ErrorMessage ?? "Unable to load the appointment patient.", "Patient not loaded");
+            }
+
             // Initialize ViewModel with mock data
             ViewModel.InitializeMockData();
 
@@ -3092,7 +3107,7 @@
         CloseTemplateSelectionModal();
         
         Feedback.Info($"Editing template {template.Name}.", "Edit template", 2200);
-        NavigationManager.NavigateTo("/templates/builder");
+        NavigationManager.NavigateTo(PatientContext.WithCustomer("/templates/builder"));
     }
     
     private void CreateNewTemplate()
@@ -3101,7 +3116,7 @@
         _templateViewModel.StartNewTemplate();
         
         Feedback.Info("Create a new document template.", "New template", 2200);
-        NavigationManager.NavigateTo("/templates/builder");
+        NavigationManager.NavigateTo(PatientContext.WithCustomer("/templates/builder"));
     }
     
     private void ShowDeleteTemplateConfirmation((int Id, string Name, string Category, string Description) template)

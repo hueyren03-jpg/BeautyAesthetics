@@ -7,6 +7,7 @@
 @using Microsoft.AspNetCore.Components.Web
 @inject IJSRuntime JS
 @inject AppFeedbackService Feedback
+@inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext PatientContext
 
 <PageTitle>Prescription</PageTitle>
 
@@ -21,9 +22,9 @@
         </div>
     }
     <header class="prescription-mobile-header">
-        <a href="/case-notes" aria-label="Back to Case Notes"><i class="bi bi-arrow-left"></i></a>
+        <a href="@(PatientContext.WithCustomer("/case-notes"))" aria-label="Back to Case Notes"><i class="bi bi-arrow-left"></i></a>
         <h1>Prescription</h1>
-        <a href="/prescription-builder" aria-label="Manage Prescriptions"><i class="bi bi-clipboard-check"></i></a>
+        <a href="@(PatientContext.WithCustomer("/prescription-builder"))" aria-label="Manage Prescriptions"><i class="bi bi-clipboard-check"></i></a>
     </header>
     <nav class="prescription-mobile-tabs" aria-label="Prescription sections">
         <button type="button" class="@(_mobilePanel == "catalog" ? "active" : "")" @onclick='() => _mobilePanel = "catalog"'>
@@ -108,7 +109,7 @@
                     </div>
                     
                     <!-- Manage Prescriptions Button -->
-                    <a href="/prescription-builder" class="btn-manage-prescriptions" title="Manage Prescriptions">
+                    <a href="@(PatientContext.WithCustomer("/prescription-builder"))" class="btn-manage-prescriptions" title="Manage Prescriptions">
                         <i class="bi bi-clipboard-check"></i>
                         <span>Manage Prescriptions</span>
                     </a>
@@ -428,7 +429,7 @@
                         <span>@_statusMessage</span>
                     </div>
                 }
-                <a href="/case-notes" class="btn-close-footer">
+                <a href="@(PatientContext.WithCustomer("/case-notes"))" class="btn-close-footer">
                     <i class="bi bi-x-lg"></i>
                 </a>
                 <button class="btn-submit" 
@@ -1030,6 +1031,18 @@
                OnDismiss="@(() => _showValidationError = false)" />
 
 @code {
+    [SupplyParameterFromQuery(Name = "customerId")]
+    public string? CustomerId { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await PatientContext.LoadAsync(CustomerId);
+        if (!result.Success)
+        {
+            Feedback.Error(result.ErrorMessage ?? "Unable to load the appointment patient.", "Patient not loaded");
+        }
+    }
+
     private CaseNotePrescriptionViewModel ViewModel { get; set; } = new();
     private string _mobilePanel = "catalog";
 

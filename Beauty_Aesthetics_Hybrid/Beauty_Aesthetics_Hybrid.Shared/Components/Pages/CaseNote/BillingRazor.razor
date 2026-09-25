@@ -7,6 +7,12 @@
 @using System.Text.RegularExpressions
 @inject NavigationManager NavigationManager
 @inject AppFeedbackService Feedback
+@inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext PatientContext
+@inject Beauty_Aesthetics_WebPos.Components.Services.Customers.ICustomerService CustomerService
+@inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.IProductInventoryService ProductInventoryService
+@inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.IServiceItemService ServiceItemService
+@inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.ProductImageService ProductImageService
+@inject Beauty_Aesthetics_WebPos.Components.Services.AppState AppState
 
 <PageTitle>Billing - Beauty Aesthetics</PageTitle>
 
@@ -84,8 +90,8 @@
                                 <i class="bi bi-cash-coin"></i>
                                 <span>Cash Wallet</span>
                             </div>
-                            <div class="wallet-amount">RM @CashWalletAmount.ToString("N2")</div>
-                            <div class="wallet-footer">Available balance</div>
+                            <div class="wallet-amount">@FormatMoneyBalance(CashWalletAmount)</div>
+                            <div class="wallet-footer">@BalanceFooter(CashWalletAmount, "Available balance")</div>
                         </div>
 
                         <div class="wallet-card credit-voucher">
@@ -93,8 +99,8 @@
                                 <i class="bi bi-ticket-perforated"></i>
                                 <span>Credit Voucher</span>
                             </div>
-                            <div class="wallet-amount">RM @CreditVoucherAmount.ToString("N2")</div>
-                            <div class="wallet-footer">@CreditVoucherCount voucher@(CreditVoucherCount == 1 ? "" : "s")</div>
+                            <div class="wallet-amount">@FormatMoneyBalance(CreditVoucherAmount)</div>
+                            <div class="wallet-footer">@BalanceFooter(CreditVoucherAmount, "Voucher balance")</div>
                         </div>
 
                         <div class="wallet-card beauti-points">
@@ -107,16 +113,16 @@
                                     <i class="bi bi-info-circle"></i>
                                 </span>
                             </div>
-                            <div class="wallet-amount">@BeautiPoints.ToString("N0") pts</div>
-                            <div class="wallet-footer">≈ RM @BeautiPointsValue.ToString("N2")</div>
+                            <div class="wallet-amount">@FormatPointBalance(BeautiPoints)</div>
+                            <div class="wallet-footer">@FormatPointValue()</div>
                         </div>
                         <div class="wallet-card loyalty-points">
                             <div class="wallet-card-header">
                                 <i class="bi bi-gift"></i>
                                 <span>Loyalty Points</span>
                             </div>
-                            <div class="wallet-amount">@LoyaltyPoints.ToString("N0") pts</div>
-                            <div class="wallet-footer">Tier: @LoyaltyTier</div>
+                            <div class="wallet-amount">@FormatPointBalance(LoyaltyPoints)</div>
+                            <div class="wallet-footer">@(LoyaltyTier ?? "Unavailable")</div>
                         </div>
 
                         <div class="wallet-card outstanding-balance">
@@ -124,8 +130,8 @@
                                 <i class="bi bi-currency-exchange"></i>
                                 <span>Outstanding Balance</span>
                             </div>
-                            <div class="wallet-amount">RM @PreviousOutstandingAmount.ToString("N2")</div>
-                            <div class="wallet-footer">Previous balance owed</div>
+                            <div class="wallet-amount">@FormatMoneyBalance(PreviousOutstandingAmount)</div>
+                            <div class="wallet-footer">@(PreviousOutstandingAmount.HasValue ? "Previous balance owed" : "Unavailable")</div>
                         </div>
                     </div>
                 </div>
@@ -175,7 +181,7 @@
                                                 class="btn-add-prescription"
                                                 @onclick="OpenPrescriptionModal">
                                             <i class="bi bi-plus-lg"></i>
-                                            <span>Prescription</span>
+                                            <span>Add Item</span>
                                         </button>
                                     }
                                 </div>
@@ -196,6 +202,10 @@
                                         </tr>
                                     </thead>
                                     <tbody>
+                                        @if (PrescriptionItems.Count == 0)
+                                        {
+                                            <tr class="empty-row"><td colspan="@(_isDeleteMode ? 6 : 5)">No prescription items added.</td></tr>
+                                        }
                                         @foreach (var item in PrescriptionItems)
                                         {
                                             <tr @onclick="@(() => { if (_isDeleteMode) ToggleItemSelection(item); })"
@@ -214,6 +224,10 @@
                                                     <span class="clickable-item-name" @onclick="() => EditPrescriptionItem(item)" style="cursor: pointer;">
                                                         @item.Name
                                                     </span>
+                                                    @if (!string.IsNullOrWhiteSpace(item.Sku))
+                                                    {
+                                                        <small class="billing-line-code">@item.Sku</small>
+                                                    }
                                                 </td>
                                                 <td>@item.Quantity</td>
                                                 <td>RM @item.UnitPrice.ToString("N2")</td>
@@ -281,6 +295,10 @@
                                         </tr>
                                     </thead>
                                     <tbody>
+                                        @if (ServiceItems.Count == 0)
+                                        {
+                                            <tr class="empty-row"><td colspan="@(_isServiceDeleteMode ? 7 : 6)">No services added.</td></tr>
+                                        }
                                         @foreach (var service in ServiceItems)
                                         {
                                             <tr @onclick="@(() => { if (_isServiceDeleteMode) ToggleServiceItemSelection(service); })"
@@ -295,7 +313,13 @@
                                                                @onclick:stopPropagation="true" />
                                                     </td>
                                                 }
-                                                <td>@service.Name</td>
+                                                <td>
+                                                    <span>@service.Name</span>
+                                                    @if (!string.IsNullOrWhiteSpace(service.Sku))
+                                                    {
+                                                        <small class="billing-line-code">@service.Sku</small>
+                                                    }
+                                                </td>
                                                 <td>@service.Staff</td>
                                                 <td>@service.Quantity</td>
                                                 <td>RM @service.UnitPrice.ToString("N2")</td>
@@ -435,19 +459,19 @@
                                 <label class="payment-label">Use Wallet / Points</label>
                                 <div class="payment-toggle-row">
                                     <label class="toggle-option">
-                                        <input type="checkbox" @bind="UseCashWallet" />
+                                        <input type="checkbox" @bind="UseCashWallet" disabled="@(!CashWalletAmount.HasValue || CashWalletAmount.Value <= 0)" />
                                         <span>Use Cash Wallet</span>
                                     </label>
                                     <label class="toggle-option">
-                                        <input type="checkbox" @bind="UseCreditVoucher" />
+                                        <input type="checkbox" @bind="UseCreditVoucher" disabled="@(!CreditVoucherAmount.HasValue || CreditVoucherAmount.Value <= 0)" />
                                         <span>Use Credit Voucher</span>
                                     </label>
                                     <label class="toggle-option">
-                                        <input type="checkbox" @bind="UseBeautiPoints" />
+                                        <input type="checkbox" @bind="UseBeautiPoints" disabled="@(!BeautiPoints.HasValue || BeautiPoints.Value <= 0)" />
                                         <span>Use Beauty Points</span>
                                     </label>
                                     <label class="toggle-option">
-                                        <input type="checkbox" @bind="UseLoyaltyPoints" />
+                                        <input type="checkbox" @bind="UseLoyaltyPoints" disabled="@(!LoyaltyPoints.HasValue || LoyaltyPoints.Value <= 0)" />
                                         <span>Use Loyalty Points</span>
                                     </label>
                                 </div>
@@ -519,7 +543,7 @@
         <div class="modal-container billing-prescription-modal" @onclick:stopPropagation="true">
             <div class="modal-header modal-header-info">
                 <i class="bi bi-capsule"></i>
-                <h3>New Prescription</h3>
+                <h3>Add Prescription Item</h3>
             </div>
             <div class="modal-body prescription-modal-body">
                 <div class="prescription-layout-grid">
@@ -556,30 +580,59 @@
                             </div>
                         </div>
 
-                        <!-- Drug List -->
+                        <!-- Inventory product list -->
                         <div class="drug-selection-list">
-                            @foreach (var drug in PrescriptionViewModel.FilteredDrugs)
+                            @if (_isProductCatalogLoading)
                             {
-                                <div class="drug-selection-row @(PrescriptionViewModel.SelectedDrugToAdd?.Id == drug.Id ? "selected" : "")"
-                                     @onclick="() => SelectDrug(drug)">
-                                    <div class="drug-icon">
-                                        <i class="bi bi-capsule"></i>
-                                    </div>
-                                    <div class="drug-info">
-                                        <h4>@drug.Name</h4>
-                                        <div class="drug-meta">
-                                            <span>@drug.DrugCode</span>
-                                            <span class="dot">•</span>
-                                            <span>@drug.Category</span>
+                                <div class="catalog-state"><span class="spinner-border spinner-border-sm"></span> Loading inventory items...</div>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(_productCatalogError))
+                            {
+                                <div class="catalog-state catalog-state-error">
+                                    <span>@_productCatalogError</span>
+                                    <button type="button" @onclick="LoadProductCatalogAsync">Retry</button>
+                                </div>
+                            }
+                            else if (!PrescriptionViewModel.FilteredDrugs.Any())
+                            {
+                                <div class="catalog-state">No inventory items found.</div>
+                            }
+                            else
+                            {
+                                @foreach (var drug in PrescriptionViewModel.FilteredDrugs)
+                                {
+                                    var isOutOfStock = drug.StockQuantity.HasValue && drug.StockQuantity.Value <= 0;
+                                    <div class="drug-selection-row @(PrescriptionViewModel.SelectedDrugToAdd?.InventoryId == drug.InventoryId ? "selected" : "") @(isOutOfStock ? "disabled" : "")"
+                                         @onclick="() => SelectDrug(drug)">
+                                        <div class="drug-icon">
+                                            @if (!string.IsNullOrWhiteSpace(ResolveCatalogImage(drug.InventoryId, drug.ImagePath, drug.ImageFileName)))
+                                            {
+                                                <img src="@ResolveCatalogImage(drug.InventoryId, drug.ImagePath, drug.ImageFileName)" alt="" loading="lazy" />
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-box-seam"></i>
+                                            }
+                                        </div>
+                                        <div class="drug-info">
+                                            <h4>@drug.Name</h4>
+                                            <div class="drug-meta">
+                                                <span>@drug.DrugCode</span>
+                                                <span class="dot">•</span>
+                                                <span>@drug.Category</span>
+                                                <span class="dot">•</span>
+                                                <span>@(drug.StockQuantity.HasValue ? $"Stock {drug.StockQuantity.Value:N0}" : "Stock unavailable")</span>
+                                            </div>
+                                        </div>
+                                        <div class="drug-list-price">RM @drug.Price.ToString("N2")</div>
+                                        <div class="drug-action">
+                                            @if (PrescriptionViewModel.SelectedDrugToAdd?.InventoryId == drug.InventoryId)
+                                            {
+                                                <i class="bi bi-check-circle-fill text-success"></i>
+                                            }
                                         </div>
                                     </div>
-                                    <div class="drug-action">
-                                        @if (PrescriptionViewModel.SelectedDrugToAdd?.Id == drug.Id)
-                                        {
-                                            <i class="bi bi-check-circle-fill text-success"></i>
-                                        }
-                                    </div>
-                                </div>
+                                }
                             }
                         </div>
 
@@ -595,7 +648,7 @@
                                     <div class="drug-name-row">
                                         <div class="drug-title-block">
                                             <div class="label-with-action">
-                                                <span class="field-label">Selected Drug</span>
+                                                <span class="field-label">Selected Item</span>
                                                 <button class="btn-inline-action btn-inline-clear"
                                                         type="button"
                                                         title="Clear selected drug"
@@ -606,7 +659,7 @@
                                                 </button>
                                             </div>
                                             <h4>@PrescriptionViewModel.SelectedDrugToAdd.Name</h4>
-                                            <p>Drug Code: @PrescriptionViewModel.SelectedDrugToAdd.DrugCode</p>
+                                            <p>SKU: @PrescriptionViewModel.SelectedDrugToAdd.DrugCode · RM @PrescriptionViewModel.SelectedDrugToAdd.Price.ToString("N2")</p>
                                         </div>
                                     </div>
                                 </div>
@@ -758,7 +811,7 @@
                             <div class="prescription-placeholder">
                                 <div class="placeholder-content">
                                     <i class="bi bi-capsule-pill"></i>
-                                    <p>Select a drug from the list to view details</p>
+                                    <p>Select an inventory item to enter prescription details</p>
                                 </div>
                             </div>
                         }
@@ -780,9 +833,9 @@
                     <i class="bi bi-x-circle"></i>
                     <span>Cancel</span>
                 </button>
-                <button class="btn-modal-confirm" type="button" @onclick="AddSinglePrescriptionDrug" disabled="@(PrescriptionViewModel.SelectedDrugToAdd == null)">
+                <button class="btn-modal-confirm" type="button" @onclick="AddSinglePrescriptionDrug" disabled="@(PrescriptionViewModel.SelectedDrugToAdd == null || _isProductCatalogLoading)">
                     <i class="bi bi-plus-lg"></i>
-                    <span>Add Prescription</span>
+                    <span>Add Item</span>
                 </button>
             </div>
         </div>
@@ -1138,25 +1191,55 @@
                 </div>
 
                 <div class="service-catalog-list">
-                    @foreach (var svc in FilteredServiceCatalog)
+                    @if (_isServiceCatalogLoading)
                     {
-                        <div class="service-catalog-row" @onclick="() => AddServiceFromCatalog(svc)">
-                            <div class="service-icon">
-                                <i class="bi bi-stars"></i>
-                            </div>
-                            <div class="service-info">
-                                <h4>@svc.Name</h4>
-                                <div class="service-meta">
-                                    <span>@svc.Category</span>
-                                    <span class="dot">•</span>
-                                    <span>@svc.DurationSpend</span>
-                                </div>
-                            </div>
-                            <div class="service-price">RM @svc.Price.ToString("N2")</div>
-                            <button class="btn-add-service-item">
-                                <i class="bi bi-plus-lg"></i>
-                            </button>
+                        <div class="catalog-state"><span class="spinner-border spinner-border-sm"></span> Loading services...</div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(_serviceCatalogError))
+                    {
+                        <div class="catalog-state catalog-state-error">
+                            <span>@_serviceCatalogError</span>
+                            <button type="button" @onclick="LoadServiceCatalogAsync">Retry</button>
                         </div>
+                    }
+                    else if (!FilteredServiceCatalog.Any())
+                    {
+                        <div class="catalog-state">No active services found.</div>
+                    }
+                    else
+                    {
+                        @foreach (var svc in FilteredServiceCatalog)
+                        {
+                            <div class="service-catalog-row" @onclick="() => AddServiceFromCatalog(svc)">
+                                <div class="service-icon">
+                                    @if (!string.IsNullOrWhiteSpace(ResolveCatalogImage(svc.MasterAccountId, svc.ImagePath, svc.ImageFileName)))
+                                    {
+                                        <img src="@ResolveCatalogImage(svc.MasterAccountId, svc.ImagePath, svc.ImageFileName)" alt="" loading="lazy" />
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-stars"></i>
+                                    }
+                                </div>
+                                <div class="service-info">
+                                    <h4>@svc.ServiceName</h4>
+                                    <div class="service-meta">
+                                        <span>@svc.Sku</span>
+                                        <span class="dot">•</span>
+                                        <span>@svc.Category</span>
+                                        @if (!string.IsNullOrWhiteSpace(svc.DurationSpend))
+                                        {
+                                            <span class="dot">•</span>
+                                            <span>@svc.DurationSpend</span>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="service-price">RM @svc.Price.ToString("N2")</div>
+                                <button type="button" class="btn-add-service-item" aria-label="Add @svc.ServiceName">
+                                    <i class="bi bi-plus-lg"></i>
+                                </button>
+                            </div>
+                        }
                     }
                 </div>
             </div>
@@ -1207,6 +1290,9 @@
                OnDismiss="DismissBillingError" />
 
 @code {
+    [SupplyParameterFromQuery(Name = "customerId")]
+    public string? CustomerId { get; set; }
+
     private string? BillingErrorMessage => new[]
     {
         AmountReceivedError,
@@ -1225,9 +1311,9 @@
         _discountError = string.Empty;
     }
 
-    private string PatientName { get; set; } = "Sample Patient";
-    private string PatientBirthday { get; set; } = "01/01/1990";
-    private string PatientPhone { get; set; } = "+60 12-345 6789";
+    private string PatientName { get; set; } = "-";
+    private string PatientBirthday { get; set; } = "-";
+    private string PatientPhone { get; set; } = "-";
 
     private bool _isPatientInfoCollapsed = false;
     private bool _isPatientDrawerOpen = false;
@@ -1238,32 +1324,30 @@
     private string BillingStatusText { get; set; } = "Unpaid";
     private string BillingStatusCss => "status-unpaid";
 
-    // Sample wallet / loyalty data
-    private decimal CashWalletAmount { get; set; } = 250.00m;
-    private decimal CreditVoucherAmount { get; set; } = 150.00m;
-    private int CreditVoucherCount { get; set; } = 2;
+    private decimal? CashWalletAmount { get; set; }
+    private decimal? CreditVoucherAmount { get; set; }
+    private decimal? BeautiPoints { get; set; }
+    private decimal? BeautiPointsValue { get; set; }
 
-    private int BeautiPoints { get; set; } = 1200;
-    private decimal BeautiPointsValue => BeautiPoints * 1.00m; // RM1.00 per point (RM1 = 1 point)
+    // These values are intentionally unset until their API fields are supplied.
+    private decimal? LoyaltyPoints { get; set; }
+    private string? LoyaltyTier { get; set; }
+    private decimal? PreviousOutstandingAmount { get; set; }
+    private bool _isCustomerBalanceLoading;
 
-    private int LoyaltyPoints { get; set; } = 500;
-    private string LoyaltyTier { get; set; } = "Standard";
-    private decimal PreviousOutstandingAmount { get; set; } = 888.00m;
+    private string FormatMoneyBalance(decimal? value) => value.HasValue ? $"RM {value.Value:N2}" : "—";
+    private string FormatPointBalance(decimal? value) => value.HasValue ? $"{value.Value:N0} pts" : "—";
+    private string BalanceFooter(decimal? value, string loadedText) => _isCustomerBalanceLoading
+        ? "Loading..."
+        : value.HasValue ? loadedText : "Unavailable";
+    private string FormatPointValue() => _isCustomerBalanceLoading
+        ? "Loading..."
+        : BeautiPointsValue.HasValue
+            ? $"≈ RM {BeautiPointsValue.Value:N2}"
+            : "Unavailable";
 
-    // Sample billing data
-    private List<BillingItem> PrescriptionItems { get; set; } = new()
-    {
-        new BillingItem("Hydrating Glow Serum", 1, 180.00m, 0.00m),
-        new BillingItem("SPF50+ Daily Sunshield", 1, 120.00m, 0.00m),
-        new BillingItem("Post-Laser Recovery Cream", 1, 150.00m, 0.00m)
-    };
-
-    private List<BillingService> ServiceItems { get; set; } = new()
-    {
-        new BillingService("Signature Hydrafacial", "Therapist A", 1, 380.00m, 0.00m),
-        new BillingService("Acne Clarifying Facial", "Therapist B", 1, 260.00m, 0.00m),
-        new BillingService("LED Light Therapy (Add-on)", "Therapist A", 1, 80.00m, 0.00m)
-    };
+    private List<BillingItem> PrescriptionItems { get; set; } = new();
+    private List<BillingService> ServiceItems { get; set; } = new();
 
     // MC / insurance and summary values
     private decimal McCoverage { get; set; } = 150.00m;   // e.g. MC pays RM150
@@ -1304,12 +1388,19 @@
     private decimal ChangeAmount => Math.Max(0m, (AmountReceived ?? 0m) - TotalPayable);
 
     // Prescription modal state
-    private CaseNotePrescriptionViewModel PrescriptionViewModel { get; set; } = new();
+    private CaseNotePrescriptionViewModel PrescriptionViewModel { get; set; } = CreateBillingPrescriptionViewModel();
     private bool _showPrescriptionModal;
     private bool _showPrescriptionValidationError;
     private bool _manualFrequency;
     private bool _manualDuration;
     private bool _manualReason;
+
+    private static CaseNotePrescriptionViewModel CreateBillingPrescriptionViewModel()
+    {
+        var viewModel = new CaseNotePrescriptionViewModel();
+        viewModel.ReplaceDrugs([]);
+        return viewModel;
+    }
 
     private string _prescriptionStatusMessage = string.Empty;
     private bool _prescriptionStatusIsSuccess;
@@ -1387,31 +1478,119 @@
 
 
 
-    // Simple service catalog for picker modal
-    private List<ServiceCatalogItem> ServiceCatalog { get; } = new()
-    {
-        new ServiceCatalogItem("Facial Treatment", "SRV-001", "Beauty", "60 mins", 150.00m),
-        new ServiceCatalogItem("Hair Styling", "SRV-002", "Hair Care", "45 mins", 80.00m),
-        new ServiceCatalogItem("Manicure & Pedicure", "SRV-003", "Nail Care", "90 mins", 120.00m),
-        new ServiceCatalogItem("Body Massage", "SRV-004", "Wellness", "120 mins", 200.00m),
-        new ServiceCatalogItem("Skin Rejuvenation", "SRV-005", "Beauty", "75 mins", 180.00m)
-    };
+    private List<ServiceViewModel.ServiceItem> ServiceCatalog { get; set; } = new();
+    private bool _isProductCatalogLoading;
+    private bool _isServiceCatalogLoading;
+    private string? _productCatalogError;
+    private string? _serviceCatalogError;
 
     private string _serviceSearchQuery = string.Empty;
     private string _selectedServiceCategory = "All";
 
     private List<string> ServiceCategories => ServiceCatalog
         .Select(s => s.Category)
+        .Where(category => !string.IsNullOrWhiteSpace(category))
         .Distinct()
         .OrderBy(c => c)
         .Prepend("All")
         .ToList();
 
-    private IEnumerable<ServiceCatalogItem> FilteredServiceCatalog => ServiceCatalog
-        .Where(s => (_selectedServiceCategory == "All" || s.Category == _selectedServiceCategory) &&
-                    (string.IsNullOrWhiteSpace(_serviceSearchQuery) || 
-                     s.Name.Contains(_serviceSearchQuery, StringComparison.OrdinalIgnoreCase) || 
+    private IEnumerable<ServiceViewModel.ServiceItem> FilteredServiceCatalog => ServiceCatalog
+        .Where(s => s.IsActive &&
+                    !string.Equals(s.Status, "Inactive", StringComparison.OrdinalIgnoreCase) &&
+                    (_selectedServiceCategory == "All" || s.Category == _selectedServiceCategory) &&
+                    (string.IsNullOrWhiteSpace(_serviceSearchQuery) ||
+                     s.ServiceName.Contains(_serviceSearchQuery, StringComparison.OrdinalIgnoreCase) ||
                      s.Sku.Contains(_serviceSearchQuery, StringComparison.OrdinalIgnoreCase)));
+
+    private async Task LoadBillingCatalogsAsync()
+    {
+        await Task.WhenAll(LoadProductCatalogAsync(), LoadServiceCatalogAsync());
+    }
+
+    private async Task LoadProductCatalogAsync()
+    {
+        _isProductCatalogLoading = true;
+        _productCatalogError = null;
+        try
+        {
+            var branchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID) ? "HQ" : AppState.SelectedBranchID!;
+            var result = await ProductInventoryService.LoadProductsAsync(branchId);
+            if (!result.Success || result.Value is null)
+            {
+                PrescriptionViewModel.ReplaceDrugs([]);
+                _productCatalogError = result.ErrorMessage ?? "Unable to load inventory items.";
+                return;
+            }
+
+            var products = result.Value
+                .Where(product => product.IsActive)
+                .OrderBy(product => product.Type)
+                .Select((product, index) => new CaseNotePrescriptionViewModel.Drug(
+                    index + 1,
+                    product.Type,
+                    product.Sku,
+                    product.Category,
+                    product.Remarks,
+                    string.Empty,
+                    product.ConversionFactor,
+                    product.MasterAccountId,
+                    product.Price,
+                    product.StockQuantity,
+                    product.IsActive,
+                    product.ImagePath,
+                    product.ImageFileName))
+                .ToList();
+
+            PrescriptionViewModel.ReplaceDrugs(products);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Unable to load billing inventory catalog: {ex.Message}");
+            PrescriptionViewModel.ReplaceDrugs([]);
+            _productCatalogError = "Unable to load inventory items.";
+        }
+        finally
+        {
+            _isProductCatalogLoading = false;
+        }
+    }
+
+    private async Task LoadServiceCatalogAsync()
+    {
+        _isServiceCatalogLoading = true;
+        _serviceCatalogError = null;
+        try
+        {
+            var branchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID) ? "HQ" : AppState.SelectedBranchID!;
+            var result = await ServiceItemService.LoadServiceItemsAsync(branchId);
+            if (!result.Success || result.Value is null)
+            {
+                ServiceCatalog = new List<ServiceViewModel.ServiceItem>();
+                _serviceCatalogError = result.ErrorMessage ?? "Unable to load services.";
+                return;
+            }
+
+            ServiceCatalog = result.Value
+                .Where(service => service.IsActive &&
+                                  !string.Equals(service.Status, "Inactive", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(service => service.ServiceName)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Unable to load billing service catalog: {ex.Message}");
+            ServiceCatalog = new List<ServiceViewModel.ServiceItem>();
+            _serviceCatalogError = "Unable to load services.";
+        }
+        finally
+        {
+            _isServiceCatalogLoading = false;
+        }
+    }
+
+    private string ResolveCatalogImage(string? recordId, string? imagePath, string? imageFileName) =>
+        ProductImageService.ResolveImageUrl(recordId, imagePath, imageFileName);
 
     private void UpdateServiceSearch(ChangeEventArgs e)
     {
@@ -1423,11 +1602,15 @@
         _selectedServiceCategory = category;
     }
 
-    private void OpenServicePickerModal()
+    private async Task OpenServicePickerModal()
     {
         _serviceSearchQuery = string.Empty;
         _selectedServiceCategory = "All";
         _showServicePickerModal = true;
+        if (ServiceCatalog.Count == 0 && !_isServiceCatalogLoading)
+        {
+            await LoadServiceCatalogAsync();
+        }
     }
 
     private void CloseServicePickerModal()
@@ -1435,9 +1618,12 @@
         _showServicePickerModal = false;
     }
 
-    private void AddServiceFromCatalog(ServiceCatalogItem svc)
+    private void AddServiceFromCatalog(ServiceViewModel.ServiceItem svc)
     {
-        var existing = ServiceItems.FirstOrDefault(s => s.Name.Equals(svc.Name, StringComparison.OrdinalIgnoreCase));
+        var serviceId = svc.MasterAccountId?.Trim() ?? string.Empty;
+        var existing = ServiceItems.FirstOrDefault(item =>
+            (!string.IsNullOrWhiteSpace(serviceId) && string.Equals(item.SourceId, serviceId, StringComparison.OrdinalIgnoreCase)) ||
+            (string.IsNullOrWhiteSpace(serviceId) && item.Name.Equals(svc.ServiceName, StringComparison.OrdinalIgnoreCase)));
 
         if (existing != null)
         {
@@ -1447,18 +1633,21 @@
         else
         {
             // Default staff can be set later; for now use doctor as placeholder
-            ServiceItems.Add(new BillingService(svc.Name, DoctorName, 1, svc.Price, 0m));
+            ServiceItems.Add(new BillingService(svc.ServiceName, DoctorName, 1, svc.Price, 0m, serviceId, svc.Sku));
         }
 
         _showServicePickerModal = false;
-        Feedback.Success($"{svc.Name} added to billing.", "Service added", 2200);
+        Feedback.Success($"{svc.ServiceName} added to billing.", "Service added", 2200);
     }
 
-    private void OpenPrescriptionModal()
+    private async Task OpenPrescriptionModal()
     {
         _showPrescriptionModal = true;
         _prescriptionStatusMessage = string.Empty;
-
+        if (PrescriptionViewModel.Drugs.Count == 0 && !_isProductCatalogLoading)
+        {
+            await LoadProductCatalogAsync();
+        }
     }
 
 
@@ -1493,6 +1682,12 @@
 
     private void SelectDrug(CaseNotePrescriptionViewModel.Drug drug)
     {
+        if (!drug.IsActive || (drug.StockQuantity.HasValue && drug.StockQuantity.Value <= 0))
+        {
+            Feedback.Warning($"{drug.Name} is out of stock.", "Item unavailable");
+            return;
+        }
+
         PrescriptionViewModel.SelectDrugToAdd(drug);
         _showPrescriptionValidationError = false;
     }
@@ -1616,8 +1811,9 @@
 
         _editingPrescriptionItem = item;
         
-        // Find the drug in the shared list to select it
-        var drug = PrescriptionViewModel.Drugs.FirstOrDefault(d => d.Name == item.Name);
+        var drug = PrescriptionViewModel.Drugs.FirstOrDefault(candidate =>
+            (!string.IsNullOrWhiteSpace(item.SourceId) && string.Equals(candidate.InventoryId, item.SourceId, StringComparison.OrdinalIgnoreCase)) ||
+            (string.IsNullOrWhiteSpace(item.SourceId) && candidate.Name.Equals(item.Name, StringComparison.OrdinalIgnoreCase)));
         if (drug != null)
         {
             PrescriptionViewModel.SelectedDrugToAdd = drug;
@@ -1637,6 +1833,27 @@
 
     private void AddSinglePrescriptionDrug()
     {
+        var drug = PrescriptionViewModel.SelectedDrugToAdd;
+        var requestedQuantity = PrescriptionViewModel.NewDrugQuantity;
+
+        if (drug is null)
+        {
+            Feedback.Warning("Select an inventory item first.", "Prescription item not saved");
+            return;
+        }
+
+        if (requestedQuantity < 1 || requestedQuantity != Math.Truncate(requestedQuantity))
+        {
+            Feedback.Warning("Quantity must be a whole number of at least 1.", "Prescription item not saved");
+            return;
+        }
+
+        if (drug.StockQuantity.HasValue && requestedQuantity > drug.StockQuantity.Value)
+        {
+            Feedback.Warning($"Only {drug.StockQuantity.Value:N0} unit(s) are available.", "Insufficient stock");
+            return;
+        }
+
         // 1. Validate
         if (string.IsNullOrWhiteSpace(PrescriptionViewModel.NewDrugFrequency) ||
             string.IsNullOrWhiteSpace(PrescriptionViewModel.NewDrugDuration) ||
@@ -1648,19 +1865,21 @@
         }
 
         // 2. Add or Update
-        var drug = PrescriptionViewModel.SelectedDrugToAdd;
         if (drug != null)
         {
              var newItem = new BillingItem(
-                 drug.Name,
-                 (int)PrescriptionViewModel.NewDrugQuantity,
-                 0m, // Price not available in Drug model, defaulting to 0
-                 0m, // No discount initially
-                 PrescriptionViewModel.NewDrugFrequency,
-                 PrescriptionViewModel.NewDrugDuration,
-                 PrescriptionViewModel.NewDrugReason,
-                 PrescriptionViewModel.NewDrugNotes
-             );
+                  drug.Name,
+                  (int)requestedQuantity,
+                  drug.Price,
+                  _editingPrescriptionItem?.Discount ?? 0m,
+                  PrescriptionViewModel.NewDrugFrequency,
+                  PrescriptionViewModel.NewDrugDuration,
+                  PrescriptionViewModel.NewDrugReason,
+                  PrescriptionViewModel.NewDrugNotes,
+                  drug.InventoryId,
+                  drug.DrugCode,
+                  drug.StockQuantity
+              );
 
              if (_editingPrescriptionItem != null)
              {
@@ -1705,7 +1924,7 @@
             string.IsNullOrWhiteSpace(PrescriptionViewModel.NewDrugReason))
         {
             _showPrescriptionValidationError = true;
-            Feedback.Warning("Select a drug and complete frequency, duration and reason.", "Drug not added");
+            Feedback.Warning("Select an inventory item and complete frequency, duration and reason.", "Item not added");
             return;
         }
 
@@ -1727,7 +1946,9 @@
         foreach (var drug in prescription.Drugs)
         {
             var qty = (int)Math.Max(1, Math.Round(drug.Quantity));
-            var existing = PrescriptionItems.FirstOrDefault(i => i.Name.Equals(drug.Drug.Name, StringComparison.OrdinalIgnoreCase));
+            var existing = PrescriptionItems.FirstOrDefault(item =>
+                (!string.IsNullOrWhiteSpace(drug.Drug.InventoryId) && string.Equals(item.SourceId, drug.Drug.InventoryId, StringComparison.OrdinalIgnoreCase)) ||
+                (string.IsNullOrWhiteSpace(drug.Drug.InventoryId) && item.Name.Equals(drug.Drug.Name, StringComparison.OrdinalIgnoreCase)));
 
             if (existing != null)
             {
@@ -1736,7 +1957,18 @@
             }
             else
             {
-                PrescriptionItems.Add(new BillingItem(drug.Drug.Name, qty, 0m, 0m));
+                PrescriptionItems.Add(new BillingItem(
+                    drug.Drug.Name,
+                    qty,
+                    drug.Drug.Price,
+                    0m,
+                    drug.Frequency,
+                    drug.Duration,
+                    drug.Reason,
+                    drug.Notes,
+                    drug.Drug.InventoryId,
+                    drug.Drug.DrugCode,
+                    drug.Drug.StockQuantity));
             }
         }
     }
@@ -1754,7 +1986,7 @@
     {
         if (!PrescriptionViewModel.SelectedDrugs.Any())
         {
-            _prescriptionStatusMessage = "Add at least one drug before saving.";
+            _prescriptionStatusMessage = "Add at least one inventory item before saving.";
             _prescriptionStatusIsSuccess = false;
             Feedback.Warning(_prescriptionStatusMessage, "Prescription not saved");
             return;
@@ -1782,11 +2014,27 @@
 
     private void CloseBilling()
     {
-        NavigationManager.NavigateTo("/case-notes");
+        NavigationManager.NavigateTo(PatientContext.WithCustomer("/case-notes"));
     }
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
+        var catalogLoadTask = LoadBillingCatalogsAsync();
+        var result = await PatientContext.LoadAsync(CustomerId);
+        if (result.Success && result.Value is not null)
+        {
+            PatientName = Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext.GetDisplayName(result.Value);
+            PatientBirthday = result.Value.DateOfBirth?.ToString("dd/MM/yyyy") ?? "-";
+            PatientPhone = string.IsNullOrWhiteSpace(result.Value.ContactNumber1) ? "-" : result.Value.ContactNumber1;
+            await LoadCustomerBalancesAsync(result.Value.SystemID);
+        }
+        else
+        {
+            Feedback.Error(result.ErrorMessage ?? "Unable to load the appointment patient.", "Patient not loaded");
+        }
+
+        await catalogLoadTask;
+
         // Pre-fill available collectors with doctor and sample receptionists
         CollectorOptions = new List<string>
         {
@@ -1796,6 +2044,34 @@
         };
 
         SelectedCollector = DoctorName;
+    }
+
+    private async Task LoadCustomerBalancesAsync(string? customerId)
+    {
+        if (string.IsNullOrWhiteSpace(customerId))
+        {
+            return;
+        }
+
+        _isCustomerBalanceLoading = true;
+        try
+        {
+            var result = await CustomerService.GetBalanceSummaryAsync(customerId);
+            if (!result.Success || result.Value is null)
+            {
+                Feedback.Error(result.ErrorMessage ?? "Unable to load customer balances.", "Balances not loaded");
+                return;
+            }
+
+            CashWalletAmount = result.Value.CreditBalance;
+            CreditVoucherAmount = result.Value.VoucherBalance;
+            BeautiPoints = result.Value.PointBalance;
+            BeautiPointsValue = result.Value.PointRebateBalance;
+        }
+        finally
+        {
+            _isCustomerBalanceLoading = false;
+        }
     }
 
     private void TogglePatientInfo()
@@ -2380,16 +2656,23 @@
     }
 
     private record BillingItem(string Name, int Quantity, decimal UnitPrice, decimal Discount, 
-        string? Frequency = null, string? Duration = null, string? Reason = null, string? Notes = null)
+        string? Frequency = null, string? Duration = null, string? Reason = null, string? Notes = null,
+        string SourceId = "", string Sku = "", decimal? AvailableStock = null)
     {
         public decimal LineTotal => Math.Max(0m, UnitPrice * Quantity - Discount);
     }
 
-    private record BillingService(string Name, string Staff, int Quantity, decimal UnitPrice, decimal Discount)
+    private record BillingService(
+        string Name,
+        string Staff,
+        int Quantity,
+        decimal UnitPrice,
+        decimal Discount,
+        string SourceId = "",
+        string Sku = "")
     {
         public decimal LineTotal => Math.Max(0m, UnitPrice * Quantity - Discount);
     }
 
-    private record ServiceCatalogItem(string Name, string Sku, string Category, string DurationSpend, decimal Price);
 }
 

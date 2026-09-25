@@ -7,6 +7,7 @@
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JS
 @inject AppFeedbackService Feedback
+@inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext PatientContext
 
 <PageTitle>Manage Prescription - Beauty Aesthetics</PageTitle>
 
@@ -30,7 +31,7 @@
             <button type="button" class="mobile-new-drug" @onclick="StartNewDrug" aria-label="Add treatment or product">
                 <i class="bi bi-plus-lg"></i>
             </button>
-            <a href="/case-note-prescription" class="btn-close-header" aria-label="Back to prescription">
+            <a href="@(PatientContext.WithCustomer("/case-note-prescription"))" class="btn-close-header" aria-label="Back to prescription">
                 <i class="bi bi-arrow-left"></i>
             </a>
         </div>
@@ -567,6 +568,18 @@
                OnDismiss="DismissPrescriptionBuilderError" />
 
 @code {
+    [SupplyParameterFromQuery(Name = "customerId")]
+    public string? CustomerId { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await PatientContext.LoadAsync(CustomerId);
+        if (!result.Success)
+        {
+            Feedback.Error(result.ErrorMessage ?? "Unable to load the appointment patient.", "Patient not loaded");
+        }
+    }
+
     private string? PrescriptionBuilderErrorMessage => new[]
     {
         _showValidationError ? _validationErrorMessage : null,
@@ -744,7 +757,9 @@
     {
         if (firstRender)
         {
-            // Initialize the resizer and download function after the component has rendered
+            try
+            {
+                // Initialize the resizer and download function after the component has rendered
             await JS.InvokeVoidAsync("eval", @"
                 (function() {
                     // File download function
@@ -838,8 +853,12 @@
                     setTimeout(initializeResizer, 200);
                 })();
             ");
-            _isPageInitializing = false;
-            StateHasChanged();
+            }
+            finally
+            {
+                _isPageInitializing = false;
+                StateHasChanged();
+            }
         }
     }
 

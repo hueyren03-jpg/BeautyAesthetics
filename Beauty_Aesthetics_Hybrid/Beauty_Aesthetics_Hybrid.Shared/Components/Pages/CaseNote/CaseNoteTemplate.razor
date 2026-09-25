@@ -2,6 +2,8 @@
 @using Beauty_Aesthetics_WebPos.Components.Layout
 @layout EmptyLayout
 @using Beauty_Aesthetics_WebPos.Components.ViewModels
+@inject AppFeedbackService Feedback
+@inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext PatientContext
 <PageTitle>Case Note Templates</PageTitle>
 
 <div class="template-container">
@@ -25,7 +27,7 @@
                 <i class="bi bi-plus-lg"></i>
                 <span>Create New Template</span>
             </button>
-            <a href="/case-notes" class="btn-close-header">
+            <a href="@(PatientContext.WithCustomer("/case-notes"))" class="btn-close-header">
                 <i class="bi bi-x-lg"></i>
             </a>
         </div>
@@ -97,6 +99,18 @@
 </div>
 
 @code {
+    [SupplyParameterFromQuery(Name = "customerId")]
+    public string? CustomerId { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await PatientContext.LoadAsync(CustomerId);
+        if (!result.Success)
+        {
+            Feedback.Error(result.ErrorMessage ?? "Unable to load the appointment patient.", "Patient not loaded");
+        }
+    }
+
     private CaseNoteTemplateViewModel ViewModel { get; set; } = new();
 
     protected override void OnInitialized()

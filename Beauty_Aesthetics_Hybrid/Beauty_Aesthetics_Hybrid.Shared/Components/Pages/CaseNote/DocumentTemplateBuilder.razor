@@ -7,6 +7,7 @@
 @inject NavigationManager NavigationManager
 @inject DocumentTemplateViewModel TemplateViewModel
 @inject AppFeedbackService Feedback
+@inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext PatientContext
 
 <PageTitle>Template Builder - Beauty Aesthetics</PageTitle>
 
@@ -18,7 +19,7 @@
             <h1 class="header-title">Template Builder</h1>
         </div>
         <div class="header-right">
-            <a href="/documents" class="btn-close-header">
+            <a href="@(PatientContext.WithCustomer("/documents"))" class="btn-close-header">
                 <i class="bi bi-x-lg"></i>
             </a>
         </div>
@@ -394,6 +395,18 @@
                OnDismiss="CloseError" />
 
 @code {
+    [SupplyParameterFromQuery(Name = "customerId")]
+    public string? CustomerId { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await PatientContext.LoadAsync(CustomerId);
+        if (!result.Success)
+        {
+            Feedback.Error(result.ErrorMessage ?? "Unable to load the appointment patient.", "Patient not loaded");
+        }
+    }
+
     private DocumentTemplateViewModel ViewModel => TemplateViewModel;
     
     // Field Editor State
@@ -743,7 +756,7 @@
             
             Feedback.Success($"Template '{template.Name}' saved successfully.", "Template saved");
             await Task.Delay(300);
-            NavigationManager.NavigateTo("/documents");
+            NavigationManager.NavigateTo(PatientContext.WithCustomer("/documents"));
         }
         catch (InvalidOperationException ex)
         {
@@ -772,7 +785,7 @@
 
     private void NavigateBack()
     {
-        NavigationManager.NavigateTo("/documents");
+        NavigationManager.NavigateTo(PatientContext.WithCustomer("/documents"));
     }
 
     private string GetFieldTypeLabel(DocumentTemplateViewModel.FieldType type)

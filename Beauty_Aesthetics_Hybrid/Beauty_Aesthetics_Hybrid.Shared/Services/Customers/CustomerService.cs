@@ -1,5 +1,6 @@
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.Components.Models;
+using Beauty_Aesthetics_WebPos.Models.DTOs;
 using EBI.DM;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.Customers;
@@ -88,6 +89,25 @@ public sealed class CustomerService : ICustomerService
             Credits = creditResult.Value
         });
     }
+
+    public async Task<CustomerOperationResult<MemberBalanceSummaryDTO>> GetBalanceSummaryAsync(
+        string customerId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(customerId))
+        {
+            return CustomerOperationResult<MemberBalanceSummaryDTO>.Fail("Customer ID is required.");
+        }
+
+        var result = await customerAC.GetMemberBalanceSummaryAsync(customerId, cancellationToken);
+        if (!result.Success || result.Value is null)
+        {
+            return CustomerOperationResult<MemberBalanceSummaryDTO>.Fail(ToCustomerError(result.ErrorMessage));
+        }
+
+        return CustomerOperationResult<MemberBalanceSummaryDTO>.Ok(result.Value);
+    }
+
     public async Task<CustomerOperationResult<Customer>> CreateCustomerAsync(
         Customer customer,
         CancellationToken cancellationToken = default)

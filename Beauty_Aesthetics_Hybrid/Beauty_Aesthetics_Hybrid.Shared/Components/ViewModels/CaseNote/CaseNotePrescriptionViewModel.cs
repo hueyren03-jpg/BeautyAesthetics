@@ -21,15 +21,32 @@ public class CaseNotePrescriptionViewModel : INotifyPropertyChanged
     }
 
     // Models
-    public record Drug(int Id, string Name, string DrugCode, string Category, string Indication, string Restrictions, string Dosage);
+    public record Drug(
+        int Id,
+        string Name,
+        string DrugCode,
+        string Category,
+        string Indication,
+        string Restrictions,
+        string Dosage,
+        string InventoryId = "",
+        decimal Price = 0m,
+        decimal? StockQuantity = null,
+        bool IsActive = true,
+        string ImagePath = "",
+        string ImageFileName = "");
     public record SelectedDrug(int Id, Drug Drug, decimal Quantity, string Frequency, string Duration, string Reason, string Notes);
     public record Prescription(int Id, string PrescriptionNumber, DateTime Date, string Type, List<SelectedDrug> Drugs, string Status);
 
     // Drug Library - Shared with CaseNotePrescriptionBuilderViewModel
     public List<Drug> Drugs { get; private set; } = new();
     
-    public List<string> AvailableCategories =>
-        CaseNotePrescriptionBuilderViewModel.SharedCategories.OrderBy(c => c).ToList();
+    public List<string> AvailableCategories => Drugs
+        .Select(drug => drug.Category)
+        .Where(category => !string.IsNullOrWhiteSpace(category))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(category => category)
+        .ToList();
 
     // State Properties
     private string _searchTerm = string.Empty;
@@ -218,6 +235,16 @@ public class CaseNotePrescriptionViewModel : INotifyPropertyChanged
              d.Category.Equals(SelectedCategory, StringComparison.OrdinalIgnoreCase)));
 
     // Methods
+    public void ReplaceDrugs(IEnumerable<Drug> drugs)
+    {
+        Drugs = drugs.ToList();
+        SelectedDrugToAdd = null;
+        SelectedCategory = string.Empty;
+        OnPropertyChanged(nameof(Drugs));
+        OnPropertyChanged(nameof(AvailableCategories));
+        OnPropertyChanged(nameof(FilteredDrugs));
+    }
+
     public void SelectDrugToAdd(Drug drug)
     {
         SelectedDrugToAdd = drug;

@@ -8,6 +8,7 @@
 @inject NavigationManager NavigationManager
 @inject FollowUpPageViewModel ViewModel
 @inject AppFeedbackService Feedback
+@inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext PatientContext
 @implements IAsyncDisposable
 
 <PageTitle>Follow Up - Beauty Aesthetics</PageTitle>
@@ -302,7 +303,7 @@
                                 <i class="bi bi-calendar-heart"></i>
                                 <div class="info-content">
                                     <span class="info-label">Birthday</span>
-                                    <span class="info-value">@ViewModel.SelectedPatient.Birthday.ToString("dd/MM/yyyy")</span>
+                                    <span class="info-value">@(ViewModel.SelectedPatient.Birthday?.ToString("dd/MM/yyyy") ?? "-")</span>
                                 </div>
                             </div>
                             <div class="info-item">
@@ -529,6 +530,9 @@
 }
 
 @code {
+    [SupplyParameterFromQuery(Name = "customerId")]
+    public string? CustomerId { get; set; }
+
     // ===== VIEW MODELS & STATE =====
     // Injected via DI
     private DotNetObjectReference<FollowUpPage>? _dotNetRef;
@@ -569,7 +573,7 @@
     private bool _isSuccess = false;
     private CancellationTokenSource? _hideMessageCts;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         Console.WriteLine("[BLAZOR] FollowUpPage OnInitialized called");
         
@@ -577,6 +581,23 @@
         _isEditorReady = false;
         _isInitializing = false;
         _editorKey++; // Increment key to force fresh render
+
+        var result = await PatientContext.LoadAsync(CustomerId);
+        if (result.Success && result.Value is not null && !string.IsNullOrWhiteSpace(result.Value.SystemID))
+        {
+            var customer = result.Value;
+            ViewModel.SetPatient(new FollowUpPageViewModel.Patient(
+                customer.SystemID!,
+                Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext.GetDisplayName(customer),
+                customer.DateOfBirth,
+                customer.ContactNumber1 ?? string.Empty,
+                customer.Email ?? string.Empty,
+                customer.MembershipType ?? string.Empty));
+        }
+        else
+        {
+            Feedback.Error(result.ErrorMessage ?? "Unable to load the appointment patient.", "Patient not loaded");
+        }
     }
     
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -1150,7 +1171,7 @@
         }
         
         // Navigate directly if no unsaved changes
-        NavigationManager.NavigateTo(url);
+        NavigationManager.NavigateTo(PatientContext.WithCustomer(url));
     }
     
     private void NavigateToCaseNotes()
@@ -1158,14 +1179,14 @@
         // Check for unsaved changes before navigating away
         if (_hasUnsavedChanges)
         {
-            _pendingLinkNavigation = "/case-notes";
+            _pendingLinkNavigation = PatientContext.WithCustomer("/case-notes");
             _showUnsavedChangesModal = true;
             StateHasChanged();
             return;
         }
         
         // Navigate directly if no unsaved changes
-        NavigationManager.NavigateTo("/case-notes");
+        NavigationManager.NavigateTo(PatientContext.WithCustomer("/case-notes"));
     }
 
     private void NavigateToAppointments()
@@ -1187,13 +1208,13 @@
         // Check for unsaved changes before navigating away
         if (_hasUnsavedChanges)
         {
-            _pendingLinkNavigation = "/follow-up-history";
+            _pendingLinkNavigation = PatientContext.WithCustomer("/follow-up-history");
             _showUnsavedChangesModal = true;
             StateHasChanged();
             return;
         }
 
-        NavigationManager.NavigateTo("/follow-up-history");
+        NavigationManager.NavigateTo(PatientContext.WithCustomer("/follow-up-history"));
     }
     
     private void NavigateToDocuments()
@@ -1201,14 +1222,14 @@
         // Check for unsaved changes before navigating away
         if (_hasUnsavedChanges)
         {
-            _pendingLinkNavigation = "/documents";
+            _pendingLinkNavigation = PatientContext.WithCustomer("/documents");
             _showUnsavedChangesModal = true;
             StateHasChanged();
             return;
         }
         
         // Navigate directly if no unsaved changes
-        NavigationManager.NavigateTo("/documents");
+        NavigationManager.NavigateTo(PatientContext.WithCustomer("/documents"));
     }
 
     private void NavigateToBilling()
@@ -1216,14 +1237,14 @@
         // Check for unsaved changes before navigating away
         if (_hasUnsavedChanges)
         {
-            _pendingLinkNavigation = "/billing";
+            _pendingLinkNavigation = PatientContext.WithCustomer("/billing");
             _showUnsavedChangesModal = true;
             StateHasChanged();
             return;
         }
 
         // Navigate directly if no unsaved changes
-        NavigationManager.NavigateTo("/billing");
+        NavigationManager.NavigateTo(PatientContext.WithCustomer("/billing"));
     }
 
     private void ContinueEditing()

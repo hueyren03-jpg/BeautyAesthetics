@@ -1,3 +1,4 @@
+using Beauty_Aesthetics_WebPos.Components.Models;
 using Beauty_Aesthetics_WebPos.Components.Services.Inventory;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services;
@@ -10,9 +11,11 @@ public sealed class AppState
     public bool IsAuthenticated => !string.IsNullOrWhiteSpace(CurrentUserJson);
     public IReadOnlyList<BranchLookupItem> AvailableBranches { get; private set; } = [];
     public BranchLookupItem? CurrentBranch { get; private set; }
+    public Customer? SelectedCustomer { get; private set; }
     public string? SelectedBranchID => CurrentBranch?.Id;
     public event Action? AuthenticationChanged;
     public event Action? BranchChanged;
+    public event Action? CustomerChanged;
 
     public void SetAuthenticatedUser(string currentUserJson, string? userEmail = null)
     {
@@ -54,10 +57,24 @@ public sealed class AppState
         BranchChanged?.Invoke();
     }
 
+    public void SelectCustomer(Customer customer)
+    {
+        SelectedCustomer = customer;
+        CustomerChanged?.Invoke();
+    }
+
+    public void ClearSelectedCustomer()
+    {
+        SelectedCustomer = null;
+        CustomerChanged?.Invoke();
+    }
+
     public void ClearBranchSession()
     {
         AvailableBranches = [];
         CurrentBranch = null;
+        SelectedCustomer = null;
         BranchChanged?.Invoke();
+        CustomerChanged?.Invoke();
     }
 }

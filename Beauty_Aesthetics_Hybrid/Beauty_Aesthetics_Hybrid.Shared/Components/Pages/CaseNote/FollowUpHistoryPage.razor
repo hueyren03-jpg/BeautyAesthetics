@@ -9,6 +9,7 @@
 @inject AppFeedbackService Feedback
 @inject NavigationManager NavigationManager
 @inject FollowUpPageViewModel ViewModel
+@inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext PatientContext
 
 <PageTitle>Follow Up History - Beauty Aesthetics</PageTitle>
 
@@ -224,6 +225,29 @@
 </div>
 
 @code {
+    [SupplyParameterFromQuery(Name = "customerId")]
+    public string? CustomerId { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await PatientContext.LoadAsync(CustomerId);
+        if (result.Success && result.Value is not null && !string.IsNullOrWhiteSpace(result.Value.SystemID))
+        {
+            var customer = result.Value;
+            ViewModel.SetPatient(new FollowUpPageViewModel.Patient(
+                customer.SystemID!,
+                Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext.GetDisplayName(customer),
+                customer.DateOfBirth,
+                customer.ContactNumber1 ?? string.Empty,
+                customer.Email ?? string.Empty,
+                customer.MembershipType ?? string.Empty));
+        }
+        else
+        {
+            Feedback.Error(result.ErrorMessage ?? "Unable to load the appointment patient.", "Patient not loaded");
+        }
+    }
+
     private bool _isDateFilterOpen = false;
 
     private void ToggleDateFilter()
@@ -283,11 +307,11 @@
     {
         ViewModel.CurrentlyViewingFollowUpId = followUp.Id;
         Feedback.Info($"Opening follow-up from {followUp.Date:MMM dd, yyyy} for editing.", "Edit follow-up", 2200);
-        NavigationManager.NavigateTo("/follow-up");
+        NavigationManager.NavigateTo(PatientContext.WithCustomer("/follow-up"));
     }
 
     private void NavigateBack()
     {
-        NavigationManager.NavigateTo("/follow-up");
+        NavigationManager.NavigateTo(PatientContext.WithCustomer("/follow-up"));
     }
 }

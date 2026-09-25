@@ -1,4 +1,5 @@
 using Beauty_Aesthetics_WebPos.Components.Models;
+using Beauty_Aesthetics_WebPos.Models.DTOs;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.Customers;
 
@@ -13,6 +14,10 @@ public interface ICustomerService
         CancellationToken cancellationToken = default);
 
     Task<CustomerOperationResult<CustomerBalanceSnapshot>> GetBalanceSnapshotAsync(
+        string customerId,
+        CancellationToken cancellationToken = default);
+
+    Task<CustomerOperationResult<MemberBalanceSummaryDTO>> GetBalanceSummaryAsync(
         string customerId,
         CancellationToken cancellationToken = default);
 
