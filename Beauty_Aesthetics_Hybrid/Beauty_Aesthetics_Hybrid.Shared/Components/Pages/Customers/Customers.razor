@@ -1950,7 +1950,16 @@
     </div>
 }
 
-<div class="tab-content">
+<div class="tab-content customer-page-loading-host">
+    @if (isCustomerPageInitializing && !IsDedicatedEditPage && !IsDedicatedAddPage)
+    {
+        <div class="customer-page-loading" role="status" aria-live="polite">
+            <div class="customer-page-loading__content">
+                <span class="spinner-border" aria-hidden="true"></span>
+                <span>Loading customers...</span>
+            </div>
+        </div>
+    }
     @if (activeTab == "customers")
     {
         @* CUSTOMERS MODULE *@
@@ -2885,6 +2894,7 @@
     private bool showForm = false;
     private string searchTerm = "";
     private bool isCustomerSearchLoading;
+    private bool isCustomerPageInitializing = true;
     private int customerSearchRequestVersion;
     private CancellationTokenSource? customerSearchCts;
     private Customer model = new();
@@ -2961,6 +2971,10 @@
         catch (Exception ex)
         {
             await ShowToast($"Error loading data: {ex.Message}");
+        }
+        finally
+        {
+            isCustomerPageInitializing = false;
         }
     }
 
