@@ -22,6 +22,7 @@ public partial class PasscodePage
     private PasscodeModel newPasscode = CreateNewPasscode();
     private IReadOnlyList<EmployeeModel> activeEmployees = Array.Empty<EmployeeModel>();
     private bool isEmployeesLoading;
+    private bool IsPageInitializing { get; set; } = true;
     private string? employeeLoadError;
 
     [Inject] private NavigationManager NavManager { get; set; } = default!;
@@ -73,8 +74,16 @@ public partial class PasscodePage
 
     protected override async Task OnInitializedAsync()
     {
+        IsPageInitializing = true;
         VM = new PasscodePageViewModel(NavManager);
-        await Task.WhenAll(VM.LoadPasscodesAsync(), LoadEmployeesAsync());
+        try
+        {
+            await Task.WhenAll(VM.LoadPasscodesAsync(), LoadEmployeesAsync());
+        }
+        finally
+        {
+            IsPageInitializing = false;
+        }
     }
 
     private async Task LoadEmployeesAsync()
