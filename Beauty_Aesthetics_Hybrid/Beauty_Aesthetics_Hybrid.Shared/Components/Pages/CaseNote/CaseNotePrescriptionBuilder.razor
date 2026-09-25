@@ -744,7 +744,9 @@
     {
         if (firstRender)
         {
-            // Initialize the resizer and download function after the component has rendered
+            try
+            {
+                // Initialize the resizer and download function after the component has rendered
             await JS.InvokeVoidAsync("eval", @"
                 (function() {
                     // File download function
@@ -838,8 +840,12 @@
                     setTimeout(initializeResizer, 200);
                 })();
             ");
-            _isPageInitializing = false;
-            StateHasChanged();
+            }
+            finally
+            {
+                _isPageInitializing = false;
+                StateHasChanged();
+            }
         }
     }
 
