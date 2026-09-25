@@ -64,12 +64,6 @@ public sealed class InventoryViewModel
         public string ItemGroupId { get; init; } = string.Empty;
         public string ItemGroupName { get; init; } = string.Empty;
         public decimal RedeemPoint { get; init; }
-        public decimal Commission1 { get; init; }
-        public decimal Commission2 { get; init; }
-        public decimal Commission3 { get; init; }
-        public bool Commission1IsPercent { get; init; } = true;
-        public bool Commission2IsPercent { get; init; } = true;
-        public bool Commission3IsPercent { get; init; } = true;
         public IReadOnlyList<string> VisibleBranchIds { get; init; } = new List<string>();
         public IReadOnlyList<ProductSellingUnit> SellingUnits { get; init; } = new List<ProductSellingUnit>();
         public string ImagePath { get; init; } = string.Empty;
