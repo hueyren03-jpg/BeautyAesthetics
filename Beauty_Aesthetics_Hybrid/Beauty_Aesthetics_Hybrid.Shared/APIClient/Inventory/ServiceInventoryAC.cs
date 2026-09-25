@@ -114,6 +114,35 @@ public sealed class ServiceInventoryAC
             cancellationToken);
     }
 
+    public async Task<ApiCallResult<JsonElement>> LoadFullRawAsync(
+        string masterAccountId,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/InventoryFull/LoadRecord")
+        {
+            Content = JsonContent.Create(new { id = masterAccountId }, mediaType: JsonPatchMediaType, options: JsonOptions)
+        };
+
+        using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+        return await ReadApiResponseAsync<JsonElement>(
+            response,
+            "Full inventory response was invalid.",
+            cancellationToken);
+    }
+
+    public async Task<ApiCallResult<bool>> UpdateFullRawAsync(
+        JsonElement payload,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/InventoryFull/Update")
+        {
+            Content = JsonContent.Create(payload, mediaType: JsonPatchMediaType, options: JsonOptions)
+        };
+
+        using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+        return await ReadMutationResponseAsync(response, cancellationToken);
+    }
+
     public Task<ApiCallResult<InventorySaveResultDTO>> CreateFullAsync(
         InventoryPackageRequestDTO inventory,
         CancellationToken cancellationToken = default) =>
