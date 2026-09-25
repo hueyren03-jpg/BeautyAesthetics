@@ -151,7 +151,7 @@ public sealed class InventoryAC
         {
             inventoryPayload["lstSKU"] = inventory.SellingUnits;
             inventoryPayload["hasUOM"] = true;
-            inventoryPayload["uOMBase"] = 1;
+            inventoryPayload["UOMBase"] = 1;
         }
         else
         {
