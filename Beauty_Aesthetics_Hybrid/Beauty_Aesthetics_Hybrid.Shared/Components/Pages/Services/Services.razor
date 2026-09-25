@@ -1576,9 +1576,9 @@
                                         class="@(BundleEditorTab == "Membership" ? "active" : string.Empty)"
                                         @onclick='() => BundleEditorTab = "Membership"'>
                                     Membership
-                                    @if (!string.IsNullOrWhiteSpace(NewBundleTriggeredMemberTypeId))
+                                    @if (BundleMembershipCredits.Count > 0)
                                     {
-                                        <span class="senang-editor__tab-badge">1</span>
+                                        <span class="senang-editor__tab-badge">@BundleMembershipCredits.Count</span>
                                     }
                                 </button>
                             </div>
@@ -1825,45 +1825,51 @@
                                             <small>Number of days before the credited amount expires after purchase.</small>
                                         </div>
 
-                                        @if (!string.IsNullOrWhiteSpace(NewBundleTriggeredMemberTypeId))
+                                        @if (BundleMembershipCredits.Count > 0)
                                         {
                                             <div class="senang-package-membership-header">
                                                 <span class="senang-package-col-member">Member Type</span>
                                                 <span>Credit Amount</span>
                                                 <span></span>
                                             </div>
-                                            <div class="senang-package-membership-row">
-                                                <div class="senang-package-col-member">
-                                                    <strong>@SelectedBundleMemberTypeName</strong>
+
+                                            @foreach (var entry in BundleMembershipCredits)
+                                            {
+                                                <div class="senang-package-membership-row" @key="entry.MemberTypeId">
+                                                    <div class="senang-package-col-member">
+                                                        <strong>@GetBundleMemberTypeName(entry.MemberTypeId)</strong>
+                                                        <small>@entry.MemberTypeId</small>
+                                                    </div>
+                                                    <div>
+                                                        <button type="button"
+                                                                class="senang-package-credit-editor"
+                                                                @onclick="() => OpenBundleMemberCreditEditor(entry)">
+                                                            @entry.MemberCredit.ToString("N2")
+                                                        </button>
+                                                    </div>
+                                                    <div class="senang-package-cell-center">
+                                                        <button type="button"
+                                                                class="senang-package-remove-btn"
+                                                                title="Remove"
+                                                                @onclick="() => RemoveBundleMemberType(entry)">
+                                                            &times;
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <button type="button"
-                                                            class="senang-package-credit-editor"
-                                                            @onclick="OpenBundleMemberCreditEditor">
-                                                        @NewBundleMemberCredit.ToString("N2")
-                                                    </button>
-                                                </div>
-                                                <div class="senang-package-cell-center">
-                                                    <button type="button"
-                                                            class="senang-package-remove-btn"
-                                                            title="Remove"
-                                                            @onclick="RemoveBundleMemberType">
-                                                        &times;
-                                                    </button>
-                                                </div>
-                                            </div>
+                                            }
                                         }
                                         else
                                         {
                                             <div class="senang-package-empty">
                                                 No membership type configured. Add one below.
                                             </div>
-                                            <button type="button"
-                                                    class="senang-package-add-type-btn senang-package-add-type-btn--single"
-                                                    @onclick="OpenBundleMemberTypePicker">
-                                                + Add Member Type
-                                            </button>
                                         }
+
+                                        <button type="button"
+                                                class="senang-package-add-type-btn senang-package-add-type-btn--single"
+                                                @onclick="OpenBundleMemberTypePicker">
+                                            + Add Member Type
+                                        </button>
                                     </div>
                                 }
                             </div>
@@ -2596,8 +2602,7 @@
     private string? BundleImageError { get; set; }
     private int NewBundleValidityDays { get; set; }
     private int NewBundleMemberExpiryDays { get; set; } = 365;
-    private string NewBundleTriggeredMemberTypeId { get; set; } = string.Empty;
-    private decimal NewBundleMemberCredit { get; set; }
+    private List<BundleMembershipCreditEntry> BundleMembershipCredits { get; set; } = new();
     private decimal NewBundleCost { get; set; }
     private string NewBundleTaxCode { get; set; } = string.Empty;
     private bool NewBundleTaxInclusive { get; set; }
@@ -2619,6 +2624,7 @@
     private bool IsBundleMemberTypePickerOpen { get; set; }
     private string BundleMemberTypeSearchQuery { get; set; } = string.Empty;
     private bool IsBundleMemberCreditEditorOpen { get; set; }
+    private string BundleMemberCreditEditingMemberTypeId { get; set; } = string.Empty;
     private decimal BundleMemberCreditDraft { get; set; }
     private bool IsBundleSectionPickerOpen { get; set; }
     private int SelectedBundleItemCount => SelectedBundleServices.Count + SelectedBundleProducts.Count;
@@ -2655,18 +2661,18 @@
         MemberTypeItems
             .Where(item =>
                 item.Active &&
+                !BundleMembershipCredits.Any(entry =>
+                    string.Equals(entry.MemberTypeId, item.MemberTypeID, StringComparison.OrdinalIgnoreCase)) &&
                 (string.IsNullOrWhiteSpace(BundleMemberTypeSearchQuery) ||
                  item.MemberTypeName.Contains(BundleMemberTypeSearchQuery, StringComparison.OrdinalIgnoreCase) ||
                  item.MemberTypeID.Contains(BundleMemberTypeSearchQuery, StringComparison.OrdinalIgnoreCase)))
             .OrderBy(item => item.MemberTypeName);
 
-    private string SelectedBundleMemberTypeName =>
-        string.IsNullOrWhiteSpace(NewBundleTriggeredMemberTypeId)
-            ? string.Empty
-            : MemberTypeItems.FirstOrDefault(item =>
-                string.Equals(item.MemberTypeID, NewBundleTriggeredMemberTypeId, StringComparison.OrdinalIgnoreCase))
-                ?.MemberTypeName
-              ?? NewBundleTriggeredMemberTypeId;
+    private string GetBundleMemberTypeName(string memberTypeId) =>
+        MemberTypeItems.FirstOrDefault(item =>
+            string.Equals(item.MemberTypeID, memberTypeId, StringComparison.OrdinalIgnoreCase))
+            ?.MemberTypeName
+        ?? memberTypeId;
 
     // Bundle delete mode properties
     private bool IsBundleDeleteMode { get; set; }
@@ -3038,6 +3044,7 @@
                     Cost = package.Cost,
                     TaxCode = package.TaxCode,
                     IsTaxInclusive = package.IsTaxInclusive,
+                    MembershipCredits = package.MembershipCredits?.ToList() ?? new List<InventoryMembershipCreditSummary>(),
                     ServiceLines = package.Lines?.ToList() ?? new List<InventoryPackageLineSummary>(),
                     ServiceIDs = package.ServiceIds.ToHashSet(StringComparer.OrdinalIgnoreCase)
                 }).ToList();
@@ -5133,8 +5140,7 @@
         BundleImageError = null;
         NewBundleValidityDays = 0;
         NewBundleMemberExpiryDays = 365;
-        NewBundleTriggeredMemberTypeId = string.Empty;
-        NewBundleMemberCredit = 0m;
+        BundleMembershipCredits.Clear();
         NewBundleCost = 0m;
         NewBundleTaxCode = string.Empty;
         NewBundleTaxInclusive = false;
@@ -5156,6 +5162,7 @@
         IsBundleMemberTypePickerOpen = false;
         BundleMemberTypeSearchQuery = string.Empty;
         IsBundleMemberCreditEditorOpen = false;
+        BundleMemberCreditEditingMemberTypeId = string.Empty;
         BundleMemberCreditDraft = 0m;
         IsBundleSectionPickerOpen = false;
         BundleLineQuantities.Clear();
@@ -5176,14 +5183,6 @@
             NewBundlePrice <= 0)
         {
             BundleApiError = "Package name and a price greater than 0 are required.";
-            return;
-        }
-
-        if (NewBundleMemberCredit > 0m &&
-            string.IsNullOrWhiteSpace(NewBundleTriggeredMemberTypeId))
-        {
-            BundleApiError = "Select a member type for the membership credit.";
-            BundleEditorTab = "Membership";
             return;
         }
 
@@ -5224,6 +5223,8 @@
 
             var packageLines = serviceLines.Concat(productLines).ToList();
 
+            var firstMembershipCredit = BundleMembershipCredits.FirstOrDefault();
+
             var package = new InventoryPackageEdit(
                 IsBundleEditMode ? SelectedBundle?.MasterAccountID : null,
                 NewBundleName.Trim(),
@@ -5236,8 +5237,8 @@
                 string.IsNullOrWhiteSpace(NewBundleUom) ? "unit" : NewBundleUom.Trim(),
                 Math.Max(0, NewBundleValidityDays),
                 Math.Max(0, NewBundleMemberExpiryDays),
-                NewBundleTriggeredMemberTypeId.Trim(),
-                Math.Max(0m, NewBundleMemberCredit),
+                firstMembershipCredit?.MemberTypeId ?? string.Empty,
+                firstMembershipCredit is null ? 0m : Math.Max(0m, firstMembershipCredit.MemberCredit),
                 packageLines,
                 NewBundleImagePath,
                 NewBundleImageFileName,
@@ -5250,7 +5251,14 @@
                 MaxPrice: IsBundleMinMaxPriceEnabled ? Math.Max(0m, NewBundleMaxPrice) : 0m,
                 Cost: Math.Max(0m, NewBundleCost),
                 TaxCode: NewBundleTaxCode.Trim(),
-                IsTaxInclusive: NewBundleTaxInclusive);
+                IsTaxInclusive: NewBundleTaxInclusive,
+                MembershipCredits: BundleMembershipCredits
+                    .Select(entry => new InventoryMembershipCreditEdit(
+                        entry.MemberTypeId,
+                        Math.Max(0m, entry.MemberCredit),
+                        IsBundleEditMode ? "Changed" : "Added",
+                        true))
+                    .ToList());
 
             var visibleBranchId = string.IsNullOrWhiteSpace(NewBundleVisibleBranchId)
                 ? ServiceBranchId
@@ -5308,8 +5316,25 @@
         BundleImageError = null;
         NewBundleValidityDays = SelectedBundle.ValidityDays;
         NewBundleMemberExpiryDays = SelectedBundle.MemberExpiryDays;
-        NewBundleTriggeredMemberTypeId = SelectedBundle.TriggeredMemberTypeId;
-        NewBundleMemberCredit = SelectedBundle.MemberMainAccountCredit;
+        BundleMembershipCredits = SelectedBundle.MembershipCredits
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.MemberTypeId))
+            .Select(entry => new BundleMembershipCreditEntry
+            {
+                MemberTypeId = entry.MemberTypeId,
+                MemberCredit = Math.Max(0m, entry.MemberCredit)
+            })
+            .ToList();
+
+        if (BundleMembershipCredits.Count == 0 &&
+            !string.IsNullOrWhiteSpace(SelectedBundle.TriggeredMemberTypeId))
+        {
+            BundleMembershipCredits.Add(new BundleMembershipCreditEntry
+            {
+                MemberTypeId = SelectedBundle.TriggeredMemberTypeId,
+                MemberCredit = Math.Max(0m, SelectedBundle.MemberMainAccountCredit)
+            });
+        }
+
         NewBundlePoints = SelectedBundle.Points;
         NewBundleMinPrice = SelectedBundle.MinPrice;
         NewBundleMaxPrice = SelectedBundle.MaxPrice;
@@ -5683,27 +5708,59 @@
 
     private void SelectBundleMemberType(MembershipTypeDM memberType)
     {
-        NewBundleTriggeredMemberTypeId = memberType.MemberTypeID;
+        if (string.IsNullOrWhiteSpace(memberType.MemberTypeID) ||
+            BundleMembershipCredits.Any(entry =>
+                string.Equals(entry.MemberTypeId, memberType.MemberTypeID, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        BundleMembershipCredits.Add(new BundleMembershipCreditEntry
+        {
+            MemberTypeId = memberType.MemberTypeID,
+            MemberCredit = 0m
+        });
+
         IsBundleMemberTypePickerOpen = false;
         BundleMemberTypeSearchQuery = string.Empty;
     }
 
-    private void RemoveBundleMemberType()
+    private void RemoveBundleMemberType(BundleMembershipCreditEntry entry)
     {
-        NewBundleTriggeredMemberTypeId = string.Empty;
-        NewBundleMemberCredit = 0m;
-        IsBundleMemberCreditEditorOpen = false;
+        BundleMembershipCredits.Remove(entry);
+
+        if (string.Equals(
+            BundleMemberCreditEditingMemberTypeId,
+            entry.MemberTypeId,
+            StringComparison.OrdinalIgnoreCase))
+        {
+            IsBundleMemberCreditEditorOpen = false;
+            BundleMemberCreditEditingMemberTypeId = string.Empty;
+            BundleMemberCreditDraft = 0m;
+        }
     }
 
-    private void OpenBundleMemberCreditEditor()
+    private void OpenBundleMemberCreditEditor(BundleMembershipCreditEntry entry)
     {
-        BundleMemberCreditDraft = NewBundleMemberCredit;
+        BundleMemberCreditEditingMemberTypeId = entry.MemberTypeId;
+        BundleMemberCreditDraft = entry.MemberCredit;
         IsBundleMemberCreditEditorOpen = true;
     }
 
     private void SaveBundleMemberCredit()
     {
-        NewBundleMemberCredit = Math.Max(0m, BundleMemberCreditDraft);
+        var entry = BundleMembershipCredits.FirstOrDefault(item =>
+            string.Equals(
+                item.MemberTypeId,
+                BundleMemberCreditEditingMemberTypeId,
+                StringComparison.OrdinalIgnoreCase));
+
+        if (entry is not null)
+        {
+            entry.MemberCredit = Math.Max(0m, BundleMemberCreditDraft);
+        }
+
+        BundleMemberCreditEditingMemberTypeId = string.Empty;
         IsBundleMemberCreditEditorOpen = false;
     }
 
@@ -6514,6 +6571,12 @@
         }
     }
 
+    private sealed class BundleMembershipCreditEntry
+    {
+        public string MemberTypeId { get; set; } = string.Empty;
+        public decimal MemberCredit { get; set; }
+    }
+
     // Bundle Item class
     public class BundleItem
     {
@@ -6552,6 +6615,7 @@
         public decimal Cost { get; set; }
         public string TaxCode { get; set; } = string.Empty;
         public bool IsTaxInclusive { get; set; }
+        public List<InventoryMembershipCreditSummary> MembershipCredits { get; set; } = new();
         public List<InventoryPackageLineSummary> ServiceLines { get; set; } = new();
         public HashSet<string> ServiceIDs { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     }
