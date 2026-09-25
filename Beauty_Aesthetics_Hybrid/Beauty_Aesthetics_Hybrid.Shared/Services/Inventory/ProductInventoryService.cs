@@ -277,7 +277,7 @@ public sealed class ProductInventoryService : IProductInventoryService
         return new InventoryViewModel.InventoryItem(
             sku,
             First(record.AccountName, record.SalesDescription, sku),
-            record.ProductCode ?? string.Empty,
+            First(record.VendorItemCode, record.ProductCode),
             record.QuantityFactor > 0 ? record.QuantityFactor.ToString("0.##") : string.Empty,
             record.SalesPrice,
             record.BrandName ?? string.Empty,
@@ -293,7 +293,7 @@ public sealed class ProductInventoryService : IProductInventoryService
             MasterAccountId = record.MasterAccountID ?? string.Empty,
             UnitOfMeasurementId = record.UnitOfMeasureID ?? string.Empty,
             SupplierAccountId = record.PreferredVendorAccountID ?? string.Empty,
-            CategoryId = First(record.ItemCategoryID, record.ItemGroupID),
+            CategoryId = record.ItemCategoryID ?? string.Empty,
             InventoryTypeId = record.InventoryTypeID,
             Cost = record.PurchasePrice,
             TaxCode = record.TaxCodeID ?? string.Empty,
@@ -342,7 +342,7 @@ public sealed class ProductInventoryService : IProductInventoryService
         record.InventoryTypeID = ProductInventoryTypeId;
         record.InventoryTypeName = ProductInventoryTypeName;
         record.DisplayCode = product.Sku.Trim();
-        record.ProductCode = product.Barcode.Trim();
+        record.VendorItemCode = string.IsNullOrWhiteSpace(product.Barcode) ? null : product.Barcode.Trim();
         record.AccountName = product.Type.Trim();
         record.SalesDescription = product.Type.Trim();
         record.PurchaseDescription = product.Type.Trim();
