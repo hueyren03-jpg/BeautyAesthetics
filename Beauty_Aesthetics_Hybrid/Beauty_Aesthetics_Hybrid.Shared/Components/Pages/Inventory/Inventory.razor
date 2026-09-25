@@ -3786,24 +3786,27 @@
     @if (IsProductDetailsVisible && SelectedProductDetails != null)
     {
         <div class="inventory-view-modal-overlay" @onclick="CloseProductDetails">
-            <div class="inventory-view-modal" @onclick:stopPropagation="true">
+            <div class="inventory-view-modal product-view-modal" @onclick:stopPropagation="true">
                 <div class="inventory-view-modal__header">
                     <div class="inventory-view-modal__header-left">
                         <div class="inventory-view-modal__icon"><i class="bi bi-box-seam"></i></div>
                         <div class="inventory-view-modal__title-group">
-                            <h2>Product Details</h2>
-                            <p class="inventory-view-modal__subtitle">Complete product specification and stock parameters</p>
+                            <h2>@DisplayProductValue(SelectedProductDetails.Type)</h2>
+                            <p class="inventory-view-modal__subtitle">Display Code: @DisplayProductValue(SelectedProductDetails.Sku)</p>
                         </div>
                     </div>
                     <div class="inventory-view-modal__header-right">
-                        <span class="inventory-view-badge @(SelectedProductDetails.Locked ? "inventory-view-badge--danger" : "inventory-view-badge--success")">
-                            @(SelectedProductDetails.Locked ? "Locked" : "Active")
+                        <span class="inventory-view-badge @(SelectedProductDetails.IsActive ? "inventory-view-badge--success" : "inventory-view-badge--danger")">
+                            @(SelectedProductDetails.IsActive ? "Active" : "Inactive")
                         </span>
-                        <button type="button" class="inventory-view-modal__close" @onclick="CloseProductDetails" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+                        <button type="button" class="inventory-view-modal__close" @onclick="CloseProductDetails" aria-label="Close">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
                     </div>
                 </div>
-                <div class="inventory-view-modal__body">
-                    <div class="product-details-image-card">
+
+                <div class="inventory-view-modal__body product-view-modal__body">
+                    <div class="product-details-image-card product-view-image-card">
                         <div class="product-details-image" aria-label="Product image">
                             @if (HasInventoryImage(SelectedProductDetails))
                             {
@@ -3820,89 +3823,235 @@
                             }
                         </div>
                         <div class="product-details-image__meta">
-                            <span>PRODUCT</span>
+                            <span>PRODUCT IMAGE</span>
                             <h3>@DisplayProductValue(SelectedProductDetails.Type)</h3>
-                            <p>@DisplayProductValue(SelectedProductDetails.Brand) · @DisplayProductValue(SelectedProductDetails.Sku)</p>
+                            <p>@DisplayProductValue(SelectedProductDetails.Sku)</p>
                         </div>
                     </div>
 
-                    <div class="inventory-view-hero">
-                        <div class="inventory-view-hero__item inventory-view-hero__item--primary">
-                            <span class="inventory-view-hero__label">PRODUCT NAME</span>
-                            <strong class="inventory-view-hero__value">@DisplayProductValue(SelectedProductDetails.Type)</strong>
-                        </div>
-                        <div class="inventory-view-hero__divider"></div>
-                        <div class="inventory-view-hero__item">
-                            <span class="inventory-view-hero__label">UNIT PRICE</span>
-                            <strong class="inventory-view-hero__price">MYR @SelectedProductDetails.Price.ToString("N2")</strong>
-                        </div>
-                        <div class="inventory-view-hero__divider"></div>
-                        <div class="inventory-view-hero__item">
-                            <span class="inventory-view-hero__label">CURRENT STOCK</span>
-                            <strong class="inventory-view-hero__stock">@GetProductStockDisplay(SelectedProductDetails)</strong>
-                        </div>
+                    <div class="edit-product-tabs product-view-tabs" role="tablist" aria-label="Product detail sections">
+                        <button type="button"
+                                class="edit-product-tab @(ProductDetailsTab == "Info" ? "active" : string.Empty)"
+                                aria-selected="@(ProductDetailsTab == "Info")"
+                                @onclick='() => ProductDetailsTab = "Info"'>
+                            Info
+                        </button>
+                        <button type="button"
+                                class="edit-product-tab @(ProductDetailsTab == "SellingUnits" ? "active" : string.Empty)"
+                                aria-selected="@(ProductDetailsTab == "SellingUnits")"
+                                @onclick='() => ProductDetailsTab = "SellingUnits"'>
+                            Selling Units
+                        </button>
+                        <button type="button"
+                                class="edit-product-tab @(ProductDetailsTab == "Advance" ? "active" : string.Empty)"
+                                aria-selected="@(ProductDetailsTab == "Advance")"
+                                @onclick='() => ProductDetailsTab = "Advance"'>
+                            Advance
+                        </button>
                     </div>
 
-                    <div class="inventory-view-section">
-                        <h3 class="inventory-view-section__title"><i class="bi bi-upc-scan"></i> Identification & Classification</h3>
-                        <div class="inventory-view-grid inventory-view-grid--3">
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">SKU Code</span>
-                                <span class="inventory-view-field__value"><code class="inventory-code-badge">@DisplayProductValue(SelectedProductDetails.Sku)</code></span>
-                            </div>
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Barcode</span>
-                                <span class="inventory-view-field__value"><code class="inventory-code-badge">@DisplayProductValue(SelectedProductDetails.Barcode)</code></span>
-                            </div>
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Brand</span>
-                                <span class="inventory-view-field__value">@DisplayProductValue(SelectedProductDetails.Brand)</span>
-                            </div>
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Category</span>
-                                <span class="inventory-view-field__value">@DisplayProductValue(SelectedProductDetails.Category)</span>
-                            </div>
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Supplier</span>
-                                <span class="inventory-view-field__value">@DisplayProductValue(SelectedProductDetails.Supplier)</span>
-                            </div>
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Location / Bin</span>
-                                <span class="inventory-view-field__value">@DisplayProductValue(SelectedProductDetails.Location)</span>
-                            </div>
-                        </div>
-                    </div>
+                    <div class="edit-product-tab-content product-view-tab-content">
+                        @if (ProductDetailsTab == "Info")
+                        {
+                            <div class="edit-product-form-section edit-product-form-section--senang">
+                                <div class="edit-product-field edit-product-field--full">
+                                    <label>Product Name</label>
+                                    <div class="product-view-readonly">@DisplayProductValue(SelectedProductDetails.Type)</div>
+                                </div>
 
-                    <div class="inventory-view-section">
-                        <h3 class="inventory-view-section__title"><i class="bi bi-sliders"></i> Stock Management & UOM</h3>
-                        <div class="inventory-view-grid inventory-view-grid--3">
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Primary UOM (UOM1)</span>
-                                <span class="inventory-view-field__value">@DisplayProductValue(SelectedProductDetails.StockUom1)</span>
+                                <div class="edit-product-field">
+                                    <label>Display Code</label>
+                                    <div class="product-view-readonly">@DisplayProductValue(SelectedProductDetails.Sku)</div>
+                                </div>
+
+                                <div class="edit-product-field">
+                                    <label>Item Group</label>
+                                    <div class="product-view-readonly">@DisplayProductValue(SelectedProductDetails.ItemGroupName)</div>
+                                </div>
+
+                                <label class="edit-product-active-card edit-product-field--full product-view-active-card">
+                                    <input type="checkbox" checked="@SelectedProductDetails.IsActive" disabled />
+                                    <span>
+                                        <strong>Active</strong>
+                                        <small>@(SelectedProductDetails.IsActive ? "This product is available for sale." : "This product is not available for sale.")</small>
+                                    </span>
+                                </label>
+
+                                <div class="edit-product-field">
+                                    <label>Tax Code</label>
+                                    <div class="product-view-readonly">@DisplayProductValue(SelectedProductDetails.TaxCode)</div>
+                                </div>
+
+                                <div class="edit-product-field">
+                                    <label>Inclusive Tax</label>
+                                    <div class="edit-product-radio-group product-view-radio-group">
+                                        <label>
+                                            <input type="radio" checked="@SelectedProductDetails.IsTaxInclusive" disabled />
+                                            <span>Yes</span>
+                                        </label>
+                                        <label>
+                                            <input type="radio" checked="@(!SelectedProductDetails.IsTaxInclusive)" disabled />
+                                            <span>No</span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="edit-product-field">
+                                    <label>Price (MYR)</label>
+                                    <div class="product-view-money">
+                                        <span>RM</span>
+                                        <strong>@SelectedProductDetails.Price.ToString("N2")</strong>
+                                    </div>
+                                </div>
+
+                                <div class="edit-product-field">
+                                    <label>Cost (MYR)</label>
+                                    <div class="product-view-money">
+                                        <span>RM</span>
+                                        <strong>@SelectedProductDetails.Cost.ToString("N2")</strong>
+                                    </div>
+                                </div>
+
+                                <div class="edit-product-field">
+                                    <label>Current Stock</label>
+                                    <div class="product-view-readonly product-view-readonly--muted">@GetProductStockDisplay(SelectedProductDetails)</div>
+                                    <small>Read-only branch stock balance</small>
+                                </div>
+
+                                <div class="edit-product-field edit-product-field--full">
+                                    <label>Visible At Branch</label>
+                                    <div class="edit-product-branch-grid product-view-branch-grid">
+                                        @if (AppState.AvailableBranches.Count > 0)
+                                        {
+                                            @foreach (var branch in AppState.AvailableBranches)
+                                            {
+                                                var isVisible = SelectedProductDetails.VisibleBranchIds.Contains(branch.Id, StringComparer.OrdinalIgnoreCase);
+                                                <label class="edit-product-branch-row">
+                                                    <input type="checkbox" checked="@isVisible" disabled />
+                                                    <span>@branch.DisplayName</span>
+                                                </label>
+                                            }
+                                        }
+                                        else if (SelectedProductDetails.VisibleBranchIds.Count > 0)
+                                        {
+                                            @foreach (var branchId in SelectedProductDetails.VisibleBranchIds)
+                                            {
+                                                <label class="edit-product-branch-row">
+                                                    <input type="checkbox" checked disabled />
+                                                    <span>@DisplayProductValue(branchId)</span>
+                                                </label>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="edit-product-muted">No visible branches configured.</span>
+                                        }
+                                    </div>
+                                </div>
+
+                                <div class="edit-product-field edit-product-field--full">
+                                    <label>Remarks</label>
+                                    <div class="product-view-readonly product-view-readonly--multiline">@DisplayProductValue(SelectedProductDetails.Remarks)</div>
+                                </div>
                             </div>
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Secondary UOM (UOM2)</span>
-                                <span class="inventory-view-field__value">@DisplayProductValue(SelectedProductDetails.StockUom2)</span>
+                        }
+                        else if (ProductDetailsTab == "SellingUnits")
+                        {
+                            <div class="edit-product-form-section edit-product-form-section--selling">
+                                <div class="edit-product-section-heading edit-product-field--full">
+                                    <div>
+                                        <h3>Selling Units</h3>
+                                        <span>Base unit plus any alternate units used when selling this product.</span>
+                                    </div>
+                                </div>
+
+                                <div class="product-selling-unit-list edit-product-field--full">
+                                    <div class="product-selling-unit-row product-selling-unit-row--header">
+                                        <span>Unit</span>
+                                        <span>Conversion</span>
+                                        <span>Price</span>
+                                        <span>Barcode</span>
+                                    </div>
+
+                                    <div class="product-selling-unit-row product-selling-unit-row--base">
+                                        <div>
+                                            <strong>@NormalizeStockUom(SelectedProductDetails.StockUom1)</strong>
+                                            <small>Base</small>
+                                        </div>
+                                        <span>1 @NormalizeStockUom(SelectedProductDetails.StockUom1)</span>
+                                        <span>RM @SelectedProductDetails.Price.ToString("N2")</span>
+                                        <span>@DisplayProductValue(SelectedProductDetails.Barcode)</span>
+                                    </div>
+
+                                    @foreach (var unit in SelectedProductDetails.SellingUnits.Where(unit => !unit.IsDeleted))
+                                    {
+                                        <div class="product-selling-unit-row" @key="unit.AutoId">
+                                            <div>
+                                                <strong>@DisplayProductValue(unit.UnitName)</strong>
+                                            </div>
+                                            <span>1 @DisplayProductValue(unit.UnitName) = @unit.Quantity.ToString("0.##") @NormalizeStockUom(SelectedProductDetails.StockUom1)</span>
+                                            <span>RM @unit.SalesPrice.ToString("N2")</span>
+                                            <span>@DisplayProductValue(unit.Barcode)</span>
+                                        </div>
+                                    }
+
+                                    @if (!SelectedProductDetails.SellingUnits.Any(unit => !unit.IsDeleted))
+                                    {
+                                        <div class="product-selling-unit-empty">
+                                            No alternate selling units.
+                                        </div>
+                                    }
+                                </div>
                             </div>
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Conversion Factor</span>
-                                <span class="inventory-view-field__value">@DisplayProductValue(SelectedProductDetails.ConversionFactor)</span>
+                        }
+                        else
+                        {
+                            <div class="edit-product-form-section edit-product-form-section--senang">
+                                <div class="edit-product-section-heading edit-product-field--full">
+                                    <div>
+                                        <h3>Advance</h3>
+                                        <span>Product selling, redemption and classification settings.</span>
+                                    </div>
+                                </div>
+
+                                <div class="edit-product-field">
+                                    <label>Barcode</label>
+                                    <div class="product-view-readonly product-view-readonly--icon">
+                                        <span>@DisplayProductValue(SelectedProductDetails.Barcode)</span>
+                                        <i class="bi bi-upc-scan"></i>
+                                    </div>
+                                </div>
+
+                                <div class="edit-product-field">
+                                    <label>UOM</label>
+                                    <div class="product-view-readonly">@DisplayProductValue(SelectedProductDetails.StockUom1)</div>
+                                </div>
+
+                                <div class="edit-product-field">
+                                    <label>Reorder Level</label>
+                                    <div class="product-view-readonly">@DisplayProductValue(SelectedProductDetails.LowAlertCount)</div>
+                                </div>
+
+                                <div class="edit-product-field">
+                                    <label>Redeem Point</label>
+                                    <div class="product-view-readonly">@SelectedProductDetails.RedeemPoint.ToString("0.##")</div>
+                                    <small>0 disables point redemption for this product.</small>
+                                </div>
+
+                                <div class="edit-product-field">
+                                    <label>Category</label>
+                                    <div class="product-view-readonly">@DisplayProductValue(SelectedProductDetails.Category)</div>
+                                </div>
+
+                                <div class="edit-product-field">
+                                    <label>Brand</label>
+                                    <div class="product-view-readonly">@DisplayProductValue(SelectedProductDetails.Brand)</div>
+                                </div>
                             </div>
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Low Stock Alert Count</span>
-                                <span class="inventory-view-field__value" style="color: #b45309;">@DisplayProductValue(SelectedProductDetails.LowAlertCount)</span>
-                            </div>
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Discount Cap</span>
-                                <span class="inventory-view-field__value">MYR @SelectedProductDetails.DiscountCap.ToString("N2")</span>
-                            </div>
-                            <div class="inventory-view-field">
-                                <span class="inventory-view-field__label">Record ID</span>
-                                <span class="inventory-view-field__value" style="color: #64748b; font-size: 0.82rem;">@DisplayProductValue(SelectedProductDetails.MasterAccountId)</span>
-                            </div>
-                        </div>
+                        }
                     </div>
                 </div>
+
                 <div class="inventory-view-modal__footer">
                     <button type="button" class="btn-view-secondary" @onclick="CloseProductDetails">Close</button>
                     <button type="button" class="btn-view-primary" @onclick="() => EditProductFromDetails(SelectedProductDetails)">
@@ -5760,6 +5909,7 @@
     private string NewProductImagePreview { get; set; } = string.Empty;
     private string EditProductImagePreview { get; set; } = string.Empty;
     private bool IsProductDetailsVisible { get; set; }
+    private string ProductDetailsTab { get; set; } = "Info";
     private InventoryViewModel.InventoryItem? SelectedProductDetails { get; set; }
     private InventoryOptionDetailsModel? SelectedInventoryOptionDetails { get; set; }
     private string? ExpandedMobilePurchaseOrderNo { get; set; }
@@ -5773,15 +5923,35 @@
     private bool IsGrnDetailsVisible { get; set; }
     private GRNItem? SelectedGrnDetails { get; set; }
 
-    private void ShowProductDetails(InventoryViewModel.InventoryItem item)
+    private async Task ShowProductDetails(InventoryViewModel.InventoryItem item)
     {
+        ProductDetailsTab = "Info";
         SelectedProductDetails = item;
         IsProductDetailsVisible = true;
+
+        if (string.IsNullOrWhiteSpace(item.MasterAccountId))
+        {
+            return;
+        }
+
+        var result = await ProductInventoryService.LoadProductAsync(item.MasterAccountId);
+        if (result.Success && result.Value is not null)
+        {
+            SelectedProductDetails = result.Value with
+            {
+                StockQuantity = item.StockQuantity
+            };
+        }
+        else
+        {
+            ProductApiError = result.ErrorMessage ?? "Unable to load the full product record.";
+        }
     }
 
     private void CloseProductDetails()
     {
         IsProductDetailsVisible = false;
+        ProductDetailsTab = "Info";
         SelectedProductDetails = null;
     }
 
