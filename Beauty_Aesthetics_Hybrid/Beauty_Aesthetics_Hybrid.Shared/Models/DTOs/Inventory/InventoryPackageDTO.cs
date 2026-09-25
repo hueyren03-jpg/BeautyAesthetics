@@ -15,6 +15,15 @@ public sealed class InventoryPackageRequestDTO
     [JsonIgnore]
     public List<InventoryProductSkuDTO> SellingUnits { get; set; } = new();
 
+    [JsonIgnore]
+    public string? StaffCommissionA { get; set; }
+
+    [JsonIgnore]
+    public string? StaffCommissionB { get; set; }
+
+    [JsonIgnore]
+    public string? StaffCommissionC { get; set; }
+
     [JsonPropertyName("PointToRedeem")]
     public decimal? PointToRedeem { get; set; }
 
