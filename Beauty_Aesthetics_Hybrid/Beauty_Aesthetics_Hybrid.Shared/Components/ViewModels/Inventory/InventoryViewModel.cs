@@ -83,5 +83,6 @@ public sealed class InventoryViewModel
         decimal SalesPrice,
         decimal PurchasePrice,
         string Barcode,
-        bool IsExisting = false);
+        bool IsExisting = false,
+        bool IsDeleted = false);
 }
