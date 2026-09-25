@@ -478,10 +478,10 @@
                                                         @onchange="OnEditProductItemGroupChanged"
                                                         required>
                                                     <option value="">Select Item Group</option>
-                                                    @foreach (var category in Categories.Where(category =>
-                                                        category.Active || string.Equals(category.Id, EditProduct.ItemGroupId, StringComparison.OrdinalIgnoreCase)))
+                                                    @foreach (var group in ItemGroups.Where(group =>
+                                                        group.Active || string.Equals(group.Id, EditProduct.ItemGroupId, StringComparison.OrdinalIgnoreCase)))
                                                     {
-                                                        <option value="@category.Id">@category.Name</option>
+                                                        <option value="@group.Id">@group.Name</option>
                                                     }
                                                 </select>
                                             </div>
@@ -546,22 +546,57 @@
                                                 <div class="edit-product-branch-grid">
                                                     @if (AppState.AvailableBranches.Count > 0)
                                                     {
+                                                        <label class="edit-product-branch-row edit-product-branch-row--all">
+                                                            <input type="checkbox"
+                                                                   checked="@AreAllEditProductBranchesSelected"
+                                                                   @onchange="ToggleAllEditProductBranches" />
+                                                            <span>Select All</span>
+                                                        </label>
                                                         @foreach (var branch in AppState.AvailableBranches)
                                                         {
                                                             <label class="edit-product-branch-row">
                                                                 <input type="checkbox"
-                                                                       checked="@string.Equals(branch.Id, InventoryBranchId, StringComparison.OrdinalIgnoreCase)"
-                                                                       disabled />
+                                                                       checked="@EditProduct.VisibleBranchIds.Contains(branch.Id)"
+                                                                       @onchange="() => ToggleEditProductBranch(branch.Id)" />
                                                                 <span>@branch.DisplayName</span>
                                                             </label>
                                                         }
                                                     }
                                                     else
                                                     {
-                                                        <span class="edit-product-muted">Current branch: @InventoryBranchId</span>
+                                                        <span class="edit-product-muted">No active branches are available.</span>
                                                     }
                                                 </div>
-                                                <small>Product updates currently preserve the active branch used by Inventory.</small>
+                                            </div>
+
+                                            <div class="edit-product-field edit-product-field--full">
+                                                <label>Staff Commission</label>
+                                                <div class="edit-product-commission-list">
+                                                    <div class="edit-product-commission-row">
+                                                        <span>Staff 1</span>
+                                                        <input type="number" min="0" step="0.01" @bind="EditProduct.Commission1" />
+                                                        <select @bind="EditProduct.Commission1IsPercent">
+                                                            <option value="true">%</option>
+                                                            <option value="false">MYR</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="edit-product-commission-row">
+                                                        <span>Staff 2</span>
+                                                        <input type="number" min="0" step="0.01" @bind="EditProduct.Commission2" />
+                                                        <select @bind="EditProduct.Commission2IsPercent">
+                                                            <option value="true">%</option>
+                                                            <option value="false">MYR</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="edit-product-commission-row">
+                                                        <span>Staff 3</span>
+                                                        <input type="number" min="0" step="0.01" @bind="EditProduct.Commission3" />
+                                                        <select @bind="EditProduct.Commission3IsPercent">
+                                                            <option value="true">%</option>
+                                                            <option value="false">MYR</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
                                             </div>
 
                                             <div class="edit-product-field edit-product-field--full">
@@ -578,19 +613,26 @@
                                             <div class="edit-product-section-heading edit-product-field--full">
                                                 <div>
                                                     <h3>Selling Units</h3>
-                                                    <span>Maintain the base and alternate selling unit information.</span>
+                                                    <span>Base unit plus any alternate units used when selling this product.</span>
                                                 </div>
+                                                <button type="button"
+                                                        class="selling-unit-add"
+                                                        title="Add selling unit"
+                                                        @onclick="AddEditProductSellingUnit">
+                                                    <i class="bi bi-plus-lg"></i>
+                                                </button>
                                             </div>
 
                                             <div class="product-selling-unit-list edit-product-field--full">
-                                                <div class="product-selling-unit-row product-selling-unit-row--header">
+                                                <div class="product-selling-unit-row product-selling-unit-row--header product-selling-unit-row--with-action">
                                                     <span>Unit</span>
                                                     <span>Conversion</span>
                                                     <span>Price</span>
                                                     <span>Barcode</span>
+                                                    <span></span>
                                                 </div>
 
-                                                <div class="product-selling-unit-row product-selling-unit-row--base">
+                                                <div class="product-selling-unit-row product-selling-unit-row--base product-selling-unit-row--with-action">
                                                     <div>
                                                         <strong>@NormalizeStockUom(EditProduct.StockUom1)</strong>
                                                         <small>Base</small>
@@ -598,7 +640,58 @@
                                                     <span>1 @NormalizeStockUom(EditProduct.StockUom1)</span>
                                                     <span>RM @EditProduct.Price.ToString("N2")</span>
                                                     <span>@DisplayProductValue(EditProduct.Barcode)</span>
+                                                    <span></span>
                                                 </div>
+
+                                                @foreach (var unit in EditProduct.SellingUnits.Where(unit => !unit.IsDeleted))
+                                                {
+                                                    <div class="product-selling-unit-editor-row" @key="unit">
+                                                        <div class="edit-product-field">
+                                                            <label>Unit Name</label>
+                                                            <input type="text"
+                                                                   @bind="unit.UnitName"
+                                                                   placeholder="e.g. BOX" />
+                                                        </div>
+                                                        <div class="edit-product-field">
+                                                            <label>Conversion</label>
+                                                            <input type="number"
+                                                                   min="0.0001"
+                                                                   step="0.01"
+                                                                   @bind="unit.Quantity" />
+                                                        </div>
+                                                        <div class="edit-product-field">
+                                                            <label>Sales Price</label>
+                                                            <input type="number"
+                                                                   min="0"
+                                                                   step="0.01"
+                                                                   @bind="unit.SalesPrice" />
+                                                        </div>
+                                                        <div class="edit-product-field">
+                                                            <label>Cost</label>
+                                                            <input type="number"
+                                                                   min="0"
+                                                                   step="0.01"
+                                                                   @bind="unit.PurchasePrice" />
+                                                        </div>
+                                                        <div class="edit-product-field product-selling-unit-editor-row__barcode">
+                                                            <label>Barcode</label>
+                                                            <input type="text" @bind="unit.Barcode" />
+                                                        </div>
+                                                        <button type="button"
+                                                                class="product-selling-unit-remove"
+                                                                title="Remove selling unit"
+                                                                @onclick="() => RemoveEditProductSellingUnit(unit)">
+                                                            <i class="bi bi-trash3"></i>
+                                                        </button>
+                                                    </div>
+                                                }
+
+                                                @if (!EditProduct.SellingUnits.Any(unit => !unit.IsDeleted))
+                                                {
+                                                    <div class="product-selling-unit-empty">
+                                                        No alternate selling units. Use + to add one.
+                                                    </div>
+                                                }
                                             </div>
 
                                             <div class="edit-product-field">
@@ -607,20 +700,6 @@
                                                        @bind="EditProduct.StockUom1"
                                                        placeholder="e.g. UNIT"
                                                        required />
-                                            </div>
-
-                                            <div class="edit-product-field">
-                                                <label>Alternate UOM</label>
-                                                <input type="text"
-                                                       @bind="EditProduct.StockUom2"
-                                                       placeholder="Optional alternate unit" />
-                                            </div>
-
-                                            <div class="edit-product-field">
-                                                <label>Conversion Factor</label>
-                                                <input type="text"
-                                                       @bind="EditProduct.ConversionFactor"
-                                                       placeholder="e.g. 1 box = 10 pieces" />
                                             </div>
 
                                             <div class="edit-product-field">
@@ -639,7 +718,7 @@
                                             <div class="edit-product-section-heading edit-product-field--full">
                                                 <div>
                                                     <h3>Advance</h3>
-                                                    <span>Product identifiers, stock controls and classification.</span>
+                                                    <span>Product selling, redemption and classification settings.</span>
                                                 </div>
                                             </div>
 
@@ -662,9 +741,32 @@
 
                                             <div class="edit-product-field">
                                                 <label>Reorder Level</label>
-                                                <input type="text"
+                                                <input type="number"
+                                                       min="0"
+                                                       step="1"
                                                        @bind="EditProduct.LowAlertCount"
-                                                       placeholder="e.g. 50" />
+                                                       placeholder="0" />
+                                            </div>
+
+                                            <div class="edit-product-field">
+                                                <label>Redeem Point</label>
+                                                <input type="number"
+                                                       min="0"
+                                                       step="1"
+                                                       @bind="EditProduct.RedeemPoint" />
+                                                <small>0 disables point redemption for this product.</small>
+                                            </div>
+
+                                            <div class="edit-product-field">
+                                                <label>Category</label>
+                                                <select @bind="EditProduct.CategoryId">
+                                                    <option value="">Select Category</option>
+                                                    @foreach (var category in Categories.Where(category =>
+                                                        category.Active || string.Equals(category.Id, EditProduct.CategoryId, StringComparison.OrdinalIgnoreCase)))
+                                                    {
+                                                        <option value="@category.Id">@category.Name</option>
+                                                    }
+                                                </select>
                                             </div>
 
                                             <div class="edit-product-field">
@@ -676,40 +778,6 @@
                                                     {
                                                         <option value="@brand.Name">@brand.Name</option>
                                                     }
-                                                </select>
-                                            </div>
-
-                                            <div class="edit-product-field">
-                                                <label>Supplier</label>
-                                                <select @bind="EditProduct.Supplier">
-                                                    <option value="">Select Supplier</option>
-                                                    @foreach (var supplier in Suppliers)
-                                                    {
-                                                        <option value="@supplier.Name">@supplier.Name</option>
-                                                    }
-                                                </select>
-                                            </div>
-
-                                            <div class="edit-product-field">
-                                                <label>Location</label>
-                                                <input type="text"
-                                                       @bind="EditProduct.Location"
-                                                       placeholder="Rack / storage location" />
-                                            </div>
-
-                                            <div class="edit-product-field">
-                                                <label>Discount Cap</label>
-                                                <input type="number"
-                                                       min="0"
-                                                       step="0.01"
-                                                       @bind="EditProduct.DiscountCap" />
-                                            </div>
-
-                                            <div class="edit-product-field">
-                                                <label>Locked</label>
-                                                <select @bind="EditProduct.Locked">
-                                                    <option value="false">No</option>
-                                                    <option value="true">Yes</option>
                                                 </select>
                                             </div>
                                         </div>
@@ -4731,6 +4799,10 @@
         ProductApiError = null;
         try
         {
+            EditProduct.Category = Categories.FirstOrDefault(category =>
+                string.Equals(category.Id, EditProduct.CategoryId, StringComparison.OrdinalIgnoreCase))?.Name
+                ?? EditProduct.Category;
+
             var updatedItem = ToInventoryItem(EditProduct);
             var result = await ProductInventoryService.UpdateProductAsync(updatedItem, InventoryBranchId);
             if (!result.Success)
