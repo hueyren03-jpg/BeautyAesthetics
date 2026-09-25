@@ -18,6 +18,7 @@
 @using ClosedXML.Excel
 @inject IJSRuntime JSRuntime
 @inject IProductInventoryService ProductInventoryService
+@inject IProductSetupAssignmentService ProductSetupAssignmentService
 @inject ProductImageService ProductImageService
 @inject Beauty_Aesthetics_WebPos.APIClient.FileUploadAC FileUploadAC
 @inject IInventoryOptionService InventoryOptionService
@@ -761,6 +762,80 @@
                                                     }
                                                 </select>
                                             </div>
+
+                                            <div class="edit-product-field">
+                                                <label>Price Group</label>
+                                                <select @bind="EditProduct.PriceGroupCode">
+                                                    <option value="">None</option>
+                                                    @foreach (var group in EditPriceGroups)
+                                                    {
+                                                        <option value="@group.Code">
+                                                            @group.Name (@group.Code)@(group.Price > 0 ? $" - RM {group.Price:N2}" : string.Empty)
+                                                        </option>
+                                                    }
+                                                </select>
+                                            </div>
+
+                                            <div class="edit-product-field">
+                                                <label>Promotion</label>
+                                                <select @bind="EditProduct.PromotionCode">
+                                                    <option value="">None</option>
+                                                    @foreach (var promotion in EditPromotions
+                                                        .Where(promotion => promotion.IsActive ||
+                                                            string.Equals(promotion.Code, EditProduct.PromotionCode, StringComparison.OrdinalIgnoreCase))
+                                                        .OrderBy(promotion => promotion.Name))
+                                                    {
+                                                        <option value="@promotion.Code">
+                                                            @promotion.Name (@promotion.Code)@(!promotion.IsActive ? " - Inactive" : string.Empty)
+                                                        </option>
+                                                    }
+                                                </select>
+                                            </div>
+
+                                            @if (!string.IsNullOrWhiteSpace(EditProduct.PriceGroupCode))
+                                            {
+                                                var selectedGroup = EditPriceGroups.FirstOrDefault(group =>
+                                                    string.Equals(group.Code, EditProduct.PriceGroupCode, StringComparison.OrdinalIgnoreCase));
+                                                if (selectedGroup is not null)
+                                                {
+                                                    <div class="edit-product-setup-card edit-product-field--full">
+                                                        <div>
+                                                            <i class="bi bi-tags"></i>
+                                                            <strong>@selectedGroup.Name</strong>
+                                                            <span>@selectedGroup.Code</span>
+                                                        </div>
+                                                        <div>
+                                                            @if (selectedGroup.Price > 0)
+                                                            {
+                                                                <span>Group Price <strong>RM @selectedGroup.Price.ToString("N2")</strong></span>
+                                                            }
+                                                            @if (selectedGroup.MlmCommRate > 0)
+                                                            {
+                                                                <span>MLM Comm <strong>@selectedGroup.MlmCommRate.ToString("0.##")%</strong></span>
+                                                            }
+                                                        </div>
+                                                    </div>
+                                                }
+                                            }
+
+                                            @if (!string.IsNullOrWhiteSpace(EditProduct.PromotionCode))
+                                            {
+                                                var selectedPromotion = EditPromotions.FirstOrDefault(promotion =>
+                                                    string.Equals(promotion.Code, EditProduct.PromotionCode, StringComparison.OrdinalIgnoreCase));
+                                                if (selectedPromotion is not null)
+                                                {
+                                                    <div class="edit-product-setup-card edit-product-field--full">
+                                                        <div>
+                                                            <i class="bi bi-megaphone"></i>
+                                                            <strong>@selectedPromotion.Name</strong>
+                                                            <span>@selectedPromotion.Code</span>
+                                                        </div>
+                                                        <span class="edit-product-setup-card__status @(selectedPromotion.IsActive ? "active" : "inactive")">
+                                                            @(selectedPromotion.IsActive ? "Active" : "Inactive")
+                                                        </span>
+                                                    </div>
+                                                }
+                                            }
                                         </div>
                                     }
                                 </div>
@@ -4469,6 +4544,8 @@
         public string ItemGroupId { get; set; } = string.Empty;
         public string ItemGroupName { get; set; } = string.Empty;
         public decimal RedeemPoint { get; set; }
+        public string PriceGroupCode { get; set; } = string.Empty;
+        public string PromotionCode { get; set; } = string.Empty;
         public decimal Commission1 { get; set; }
         public decimal Commission2 { get; set; }
         public decimal Commission3 { get; set; }
@@ -4875,6 +4952,24 @@
             if (!result.Success)
             {
                 ProductApiError = result.ErrorMessage ?? "Unable to update product.";
+                return;
+            }
+
+            var priceGroupSaved = await ProductSetupAssignmentService.AssignPriceGroupAsync(
+                EditProduct.MasterAccountId,
+                EditProduct.PriceGroupCode);
+            if (!priceGroupSaved)
+            {
+                ProductApiError = "Product saved, but the selected Price Group could not be assigned.";
+                return;
+            }
+
+            var promotionSaved = await ProductSetupAssignmentService.AssignPromotionAsync(
+                EditProduct.MasterAccountId,
+                EditProduct.PromotionCode);
+            if (!promotionSaved.Success)
+            {
+                ProductApiError = $"Product saved, but Promotion could not be assigned. {promotionSaved.Error}";
                 return;
             }
 
@@ -7000,6 +7095,8 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
 
     private List<CategoryItem> Categories { get; set; } = new();
     private List<CategoryItem> ItemGroups { get; set; } = new();
+    private List<ProductPriceGroupOption> EditPriceGroups { get; set; } = new();
+    private List<ProductPromotionOption> EditPromotions { get; set; } = new();
 
     private List<SupplierItem> Suppliers { get; set; } = new()
     {
@@ -8521,8 +8618,30 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
             ImageFileName = product.ImageFileName
         };
 
+        await LoadEditProductSetupAssignmentsAsync(product.MasterAccountId);
+
         ShowEditForm = true;
         Feedback.Info($"Editing product {product.Type}.", "Edit product", 2200);
+    }
+
+    private async Task LoadEditProductSetupAssignmentsAsync(string productId)
+    {
+        if (EditProduct is null)
+        {
+            return;
+        }
+
+        var priceGroupTask = ProductSetupAssignmentService.GetPriceGroupsAsync();
+        var promotionTask = ProductSetupAssignmentService.GetPromotionsAsync();
+        var assignedPriceGroupTask = ProductSetupAssignmentService.GetAssignedPriceGroupCodeAsync(productId);
+        var assignedPromotionTask = ProductSetupAssignmentService.GetAssignedPromotionCodeAsync(productId);
+
+        await Task.WhenAll(priceGroupTask, promotionTask, assignedPriceGroupTask, assignedPromotionTask);
+
+        EditPriceGroups = (await priceGroupTask).ToList();
+        EditPromotions = (await promotionTask).ToList();
+        EditProduct.PriceGroupCode = await assignedPriceGroupTask ?? string.Empty;
+        EditProduct.PromotionCode = await assignedPromotionTask ?? string.Empty;
     }
 
     private async Task EnsureProductOptionsLoadedAsync()
@@ -8721,6 +8840,8 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
         EditProductTab = "Info";
         EditProductImagePreview = string.Empty;
         ProductImageError = null;
+        EditPriceGroups.Clear();
+        EditPromotions.Clear();
         CloseEditProductSellingUnit();
     }
 
