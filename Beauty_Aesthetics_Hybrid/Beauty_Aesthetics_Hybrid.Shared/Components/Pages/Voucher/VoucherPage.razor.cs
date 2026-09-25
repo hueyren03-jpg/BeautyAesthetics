@@ -9,6 +9,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages.Voucher
         [Inject] private AppFeedbackService Feedback { get; set; } = default!;
 
         private VoucherPageViewModel VM;
+        private bool IsPageInitializing { get; set; } = true;
 
         public VoucherPage(VoucherPageViewModel vm)
         {
@@ -17,7 +18,15 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages.Voucher
 
         protected override async Task OnInitializedAsync()
         {
-            await VM.LoadVouchersAsync();
+            IsPageInitializing = true;
+            try
+            {
+                await VM.LoadVouchersAsync();
+            }
+            finally
+            {
+                IsPageInitializing = false;
+            }
         }
 
         private void NavigateToDetails(string voucherName)
