@@ -13,6 +13,7 @@
 <style>
     /* ==================================== MAIN LAYOUT ==================================== */
     .roster-page {
+        position: relative;
         padding: 32px;
         display: flex;
         flex-direction: column;
@@ -892,6 +893,15 @@
 </style>
 
 <div class="roster-page">
+@if (isRosterLoading)
+{
+    <div class="roster-page-loading" role="status" aria-live="polite">
+        <div class="roster-page-loading__content">
+            <span class="spinner-border" aria-hidden="true"></span>
+            <span>Loading roster...</span>
+        </div>
+    </div>
+}
 
 <!-- TOP BAR: Roster Title + Branch Dropdown -->
 <div class="top-bar">
@@ -1118,6 +1128,7 @@
     private List<BranchLookupItem> branches = new();
     private string selectedBranch = "";
     private string? loadError;
+    private bool isRosterLoading = true;
     private EmpStub? selectedEmployee;
     private DateTime weekStart;
     private DateTime monthStart;
@@ -1148,13 +1159,21 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var today = DateTime.Today;
-        int daysSinceSunday = (int)today.DayOfWeek;
-        weekStart = today.AddDays(-daysSinceSunday);
-        monthStart = new DateTime(today.Year, today.Month, 1);
+        isRosterLoading = true;
+        try
+        {
+            var today = DateTime.Today;
+            int daysSinceSunday = (int)today.DayOfWeek;
+            weekStart = today.AddDays(-daysSinceSunday);
+            monthStart = new DateTime(today.Year, today.Month, 1);
 
-        await LoadLookupsAsync();
-        await LoadData();
+            await LoadLookupsAsync();
+            await LoadData();
+        }
+        finally
+        {
+            isRosterLoading = false;
+        }
     }
 
     private async Task LoadLookupsAsync()
@@ -1203,16 +1222,24 @@
 
     async Task LoadData()
     {
-        if (currentView == ViewMode.Week)
+        isRosterLoading = true;
+        try
         {
-            BuildWeekDays();
-            shifts = await RosterService.GetShiftsForWeekAsync(selectedBranch, weekStart);
+            if (currentView == ViewMode.Week)
+            {
+                BuildWeekDays();
+                shifts = await RosterService.GetShiftsForWeekAsync(selectedBranch, weekStart);
+            }
+            else
+            {
+                BuildMonthDays();
+                var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+                shifts = await RosterService.GetShiftsForDateRangeAsync(selectedBranch, monthStart, monthEnd);
+            }
         }
-        else
+        finally
         {
-            BuildMonthDays();
-            var monthEnd = monthStart.AddMonths(1).AddDays(-1);
-            shifts = await RosterService.GetShiftsForDateRangeAsync(selectedBranch, monthStart, monthEnd);
+            isRosterLoading = false;
         }
     }
 
