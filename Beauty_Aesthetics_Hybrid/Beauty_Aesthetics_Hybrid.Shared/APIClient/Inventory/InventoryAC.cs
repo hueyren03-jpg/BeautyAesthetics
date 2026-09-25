@@ -159,9 +159,6 @@ public sealed class InventoryAC
             inventoryPayload["hasUOM"] = false;
         }
 
-        inventoryPayload["staffCommissionA"] = inventory.StaffCommissionA;
-        inventoryPayload["staffCommissionB"] = inventory.StaffCommissionB;
-        inventoryPayload["staffCommissionC"] = inventory.StaffCommissionC;
         inventoryPayload["PointToRedeem"] = inventory.PointToRedeem;
         inventoryPayload["AllowPointRedemption"] = inventory.AllowPointRedemption;
 
