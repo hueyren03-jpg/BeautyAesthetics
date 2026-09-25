@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text.Json;
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.ViewModels;
@@ -467,9 +466,29 @@ public sealed class PackageService : IPackageService
         IReadOnlyCollection<InventoryMembershipCreditEdit>? membershipCredits,
         bool isUpdate)
     {
+        var credits = (membershipCredits ?? [])
+            .Where(credit => !string.IsNullOrWhiteSpace(credit.MemberTypeId))
+            .Select(credit => new InventoryMembershipCreditDTO
+            {
+                MemberTypeId = credit.MemberTypeId.Trim(),
+                MemberCredit = Math.Max(0m, credit.MemberCredit),
+                SaveAction = string.IsNullOrWhiteSpace(credit.SaveAction)
+                    ? (isUpdate ? "Changed" : "Added")
+                    : credit.SaveAction,
+                IsDirty = credit.IsDirty
+            })
+            .ToList();
+
+        // Keep the legacy scalar fields populated for API deployments that still read them.
+        var firstCredit = credits.FirstOrDefault(credit =>
+            !string.Equals(credit.SaveAction, "Deleted", StringComparison.OrdinalIgnoreCase));
+        SetInventoryProperty(record, "TriggeredMemberTypeID", firstCredit?.MemberTypeId ?? string.Empty);
+        SetInventoryProperty(record, "MemberMainAccountCredit", firstCredit?.MemberCredit ?? 0m);
+
         return new InventoryPackageRequestDTO
         {
-            ObjInventory = BuildInventoryPayload(record, membershipCredits, isUpdate),
+            ObjInventory = record,
+            MembershipCredits = credits,
             Branches =
             [
                 new InventoryBranchDTO
@@ -484,43 +503,6 @@ public sealed class PackageService : IPackageService
                 }
             ]
         };
-    }
-
-    private static JsonElement BuildInventoryPayload(
-        InventoryDM record,
-        IReadOnlyCollection<InventoryMembershipCreditEdit>? membershipCredits,
-        bool isUpdate)
-    {
-        var serializedRecord = JsonSerializer.SerializeToElement(record);
-        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var property in serializedRecord.EnumerateObject())
-        {
-            payload[property.Name] = property.Value.Clone();
-        }
-
-        var credits = (membershipCredits ?? [])
-            .Where(credit => !string.IsNullOrWhiteSpace(credit.MemberTypeId))
-            .Select(credit => new InventoryMembershipCreditDTO
-            {
-                MemberTypeId = credit.MemberTypeId.Trim(),
-                MemberCredit = Math.Max(0m, credit.MemberCredit),
-                SaveAction = string.IsNullOrWhiteSpace(credit.SaveAction)
-                    ? (isUpdate ? "Changed" : "Added")
-                    : credit.SaveAction,
-                IsDirty = credit.IsDirty
-            })
-            .ToList();
-
-        payload["lstMembershipCredit"] = credits;
-
-        // Keep the legacy scalar fields populated for API deployments that still read them.
-        var firstCredit = credits.FirstOrDefault(credit =>
-            !string.Equals(credit.SaveAction, "Deleted", StringComparison.OrdinalIgnoreCase));
-        payload["triggeredMemberTypeID"] = firstCredit?.MemberTypeId ?? string.Empty;
-        payload["memberMainAccountCredit"] = firstCredit?.MemberCredit ?? 0m;
-
-        return JsonSerializer.SerializeToElement(payload);
     }
 
     private static string NormalizeBranchId(string branchId)
