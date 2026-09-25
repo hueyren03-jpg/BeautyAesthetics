@@ -9,6 +9,15 @@
 <PageTitle>Reason Manager</PageTitle>
 
 <div class="reason-manager-container">
+    @if (_isPageInitializing)
+    {
+        <div class="case-module-page-loading" role="status" aria-live="polite">
+            <div class="case-module-page-loading__content">
+                <span class="spinner-border" aria-hidden="true"></span>
+                <span>Loading reasons...</span>
+            </div>
+        </div>
+    }
     <!-- Header -->
     <div class="manager-header">
         <div class="header-content">
@@ -235,14 +244,22 @@
     private CaseNoteReasonManagerViewModel ViewModel { get; set; } = new();
     private List<ReasonItem> _reasons = new();
     private IJSObjectReference? _moduleRef;
+    private bool _isPageInitializing = true;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
-            _moduleRef = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Beauty_Aesthetics_Hybrid.Shared/js/reason-storage.js");
-            await LoadReasons();
-            StateHasChanged();
+            try
+            {
+                _moduleRef = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Beauty_Aesthetics_Hybrid.Shared/js/reason-storage.js");
+                await LoadReasons();
+            }
+            finally
+            {
+                _isPageInitializing = false;
+                StateHasChanged();
+            }
         }
     }
 
