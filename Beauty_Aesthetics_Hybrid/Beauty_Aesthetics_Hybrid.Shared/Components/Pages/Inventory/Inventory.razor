@@ -571,36 +571,6 @@
                                             </div>
 
                                             <div class="edit-product-field edit-product-field--full">
-                                                <label>Staff Commission</label>
-                                                <div class="edit-product-commission-list">
-                                                    <div class="edit-product-commission-row">
-                                                        <span>Staff 1</span>
-                                                        <input type="number" min="0" step="0.01" @bind="EditProduct.Commission1" />
-                                                        <select @bind="EditProduct.Commission1IsPercent">
-                                                            <option value="true">%</option>
-                                                            <option value="false">MYR</option>
-                                                        </select>
-                                                    </div>
-                                                    <div class="edit-product-commission-row">
-                                                        <span>Staff 2</span>
-                                                        <input type="number" min="0" step="0.01" @bind="EditProduct.Commission2" />
-                                                        <select @bind="EditProduct.Commission2IsPercent">
-                                                            <option value="true">%</option>
-                                                            <option value="false">MYR</option>
-                                                        </select>
-                                                    </div>
-                                                    <div class="edit-product-commission-row">
-                                                        <span>Staff 3</span>
-                                                        <input type="number" min="0" step="0.01" @bind="EditProduct.Commission3" />
-                                                        <select @bind="EditProduct.Commission3IsPercent">
-                                                            <option value="true">%</option>
-                                                            <option value="false">MYR</option>
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div class="edit-product-field edit-product-field--full">
                                                 <label>Remarks</label>
                                                 <textarea rows="3"
                                                           @bind="EditProduct.Remarks"
@@ -808,10 +778,6 @@
                                                             @if (selectedGroup.Price > 0)
                                                             {
                                                                 <span>Group Price <strong>RM @selectedGroup.Price.ToString("N2")</strong></span>
-                                                            }
-                                                            @if (selectedGroup.MlmCommRate > 0)
-                                                            {
-                                                                <span>MLM Comm <strong>@selectedGroup.MlmCommRate.ToString("0.##")%</strong></span>
                                                             }
                                                         </div>
                                                     </div>
@@ -4546,12 +4512,6 @@
         public decimal RedeemPoint { get; set; }
         public string PriceGroupCode { get; set; } = string.Empty;
         public string PromotionCode { get; set; } = string.Empty;
-        public decimal Commission1 { get; set; }
-        public decimal Commission2 { get; set; }
-        public decimal Commission3 { get; set; }
-        public bool Commission1IsPercent { get; set; } = true;
-        public bool Commission2IsPercent { get; set; } = true;
-        public bool Commission3IsPercent { get; set; } = true;
         public HashSet<string> VisibleBranchIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public List<EditProductSellingUnitModel> SellingUnits { get; set; } = new();
         public string Brand { get; set; } = string.Empty;
@@ -4834,12 +4794,6 @@
                 string.Equals(group.Id, product.ItemGroupId, StringComparison.OrdinalIgnoreCase))?.Name
                 ?? product.ItemGroupName,
             RedeemPoint = product.RedeemPoint,
-            Commission1 = product.Commission1,
-            Commission2 = product.Commission2,
-            Commission3 = product.Commission3,
-            Commission1IsPercent = product.Commission1IsPercent,
-            Commission2IsPercent = product.Commission2IsPercent,
-            Commission3IsPercent = product.Commission3IsPercent,
             VisibleBranchIds = product.VisibleBranchIds.ToList(),
             SellingUnits = product.SellingUnits
                 .Select(unit => new InventoryViewModel.ProductSellingUnit(
@@ -8588,12 +8542,6 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
             ItemGroupId = product.ItemGroupId,
             ItemGroupName = product.ItemGroupName,
             RedeemPoint = product.RedeemPoint,
-            Commission1 = product.Commission1,
-            Commission2 = product.Commission2,
-            Commission3 = product.Commission3,
-            Commission1IsPercent = product.Commission1IsPercent,
-            Commission2IsPercent = product.Commission2IsPercent,
-            Commission3IsPercent = product.Commission3IsPercent,
             VisibleBranchIds = product.VisibleBranchIds.Count > 0
                 ? product.VisibleBranchIds.ToHashSet(StringComparer.OrdinalIgnoreCase)
                 : new HashSet<string>(new[] { InventoryBranchId }, StringComparer.OrdinalIgnoreCase),
