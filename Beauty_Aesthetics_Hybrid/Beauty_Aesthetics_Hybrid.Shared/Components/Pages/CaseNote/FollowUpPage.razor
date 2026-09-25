@@ -13,6 +13,15 @@
 <PageTitle>Follow Up - Beauty Aesthetics</PageTitle>
 
 <div class="case-notes-page">
+    @if (_isPageInitializing)
+    {
+        <div class="case-note-page-loading" role="status" aria-live="polite">
+            <div class="case-note-page-loading__content">
+                <span class="spinner-border" aria-hidden="true"></span>
+                <span>Loading follow up...</span>
+            </div>
+        </div>
+    }
     <!-- Mobile Top Header (only visible in portrait mode) -->
     <header class="mobile-header">
         <button class="btn-back-arrow" @onclick="NavigateToAppointments" title="Back to Appointments" aria-label="Back to Appointments">
@@ -551,6 +560,7 @@
     }
     private List<string> _emojiList = new();
     private bool _isInitializing = false;
+    private bool _isPageInitializing = true;
     private bool _hasRendered = false;
     private int _editorKey = 0;
     
@@ -657,6 +667,8 @@
             finally
             {
                 _isInitializing = false;
+                _isPageInitializing = false;
+                await InvokeAsync(StateHasChanged);
             }
         }
     }
