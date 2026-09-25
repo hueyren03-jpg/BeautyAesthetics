@@ -2603,6 +2603,7 @@
     private int NewBundleValidityDays { get; set; }
     private int NewBundleMemberExpiryDays { get; set; } = 365;
     private List<BundleMembershipCreditEntry> BundleMembershipCredits { get; set; } = new();
+    private List<BundleMembershipCreditEntry> RemovedBundleMembershipCredits { get; set; } = new();
     private decimal NewBundleCost { get; set; }
     private string NewBundleTaxCode { get; set; } = string.Empty;
     private bool NewBundleTaxInclusive { get; set; }
@@ -5104,6 +5105,7 @@
         NewBundleValidityDays = 0;
         NewBundleMemberExpiryDays = 365;
         BundleMembershipCredits.Clear();
+        RemovedBundleMembershipCredits.Clear();
         NewBundleCost = 0m;
         NewBundleTaxCode = string.Empty;
         NewBundleTaxInclusive = false;
@@ -5219,8 +5221,14 @@
                     .Select(entry => new InventoryMembershipCreditEdit(
                         entry.MemberTypeId,
                         Math.Max(0m, entry.MemberCredit),
-                        IsBundleEditMode ? "Changed" : "Added",
+                        entry.IsExisting ? "Changed" : "Added",
                         true))
+                    .Concat(RemovedBundleMembershipCredits.Select(entry =>
+                        new InventoryMembershipCreditEdit(
+                            entry.MemberTypeId,
+                            Math.Max(0m, entry.MemberCredit),
+                            "Deleted",
+                            true)))
                     .ToList());
 
             var visibleBranchId = string.IsNullOrWhiteSpace(NewBundleVisibleBranchId)
@@ -5284,7 +5292,8 @@
             .Select(entry => new BundleMembershipCreditEntry
             {
                 MemberTypeId = entry.MemberTypeId,
-                MemberCredit = Math.Max(0m, entry.MemberCredit)
+                MemberCredit = Math.Max(0m, entry.MemberCredit),
+                IsExisting = true
             })
             .ToList();
 
@@ -5294,7 +5303,8 @@
             BundleMembershipCredits.Add(new BundleMembershipCreditEntry
             {
                 MemberTypeId = SelectedBundle.TriggeredMemberTypeId,
-                MemberCredit = Math.Max(0m, SelectedBundle.MemberMainAccountCredit)
+                MemberCredit = Math.Max(0m, SelectedBundle.MemberMainAccountCredit),
+                IsExisting = true
             });
         }
 
@@ -5681,7 +5691,8 @@
         BundleMembershipCredits.Add(new BundleMembershipCreditEntry
         {
             MemberTypeId = memberType.MemberTypeID,
-            MemberCredit = 0m
+            MemberCredit = 0m,
+            IsExisting = false
         });
 
         IsBundleMemberTypePickerOpen = false;
@@ -5690,6 +5701,18 @@
 
     private void RemoveBundleMemberType(BundleMembershipCreditEntry entry)
     {
+        if (entry.IsExisting &&
+            !RemovedBundleMembershipCredits.Any(removed =>
+                string.Equals(removed.MemberTypeId, entry.MemberTypeId, StringComparison.OrdinalIgnoreCase)))
+        {
+            RemovedBundleMembershipCredits.Add(new BundleMembershipCreditEntry
+            {
+                MemberTypeId = entry.MemberTypeId,
+                MemberCredit = entry.MemberCredit,
+                IsExisting = true
+            });
+        }
+
         BundleMembershipCredits.Remove(entry);
 
         if (string.Equals(
@@ -6538,6 +6561,7 @@
     {
         public string MemberTypeId { get; set; } = string.Empty;
         public decimal MemberCredit { get; set; }
+        public bool IsExisting { get; set; }
     }
 
     // Bundle Item class
