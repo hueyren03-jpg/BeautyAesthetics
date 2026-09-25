@@ -10,6 +10,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages.Voucher
 
         private VoucherPageViewModel VM;
         private bool IsPageInitializing { get; set; } = true;
+        private bool IsPageInitializing { get; set; } = true;
 
         public VoucherPage(VoucherPageViewModel vm)
         {
