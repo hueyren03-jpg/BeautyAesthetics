@@ -12,6 +12,15 @@ public sealed class InventoryPackageRequestDTO
     [JsonIgnore]
     public List<InventoryMembershipCreditDTO> MembershipCredits { get; set; } = new();
 
+    [JsonIgnore]
+    public List<InventoryProductSkuDTO> SellingUnits { get; set; } = new();
+
+    [JsonPropertyName("PointToRedeem")]
+    public decimal? PointToRedeem { get; set; }
+
+    [JsonPropertyName("AllowPointRedemption")]
+    public bool AllowPointRedemption { get; set; }
+
     [JsonPropertyName("lstMasterAccount_Branch")]
     public List<InventoryBranchDTO> Branches { get; set; } = new();
 
@@ -38,6 +47,12 @@ public sealed class InventoryPackageLoadDTO
 
     [JsonPropertyName("lstMembershipCredit")]
     public List<InventoryMembershipCreditDTO>? MembershipCredits { get; set; }
+
+    [JsonPropertyName("PointToRedeem")]
+    public decimal? PointToRedeem { get; set; }
+
+    [JsonPropertyName("AllowPointRedemption")]
+    public bool AllowPointRedemption { get; set; }
 }
 
 public sealed class InventoryPackageLoadRecordDTO
@@ -98,6 +113,54 @@ public sealed class InventoryPackageLoadRecordDTO
 
     [JsonPropertyName("lstPackage")]
     public List<InventoryPackageLineDTO>? PackageLines { get; set; }
+
+    [JsonPropertyName("lstSKU")]
+    public List<InventoryProductSkuDTO>? SellingUnits { get; set; }
+
+    [JsonPropertyName("staffCommissionA")]
+    public string? StaffCommissionA { get; set; }
+
+    [JsonPropertyName("staffCommissionB")]
+    public string? StaffCommissionB { get; set; }
+
+    [JsonPropertyName("staffCommissionC")]
+    public string? StaffCommissionC { get; set; }
+
+    [JsonPropertyName("pointToRedeem")]
+    public decimal? PointToRedeem { get; set; }
+
+    [JsonPropertyName("allowPointRedemption")]
+    public bool AllowPointRedemption { get; set; }
+}
+
+public sealed class InventoryProductSkuDTO
+{
+    [JsonPropertyName("autoID")]
+    public string AutoId { get; set; } = string.Empty;
+
+    [JsonPropertyName("inventoryAccountID")]
+    public string InventoryAccountId { get; set; } = string.Empty;
+
+    [JsonPropertyName("skuName")]
+    public string SkuName { get; set; } = string.Empty;
+
+    [JsonPropertyName("skuQuantity")]
+    public decimal SkuQuantity { get; set; } = 1m;
+
+    [JsonPropertyName("salesPrice")]
+    public decimal SalesPrice { get; set; }
+
+    [JsonPropertyName("purchasePrice")]
+    public decimal PurchasePrice { get; set; }
+
+    [JsonPropertyName("barcode")]
+    public string Barcode { get; set; } = string.Empty;
+
+    [JsonPropertyName("saveAction")]
+    public string SaveAction { get; set; } = "Added";
+
+    [JsonPropertyName("isDirty")]
+    public bool IsDirty { get; set; } = true;
 }
 
 public sealed class InventoryMembershipCreditDTO
