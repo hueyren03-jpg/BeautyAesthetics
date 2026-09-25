@@ -1225,6 +1225,17 @@
     }
 </style>
 
+<div class="sales-page-loading-host">
+    @if (IsSalesPageLoading)
+    {
+        <div class="sales-page-loading" role="status" aria-live="polite">
+            <div class="sales-page-loading__content">
+                <span class="spinner-border" aria-hidden="true"></span>
+                <span>Loading sales...</span>
+            </div>
+        </div>
+    }
+
 <div class="sales-header">
     <h3 class="page-title">@L["Title_SalesDashboard"]</h3>
     <div class="filters-row">
@@ -2188,6 +2199,8 @@
                    OnDismiss="DismissSalesMessage" />
 }
 
+</div>
+
  @code {
     private DateTime _startDate = DateTime.Today.AddDays(-30);
     private DateTime startDate
@@ -2216,8 +2229,9 @@
     private string selectedCatalogItemId = "";
     private string saleCatalogSearch = "";
     private bool isCatalogLoading;
-    private string apiError = "";
-    private bool isLoading;
+    private string apiError = "";    private bool isLoading;
+    private bool isSalesPageInitializing = true;
+    private bool IsSalesPageLoading => isSalesPageInitializing || isLoading;
     private bool isSaving;
 
     private bool showNewSaleModal;
@@ -2269,10 +2283,18 @@
 
     protected override async Task OnInitializedAsync()
     {
+        isSalesPageInitializing = true;
         NavigationManager.LocationChanged += HandleLocationChanged;
-        await LoadLookupsAsync();
-        await LoadDataAsync();
-        chartsNeedRefresh = true;
+        try
+        {
+            await LoadLookupsAsync();
+            await LoadDataAsync();
+            chartsNeedRefresh = true;
+        }
+        finally
+        {
+            isSalesPageInitializing = false;
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
