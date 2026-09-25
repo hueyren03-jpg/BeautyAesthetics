@@ -23,6 +23,9 @@ public interface IInventoryOptionService
         string brandId,
         CancellationToken cancellationToken = default);
 
+    Task<ApiCallResult<IReadOnlyList<SupportingTableListItemDTO>>> GetItemGroupsAsync(
+        CancellationToken cancellationToken = default);
+
     Task<ApiCallResult<IReadOnlyList<SupportingTableListItemDTO>>> GetCategoriesAsync(
         CancellationToken cancellationToken = default);
 
