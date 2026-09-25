@@ -7,7 +7,7 @@ namespace Beauty_Aesthetics_WebPos.Models.DTOs;
 public sealed class InventoryPackageRequestDTO
 {
     [JsonPropertyName("objInventory")]
-    public InventoryDM ObjInventory { get; set; } = new();
+    public JsonElement ObjInventory { get; set; }
 
     [JsonPropertyName("lstMasterAccount_Branch")]
     public List<InventoryBranchDTO> Branches { get; set; } = new();
@@ -32,6 +32,9 @@ public sealed class InventoryPackageLoadDTO
 
     [JsonPropertyName("lstMasterAccount_Branch")]
     public List<InventoryPackageBranchLoadDTO>? Branches { get; set; }
+
+    [JsonPropertyName("lstMembershipCredit")]
+    public List<InventoryMembershipCreditDTO>? MembershipCredits { get; set; }
 }
 
 public sealed class InventoryPackageLoadRecordDTO
@@ -87,8 +90,26 @@ public sealed class InventoryPackageLoadRecordDTO
     [JsonPropertyName("memberMainAccountCredit")]
     public decimal MemberMainAccountCredit { get; set; }
 
+    [JsonPropertyName("lstMembershipCredit")]
+    public List<InventoryMembershipCreditDTO>? MembershipCredits { get; set; }
+
     [JsonPropertyName("lstPackage")]
     public List<InventoryPackageLineDTO>? PackageLines { get; set; }
+}
+
+public sealed class InventoryMembershipCreditDTO
+{
+    [JsonPropertyName("memberTypeID")]
+    public string MemberTypeId { get; set; } = string.Empty;
+
+    [JsonPropertyName("memberCredit")]
+    public decimal MemberCredit { get; set; }
+
+    [JsonPropertyName("saveAction")]
+    public string SaveAction { get; set; } = "Added";
+
+    [JsonPropertyName("isDirty")]
+    public bool IsDirty { get; set; } = true;
 }
 
 public sealed class InventoryPackageLineDTO
