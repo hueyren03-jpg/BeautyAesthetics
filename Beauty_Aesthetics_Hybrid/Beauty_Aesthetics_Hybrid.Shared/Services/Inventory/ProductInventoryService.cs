@@ -378,8 +378,8 @@ public sealed class ProductInventoryService : IProductInventoryService
         {
             record.QuantityFactor = primaryUom.Quantity / secondaryUom.Quantity;
         }
-        record.AccountStatus = product.IsActive && !product.Locked ? "Active" : "Inactive";
-        record.strStatus = product.IsActive && !product.Locked ? "Active" : "Locked";
+        record.AccountStatus = product.IsActive ? "Active" : "Inactive";
+        record.strStatus = product.IsActive ? "Active" : "Inactive";
         record.BranchID = string.IsNullOrWhiteSpace(branchId) ? "HQ" : branchId.Trim().ToUpperInvariant();
     }
 
