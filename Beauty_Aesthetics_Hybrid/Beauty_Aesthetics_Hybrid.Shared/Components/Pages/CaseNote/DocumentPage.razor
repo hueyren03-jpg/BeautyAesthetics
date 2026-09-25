@@ -16,6 +16,15 @@
 <PageTitle>Documents - Beauty Aesthetics</PageTitle>
 
 <div class="document-page">
+    @if (_isPageInitializing)
+    {
+        <div class="case-module-page-loading" role="status" aria-live="polite">
+            <div class="case-module-page-loading__content">
+                <span class="spinner-border" aria-hidden="true"></span>
+                <span>Loading documents...</span>
+            </div>
+        </div>
+    }
     <!-- Header -->
     <!-- Header -->
     <header class="document-header">
@@ -2144,26 +2153,36 @@
     // All computed properties are now in DocumentViewModel
 
     // ===== INITIALIZATION =====
+    private bool _isPageInitializing = true;
+
     protected override async Task OnInitializedAsync()
     {
-        // Initialize ViewModel with mock data
-        ViewModel.InitializeMockData();
-        
-        // Set all types as selected by default
-        ViewModel.InitializeSelectedTypes(_documentTypes);
-        
-        // Subscribe to ViewModel property changes
-        _viewModelPropertyChangedHandler = (sender, args) => 
+        _isPageInitializing = true;
+        try
         {
-            InvokeAsync(StateHasChanged);
-        };
-        ViewModel.PropertyChanged += _viewModelPropertyChangedHandler;
-        
-        // Load templates and document types from localStorage
-        await _templateViewModel.InitializeAsync();
-        
-        LoadCustomTemplates();
-        _templateViewModel.PropertyChanged += OnTemplateViewModelChanged;
+            // Initialize ViewModel with mock data
+            ViewModel.InitializeMockData();
+
+            // Set all types as selected by default
+            ViewModel.InitializeSelectedTypes(_documentTypes);
+
+            // Subscribe to ViewModel property changes
+            _viewModelPropertyChangedHandler = (sender, args) =>
+            {
+                InvokeAsync(StateHasChanged);
+            };
+            ViewModel.PropertyChanged += _viewModelPropertyChangedHandler;
+
+            // Load templates and document types from localStorage
+            await _templateViewModel.InitializeAsync();
+
+            LoadCustomTemplates();
+            _templateViewModel.PropertyChanged += OnTemplateViewModelChanged;
+        }
+        finally
+        {
+            _isPageInitializing = false;
+        }
     }
 
     private void OnTemplateViewModelChanged(object? sender, PropertyChangedEventArgs e)
