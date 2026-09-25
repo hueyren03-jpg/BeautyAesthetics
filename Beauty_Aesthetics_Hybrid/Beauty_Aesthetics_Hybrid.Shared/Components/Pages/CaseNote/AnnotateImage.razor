@@ -12,6 +12,15 @@
 <div class="annotate-container" 
      tabindex="0" 
      @onkeydown="HandleKeyDown">
+    @if (_isPageInitializing)
+    {
+        <div class="case-module-page-loading" role="status" aria-live="polite">
+            <div class="case-module-page-loading__content">
+                <span class="spinner-border" aria-hidden="true"></span>
+                <span>Loading annotation...</span>
+            </div>
+        </div>
+    }
     <!-- Left Sidebar - Image Library -->
     <aside class="annotate-sidebar">
         <div class="sidebar-header">
@@ -763,6 +772,7 @@
 @code {
     private AnnotateImageViewModel ViewModel { get; set; } = new();
     private bool _canvasInitialized = false;
+    private bool _isPageInitializing = true;
     private AnnotateImageViewModel.AnnotationImage? _previousSelectedImage = null;
     private AnnotateImageViewModel.AnnotationImage? _storedSelectedImage = null; // Store image when switching to before-after
     
@@ -1874,8 +1884,16 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // Load custom colors from localStorage
-        await LoadCustomColorsAsync();
+        _isPageInitializing = true;
+        try
+        {
+            // Load custom colors from localStorage
+            await LoadCustomColorsAsync();
+        }
+        finally
+        {
+            _isPageInitializing = false;
+        }
     }
 
     protected override void OnInitialized()
