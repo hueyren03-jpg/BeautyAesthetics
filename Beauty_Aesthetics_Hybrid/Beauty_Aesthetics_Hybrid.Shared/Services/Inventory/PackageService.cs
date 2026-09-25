@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.ViewModels;
@@ -61,6 +62,9 @@ public sealed class PackageService : IPackageService
                 : null;
             var packageLines = package?.PackageLines
                 ?? fullRecord?.Value?.PackageLines
+                ?? [];
+            var membershipCredits = package?.MembershipCredits
+                ?? fullRecord?.Value?.MembershipCredits
                 ?? [];
             var serviceIds = packageLines
                 .Where(line => !string.IsNullOrWhiteSpace(line.InventoryId))
@@ -165,7 +169,13 @@ public sealed class PackageService : IPackageService
                     ? package.PurchasePrice
                     : header.PurchasePrice,
                 FirstNonEmpty(package?.TaxCodeId, header.TaxCodeID) ?? string.Empty,
-                package is not null ? package.IsTaxInclusive : header.IsTaxInclusive));
+                package is not null ? package.IsTaxInclusive : header.IsTaxInclusive,
+                membershipCredits
+                    .Where(credit => !string.IsNullOrWhiteSpace(credit.MemberTypeId))
+                    .Select(credit => new InventoryMembershipCreditSummary(
+                        credit.MemberTypeId,
+                        Math.Max(0m, credit.MemberCredit)))
+                    .ToList()));
         }
 
         return ApiCallResult<IReadOnlyList<InventoryPackageSummary>>.Ok(
@@ -186,7 +196,9 @@ public sealed class PackageService : IPackageService
             normalizedBranchId,
             package.Price,
             NormalizeBranchGroupId(branchGroupId, normalizedBranchId),
-            "Added");
+            "Added",
+            package.MembershipCredits,
+            isUpdate: false);
         var result = ToSaveResult(
             await serviceInventoryAC.CreateFullAsync(request, cancellationToken),
             "Unable to create package.");
@@ -246,7 +258,9 @@ public sealed class PackageService : IPackageService
             normalizedBranchId,
             package.Price,
             NormalizeBranchGroupId(branchGroupId, normalizedBranchId),
-            "Changed");
+            "Changed",
+            package.MembershipCredits,
+            isUpdate: true);
 
         var result = ToSaveResult(
             await serviceInventoryAC.UpdateFullAsync(request, cancellationToken),
@@ -449,11 +463,13 @@ public sealed class PackageService : IPackageService
         string branchId,
         decimal price,
         string branchGroupId,
-        string saveAction)
+        string saveAction,
+        IReadOnlyCollection<InventoryMembershipCreditEdit>? membershipCredits,
+        bool isUpdate)
     {
         return new InventoryPackageRequestDTO
         {
-            ObjInventory = record,
+            ObjInventory = BuildInventoryPayload(record, membershipCredits, isUpdate),
             Branches =
             [
                 new InventoryBranchDTO
@@ -468,6 +484,42 @@ public sealed class PackageService : IPackageService
                 }
             ]
         };
+    }
+
+    private static JsonElement BuildInventoryPayload(
+        InventoryDM record,
+        IReadOnlyCollection<InventoryMembershipCreditEdit>? membershipCredits,
+        bool isUpdate)
+    {
+        var serializedRecord = JsonSerializer.SerializeToElement(record);
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var property in serializedRecord.EnumerateObject())
+        {
+            payload[property.Name] = property.Value.Clone();
+        }
+
+        var credits = (membershipCredits ?? [])
+            .Where(credit => !string.IsNullOrWhiteSpace(credit.MemberTypeId))
+            .Select(credit => new InventoryMembershipCreditDTO
+            {
+                MemberTypeId = credit.MemberTypeId.Trim(),
+                MemberCredit = Math.Max(0m, credit.MemberCredit),
+                SaveAction = string.IsNullOrWhiteSpace(credit.SaveAction)
+                    ? (isUpdate ? "Changed" : "Added")
+                    : credit.SaveAction,
+                IsDirty = credit.IsDirty
+            })
+            .ToList();
+
+        payload["lstMembershipCredit"] = credits;
+
+        // Keep the legacy scalar fields populated for API deployments that still read them.
+        var firstCredit = credits.FirstOrDefault();
+        payload["triggeredMemberTypeID"] = firstCredit?.MemberTypeId ?? string.Empty;
+        payload["memberMainAccountCredit"] = firstCredit?.MemberCredit ?? 0m;
+
+        return JsonSerializer.SerializeToElement(payload);
     }
 
     private static string NormalizeBranchId(string branchId)
