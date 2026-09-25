@@ -74,6 +74,8 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
         private IReadOnlyList<ServiceViewModel.ServiceItem> serviceOptions = Array.Empty<ServiceViewModel.ServiceItem>();
         private IReadOnlyList<AppointmentStatusOption> appointmentStatuses = Array.Empty<AppointmentStatusOption>();
         private bool isAppointmentLoading;
+        private bool isAppointmentPageInitializing = true;
+        private bool IsAppointmentPageLoading => isAppointmentPageInitializing || isAppointmentLoading;
         private bool appointmentReloadPending;
         private bool isAppointmentSaving;
         private bool appointmentCreateSubmitted;
@@ -671,14 +673,22 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
 
         protected override async Task OnInitializedAsync()
         {
+            isAppointmentPageInitializing = true;
             ViewModel = new AppointmentViewModel(AppointmentService);
             AppointmentService.OnChange += OnAppointmentServiceChanged;
             RebuildTimeSlots();
             queueItems = new List<QueueItem>();
             nextQueueId = 1;
 
-            await LoadReferenceDataAsync();
-            await ReloadAppointmentsAsync();
+            try
+            {
+                await LoadReferenceDataAsync();
+                await ReloadAppointmentsAsync();
+            }
+            finally
+            {
+                isAppointmentPageInitializing = false;
+            }
         }
 
         private async Task LoadReferenceDataAsync()
