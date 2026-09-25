@@ -515,7 +515,8 @@ public sealed class PackageService : IPackageService
         payload["lstMembershipCredit"] = credits;
 
         // Keep the legacy scalar fields populated for API deployments that still read them.
-        var firstCredit = credits.FirstOrDefault();
+        var firstCredit = credits.FirstOrDefault(credit =>
+            !string.Equals(credit.SaveAction, "Deleted", StringComparison.OrdinalIgnoreCase));
         payload["triggeredMemberTypeID"] = firstCredit?.MemberTypeId ?? string.Empty;
         payload["memberMainAccountCredit"] = firstCredit?.MemberCredit ?? 0m;
 
