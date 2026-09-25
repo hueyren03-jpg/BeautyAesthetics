@@ -56,6 +56,13 @@ public sealed class InventoryViewModel
         public string CategoryId { get; init; } = string.Empty;
         public int InventoryTypeId { get; init; } = 1;
         public decimal? StockQuantity { get; init; }
+        public decimal Cost { get; init; }
+        public string TaxCode { get; init; } = string.Empty;
+        public bool IsTaxInclusive { get; init; }
+        public bool IsActive { get; init; } = true;
+        public string Remarks { get; init; } = string.Empty;
+        public string ItemGroupId { get; init; } = string.Empty;
+        public string ItemGroupName { get; init; } = string.Empty;
         public string ImagePath { get; init; } = string.Empty;
         public string ImageFileName { get; init; } = string.Empty;
     }
