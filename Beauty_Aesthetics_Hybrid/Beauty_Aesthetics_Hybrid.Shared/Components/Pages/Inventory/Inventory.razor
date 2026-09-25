@@ -454,95 +454,174 @@
                                 <div class="edit-product-tab-content">
                                     @if (EditProductTab == "Info")
                                     {
-                                        <div class="edit-product-form-section">
+                                        <div class="edit-product-form-section edit-product-form-section--senang">
                                             <div class="edit-product-field edit-product-field--full">
                                                 <label>Product Name <span class="edit-product-required">*</span></label>
-                                                <input type="text" @bind="EditProduct.Type" required />
+                                                <input type="text"
+                                                       @bind="EditProduct.Type"
+                                                       placeholder="Enter product name"
+                                                       required />
                                             </div>
 
                                             <div class="edit-product-field">
-                                                <label>SKU <span class="edit-product-required">*</span></label>
-                                                <input type="text" @bind="EditProduct.Sku" required />
-                                            </div>
-                                            <div class="edit-product-field">
-                                                <label>Price (MYR) <span class="edit-product-required">*</span></label>
-                                                <div class="edit-product-money">
-                                                    <span>RM</span>
-                                                    <input type="number" min="0" step="0.01" @bind="EditProduct.Price" required />
-                                                </div>
+                                                <label>Display Code <span class="edit-product-required">*</span></label>
+                                                <input type="text"
+                                                       @bind="EditProduct.Sku"
+                                                       placeholder="Enter display code"
+                                                       required />
                                             </div>
 
                                             <div class="edit-product-field">
-                                                <label>Category <span class="edit-product-required">*</span></label>
-                                                <select @bind="EditProduct.CategoryId" required>
-                                                    <option value="">Select Category</option>
+                                                <label>Item Group <span class="edit-product-required">*</span></label>
+                                                <select value="@EditProduct.ItemGroupId"
+                                                        @onchange="OnEditProductItemGroupChanged"
+                                                        required>
+                                                    <option value="">Select Item Group</option>
                                                     @foreach (var category in Categories.Where(category =>
-                                                        category.Active || string.Equals(category.Id, EditProduct.CategoryId, StringComparison.OrdinalIgnoreCase)))
+                                                        category.Active || string.Equals(category.Id, EditProduct.ItemGroupId, StringComparison.OrdinalIgnoreCase)))
                                                     {
                                                         <option value="@category.Id">@category.Name</option>
                                                     }
                                                 </select>
                                             </div>
+
+                                            <label class="edit-product-active-card edit-product-field--full">
+                                                <input type="checkbox" @bind="EditProduct.IsActive" />
+                                                <span>
+                                                    <strong>Active</strong>
+                                                    <small>Allow this product to be available for sale.</small>
+                                                </span>
+                                            </label>
+
                                             <div class="edit-product-field">
-                                                <label>Brand <span class="edit-product-required">*</span></label>
-                                                <select @bind="EditProduct.Brand" required>
-                                                    <option value="">Select Brand</option>
-                                                    @foreach (var brand in Brands.Where(brand =>
-                                                        brand.Active || string.Equals(brand.Name, EditProduct.Brand, StringComparison.OrdinalIgnoreCase)))
-                                                    {
-                                                        <option value="@brand.Name">@brand.Name</option>
-                                                    }
+                                                <label>Tax Code</label>
+                                                <select @bind="EditProduct.TaxCode">
+                                                    <option value="">Select Tax Code</option>
+                                                    <option value="SV-6">SV-6</option>
+                                                    <option value="SST-8">SST-8</option>
+                                                    <option value="GST-6">GST-6</option>
+                                                    <option value="NA">NA</option>
                                                 </select>
                                             </div>
 
+                                            <div class="edit-product-field">
+                                                <label>Inclusive Tax</label>
+                                                <div class="edit-product-radio-group">
+                                                    <label>
+                                                        <input type="radio"
+                                                               name="edit-product-inclusive-tax"
+                                                               checked="@EditProduct.IsTaxInclusive"
+                                                               @onchange="@(() => EditProduct.IsTaxInclusive = true)" />
+                                                        <span>Yes</span>
+                                                    </label>
+                                                    <label>
+                                                        <input type="radio"
+                                                               name="edit-product-inclusive-tax"
+                                                               checked="@(!EditProduct.IsTaxInclusive)"
+                                                               @onchange="@(() => EditProduct.IsTaxInclusive = false)" />
+                                                        <span>No</span>
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            <div class="edit-product-field">
+                                                <label>Price (MYR)</label>
+                                                <div class="edit-product-money">
+                                                    <span>RM</span>
+                                                    <input type="number" min="0" step="0.01" @bind="EditProduct.Price" />
+                                                </div>
+                                            </div>
+
+                                            <div class="edit-product-field">
+                                                <label>Cost (MYR)</label>
+                                                <div class="edit-product-money">
+                                                    <span>RM</span>
+                                                    <input type="number" min="0" step="0.01" @bind="EditProduct.Cost" />
+                                                </div>
+                                            </div>
+
                                             <div class="edit-product-field edit-product-field--full">
-                                                <label>Supplier <span class="edit-product-required">*</span></label>
-                                                <select @bind="EditProduct.Supplier" required>
-                                                    <option value="">Select Supplier</option>
-                                                    @foreach (var supplier in Suppliers)
+                                                <label>Visible At Branch</label>
+                                                <div class="edit-product-branch-grid">
+                                                    @if (AppState.AvailableBranches.Count > 0)
                                                     {
-                                                        <option value="@supplier.Name">@supplier.Name</option>
+                                                        @foreach (var branch in AppState.AvailableBranches)
+                                                        {
+                                                            <label class="edit-product-branch-row">
+                                                                <input type="checkbox"
+                                                                       checked="@string.Equals(branch.Id, InventoryBranchId, StringComparison.OrdinalIgnoreCase)"
+                                                                       disabled />
+                                                                <span>@branch.DisplayName</span>
+                                                            </label>
+                                                        }
                                                     }
-                                                </select>
+                                                    else
+                                                    {
+                                                        <span class="edit-product-muted">Current branch: @InventoryBranchId</span>
+                                                    }
+                                                </div>
+                                                <small>Product updates currently preserve the active branch used by Inventory.</small>
+                                            </div>
+
+                                            <div class="edit-product-field edit-product-field--full">
+                                                <label>Remarks</label>
+                                                <textarea rows="3"
+                                                          @bind="EditProduct.Remarks"
+                                                          placeholder="Write your notes here..."></textarea>
                                             </div>
                                         </div>
                                     }
                                     else if (EditProductTab == "SellingUnits")
                                     {
-                                        <div class="edit-product-form-section">
+                                        <div class="edit-product-form-section edit-product-form-section--selling">
                                             <div class="edit-product-section-heading edit-product-field--full">
                                                 <div>
                                                     <h3>Selling Units</h3>
-                                                    <span>Maintain the barcode and unit conversion used when this product is sold.</span>
+                                                    <span>Maintain the base and alternate selling unit information.</span>
                                                 </div>
                                             </div>
 
-                                            <div class="edit-product-field edit-product-field--full">
-                                                <label>Barcode <span class="edit-product-required">*</span></label>
-                                                <div class="edit-product-icon-input">
-                                                    <input type="text" @bind="EditProduct.Barcode" required />
-                                                    <i class="bi bi-upc-scan"></i>
+                                            <div class="product-selling-unit-list edit-product-field--full">
+                                                <div class="product-selling-unit-row product-selling-unit-row--header">
+                                                    <span>Unit</span>
+                                                    <span>Conversion</span>
+                                                    <span>Price</span>
+                                                    <span>Barcode</span>
+                                                </div>
+
+                                                <div class="product-selling-unit-row product-selling-unit-row--base">
+                                                    <div>
+                                                        <strong>@NormalizeStockUom(EditProduct.StockUom1)</strong>
+                                                        <small>Base</small>
+                                                    </div>
+                                                    <span>1 @NormalizeStockUom(EditProduct.StockUom1)</span>
+                                                    <span>RM @EditProduct.Price.ToString("N2")</span>
+                                                    <span>@DisplayProductValue(EditProduct.Barcode)</span>
                                                 </div>
                                             </div>
 
                                             <div class="edit-product-field">
-                                                <label>UOM 1 <span class="edit-product-required">*</span></label>
-                                                <input type="text" @bind="EditProduct.StockUom1" placeholder="e.g., UNIT" required />
-                                                <small>Base inventory unit</small>
-                                            </div>
-                                            <div class="edit-product-field">
-                                                <label>UOM 2</label>
-                                                <input type="text" @bind="EditProduct.StockUom2" placeholder="Optional secondary UOM" />
-                                                <small>Optional selling unit</small>
-                                            </div>
-
-                                            <div class="edit-product-field">
-                                                <label>Conversion Factor <span class="edit-product-required">*</span></label>
+                                                <label>Base UOM <span class="edit-product-required">*</span></label>
                                                 <input type="text"
-                                                       @bind="EditProduct.ConversionFactor"
-                                                       placeholder="e.g., 1 box = 10 bottles"
+                                                       @bind="EditProduct.StockUom1"
+                                                       placeholder="e.g. UNIT"
                                                        required />
                                             </div>
+
+                                            <div class="edit-product-field">
+                                                <label>Alternate UOM</label>
+                                                <input type="text"
+                                                       @bind="EditProduct.StockUom2"
+                                                       placeholder="Optional alternate unit" />
+                                            </div>
+
+                                            <div class="edit-product-field">
+                                                <label>Conversion Factor</label>
+                                                <input type="text"
+                                                       @bind="EditProduct.ConversionFactor"
+                                                       placeholder="e.g. 1 box = 10 pieces" />
+                                            </div>
+
                                             <div class="edit-product-field">
                                                 <label>Current Stock</label>
                                                 <input class="inventory__readonly-field"
@@ -555,30 +634,76 @@
                                     }
                                     else
                                     {
-                                        <div class="edit-product-form-section">
+                                        <div class="edit-product-form-section edit-product-form-section--senang">
                                             <div class="edit-product-section-heading edit-product-field--full">
                                                 <div>
                                                     <h3>Advance</h3>
-                                                    <span>Inventory controls and product-level limits.</span>
+                                                    <span>Product identifiers, stock controls and classification.</span>
                                                 </div>
                                             </div>
 
                                             <div class="edit-product-field">
-                                                <label>Location <span class="edit-product-required">*</span></label>
-                                                <input type="text" @bind="EditProduct.Location" required />
-                                            </div>
-                                            <div class="edit-product-field">
-                                                <label>Low Alert Count <span class="edit-product-required">*</span></label>
-                                                <input type="text"
-                                                       @bind="EditProduct.LowAlertCount"
-                                                       placeholder="e.g., 50 bottles"
-                                                       required />
+                                                <label>Barcode</label>
+                                                <div class="edit-product-icon-input">
+                                                    <input type="text"
+                                                           @bind="EditProduct.Barcode"
+                                                           placeholder="Scan or type barcode" />
+                                                    <i class="bi bi-upc-scan"></i>
+                                                </div>
                                             </div>
 
                                             <div class="edit-product-field">
-                                                <label>Discount Cap <span class="edit-product-required">*</span></label>
-                                                <input type="number" min="0" step="0.01" @bind="EditProduct.DiscountCap" required />
+                                                <label>UOM</label>
+                                                <input type="text"
+                                                       @bind="EditProduct.StockUom1"
+                                                       placeholder="e.g. pcs, kg, litre" />
                                             </div>
+
+                                            <div class="edit-product-field">
+                                                <label>Reorder Level</label>
+                                                <input type="text"
+                                                       @bind="EditProduct.LowAlertCount"
+                                                       placeholder="e.g. 50" />
+                                            </div>
+
+                                            <div class="edit-product-field">
+                                                <label>Brand</label>
+                                                <select @bind="EditProduct.Brand">
+                                                    <option value="">Select Brand</option>
+                                                    @foreach (var brand in Brands.Where(brand =>
+                                                        brand.Active || string.Equals(brand.Name, EditProduct.Brand, StringComparison.OrdinalIgnoreCase)))
+                                                    {
+                                                        <option value="@brand.Name">@brand.Name</option>
+                                                    }
+                                                </select>
+                                            </div>
+
+                                            <div class="edit-product-field">
+                                                <label>Supplier</label>
+                                                <select @bind="EditProduct.Supplier">
+                                                    <option value="">Select Supplier</option>
+                                                    @foreach (var supplier in Suppliers)
+                                                    {
+                                                        <option value="@supplier.Name">@supplier.Name</option>
+                                                    }
+                                                </select>
+                                            </div>
+
+                                            <div class="edit-product-field">
+                                                <label>Location</label>
+                                                <input type="text"
+                                                       @bind="EditProduct.Location"
+                                                       placeholder="Rack / storage location" />
+                                            </div>
+
+                                            <div class="edit-product-field">
+                                                <label>Discount Cap</label>
+                                                <input type="number"
+                                                       min="0"
+                                                       step="0.01"
+                                                       @bind="EditProduct.DiscountCap" />
+                                            </div>
+
                                             <div class="edit-product-field">
                                                 <label>Locked</label>
                                                 <select @bind="EditProduct.Locked">
@@ -586,18 +711,9 @@
                                                     <option value="true">Yes</option>
                                                 </select>
                                             </div>
-
-                                            <div class="edit-product-field edit-product-field--full">
-                                                <label>Record ID</label>
-                                                <input class="inventory__readonly-field"
-                                                       type="text"
-                                                       value="@DisplayProductValue(EditProduct.MasterAccountId)"
-                                                       readonly />
-                                                <small>System record identifier</small>
-                                            </div>
                                         </div>
                                     }
-                                </div>
+                                </div>                                </div>
                             </form>
                         </div>
 
@@ -4214,6 +4330,13 @@
         public string Barcode { get; set; } = string.Empty;
         public string ConversionFactor { get; set; } = string.Empty;
         public decimal Price { get; set; }
+        public decimal Cost { get; set; }
+        public string TaxCode { get; set; } = string.Empty;
+        public bool IsTaxInclusive { get; set; }
+        public bool IsActive { get; set; } = true;
+        public string Remarks { get; set; } = string.Empty;
+        public string ItemGroupId { get; set; } = string.Empty;
+        public string ItemGroupName { get; set; } = string.Empty;
         public string Brand { get; set; } = string.Empty;
         public string CategoryId { get; set; } = string.Empty;
         public string Category { get; set; } = string.Empty;
@@ -4439,9 +4562,18 @@
             product.DiscountCap
         )
         {
-            CategoryId = product.CategoryId,
+            CategoryId = string.IsNullOrWhiteSpace(product.CategoryId) ? product.ItemGroupId : product.CategoryId,
             StockQuantity = product.StockQuantity,
             MasterAccountId = product.MasterAccountId,
+            Cost = product.Cost,
+            TaxCode = product.TaxCode,
+            IsTaxInclusive = product.IsTaxInclusive,
+            IsActive = product.IsActive,
+            Remarks = product.Remarks,
+            ItemGroupId = product.ItemGroupId,
+            ItemGroupName = Categories.FirstOrDefault(category =>
+                string.Equals(category.Id, product.ItemGroupId, StringComparison.OrdinalIgnoreCase))?.Name
+                ?? product.ItemGroupName,
             ImagePath = product.ImagePath,
             ImageFileName = product.ImageFileName
         };
@@ -4519,10 +4651,24 @@
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(EditProduct.Brand) ||
-            string.IsNullOrWhiteSpace(EditProduct.CategoryId))
+        if (string.IsNullOrWhiteSpace(EditProduct.Type))
         {
-            ProductApiError = "Brand and category are required.";
+            ProductApiError = "Product name is required.";
+            EditProductTab = "Info";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(EditProduct.Sku))
+        {
+            ProductApiError = "Display code is required.";
+            EditProductTab = "Info";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(EditProduct.ItemGroupId))
+        {
+            ProductApiError = "Item group is required.";
+            EditProductTab = "Info";
             return;
         }
 
@@ -8110,6 +8256,17 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
             Barcode = product.Barcode,
             ConversionFactor = product.ConversionFactor,
             Price = product.Price,
+            Cost = product.Cost,
+            TaxCode = product.TaxCode,
+            IsTaxInclusive = product.IsTaxInclusive,
+            IsActive = product.IsActive,
+            Remarks = product.Remarks,
+            ItemGroupId = !string.IsNullOrWhiteSpace(product.ItemGroupId)
+                ? product.ItemGroupId
+                : product.CategoryId,
+            ItemGroupName = !string.IsNullOrWhiteSpace(product.ItemGroupName)
+                ? product.ItemGroupName
+                : product.Category,
             Brand = product.Brand,
             CategoryId = !string.IsNullOrWhiteSpace(product.CategoryId)
                 ? product.CategoryId
@@ -8150,6 +8307,22 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
         {
             await Task.WhenAll(loadTasks);
         }
+    }
+
+    private void OnEditProductItemGroupChanged(ChangeEventArgs e)
+    {
+        if (EditProduct is null)
+        {
+            return;
+        }
+
+        EditProduct.ItemGroupId = e.Value?.ToString() ?? string.Empty;
+        var selected = Categories.FirstOrDefault(category =>
+            string.Equals(category.Id, EditProduct.ItemGroupId, StringComparison.OrdinalIgnoreCase));
+
+        EditProduct.ItemGroupName = selected?.Name ?? string.Empty;
+        EditProduct.CategoryId = EditProduct.ItemGroupId;
+        EditProduct.Category = EditProduct.ItemGroupName;
     }
 
     private void CloseEditProductForm()
