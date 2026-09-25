@@ -4338,6 +4338,15 @@
         public string Remarks { get; set; } = string.Empty;
         public string ItemGroupId { get; set; } = string.Empty;
         public string ItemGroupName { get; set; } = string.Empty;
+        public decimal RedeemPoint { get; set; }
+        public decimal Commission1 { get; set; }
+        public decimal Commission2 { get; set; }
+        public decimal Commission3 { get; set; }
+        public bool Commission1IsPercent { get; set; } = true;
+        public bool Commission2IsPercent { get; set; } = true;
+        public bool Commission3IsPercent { get; set; } = true;
+        public HashSet<string> VisibleBranchIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public List<EditProductSellingUnitModel> SellingUnits { get; set; } = new();
         public string Brand { get; set; } = string.Empty;
         public string CategoryId { get; set; } = string.Empty;
         public string Category { get; set; } = string.Empty;
@@ -4350,6 +4359,18 @@
         public decimal DiscountCap { get; set; }
         public string ImagePath { get; set; } = string.Empty;
         public string ImageFileName { get; set; } = string.Empty;
+    }
+
+    public class EditProductSellingUnitModel
+    {
+        public string AutoId { get; set; } = string.Empty;
+        public string UnitName { get; set; } = string.Empty;
+        public decimal Quantity { get; set; } = 1m;
+        public decimal SalesPrice { get; set; }
+        public decimal PurchasePrice { get; set; }
+        public string Barcode { get; set; } = string.Empty;
+        public bool IsExisting { get; set; }
+        public bool IsDeleted { get; set; }
     }
 
     public class EditProductModel
@@ -4586,9 +4607,28 @@
             IsActive = product.IsActive,
             Remarks = product.Remarks,
             ItemGroupId = product.ItemGroupId,
-            ItemGroupName = Categories.FirstOrDefault(category =>
-                string.Equals(category.Id, product.ItemGroupId, StringComparison.OrdinalIgnoreCase))?.Name
+            ItemGroupName = ItemGroups.FirstOrDefault(group =>
+                string.Equals(group.Id, product.ItemGroupId, StringComparison.OrdinalIgnoreCase))?.Name
                 ?? product.ItemGroupName,
+            RedeemPoint = product.RedeemPoint,
+            Commission1 = product.Commission1,
+            Commission2 = product.Commission2,
+            Commission3 = product.Commission3,
+            Commission1IsPercent = product.Commission1IsPercent,
+            Commission2IsPercent = product.Commission2IsPercent,
+            Commission3IsPercent = product.Commission3IsPercent,
+            VisibleBranchIds = product.VisibleBranchIds.ToList(),
+            SellingUnits = product.SellingUnits
+                .Select(unit => new InventoryViewModel.ProductSellingUnit(
+                    unit.AutoId,
+                    unit.UnitName,
+                    unit.Quantity,
+                    unit.SalesPrice,
+                    unit.PurchasePrice,
+                    unit.Barcode,
+                    unit.IsExisting,
+                    unit.IsDeleted))
+                .ToList(),
             ImagePath = product.ImagePath,
             ImageFileName = product.ImageFileName
         };
@@ -6022,6 +6062,27 @@
         BrandsCurrentPage = 1;
     }
 
+    private async Task LoadItemGroupsAsync()
+    {
+        var result = await InventoryOptionService.GetItemGroupsAsync();
+        if (!result.Success || result.Value is null)
+        {
+            ItemGroups = [];
+            return;
+        }
+
+        ItemGroups = result.Value
+            .Where(group => !string.IsNullOrWhiteSpace(group.SupportingTableName))
+            .Select(group => new CategoryItem(
+                group.SupportingTableID ?? string.Empty,
+                group.SupportingTableName!.Trim(),
+                string.IsNullOrWhiteSpace(group.TextField)
+                    ? (string.IsNullOrWhiteSpace(group.SupportingTableID) ? "-" : group.SupportingTableID)
+                    : group.TextField,
+                group.Active))
+            .ToList();
+    }
+
     private async Task LoadCategoriesAsync()
     {
         CategoryApiError = null;
@@ -6799,6 +6860,7 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
     private List<BrandItem> Brands { get; set; } = new();
 
     private List<CategoryItem> Categories { get; set; } = new();
+    private List<CategoryItem> ItemGroups { get; set; } = new();
 
     private List<SupplierItem> Suppliers { get; set; } = new()
     {
@@ -8282,6 +8344,29 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
             ItemGroupName = !string.IsNullOrWhiteSpace(product.ItemGroupName)
                 ? product.ItemGroupName
                 : product.Category,
+            RedeemPoint = product.RedeemPoint,
+            Commission1 = product.Commission1,
+            Commission2 = product.Commission2,
+            Commission3 = product.Commission3,
+            Commission1IsPercent = product.Commission1IsPercent,
+            Commission2IsPercent = product.Commission2IsPercent,
+            Commission3IsPercent = product.Commission3IsPercent,
+            VisibleBranchIds = product.VisibleBranchIds.Count > 0
+                ? product.VisibleBranchIds.ToHashSet(StringComparer.OrdinalIgnoreCase)
+                : new HashSet<string>(new[] { InventoryBranchId }, StringComparer.OrdinalIgnoreCase),
+            SellingUnits = product.SellingUnits
+                .Select(unit => new EditProductSellingUnitModel
+                {
+                    AutoId = unit.AutoId,
+                    UnitName = unit.UnitName,
+                    Quantity = unit.Quantity,
+                    SalesPrice = unit.SalesPrice,
+                    PurchasePrice = unit.PurchasePrice,
+                    Barcode = unit.Barcode,
+                    IsExisting = unit.IsExisting,
+                    IsDeleted = unit.IsDeleted
+                })
+                .ToList(),
             Brand = product.Brand,
             CategoryId = !string.IsNullOrWhiteSpace(product.CategoryId)
                 ? product.CategoryId
@@ -8307,7 +8392,7 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
 
     private async Task EnsureProductOptionsLoadedAsync()
     {
-        var loadTasks = new List<Task>(2);
+        var loadTasks = new List<Task>(3);
         if (Brands.Count == 0)
         {
             loadTasks.Add(LoadBrandsAsync());
@@ -8316,6 +8401,11 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
         if (Categories.Count == 0)
         {
             loadTasks.Add(LoadCategoriesAsync());
+        }
+
+        if (ItemGroups.Count == 0)
+        {
+            loadTasks.Add(LoadItemGroupsAsync());
         }
 
         if (loadTasks.Count > 0)
@@ -8332,12 +8422,79 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
         }
 
         EditProduct.ItemGroupId = e.Value?.ToString() ?? string.Empty;
-        var selected = Categories.FirstOrDefault(category =>
-            string.Equals(category.Id, EditProduct.ItemGroupId, StringComparison.OrdinalIgnoreCase));
+        var selected = ItemGroups.FirstOrDefault(group =>
+            string.Equals(group.Id, EditProduct.ItemGroupId, StringComparison.OrdinalIgnoreCase));
 
         EditProduct.ItemGroupName = selected?.Name ?? string.Empty;
-        EditProduct.CategoryId = EditProduct.ItemGroupId;
-        EditProduct.Category = EditProduct.ItemGroupName;
+    }
+
+    private void ToggleEditProductBranch(string branchId)
+    {
+        if (EditProduct is null || string.IsNullOrWhiteSpace(branchId))
+        {
+            return;
+        }
+
+        if (!EditProduct.VisibleBranchIds.Add(branchId))
+        {
+            EditProduct.VisibleBranchIds.Remove(branchId);
+        }
+    }
+
+    private void ToggleAllEditProductBranches(ChangeEventArgs e)
+    {
+        if (EditProduct is null)
+        {
+            return;
+        }
+
+        var isChecked = e.Value is bool selected && selected;
+        EditProduct.VisibleBranchIds.Clear();
+
+        if (isChecked)
+        {
+            foreach (var branch in AppState.AvailableBranches)
+            {
+                EditProduct.VisibleBranchIds.Add(branch.Id);
+            }
+        }
+    }
+
+    private bool AreAllEditProductBranchesSelected =>
+        EditProduct is not null &&
+        AppState.AvailableBranches.Count > 0 &&
+        AppState.AvailableBranches.All(branch => EditProduct.VisibleBranchIds.Contains(branch.Id));
+
+    private void AddEditProductSellingUnit()
+    {
+        if (EditProduct is null)
+        {
+            return;
+        }
+
+        EditProduct.SellingUnits.Add(new EditProductSellingUnitModel
+        {
+            Quantity = 1m,
+            SalesPrice = EditProduct.Price,
+            PurchasePrice = EditProduct.Cost
+        });
+    }
+
+    private void RemoveEditProductSellingUnit(EditProductSellingUnitModel unit)
+    {
+        if (EditProduct is null)
+        {
+            return;
+        }
+
+        if (unit.IsExisting)
+        {
+            unit.IsDeleted = true;
+        }
+        else
+        {
+            EditProduct.SellingUnits.Remove(unit);
+        }
     }
 
     private void CloseEditProductForm()
