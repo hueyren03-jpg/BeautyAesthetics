@@ -3845,9 +3845,16 @@
     // Member Type Form methods
     private void ShowAddMemberTypeForm()
     {
+        if (IsSavingMemberType)
+        {
+            return;
+        }
+
+        // A new membership must never inherit the previously selected/editing record.
+        SelectedMemberType = null;
         IsMemberTypeEditMode = false;
-        IsAddMemberTypeFormVisible = true;
         ResetMemberTypeForm();
+        IsAddMemberTypeFormVisible = true;
     }
 
     private void EditMemberTypeFromRow(MembershipTypeDM memberType)
@@ -3878,6 +3885,8 @@
     private void CloseAddMemberTypeForm()
     {
         IsAddMemberTypeFormVisible = false;
+        IsMemberTypeEditMode = false;
+        SelectedMemberType = null;
         ResetMemberTypeForm();
     }
 
@@ -3902,15 +3911,27 @@
             return;
         }
 
+        var normalizedCode = NewMemberTypeCode.Trim();
+        var normalizedName = NewMemberTypeName.Trim();
+
+        if (!IsMemberTypeEditMode &&
+            MemberTypeItems.Any(item =>
+                string.Equals(item.MemberTypeID?.Trim(), normalizedCode, StringComparison.OrdinalIgnoreCase)))
+        {
+            MemberTypeApiError = $"Membership code '{normalizedCode}' already exists. Use a different code.";
+            return;
+        }
+
         IsSavingMemberType = true;
         MemberTypeApiError = null;
 
         try
         {
             var memberType = BuildMemberTypeSaveModel();
+            var wasEditing = IsMemberTypeEditMode;
 
             ApiCallResult<bool> result;
-            if (IsMemberTypeEditMode)
+            if (wasEditing)
             {
                 result = await MembershipTypeService.UpdateAsync(memberType);
             }
@@ -3923,6 +3944,22 @@
             {
                 CloseAddMemberTypeForm();
                 await LoadMemberTypesFromApiAsync();
+
+                // Some API deployments can be briefly stale immediately after CreateRecord.
+                // Keep the newly-created membership visible instead of making it appear that
+                // only one membership can be added. The next refresh will reconcile with API data.
+                if (!wasEditing &&
+                    !MemberTypeItems.Any(item =>
+                        string.Equals(item.MemberTypeID?.Trim(), memberType.MemberTypeID?.Trim(), StringComparison.OrdinalIgnoreCase)))
+                {
+                    MemberTypeItems.Add(memberType);
+                    MemberTypeItems = MemberTypeItems
+                        .OrderBy(item => item.MemberTypeName ?? string.Empty)
+                        .ToList();
+                    MemberTypeCurrentPage = Math.Max(
+                        1,
+                        (int)Math.Ceiling(MemberTypeItems.Count / 5.0));
+                }
             }
             else
             {
