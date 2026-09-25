@@ -618,7 +618,7 @@
                                                 <button type="button"
                                                         class="selling-unit-add"
                                                         title="Add selling unit"
-                                                        @onclick="AddEditProductSellingUnit">
+                                                        @onclick="OpenAddEditProductSellingUnit">
                                                     <i class="bi bi-plus-lg"></i>
                                                 </button>
                                             </div>
@@ -645,44 +645,25 @@
 
                                                 @foreach (var unit in EditProduct.SellingUnits.Where(unit => !unit.IsDeleted))
                                                 {
-                                                    <div class="product-selling-unit-editor-row" @key="unit">
-                                                        <div class="edit-product-field">
-                                                            <label>Unit Name</label>
-                                                            <input type="text"
-                                                                   @bind="unit.UnitName"
-                                                                   placeholder="e.g. BOX" />
+                                                    <div class="product-selling-unit-row product-selling-unit-row--with-action" @key="unit">
+                                                        <div>
+                                                            <strong>@unit.UnitName</strong>
                                                         </div>
-                                                        <div class="edit-product-field">
-                                                            <label>Conversion</label>
-                                                            <input type="number"
-                                                                   min="0.0001"
-                                                                   step="0.01"
-                                                                   @bind="unit.Quantity" />
+                                                        <span>1 @unit.UnitName = @unit.Quantity.ToString("0.##") @NormalizeStockUom(EditProduct.StockUom1)</span>
+                                                        <span>RM @unit.SalesPrice.ToString("N2")</span>
+                                                        <span>@DisplayProductValue(unit.Barcode)</span>
+                                                        <div class="product-selling-unit-actions">
+                                                            <button type="button"
+                                                                    title="Edit selling unit"
+                                                                    @onclick="() => OpenEditProductSellingUnit(unit)">
+                                                                <i class="bi bi-pencil"></i>
+                                                            </button>
+                                                            <button type="button"
+                                                                    title="Remove selling unit"
+                                                                    @onclick="() => RemoveEditProductSellingUnit(unit)">
+                                                                <i class="bi bi-trash3"></i>
+                                                            </button>
                                                         </div>
-                                                        <div class="edit-product-field">
-                                                            <label>Sales Price</label>
-                                                            <input type="number"
-                                                                   min="0"
-                                                                   step="0.01"
-                                                                   @bind="unit.SalesPrice" />
-                                                        </div>
-                                                        <div class="edit-product-field">
-                                                            <label>Cost</label>
-                                                            <input type="number"
-                                                                   min="0"
-                                                                   step="0.01"
-                                                                   @bind="unit.PurchasePrice" />
-                                                        </div>
-                                                        <div class="edit-product-field product-selling-unit-editor-row__barcode">
-                                                            <label>Barcode</label>
-                                                            <input type="text" @bind="unit.Barcode" />
-                                                        </div>
-                                                        <button type="button"
-                                                                class="product-selling-unit-remove"
-                                                                title="Remove selling unit"
-                                                                @onclick="() => RemoveEditProductSellingUnit(unit)">
-                                                            <i class="bi bi-trash3"></i>
-                                                        </button>
                                                     </div>
                                                 }
 
@@ -807,6 +788,87 @@
                                     <i class="bi bi-check-lg"></i>
                                     <span>Save</span>
                                 }
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @if (IsEditSellingUnitDialogOpen && EditSellingUnitDraft is not null && EditProduct is not null)
+            {
+                <div class="edit-selling-unit-overlay" @onclick="CloseEditProductSellingUnit">
+                    <div class="edit-selling-unit-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-selling-unit-title" @onclick:stopPropagation>
+                        <div class="edit-selling-unit-dialog__header">
+                            <div>
+                                <h3 id="edit-selling-unit-title">@(EditingSellingUnit is null ? "Add Selling Unit" : "Edit Selling Unit")</h3>
+                                <span>Configure how this unit converts to @NormalizeStockUom(EditProduct.StockUom1).</span>
+                            </div>
+                            <button type="button" title="Close" aria-label="Close" @onclick="CloseEditProductSellingUnit">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+
+                        <div class="edit-selling-unit-dialog__body">
+                            <div class="edit-product-field edit-product-field--full">
+                                <label>UOM <span class="edit-product-required">*</span></label>
+                                <input type="text"
+                                       @bind="EditSellingUnitDraft.UnitName"
+                                       placeholder="e.g. BOX, PACK, CARTON" />
+                            </div>
+
+                            <div class="edit-product-field edit-product-field--full">
+                                <label>Conversion <span class="edit-product-required">*</span></label>
+                                <div class="edit-selling-unit-conversion">
+                                    <strong>1 @(string.IsNullOrWhiteSpace(EditSellingUnitDraft.UnitName) ? "UNIT" : EditSellingUnitDraft.UnitName.ToUpperInvariant())</strong>
+                                    <span>=</span>
+                                    <input type="number"
+                                           min="1.01"
+                                           step="0.01"
+                                           @bind="EditSellingUnitDraft.Quantity" />
+                                    <strong>@NormalizeStockUom(EditProduct.StockUom1)</strong>
+                                </div>
+                            </div>
+
+                            <div class="edit-product-field">
+                                <label>Selling Price</label>
+                                <div class="edit-product-money">
+                                    <span>RM</span>
+                                    <input type="number" min="0" step="0.01" @bind="EditSellingUnitDraft.SalesPrice" />
+                                </div>
+                            </div>
+
+                            <div class="edit-product-field">
+                                <label>Cost</label>
+                                <div class="edit-product-money">
+                                    <span>RM</span>
+                                    <input type="number" min="0" step="0.01" @bind="EditSellingUnitDraft.PurchasePrice" />
+                                </div>
+                            </div>
+
+                            <div class="edit-product-field edit-product-field--full">
+                                <label>Barcode</label>
+                                <div class="edit-product-icon-input">
+                                    <input type="text"
+                                           @bind="EditSellingUnitDraft.Barcode"
+                                           placeholder="Optional" />
+                                    <i class="bi bi-upc-scan"></i>
+                                </div>
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(EditSellingUnitError))
+                            {
+                                <div class="edit-selling-unit-dialog__error">
+                                    <i class="bi bi-exclamation-circle"></i>
+                                    @EditSellingUnitError
+                                </div>
+                            }
+                        </div>
+
+                        <div class="edit-selling-unit-dialog__footer">
+                            <button type="button" class="edit-product-modal__cancel" @onclick="CloseEditProductSellingUnit">Cancel</button>
+                            <button type="button" class="edit-product-modal__save" @onclick="SaveEditProductSellingUnit">
+                                <i class="bi bi-check-lg"></i>
+                                <span>Save</span>
                             </button>
                         </div>
                     </div>
@@ -4470,6 +4532,11 @@
         public string ImagePath { get; set; } = string.Empty;
         public string ImageFileName { get; set; } = string.Empty;
     }
+
+    private bool IsEditSellingUnitDialogOpen { get; set; }
+    private EditProductSellingUnitModel? EditSellingUnitDraft { get; set; }
+    private EditProductSellingUnitModel? EditingSellingUnit { get; set; }
+    private string EditSellingUnitError { get; set; } = string.Empty;
 
     public class NewPurchaseOrderModel
     {
@@ -8533,19 +8600,101 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
         AppState.AvailableBranches.Count > 0 &&
         AppState.AvailableBranches.All(branch => EditProduct.VisibleBranchIds.Contains(branch.Id));
 
-    private void AddEditProductSellingUnit()
+    private void OpenAddEditProductSellingUnit()
     {
         if (EditProduct is null)
         {
             return;
         }
 
-        EditProduct.SellingUnits.Add(new EditProductSellingUnitModel
+        EditingSellingUnit = null;
+        EditSellingUnitDraft = new EditProductSellingUnitModel
         {
             Quantity = 1m,
             SalesPrice = EditProduct.Price,
             PurchasePrice = EditProduct.Cost
-        });
+        };
+        EditSellingUnitError = string.Empty;
+        IsEditSellingUnitDialogOpen = true;
+    }
+
+    private void OpenEditProductSellingUnit(EditProductSellingUnitModel unit)
+    {
+        EditingSellingUnit = unit;
+        EditSellingUnitDraft = new EditProductSellingUnitModel
+        {
+            AutoId = unit.AutoId,
+            UnitName = unit.UnitName,
+            Quantity = unit.Quantity,
+            SalesPrice = unit.SalesPrice,
+            PurchasePrice = unit.PurchasePrice,
+            Barcode = unit.Barcode,
+            IsExisting = unit.IsExisting,
+            IsDeleted = unit.IsDeleted
+        };
+        EditSellingUnitError = string.Empty;
+        IsEditSellingUnitDialogOpen = true;
+    }
+
+    private void CloseEditProductSellingUnit()
+    {
+        IsEditSellingUnitDialogOpen = false;
+        EditSellingUnitDraft = null;
+        EditingSellingUnit = null;
+        EditSellingUnitError = string.Empty;
+    }
+
+    private void SaveEditProductSellingUnit()
+    {
+        if (EditProduct is null || EditSellingUnitDraft is null)
+        {
+            return;
+        }
+
+        var unitName = EditSellingUnitDraft.UnitName.Trim().ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(unitName))
+        {
+            EditSellingUnitError = "UOM is required.";
+            return;
+        }
+
+        if (EditSellingUnitDraft.Quantity <= 1m)
+        {
+            EditSellingUnitError = "Conversion must be greater than 1 base unit.";
+            return;
+        }
+
+        if (EditProduct.SellingUnits.Any(unit =>
+                !ReferenceEquals(unit, EditingSellingUnit) &&
+                !unit.IsDeleted &&
+                string.Equals(unit.UnitName, unitName, StringComparison.OrdinalIgnoreCase)))
+        {
+            EditSellingUnitError = $"Selling unit '{unitName}' already exists.";
+            return;
+        }
+
+        if (EditingSellingUnit is null)
+        {
+            EditProduct.SellingUnits.Add(new EditProductSellingUnitModel
+            {
+                UnitName = unitName,
+                Quantity = EditSellingUnitDraft.Quantity,
+                SalesPrice = Math.Max(0m, EditSellingUnitDraft.SalesPrice),
+                PurchasePrice = Math.Max(0m, EditSellingUnitDraft.PurchasePrice),
+                Barcode = EditSellingUnitDraft.Barcode.Trim(),
+                IsExisting = false
+            });
+        }
+        else
+        {
+            EditingSellingUnit.UnitName = unitName;
+            EditingSellingUnit.Quantity = EditSellingUnitDraft.Quantity;
+            EditingSellingUnit.SalesPrice = Math.Max(0m, EditSellingUnitDraft.SalesPrice);
+            EditingSellingUnit.PurchasePrice = Math.Max(0m, EditSellingUnitDraft.PurchasePrice);
+            EditingSellingUnit.Barcode = EditSellingUnitDraft.Barcode.Trim();
+        }
+
+        CloseEditProductSellingUnit();
     }
 
     private void RemoveEditProductSellingUnit(EditProductSellingUnitModel unit)
@@ -8572,6 +8721,7 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
         EditProductTab = "Info";
         EditProductImagePreview = string.Empty;
         ProductImageError = null;
+        CloseEditProductSellingUnit();
     }
 
     private Task HandleNewProductImageSelected(InputFileChangeEventArgs args) =>
