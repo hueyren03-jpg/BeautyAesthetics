@@ -158,9 +158,28 @@ public sealed class ServiceInventoryAC
         InventoryPackageRequestDTO inventory,
         CancellationToken cancellationToken)
     {
+        var serializedInventory = JsonSerializer.SerializeToElement(inventory.ObjInventory, JsonOptions);
+        var inventoryPayload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var property in serializedInventory.EnumerateObject())
+        {
+            inventoryPayload[property.Name] = property.Value.Clone();
+        }
+
+        inventoryPayload["lstMembershipCredit"] = inventory.MembershipCredits;
+
+        var payload = new
+        {
+            objInventory = inventoryPayload,
+            lstMasterAccount_Branch = inventory.Branches,
+            lstVendor_InventorySupplies = inventory.VendorSupplies,
+            lstMasterAccount_Location = inventory.Locations,
+            lstInventory_CommissionByGroup = inventory.CommissionGroups
+        };
+
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
         {
-            Content = JsonContent.Create(inventory, mediaType: JsonPatchMediaType, options: JsonOptions)
+            Content = JsonContent.Create(payload, mediaType: JsonPatchMediaType, options: JsonOptions)
         };
 
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
