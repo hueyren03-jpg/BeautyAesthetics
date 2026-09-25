@@ -1092,7 +1092,9 @@
     {
         if (firstRender)
         {
-            // Initialize the resizer after the component has rendered
+            try
+            {
+                // Initialize the resizer after the component has rendered
             await JS.InvokeVoidAsync("eval", @"
                 (function() {
                     const resizer = document.querySelector('.panel-resizer');
@@ -1134,8 +1136,12 @@
                     });
                 })();
             ");
-            _isPageInitializing = false;
-            StateHasChanged();
+            }
+            finally
+            {
+                _isPageInitializing = false;
+                StateHasChanged();
+            }
         }
         
         // Initialize signature canvas when signature modal is shown
