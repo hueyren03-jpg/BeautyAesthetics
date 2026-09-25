@@ -74,7 +74,18 @@ public sealed record InventoryPackageSummary(
     decimal MaxPrice = 0m,
     decimal Cost = 0m,
     string TaxCode = "",
-    bool IsTaxInclusive = false);
+    bool IsTaxInclusive = false,
+    IReadOnlyList<InventoryMembershipCreditSummary>? MembershipCredits = null);
+
+public sealed record InventoryMembershipCreditSummary(
+    string MemberTypeId,
+    decimal MemberCredit);
+
+public sealed record InventoryMembershipCreditEdit(
+    string MemberTypeId,
+    decimal MemberCredit,
+    string SaveAction = "Added",
+    bool IsDirty = true);
 
 public sealed record InventoryPackageLineEdit(
     string InventoryId,
@@ -111,6 +122,7 @@ public sealed record InventoryPackageEdit(
     decimal MaxPrice = 0m,
     decimal Cost = 0m,
     string TaxCode = "",
-    bool IsTaxInclusive = false);
+    bool IsTaxInclusive = false,
+    IReadOnlyCollection<InventoryMembershipCreditEdit>? MembershipCredits = null);
 
 
