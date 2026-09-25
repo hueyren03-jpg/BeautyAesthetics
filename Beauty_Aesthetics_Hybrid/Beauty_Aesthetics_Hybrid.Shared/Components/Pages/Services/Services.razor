@@ -2274,7 +2274,7 @@
                         <div class="service-record-view__identity-copy">
                             <span>Service record</span>
                             <h2 id="service-details-title">@FormatDisplay(ServiceDetailsItem.ServiceName)</h2>
-                            <p>SKU: @FormatDisplay(ServiceDetailsItem.Sku)</p>
+                            <p>Display Code: @FormatDisplay(ServiceDetailsItem.Sku)</p>
                         </div>
                     </div>
                     <div class="service-record-view__header-actions">
@@ -2288,30 +2288,53 @@
                     </div>
                 </div>
 
-                <div class="service-detail-modal__body">
-                    <section class="service-record-view__section">
-                        <div class="service-record-view__section-heading">
-                            <i class="bi bi-card-list" aria-hidden="true"></i>
-                            <h3>Service details</h3>
-                        </div>
+                <div class="service-record-view__body service-record-view__body--editor-aligned">
+                    <div class="service-record-view__tabs" role="tablist" aria-label="Service detail sections">
+                        <button type="button"
+                                class="@(ServiceDetailsTab == "Info" ? "active" : string.Empty)"
+                                aria-selected="@(ServiceDetailsTab == "Info")"
+                                @onclick='() => ServiceDetailsTab = "Info"'>
+                            Info
+                        </button>
+                        <button type="button"
+                                class="@(ServiceDetailsTab == "Advance" ? "active" : string.Empty)"
+                                aria-selected="@(ServiceDetailsTab == "Advance")"
+                                @onclick='() => ServiceDetailsTab = "Advance"'>
+                            Advance
+                        </button>
+                    </div>
 
-                        <dl class="service-record-view__fields">
-                            <div><dt>Item Code</dt><dd>@FormatDisplay(ServiceDetailsItem.Sku)</dd></div>
-                            <div><dt>Service Name</dt><dd>@FormatDisplay(ServiceDetailsItem.ServiceName)</dd></div>
-                            <div><dt>Section</dt><dd>@FormatDisplay(ServiceDetailsItem.Category)</dd></div>
-                            <div><dt>Status</dt><dd>@(ServiceDetailsItem.IsActive ? "Active" : "Inactive")</dd></div>
-                            <div><dt>Tax Code</dt><dd>@FormatDisplay(ServiceDetailsItem.TaxCode)</dd></div>
-                            <div><dt>Price Inclusive Tax</dt><dd>@(ServiceDetailsItem.IsTaxInclusive ? "Yes" : "No")</dd></div>
-                            <div><dt>Price (MYR)</dt><dd>MYR @ServiceDetailsItem.Price.ToString("N2")</dd></div>
-                            <div><dt>Cost (MYR)</dt><dd>MYR @ServiceDetailsItem.Cost.ToString("N2")</dd></div>
-                            <div><dt>Barcode</dt><dd>@FormatDisplay(ServiceDetailsItem.Barcode)</dd></div>
-                            <div><dt>UOM</dt><dd>@FormatDisplay(ServiceDetailsItem.UnitOfMeasure)</dd></div>
-                            <div><dt>Duration (Minutes)</dt><dd>@FormatDisplay(ServiceDetailsItem.DurationSpend)</dd></div>
-                            <div><dt>Buffer Time (Minutes)</dt><dd>@ServiceDetailsItem.BufferTimeMinutes</dd></div>
-                            <div><dt>Add To Package List</dt><dd>@(ServiceDetailsItem.IsBundle ? "Yes" : "No")</dd></div>
-                            <div class="service-record-view__field--wide"><dt>Description</dt><dd>@FormatDisplay(ServiceDetailsItem.Description)</dd></div>
-                        </dl>
-                    </section>
+                    @if (ServiceDetailsTab == "Info")
+                    {
+                        <section class="service-record-view__section service-record-view__section--tabbed">
+                            <dl class="service-record-view__fields">
+                                <div><dt>Display Code</dt><dd>@FormatDisplay(ServiceDetailsItem.Sku)</dd></div>
+                                <div><dt>Service Name</dt><dd>@FormatDisplay(ServiceDetailsItem.ServiceName)</dd></div>
+                                <div class="service-record-view__field--wide"><dt>Item Group</dt><dd>@FormatDisplay(ServiceDetailsItem.Category)</dd></div>
+                                <div><dt>Tax Code</dt><dd>@FormatDisplay(ServiceDetailsItem.TaxCode)</dd></div>
+                                <div><dt>Inclusive Tax</dt><dd>@(ServiceDetailsItem.IsTaxInclusive ? "Yes" : "No")</dd></div>
+                                <div><dt>Price (MYR)</dt><dd>MYR @ServiceDetailsItem.Price.ToString("N2")</dd></div>
+                                <div><dt>Cost (MYR)</dt><dd>MYR @ServiceDetailsItem.Cost.ToString("N2")</dd></div>
+                                <div class="service-record-view__field--wide">
+                                    <dt>Visible at Branch</dt>
+                                    <dd>@GetBranchDisplayName(ServiceDetailsItem.BranchId)</dd>
+                                </div>
+                            </dl>
+                        </section>
+                    }
+                    else
+                    {
+                        <section class="service-record-view__section service-record-view__section--tabbed">
+                            <dl class="service-record-view__fields">
+                                <div><dt>UOM</dt><dd>@FormatDisplay(ServiceDetailsItem.UnitOfMeasure)</dd></div>
+                                <div><dt>Duration (Minutes)</dt><dd>@FormatServiceDuration(ServiceDetailsItem.DurationSpend)</dd></div>
+                                <div class="service-record-view__field--wide">
+                                    <dt>Redeem Point</dt>
+                                    <dd>@(ServiceDetailsRedeemPoint > 0m ? ServiceDetailsRedeemPoint.ToString("0.##") : "Off")</dd>
+                                </div>
+                            </dl>
+                        </section>
+                    }
                 </div>
 
                 <div class="service-record-view__footer">
@@ -2433,96 +2456,151 @@
                         <div class="service-record-view__identity-copy">
                             <span>Package record</span>
                             <h2 id="package-details-title">@FormatDisplay(BundleDetailsItem.BundleName)</h2>
-                            <p>SKU: @FormatDisplay(BundleDetailsItem.SKU)</p>
+                            <p>Display Code: @FormatDisplay(BundleDetailsItem.SKU)</p>
                         </div>
                     </div>
                     <div class="service-record-view__header-actions">
-                        <span class="service-record-view__status service-record-view__status--@GetServiceDetailStatusTone(BundleDetailsItem.Status)">
-                            @FormatDisplay(BundleDetailsItem.Status)
+                        <span class="service-record-view__status service-record-view__status--@GetServiceDetailStatusTone(BundleDetailsItem.IsActive ? "Active" : "Inactive")">
+                            @(BundleDetailsItem.IsActive ? "Active" : "Inactive")
                         </span>
                         <button type="button" class="service-detail-modal__close" @onclick="CloseDetailModals" title="Close" aria-label="Close package details">
                             <i class="bi bi-x-lg"></i>
                         </button>
                     </div>
                 </div>
-                <div class="service-detail-modal__body">
-                    <div class="service-record-view__metrics service-record-view__metrics--three">
-                        <div class="service-record-view__metric">
-                            <span>Price</span>
-                            <strong>MYR @BundleDetailsItem.Price.ToString("N2")</strong>
-                        </div>
-                        <div class="service-record-view__metric">
-                            <span>Items included</span>
-                            <strong>@BundleDetailsItem.ServicesCount</strong>
-                        </div>
-                        <div class="service-record-view__metric">
-                            <span>Total duration</span>
-                            <strong>@BundleDetailsItem.TotalDuration min</strong>
-                        </div>
+
+                <div class="service-record-view__body service-record-view__body--editor-aligned">
+                    <div class="service-record-view__tabs service-record-view__tabs--three" role="tablist" aria-label="Package detail sections">
+                        <button type="button"
+                                class="@(BundleDetailsTab == "Info" ? "active" : string.Empty)"
+                                aria-selected="@(BundleDetailsTab == "Info")"
+                                @onclick='() => BundleDetailsTab = "Info"'>
+                            Info
+                        </button>
+                        <button type="button"
+                                class="@(BundleDetailsTab == "Items" ? "active" : string.Empty)"
+                                aria-selected="@(BundleDetailsTab == "Items")"
+                                @onclick='() => BundleDetailsTab = "Items"'>
+                            Items
+                            @if (BundleDetailsItem.ServiceLines.Count > 0)
+                            {
+                                <span class="service-record-view__tab-badge">@BundleDetailsItem.ServiceLines.Count</span>
+                            }
+                        </button>
+                        <button type="button"
+                                class="@(BundleDetailsTab == "Membership" ? "active" : string.Empty)"
+                                aria-selected="@(BundleDetailsTab == "Membership")"
+                                @onclick='() => BundleDetailsTab = "Membership"'>
+                            Membership
+                            @if (BundleDetailsItem.MembershipCredits.Count > 0)
+                            {
+                                <span class="service-record-view__tab-badge">@BundleDetailsItem.MembershipCredits.Count</span>
+                            }
+                        </button>
                     </div>
 
-                    <section class="service-record-view__section">
-                        <div class="service-record-view__section-heading">
-                            <i class="bi bi-card-list" aria-hidden="true"></i>
-                            <h3>Package fields</h3>
-                        </div>
-                        <dl class="service-record-view__fields">
-                            <div><dt>Package Name</dt><dd>@FormatDisplay(BundleDetailsItem.BundleName)</dd></div>
-                            <div><dt>Package SKU</dt><dd>@FormatDisplay(BundleDetailsItem.SKU)</dd></div>
-                            <div><dt>Section</dt><dd>@FormatDisplay(BundleDetailsItem.Section)</dd></div>
-                            <div><dt>Status</dt><dd>@(BundleDetailsItem.IsActive ? "Active" : "Inactive")</dd></div>
-                            <div><dt>Barcode</dt><dd>@FormatDisplay(BundleDetailsItem.Barcode)</dd></div>
-                            <div><dt>UOM</dt><dd>@FormatDisplay(BundleDetailsItem.UnitOfMeasure)</dd></div>
-                            <div><dt>Validity Days</dt><dd>@BundleDetailsItem.ValidityDays</dd></div>
-                            <div><dt>Working Branch</dt><dd>@FormatDisplay(BundleDetailsItem.BranchId)</dd></div>
-                            <div><dt>Credit Expiry (Days)</dt><dd>@BundleDetailsItem.MemberExpiryDays</dd></div>
-                            <div><dt>Member Type</dt><dd>@FormatDisplay(GetMemberTypeName(BundleDetailsItem.TriggeredMemberTypeId))</dd></div>
-                            <div><dt>Member Credit Amount</dt><dd>MYR @BundleDetailsItem.MemberMainAccountCredit.ToString("N2")</dd></div>
-                        </dl>
-                    </section>
-
-                    <section class="service-record-view__section">
-                        <div class="service-record-view__section-heading">
-                            <i class="bi bi-collection" aria-hidden="true"></i>
-                            <h3>Package Items</h3>
-                        </div>
-
-                        @if (!BundleDetailsItem.ServiceLines.Any())
-                        {
-                            <div class="senang-record-list__empty">No package items saved.</div>
-                        }
-                        else
-                        {
-                            <div class="senang-package-view-lines">
-                                <div class="senang-package-view-lines__header">
-                                    <span>Item</span>
-                                    <span>Type</span>
-                                    <span>Deferred</span>
-                                    <span>Unit Price</span>
-                                    <span>Qty</span>
-                                </div>
-                                @foreach (var line in BundleDetailsItem.ServiceLines)
+                    @if (BundleDetailsTab == "Info")
+                    {
+                        <section class="service-record-view__section service-record-view__section--tabbed">
+                            <dl class="service-record-view__fields">
+                                <div class="service-record-view__field--wide"><dt>Package Name</dt><dd>@FormatDisplay(BundleDetailsItem.BundleName)</dd></div>
+                                <div><dt>Display Code</dt><dd>@FormatDisplay(BundleDetailsItem.SKU)</dd></div>
+                                <div><dt>Item Group</dt><dd>@FormatDisplay(BundleDetailsItem.Section)</dd></div>
+                                <div><dt>Is Active</dt><dd>@(BundleDetailsItem.IsActive ? "Active" : "Inactive")</dd></div>
+                                <div><dt>Visible at Branch</dt><dd>@GetBranchDisplayName(BundleDetailsItem.BranchId)</dd></div>
+                                <div><dt>Tax Code</dt><dd>@FormatDisplay(BundleDetailsItem.TaxCode)</dd></div>
+                                <div><dt>Inclusive Tax</dt><dd>@(BundleDetailsItem.IsTaxInclusive ? "Yes" : "No")</dd></div>
+                                <div><dt>Price (MYR)</dt><dd>MYR @BundleDetailsItem.Price.ToString("N2")</dd></div>
+                                <div><dt>Cost (MYR)</dt><dd>MYR @BundleDetailsItem.Cost.ToString("N2")</dd></div>
+                                @if (BundleDetailsItem.ServiceLines.Count > 0)
                                 {
-                                    var product = InventoryItems.FirstOrDefault(item =>
-                                        string.Equals(item.MasterAccountId, line.ServiceId, StringComparison.OrdinalIgnoreCase));
-                                    var service = ServiceItems.FirstOrDefault(item =>
-                                        string.Equals(item.MasterAccountId, line.ServiceId, StringComparison.OrdinalIgnoreCase));
-                                    var isProduct = line.InventoryTypeId == 1 || (line.InventoryTypeId <= 0 && product is not null);
-                                    var itemName = isProduct
-                                        ? product?.Type ?? line.Description
-                                        : service?.ServiceName ?? line.Description;
-                                    <div class="senang-package-view-lines__row">
-                                        <strong>@FormatDisplay(itemName)</strong>
-                                        <span>@(isProduct ? "Product" : "Service")</span>
-                                        <span>@(line.IsDeferred ? "Yes" : "No")</span>
-                                        <span>MYR @line.UnitPrice.ToString("N2")</span>
-                                        <span>@line.Quantity.ToString("N0")</span>
-                                    </div>
+                                    <div class="service-record-view__field--wide"><dt>Added Items</dt><dd>@BundleDetailsItem.ServiceLines.Count</dd></div>
                                 }
-                            </div>
-                        }
-                    </section>
+                            </dl>
+                        </section>
+                    }
+                    else if (BundleDetailsTab == "Items")
+                    {
+                        <section class="service-record-view__section service-record-view__section--tabbed">
+                            @if (!BundleDetailsItem.ServiceLines.Any())
+                            {
+                                <div class="senang-record-list__empty">No items added yet.</div>
+                            }
+                            else
+                            {
+                                <div class="senang-package-view-lines">
+                                    <div class="senang-package-view-lines__header">
+                                        <span>Item</span>
+                                        <span>Deferred</span>
+                                        <span>Unit PV</span>
+                                        <span>UOM</span>
+                                        <span>Qty</span>
+                                    </div>
+                                    @foreach (var line in BundleDetailsItem.ServiceLines)
+                                    {
+                                        var product = InventoryItems.FirstOrDefault(item =>
+                                            string.Equals(item.MasterAccountId, line.ServiceId, StringComparison.OrdinalIgnoreCase));
+                                        var service = ServiceItems.FirstOrDefault(item =>
+                                            string.Equals(item.MasterAccountId, line.ServiceId, StringComparison.OrdinalIgnoreCase));
+                                        var isProduct = line.InventoryTypeId == 1 || (line.InventoryTypeId <= 0 && product is not null);
+                                        var itemName = isProduct
+                                            ? product?.Type ?? line.Description
+                                            : service?.ServiceName ?? line.Description;
+                                        var itemGroup = isProduct
+                                            ? product?.Category
+                                            : service?.Category;
+                                        <div class="senang-package-view-lines__row">
+                                            <div>
+                                                <strong>@FormatDisplay(itemName)</strong>
+                                                <small>@(isProduct ? "Product" : "Service") · @FormatDisplay(itemGroup)</small>
+                                            </div>
+                                            <span>@(line.IsDeferred ? "Yes" : "No")</span>
+                                            <span>MYR @line.UnitPrice.ToString("N2")</span>
+                                            <span>@FormatDisplay(line.UnitOfMeasure)</span>
+                                            <span>@line.Quantity.ToString("0.##")</span>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </section>
+                    }
+                    else
+                    {
+                        <section class="service-record-view__section service-record-view__section--tabbed">
+                            <dl class="service-record-view__fields">
+                                <div class="service-record-view__field--wide">
+                                    <dt>Credit Expiry (Days)</dt>
+                                    <dd>@BundleDetailsItem.MemberExpiryDays</dd>
+                                </div>
+                            </dl>
+
+                            @if (BundleDetailsItem.MembershipCredits.Count > 0)
+                            {
+                                <div class="service-record-membership-list">
+                                    <div class="service-record-membership-list__header">
+                                        <span>Member Type</span>
+                                        <span>Credit Amount</span>
+                                    </div>
+                                    @foreach (var entry in BundleDetailsItem.MembershipCredits)
+                                    {
+                                        <div class="service-record-membership-list__row">
+                                            <div>
+                                                <strong>@GetBundleMemberTypeName(entry.MemberTypeId)</strong>
+                                                <small>@entry.MemberTypeId</small>
+                                            </div>
+                                            <span>@entry.MemberCredit.ToString("N2")</span>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="senang-record-list__empty">No membership type configured.</div>
+                            }
+                        </section>
+                    }
                 </div>
+
                 <div class="service-record-view__footer">
                     <button type="button"
                             class="service-record-view__footer-secondary"
@@ -2538,6 +2616,7 @@
             </div>
         </div>
     }
+
 </section>
 
 
@@ -2581,8 +2660,11 @@
     private int index;
     private ServiceViewModel.ServiceItem? SelectedService { get; set; }
     private ServiceViewModel.ServiceItem? ServiceDetailsItem { get; set; }
+    private string ServiceDetailsTab { get; set; } = "Info";
+    private decimal ServiceDetailsRedeemPoint { get; set; }
     private MembershipViewModel.MemberCredit? MemberCreditDetailsItem { get; set; }
     private BundleItem? BundleDetailsItem { get; set; }
+    private string BundleDetailsTab { get; set; } = "Info";
     private string? ExpandedMobileServiceSku { get; set; }
     private string? ExpandedMobileMemberCreditCode { get; set; }
     private string? ExpandedMobileBundleSku { get; set; }
@@ -4448,6 +4530,8 @@
 
     private async Task ShowServiceDetails(ServiceViewModel.ServiceItem service)
     {
+        ServiceDetailsTab = "Info";
+        ServiceDetailsRedeemPoint = 0m;
         ServiceDetailsItem = service;
 
         if (!string.IsNullOrWhiteSpace(service.MasterAccountId))
@@ -4460,6 +4544,12 @@
             else
             {
                 ServiceApiError = result.ErrorMessage ?? "Unable to refresh the full service record.";
+            }
+
+            var editorResult = await ServiceItemService.LoadServiceEditorDetailsAsync(service.MasterAccountId);
+            if (editorResult.Success && editorResult.Value is not null)
+            {
+                ServiceDetailsRedeemPoint = Math.Max(0m, editorResult.Value.RedeemPoint);
             }
         }
 
@@ -4476,6 +4566,7 @@
 
     private void ShowBundleDetails(BundleItem bundle)
     {
+        BundleDetailsTab = "Info";
         BundleDetailsItem = bundle;
         ServiceDetailsItem = null;
         MemberCreditDetailsItem = null;
@@ -4484,8 +4575,11 @@
     private void CloseDetailModals()
     {
         ServiceDetailsItem = null;
+        ServiceDetailsTab = "Info";
+        ServiceDetailsRedeemPoint = 0m;
         MemberCreditDetailsItem = null;
         BundleDetailsItem = null;
+        BundleDetailsTab = "Info";
     }
 
     private async Task EditServiceFromDetails()
@@ -4522,6 +4616,29 @@
         var bundle = BundleDetailsItem;
         CloseDetailModals();
         EditBundle(bundle);
+    }
+
+    private string GetBranchDisplayName(string? branchId)
+    {
+        if (string.IsNullOrWhiteSpace(branchId))
+        {
+            return "-";
+        }
+
+        return BranchSession.AvailableBranches.FirstOrDefault(branch =>
+            string.Equals(branch.Id, branchId, StringComparison.OrdinalIgnoreCase))?.DisplayName
+            ?? branchId.Trim();
+    }
+
+    private static string FormatServiceDuration(string? duration)
+    {
+        if (string.IsNullOrWhiteSpace(duration))
+        {
+            return "0";
+        }
+
+        var token = duration.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        return int.TryParse(token, out var minutes) ? minutes.ToString() : duration.Trim();
     }
 
     private static string FormatPointDateRange(DateTime? from, DateTime? to)
