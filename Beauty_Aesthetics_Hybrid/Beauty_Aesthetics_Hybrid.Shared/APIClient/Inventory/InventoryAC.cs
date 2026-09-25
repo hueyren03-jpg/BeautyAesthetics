@@ -139,9 +139,46 @@ public sealed class InventoryAC
         InventoryPackageRequestDTO inventory,
         CancellationToken cancellationToken)
     {
+        var serializedInventory = JsonSerializer.SerializeToElement(inventory.ObjInventory, JsonOptions);
+        var inventoryPayload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var property in serializedInventory.EnumerateObject())
+        {
+            inventoryPayload[property.Name] = property.Value.Clone();
+        }
+
+        if (inventory.SellingUnits.Count > 0)
+        {
+            inventoryPayload["lstSKU"] = inventory.SellingUnits;
+            inventoryPayload["hasUOM"] = true;
+            inventoryPayload["uOMBase"] = 1;
+        }
+        else
+        {
+            inventoryPayload["lstSKU"] = Array.Empty<InventoryProductSkuDTO>();
+            inventoryPayload["hasUOM"] = false;
+        }
+
+        inventoryPayload["staffCommissionA"] = inventory.StaffCommissionA;
+        inventoryPayload["staffCommissionB"] = inventory.StaffCommissionB;
+        inventoryPayload["staffCommissionC"] = inventory.StaffCommissionC;
+        inventoryPayload["PointToRedeem"] = inventory.PointToRedeem;
+        inventoryPayload["AllowPointRedemption"] = inventory.AllowPointRedemption;
+
+        var payload = new
+        {
+            objInventory = inventoryPayload,
+            lstMasterAccount_Branch = inventory.Branches,
+            lstVendor_InventorySupplies = inventory.VendorSupplies,
+            lstMasterAccount_Location = inventory.Locations,
+            lstInventory_CommissionByGroup = inventory.CommissionGroups,
+            PointToRedeem = inventory.PointToRedeem,
+            AllowPointRedemption = inventory.AllowPointRedemption
+        };
+
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
         {
-            Content = JsonContent.Create(inventory, mediaType: JsonPatchMediaType, options: JsonOptions)
+            Content = JsonContent.Create(payload, mediaType: JsonPatchMediaType, options: JsonOptions)
         };
 
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
