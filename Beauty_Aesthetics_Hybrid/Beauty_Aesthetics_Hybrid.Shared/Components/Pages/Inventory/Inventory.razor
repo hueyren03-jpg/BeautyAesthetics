@@ -194,34 +194,57 @@
                                 {
                                     <div class="inventory__alert inventory__alert--error">@ProductApiError</div>
                                 }
-                                <div class="product-image-editor">
-                                    <div class="product-image-editor__preview">
-                                        @if (!string.IsNullOrWhiteSpace(NewProductImageUrl))
-                                        {
-                                            <img src="@NewProductImageUrl" alt="New product preview" />
-                                        }
-                                        else
-                                        {
-                                            <i class="bi bi-image"></i>
-                                        }
+                                <div class="record-image-editor">
+                                    <div class="record-image-editor__copy">
+                                        <label>Product Image</label>
+                                        <span>Add a clear image so staff can identify the product quickly.</span>
                                     </div>
-                                    <div class="product-image-editor__content">
-                                        <strong>Product image</strong>
-                                        <span>JPG, PNG or WEBP, up to 5 MB.</span>
-                                        <div class="product-image-editor__actions">
-                                            <label for="new-product-image" class="product-image-editor__choose">
-                                                <i class="bi bi-upload"></i>
-                                                @(IsProductImageUploading ? "Uploading..." : "Choose image")
-                                            </label>
-                                            <InputFile id="new-product-image" OnChange="HandleNewProductImageSelected" accept="image/jpeg,image/png,image/webp" disabled="@IsProductImageUploading" />
+                                    <div class="record-image-editor__control">
+                                        <InputFile id="new-product-image"
+                                                   class="record-image-editor__input"
+                                                   style="display:none"
+                                                   OnChange="HandleNewProductImageSelected"
+                                                   accept="image/jpeg,image/png,image/webp"
+                                                   disabled="@IsProductImageUploading" />
+                                        <label for="new-product-image"
+                                               class="record-image-editor__surface @(string.IsNullOrWhiteSpace(NewProductImageUrl) ? string.Empty : "has-image")"
+                                               title="Upload or replace product image">
                                             @if (!string.IsNullOrWhiteSpace(NewProductImageUrl))
                                             {
-                                                <button type="button" class="product-image-editor__remove" @onclick="RemoveNewProductImage"><i class="bi bi-trash3"></i> Remove</button>
+                                                <img src="@NewProductImageUrl" alt="New product preview" />
+                                                <span class="record-image-editor__overlay">
+                                                    <i class="bi bi-camera"></i>
+                                                    <strong>Replace</strong>
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="record-image-editor__empty">
+                                                    <span class="record-image-editor__icon"><i class="bi bi-image"></i></span>
+                                                    <strong>Upload image</strong>
+                                                    <small>JPG, PNG or WEBP · Max 5 MB</small>
+                                                    <span class="record-image-editor__choose"><i class="bi bi-upload"></i> Choose image</span>
+                                                </span>
+                                            }
+                                        </label>
+                                        <div class="record-image-editor__actions">
+                                            @if (IsProductImageUploading)
+                                            {
+                                                <span class="record-image-editor__status"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Uploading...</span>
+                                            }
+                                            else if (!string.IsNullOrWhiteSpace(NewProductImageUrl))
+                                            {
+                                                <span class="record-image-editor__status record-image-editor__status--ready"><i class="bi bi-check-circle-fill"></i> Image ready</span>
+                                                <button type="button"
+                                                        class="record-image-editor__remove"
+                                                        @onclick="RemoveNewProductImage">
+                                                    <i class="bi bi-trash3"></i> Remove
+                                                </button>
                                             }
                                         </div>
                                         @if (!string.IsNullOrWhiteSpace(ProductImageError))
                                         {
-                                            <small class="product-image-editor__error" role="alert">@ProductImageError</small>
+                                            <div class="record-image-editor__error" role="alert"><i class="bi bi-exclamation-circle"></i> @ProductImageError</div>
                                         }
                                     </div>
                                 </div>
@@ -352,44 +375,57 @@
                             }
 
                             <form class="edit-product-form" @onsubmit:preventDefault>
-                                <div class="edit-product-image-section">
-                                    <label for="edit-product-image"
-                                           class="edit-product-image-picker"
-                                           title="Change product image">
-                                        @if (!string.IsNullOrWhiteSpace(EditProductImageUrl))
-                                        {
-                                            <img src="@EditProductImageUrl" alt="@EditProduct.Type" />
-                                        }
-                                        else
-                                        {
-                                            <i class="bi bi-image"></i>
-                                            <span>Add image</span>
-                                        }
-                                        <span class="edit-product-image-picker__overlay">
-                                            <i class="bi bi-camera"></i>
-                                            Change
-                                        </span>
-                                    </label>
-                                    <InputFile id="edit-product-image"
-                                               OnChange="HandleEditProductImageSelected"
-                                               accept="image/jpeg,image/png,image/webp"
-                                               disabled="@IsProductImageUploading" />
-
-                                    <div class="edit-product-image-section__meta">
-                                        <strong>Product image</strong>
-                                        <span>JPG, PNG or WEBP, up to 5 MB.</span>
-                                        @if (!string.IsNullOrWhiteSpace(EditProductImageUrl))
-                                        {
-                                            <button type="button"
-                                                    class="edit-product-image-remove"
-                                                    @onclick="RemoveEditProductImage">
-                                                <i class="bi bi-trash3"></i>
-                                                Remove image
-                                            </button>
-                                        }
+                                <div class="record-image-editor">
+                                    <div class="record-image-editor__copy">
+                                        <label>Product Image</label>
+                                        <span>Add a clear image so staff can identify the product quickly.</span>
+                                    </div>
+                                    <div class="record-image-editor__control">
+                                        <InputFile id="edit-product-image"
+                                                   class="record-image-editor__input"
+                                                   style="display:none"
+                                                   OnChange="HandleEditProductImageSelected"
+                                                   accept="image/jpeg,image/png,image/webp"
+                                                   disabled="@IsProductImageUploading" />
+                                        <label for="edit-product-image"
+                                               class="record-image-editor__surface @(string.IsNullOrWhiteSpace(EditProductImageUrl) ? string.Empty : "has-image")"
+                                               title="Upload or replace product image">
+                                            @if (!string.IsNullOrWhiteSpace(EditProductImageUrl))
+                                            {
+                                                <img src="@EditProductImageUrl" alt="@EditProduct.Type" />
+                                                <span class="record-image-editor__overlay">
+                                                    <i class="bi bi-camera"></i>
+                                                    <strong>Replace</strong>
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="record-image-editor__empty">
+                                                    <span class="record-image-editor__icon"><i class="bi bi-image"></i></span>
+                                                    <strong>Upload image</strong>
+                                                    <small>JPG, PNG or WEBP · Max 5 MB</small>
+                                                    <span class="record-image-editor__choose"><i class="bi bi-upload"></i> Choose image</span>
+                                                </span>
+                                            }
+                                        </label>
+                                        <div class="record-image-editor__actions">
+                                            @if (IsProductImageUploading)
+                                            {
+                                                <span class="record-image-editor__status"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Uploading...</span>
+                                            }
+                                            else if (!string.IsNullOrWhiteSpace(EditProductImageUrl))
+                                            {
+                                                <span class="record-image-editor__status record-image-editor__status--ready"><i class="bi bi-check-circle-fill"></i> Image ready</span>
+                                                <button type="button"
+                                                        class="record-image-editor__remove"
+                                                        @onclick="RemoveEditProductImage">
+                                                    <i class="bi bi-trash3"></i> Remove
+                                                </button>
+                                            }
+                                        </div>
                                         @if (!string.IsNullOrWhiteSpace(ProductImageError))
                                         {
-                                            <small class="product-image-editor__error" role="alert">@ProductImageError</small>
+                                            <div class="record-image-editor__error" role="alert"><i class="bi bi-exclamation-circle"></i> @ProductImageError</div>
                                         }
                                     </div>
                                 </div>
