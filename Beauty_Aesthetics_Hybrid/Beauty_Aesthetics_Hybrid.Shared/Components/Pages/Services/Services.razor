@@ -101,6 +101,15 @@
     </div>
 
     <div class="services__content">
+        @if (IsServicesPageLoading)
+        {
+            <div class="services__page-loading" role="status" aria-live="polite">
+                <div class="services__page-loading-content">
+                    <span class="spinner-border" aria-hidden="true"></span>
+                    <span>@ServicesPageLoadingMessage</span>
+                </div>
+            </div>
+        }
         @if (ActiveTab == "Services")
         {
             <div class="services__section">
@@ -130,13 +139,6 @@
                                                  ContextLabel="Services"
                                                  ResultCount="@FilteredServices.Count()" />
                     </div>
-
-                    @if (IsServiceApiLoading)
-                    {
-                        <div class="services__api-message services__api-message--loading">
-                            Loading services...
-                        </div>
-                    }
 
                     @if (IsServiceDeleteMode)
                     {
@@ -621,13 +623,6 @@
                             </div>
                         </div>
                         <div class="membership-options__card-body">
-                            @if (IsMemberTypeApiLoading)
-                            {
-                                <div class="services__api-message services__api-message--loading">
-                                    Loading member types...
-                                </div>
-                            }
-
                             @if (IsMemberTypeDeleteMode)
                             {
                                 <div class="membership-options__delete-bar">
@@ -913,13 +908,6 @@
                             </div>
                         </div>
                         <div class="membership-options__card-body">
-                            @if (IsMemberPointApiLoading)
-                            {
-                                <div class="services__api-message services__api-message--loading">
-                                    Loading member point rules...
-                                </div>
-                            }
-
                             @if (IsMemberPointDeleteMode)
                             {
                                 <div class="membership-options__delete-bar">
@@ -1425,13 +1413,6 @@
                                                  ContextLabel="Services"
                                                  ResultCount="@FilteredBundles.Count()" />
                     </div>
-
-                    @if (IsBundleApiLoading)
-                    {
-                        <div class="services__api-message services__api-message--loading">
-                            Loading packages...
-                        </div>
-                    }
 
                     @if (IsBundleDeleteMode)
                     {
@@ -2646,6 +2627,34 @@
 
     private string ActiveTab { get; set; } = "Services";
     private string MembershipConfigTab { get; set; } = "MemberType";
+
+    private bool IsServicesPageLoading => ActiveTab switch
+    {
+        "Services" => IsServiceApiLoading,
+        "Bundle" => IsBundleApiLoading,
+        "Membership" => MembershipConfigTab switch
+        {
+            "MemberType" => IsMemberTypeApiLoading,
+            "MemberCredit" => IsMemberCreditApiLoading,
+            "MemberPoint" => IsMemberPointApiLoading,
+            _ => false
+        },
+        _ => false
+    };
+
+    private string ServicesPageLoadingMessage => ActiveTab switch
+    {
+        "Services" => "Loading services...",
+        "Bundle" => "Loading packages...",
+        "Membership" => MembershipConfigTab switch
+        {
+            "MemberType" => "Loading member types...",
+            "MemberCredit" => "Loading member credits...",
+            "MemberPoint" => "Loading member point rules...",
+            _ => "Loading membership configuration..."
+        },
+        _ => "Loading..."
+    };
     private MembershipViewModel MembershipViewModel { get; } = new();
     private InventoryViewModel InventoryViewModel { get; } = new();
 
