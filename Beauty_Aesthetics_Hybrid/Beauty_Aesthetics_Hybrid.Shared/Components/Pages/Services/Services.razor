@@ -347,36 +347,58 @@
                                 @if (ServiceEditorTab == "Info")
                                 {
                                     <div class="senang-editor__form-stack">
-                                        <div class="senang-editor__identity senang-editor__identity--linked">
-                                            <label class="senang-editor__image-placeholder senang-editor__image-picker"
-                                                   title="Upload or replace service image">
-                                                <InputFile class="senang-editor__image-input"
+                                        <div class="record-image-editor">
+                                            <div class="record-image-editor__copy">
+                                                <label>Service Image</label>
+                                                <span>Add a clear image so staff can identify the service quickly.</span>
+                                            </div>
+                                            <div class="record-image-editor__control">
+                                                <InputFile id="serviceImageUpload"
+                                                           class="record-image-editor__input"
+                                                           style="display:none"
                                                            OnChange="HandleServiceImageSelected"
                                                            accept="image/jpeg,image/png,image/webp" />
-                                                @if (!string.IsNullOrWhiteSpace(ServiceImagePreview))
-                                                {
-                                                    <img src="@ServiceImagePreview" alt="@(string.IsNullOrWhiteSpace(NewServiceName) ? "Service image" : NewServiceName)" />
-                                                }
-                                                else
-                                                {
-                                                    <i class="bi bi-image"></i>
-                                                    <span>Service Image</span>
-                                                }
-                                            </label>
-                                            <div class="senang-editor__image-actions">
-                                                <span>@(IsServiceImageUploading ? "Uploading image..." : "Click image to upload or replace")</span>
-                                                @if (!string.IsNullOrWhiteSpace(ServiceImagePreview) ||
-                                                     !string.IsNullOrWhiteSpace(NewServiceImageFileName))
-                                                {
-                                                    <button type="button"
-                                                            disabled="@IsServiceImageUploading"
-                                                            @onclick="RemoveServiceImage">
-                                                        Remove image
-                                                    </button>
-                                                }
+                                                <label for="serviceImageUpload"
+                                                       class="record-image-editor__surface @(string.IsNullOrWhiteSpace(ServiceImagePreview) ? string.Empty : "has-image")"
+                                                       title="Upload or replace service image">
+                                                    @if (!string.IsNullOrWhiteSpace(ServiceImagePreview))
+                                                    {
+                                                        <img src="@ServiceImagePreview"
+                                                             alt="@(string.IsNullOrWhiteSpace(NewServiceName) ? "Service image" : NewServiceName)" />
+                                                        <span class="record-image-editor__overlay">
+                                                            <i class="bi bi-camera"></i>
+                                                            <strong>Replace</strong>
+                                                        </span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="record-image-editor__empty">
+                                                            <span class="record-image-editor__icon"><i class="bi bi-image"></i></span>
+                                                            <strong>Upload image</strong>
+                                                            <small>JPG, PNG or WEBP · Max 5 MB</small>
+                                                            <span class="record-image-editor__choose"><i class="bi bi-upload"></i> Choose image</span>
+                                                        </span>
+                                                    }
+                                                </label>
+                                                <div class="record-image-editor__actions">
+                                                    @if (IsServiceImageUploading)
+                                                    {
+                                                        <span class="record-image-editor__status"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Uploading...</span>
+                                                    }
+                                                    else if (!string.IsNullOrWhiteSpace(ServiceImagePreview) ||
+                                                             !string.IsNullOrWhiteSpace(NewServiceImageFileName))
+                                                    {
+                                                        <span class="record-image-editor__status record-image-editor__status--ready"><i class="bi bi-check-circle-fill"></i> Image ready</span>
+                                                        <button type="button"
+                                                                class="record-image-editor__remove"
+                                                                @onclick="RemoveServiceImage">
+                                                            <i class="bi bi-trash3"></i> Remove
+                                                        </button>
+                                                    }
+                                                </div>
                                                 @if (!string.IsNullOrWhiteSpace(ServiceImageError))
                                                 {
-                                                    <small>@ServiceImageError</small>
+                                                    <div class="record-image-editor__error"><i class="bi bi-exclamation-circle"></i> @ServiceImageError</div>
                                                 }
                                             </div>
                                         </div>
@@ -1640,36 +1662,58 @@
                                 @if (BundleEditorTab == "Info")
                                 {
                                     <div class="senang-package-form-section">
-                                        <div class="senang-editor__identity senang-editor__identity--linked">
-                                            <label class="senang-editor__image-placeholder senang-editor__image-placeholder--package senang-editor__image-picker"
-                                                   title="Upload or replace package image">
-                                                <InputFile class="senang-editor__image-input"
+                                        <div class="record-image-editor record-image-editor--package">
+                                            <div class="record-image-editor__copy">
+                                                <label>Package Image</label>
+                                                <span>Add a clear image so the package is easy to recognise at a glance.</span>
+                                            </div>
+                                            <div class="record-image-editor__control">
+                                                <InputFile id="packageImageUpload"
+                                                           class="record-image-editor__input"
+                                                           style="display:none"
                                                            OnChange="HandlePackageImageSelected"
                                                            accept="image/jpeg,image/png,image/webp" />
-                                                @if (!string.IsNullOrWhiteSpace(BundleImagePreview))
-                                                {
-                                                    <img src="@BundleImagePreview" alt="@(string.IsNullOrWhiteSpace(NewBundleName) ? "Package image" : NewBundleName)" />
-                                                }
-                                                else
-                                                {
-                                                    <i class="bi bi-image"></i>
-                                                    <span>Package Image</span>
-                                                }
-                                            </label>
-                                            <div class="senang-editor__image-actions">
-                                                <span>@(IsBundleImageUploading ? "Uploading image..." : "Click image to upload or replace")</span>
-                                                @if (!string.IsNullOrWhiteSpace(BundleImagePreview) ||
-                                                     !string.IsNullOrWhiteSpace(NewBundleImageFileName))
-                                                {
-                                                    <button type="button"
-                                                            disabled="@IsBundleImageUploading"
-                                                            @onclick="RemovePackageImage">
-                                                        Remove image
-                                                    </button>
-                                                }
+                                                <label for="packageImageUpload"
+                                                       class="record-image-editor__surface @(string.IsNullOrWhiteSpace(BundleImagePreview) ? string.Empty : "has-image")"
+                                                       title="Upload or replace package image">
+                                                    @if (!string.IsNullOrWhiteSpace(BundleImagePreview))
+                                                    {
+                                                        <img src="@BundleImagePreview"
+                                                             alt="@(string.IsNullOrWhiteSpace(NewBundleName) ? "Package image" : NewBundleName)" />
+                                                        <span class="record-image-editor__overlay">
+                                                            <i class="bi bi-camera"></i>
+                                                            <strong>Replace</strong>
+                                                        </span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="record-image-editor__empty">
+                                                            <span class="record-image-editor__icon"><i class="bi bi-box-seam"></i></span>
+                                                            <strong>Upload image</strong>
+                                                            <small>JPG, PNG or WEBP · Max 5 MB</small>
+                                                            <span class="record-image-editor__choose"><i class="bi bi-upload"></i> Choose image</span>
+                                                        </span>
+                                                    }
+                                                </label>
+                                                <div class="record-image-editor__actions">
+                                                    @if (IsBundleImageUploading)
+                                                    {
+                                                        <span class="record-image-editor__status"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Uploading...</span>
+                                                    }
+                                                    else if (!string.IsNullOrWhiteSpace(BundleImagePreview) ||
+                                                             !string.IsNullOrWhiteSpace(NewBundleImageFileName))
+                                                    {
+                                                        <span class="record-image-editor__status record-image-editor__status--ready"><i class="bi bi-check-circle-fill"></i> Image ready</span>
+                                                        <button type="button"
+                                                                class="record-image-editor__remove"
+                                                                @onclick="RemovePackageImage">
+                                                            <i class="bi bi-trash3"></i> Remove
+                                                        </button>
+                                                    }
+                                                </div>
                                                 @if (!string.IsNullOrWhiteSpace(BundleImageError))
                                                 {
-                                                    <small>@BundleImageError</small>
+                                                    <div class="record-image-editor__error"><i class="bi bi-exclamation-circle"></i> @BundleImageError</div>
                                                 }
                                             </div>
                                         </div>
