@@ -15,15 +15,6 @@ public sealed class InventoryPackageRequestDTO
     [JsonIgnore]
     public List<InventoryProductSkuDTO> SellingUnits { get; set; } = new();
 
-    [JsonIgnore]
-    public string? StaffCommissionA { get; set; }
-
-    [JsonIgnore]
-    public string? StaffCommissionB { get; set; }
-
-    [JsonIgnore]
-    public string? StaffCommissionC { get; set; }
-
     [JsonPropertyName("PointToRedeem")]
     public decimal? PointToRedeem { get; set; }
 
@@ -125,15 +116,6 @@ public sealed class InventoryPackageLoadRecordDTO
 
     [JsonPropertyName("lstSKU")]
     public List<InventoryProductSkuDTO>? SellingUnits { get; set; }
-
-    [JsonPropertyName("staffCommissionA")]
-    public string? StaffCommissionA { get; set; }
-
-    [JsonPropertyName("staffCommissionB")]
-    public string? StaffCommissionB { get; set; }
-
-    [JsonPropertyName("staffCommissionC")]
-    public string? StaffCommissionC { get; set; }
 
     [JsonPropertyName("pointToRedeem")]
     public decimal? PointToRedeem { get; set; }
