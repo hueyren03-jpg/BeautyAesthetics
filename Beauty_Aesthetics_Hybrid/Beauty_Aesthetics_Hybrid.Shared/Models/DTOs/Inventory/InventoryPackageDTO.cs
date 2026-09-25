@@ -7,7 +7,10 @@ namespace Beauty_Aesthetics_WebPos.Models.DTOs;
 public sealed class InventoryPackageRequestDTO
 {
     [JsonPropertyName("objInventory")]
-    public JsonElement ObjInventory { get; set; }
+    public InventoryDM ObjInventory { get; set; } = new();
+
+    [JsonIgnore]
+    public List<InventoryMembershipCreditDTO> MembershipCredits { get; set; } = new()
 
     [JsonPropertyName("lstMasterAccount_Branch")]
     public List<InventoryBranchDTO> Branches { get; set; } = new();
