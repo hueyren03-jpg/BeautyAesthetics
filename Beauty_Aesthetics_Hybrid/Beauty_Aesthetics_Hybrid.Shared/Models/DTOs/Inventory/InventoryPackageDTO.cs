@@ -10,7 +10,7 @@ public sealed class InventoryPackageRequestDTO
     public InventoryDM ObjInventory { get; set; } = new();
 
     [JsonIgnore]
-    public List<InventoryMembershipCreditDTO> MembershipCredits { get; set; } = new()
+    public List<InventoryMembershipCreditDTO> MembershipCredits { get; set; } = new();
 
     [JsonPropertyName("lstMasterAccount_Branch")]
     public List<InventoryBranchDTO> Branches { get; set; } = new();
