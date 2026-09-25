@@ -122,6 +122,15 @@
     </div>
 
     <div class="inventory__content">
+        @if (IsInventoryPageLoading)
+        {
+            <div class="inventory__page-loading" role="status" aria-live="polite">
+                <div class="inventory__page-loading-content">
+                    <span class="spinner-border" aria-hidden="true"></span>
+                    <span>@InventoryPageLoadingMessage</span>
+                </div>
+            </div>
+        }
         @if (ActiveTab == "Products")
         {
             <div class="inventory__toolbar">
@@ -145,11 +154,6 @@
                 </div>
                 <AdvancedInventoryFilter Columns="@ProductFilterColumns" OnApply="@HandleProductFiltersApplied" OnClear="@HandleProductFiltersCleared" ModuleName="Products" ResultCount="@FilteredItems.Count()" />
             </div>
-
-            @if (IsProductApiLoading)
-            {
-                <div class="inventory__api-message">Loading products...</div>
-            }
 
             @if (IsDeleteMode)
             {
@@ -2182,10 +2186,6 @@
                     <AdvancedInventoryFilter Columns="@TransferHistoryMultiFilterColumns" OnApply="@HandleTransferHistoryMultiFiltersApplied" OnClear="@HandleTransferHistoryMultiFiltersCleared" ModuleName="Stock Transfer History" ResultCount="@FilteredCombinedHistory.Count()" />
                 </div>
 
-                @if (IsStockTransferApiLoading)
-                {
-                    <div class="inventory__api-message" role="status">Loading stock transfers...</div>
-                }
                 @if (IsTransferHistoryPrintModeActive)
                 {
                     <div class="inventory__delete-bar">
@@ -3397,11 +3397,6 @@
                             </p>
                         }
                     </section>
-                }
-
-                @if (IsGRNApiLoading)
-                {
-                    <div class="inventory__api-message" role="status">Loading GRN records...</div>
                 }
 
                 @if (IsGRNDeleteMode)
@@ -4719,10 +4714,46 @@
     private bool IsAddGRNFormVisible { get; set; }
     private bool IsGRNEditMode { get; set; }
     private bool IsStockTransferApiLoading { get; set; }
+    private bool IsInventoryOptionsApiLoading { get; set; }
+
+    private bool IsInventoryPageLoading => ActiveTab switch
+    {
+        "Products" => IsProductApiLoading,
+        "InventoryOptions" => IsInventoryOptionsApiLoading,
+        "TransferOrders" => IsStockTransferApiLoading || IsPendingStockReceiptsLoading,
+        "ReturnedStock" => IsGINApiLoading,
+        "GRN" => IsGRNApiLoading,
+        _ => false
+    };
+
+    private string InventoryPageLoadingMessage => ActiveTab switch
+    {
+        "Products" => "Loading products...",
+        "InventoryOptions" => "Loading inventory options...",
+        "TransferOrders" => "Loading stock transfers...",
+        "ReturnedStock" => "Loading GIN records...",
+        "GRN" => "Loading GRN records...",
+        _ => "Loading inventory..."
+    };
 
     private string PurchaseOrderSearchQuery { get; set; } = string.Empty;
     private int ProductsPageSize { get; set; } = 10;
     private bool IsSortAscending { get; set; } = true;
+
+    private async Task LoadInventoryOptionsAsync()
+    {
+        IsInventoryOptionsApiLoading = true;
+        try
+        {
+            await Task.WhenAll(
+                LoadBrandsAsync(),
+                LoadCategoriesAsync());
+        }
+        finally
+        {
+            IsInventoryOptionsApiLoading = false;
+        }
+    }
 
     private async Task SetActiveTab(string tab)
     {
@@ -4737,9 +4768,7 @@
         switch (tab)
         {
             case "InventoryOptions":
-                await Task.WhenAll(
-                    LoadBrandsAsync(),
-                    LoadCategoriesAsync());
+                await LoadInventoryOptionsAsync();
                 break;
             case "GRN":
                 await LoadGRNsAsync();
@@ -6273,8 +6302,7 @@
             LoadGRNsAsync(),
             LoadGINsAsync(),
             LoadPendingStockReceiptsAsync(),
-            LoadBrandsAsync(),
-            LoadCategoriesAsync());
+            LoadInventoryOptionsAsync());
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
