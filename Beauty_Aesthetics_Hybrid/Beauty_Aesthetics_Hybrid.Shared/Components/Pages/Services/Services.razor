@@ -82,10 +82,6 @@
                 @onclick='() => SetActiveTab("Services")'>
             @L["Services"]
         </button>
-        <button class="services__menu-item @(ActiveTab == "MemberCredit" ? "active" : "")"
-                @onclick='() => SetActiveTab("MemberCredit")'>
-            @L["MemberCredit"]
-        </button>
         <button class="services__menu-item @(ActiveTab == "Bundle" ? "active" : "")"
                 @onclick='() => SetActiveTab("Bundle")'>
             @L["Package"]
@@ -99,7 +95,6 @@
     <div class="services__tab-selector-container mobile-view">
         <select class="services__tab-select" @onchange="OnTabSelectChanged" value="@ActiveTab">
             <option value="Services">@L["Services"]</option>
-            <option value="MemberCredit">@L["MemberCredit"]</option>
             <option value="Bundle">@L["Package"]</option>
             <option value="Membership">@L["MembershipConfiguration"]</option>
         </select>
@@ -528,229 +523,64 @@
                 }
             </div>
         }
-        else if (ActiveTab == "MemberCredit")
-        {
-            <div class="services__section services__section--member-credit">
-                <div class="services__toolbar">
-                    <div class="services__toolbar-primary">
-                        <div class="services__action-buttons">
-                            <button class="services__action-btn" title="@L["AddMemberCredit"]" @onclick="ShowAddMemberCreditForm">
-                                <i class="bi bi-plus-lg"></i>
-                            </button>
-                            <button class="btn-delete" title="@L["DeleteMemberCredits"]" @onclick="ToggleMemberCreditDeleteMode">
-                                <i class="bi bi-trash3"></i>
-                            </button>
-                        </div>
-                        <div class="services__search-container">
-                            <input class="services__search"
-                                   type="search"
-                                   placeholder="@L["Search"]..."
-                                   value="@MemberCreditSearchQuery"
-                                   @oninput="OnMemberCreditSearchChanged" />
-                            <i class="bi bi-search services__search-icon"></i>
-                        </div>
-                    </div>
-                    <AdvancedInventoryFilter Columns="@MemberCreditFilterColumns"
-                                             OnApply="@HandleMemberCreditFiltersApplied"
-                                             OnClear="@HandleMemberCreditFiltersCleared"
-                                             ModuleName="Member Credit"
-                                             ContextLabel="Services"
-                                             ResultCount="@FilteredMemberCredits.Count()" />
-                </div>
-
-
-                @if (IsMemberCreditDeleteMode)
-                {
-                    <div class="services__delete-bar">
-                        <button type="button" class="selected-delete-banner-close" @onclick="CancelMemberCreditDeleteMode" title="Cancel delete mode">
-                            <i class="bi bi-x-lg"></i>
-                        </button>
-                        <div class="services__delete-info">
-                            <span>@SelectedMemberCreditsForDeletion.Count @L["ItemsSelected"]</span>
-                        </div>
-                        <div class="services__delete-actions">
-                            <button class="services__btn services__btn--secondary" @onclick="CancelMemberCreditDeleteMode">
-                                @L["Cancel"]
-                            </button>
-                            <button class="services__btn services__btn--danger" @onclick='() => RequestSelectedDeleteConfirmation("memberCredits", SelectedMemberCreditsForDeletion.Count, "member credit(s)")' disabled="@(!SelectedMemberCreditsForDeletion.Any())">
-                                @L["DeleteSelected"]
-                            </button>
-                        </div>
-                    </div>
-                }
-
-                <div class="services__table-wrapper desktop-view">
-                    <table class="services__table">
-                        <thead>
-                            <tr>
-                                @if (IsMemberCreditDeleteMode)
-                                {
-                                    <th class="services__checkbox-col">
-                                        <input type="checkbox" @onchange="ToggleSelectAllMemberCredits" checked="@IsAllMemberCreditsSelected" />
-                                    </th>
-                                }
-                                <th class='@GetServiceSortHeaderClass(MemberCreditSortColumn, MemberCreditSortAscending, "Name")' @onclick='() => ToggleMemberCreditSort("Name")'>
-                                    @L["CreditName"]
-                                </th>
-                                <th class='@GetServiceSortHeaderClass(MemberCreditSortColumn, MemberCreditSortAscending, "Code")' @onclick='() => ToggleMemberCreditSort("Code")'>
-                                    @L["CreditCode"]
-                                </th>
-                                <th class='@GetServiceSortHeaderClass(MemberCreditSortColumn, MemberCreditSortAscending, "CreditValue")' @onclick='() => ToggleMemberCreditSort("CreditValue")'>
-                                    @L["CreditValueMyr"]
-                                </th>
-                                <th class='@GetServiceSortHeaderClass(MemberCreditSortColumn, MemberCreditSortAscending, "Price")' @onclick='() => ToggleMemberCreditSort("Price")'>
-                                    @L["PriceMyr"]
-                                </th>
-                                <th class="services__actions-col">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var memberCredit in PaginatedMemberCredits)
-                            {
-                                var isSelected = SelectedMemberCredit == memberCredit && !IsMemberCreditDeleteMode;
-                                <tr class="@(isSelected ? "selected" : string.Empty)" @onclick="() => ToggleMobileMemberCreditRow(memberCredit)">
-                                    @if (IsMemberCreditDeleteMode)
-                                    {
-                                        <td class="services__checkbox-col" @onclick:stopPropagation="true">
-                                            <input type="checkbox" checked="@SelectedMemberCreditsForDeletion.Contains(memberCredit)" @onchange="() => ToggleMemberCreditSelection(memberCredit)" />
-                                        </td>
-                                    }
-                                    <td>@memberCredit.Name</td>
-                                    <td>@memberCredit.Code</td>
-                                    <td class="services-money-value">@memberCredit.CreditValue.ToString("N2")</td>
-                                    <td class="services-money-value">@memberCredit.Price.ToString("N2")</td>
-                                    <td class="services__actions-col" @onclick:stopPropagation="true">
-                                        <div class="services__row-actions">
-                                            <button type="button" class="services__action-btn services__action-btn--view" title="View details" @onclick="() => ShowMemberCreditDetails(memberCredit)">
-                                                <i class="bi bi-eye"></i>
-                                            </button>
-                                            <button type="button" class="services__action-btn services__action-btn--edit" title="@L["EditMemberCredit"]" @onclick="() => EditMemberCredit(memberCredit)">
-                                                <i class="bi bi-pencil"></i>
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="service-mobile-records mobile-view">
-                    @if (!PaginatedMemberCredits.Any())
-                    {
-                        <div class="service-mobile-records__empty">No member credits found. Tap the + button to add one.</div>
-                    }
-                    else
-                    {
-                        @foreach (var memberCredit in PaginatedMemberCredits)
-                        {
-                            <article class="service-mobile-record @(SelectedMemberCredit == memberCredit && !IsMemberCreditDeleteMode ? "is-selected" : string.Empty)"
-                                     @onclick="() => HandleMobileMemberCreditCardClick(memberCredit)">
-                                <div class="service-mobile-record__header">
-                                    @if (IsMemberCreditDeleteMode)
-                                    {
-                                        <label class="service-mobile-record__select" @onclick:stopPropagation="true">
-                                            <input type="checkbox"
-                                                   aria-label="Select @memberCredit.Name"
-                                                   checked="@SelectedMemberCreditsForDeletion.Contains(memberCredit)"
-                                                   @onchange="() => ToggleMemberCreditSelection(memberCredit)" />
-                                        </label>
-                                    }
-                                    <div class="service-mobile-record__icon" aria-hidden="true">
-                                        <i class="bi bi-credit-card"></i>
-                                    </div>
-                                    <div class="service-mobile-record__identity">
-                                        <h3>@memberCredit.Name</h3>
-                                        <p>Code: @memberCredit.Code</p>
-                                    </div>
-                                </div>
-                                <div class="service-mobile-record__facts">
-                                    <div class="service-mobile-record__fact">
-                                        <span>@L["CreditValueMyr"]</span>
-                                        <strong>MYR @memberCredit.CreditValue.ToString("N2")</strong>
-                                    </div>
-                                    <div class="service-mobile-record__fact">
-                                        <span>@L["PriceMyr"]</span>
-                                        <strong>MYR @memberCredit.Price.ToString("N2")</strong>
-                                    </div>
-                                </div>
-                                @if (!IsMemberCreditDeleteMode)
-                                {
-                                    <div class="service-mobile-record__actions" @onclick:stopPropagation="true">
-                                        <button type="button" class="services__action-btn services__action-btn--view" title="View details" aria-label="View member credit details" @onclick="() => ShowMemberCreditDetails(memberCredit)">
-                                            <i class="bi bi-eye"></i>
-                                        </button>
-                                        <button type="button" class="services__action-btn services__action-btn--edit" title="@L["EditMemberCredit"]" aria-label="@L["EditMemberCredit"]" @onclick="() => EditMemberCredit(memberCredit)">
-                                            <i class="bi bi-pencil"></i>
-                                        </button>
-                                    </div>
-                                }
-                            </article>
-                        }
-                    }
-                </div>
-
-                <Pagination CurrentPage="@MemberCreditCurrentPage"
-                            ItemsPerPage="5"
-                            TotalItems="@FilteredMemberCredits.Count()"
-                            OnPageChanged="@HandleMemberCreditPageChanged" />
-                <div class="pagination-summary">
-                    @L["TotalItems"]: @FilteredMemberCredits.Count()
-                </div>
-
-            </div>
-
-            @if (IsAddMemberCreditFormVisible)
-            {
-                <div class="member-credit-modal-overlay" @onclick="CloseAddMemberCreditForm">
-                    <div class="member-credit-modal" @onclick:stopPropagation="true">
-                        <div class="member-credit-modal__header">
-                            <div class="member-credit-modal__title">
-                                <i class="bi bi-credit-card"></i>
-                                <h2>@L["CreditSetup"]</h2>
-                            </div>
-                            <div class="member-credit-modal__actions">
-                                <button class="member-credit-modal__btn member-credit-modal__btn--save"
-                                        disabled="@IsSavingMemberCredit"
-                                        @onclick="HandleAddMemberCredit">
-                                    @(IsSavingMemberCredit ? "Saving..." : L["Save"])
-                                </button>
-                                <button class="member-credit-modal__btn member-credit-modal__btn--cancel" @onclick="CloseAddMemberCreditForm">
-                                    @L["Cancel"]
-                                </button>
-                            </div>
-                        </div>
-                        <div class="member-credit-modal__body">
-                            <form class="member-credit-form" @onsubmit:preventDefault>
-                                <div class="member-credit-form__field">
-                                    <label>@L["CreditName"]</label>
-                                    <input type="text" @bind="NewMemberCreditName" placeholder="@L["EnterCreditName"]" required />
-                                </div>
-
-                                <div class="member-credit-form__field">
-                                    <label>@L["CreditCode"]</label>
-                                    <input type="text" @bind="NewMemberCreditCode" placeholder="@L["EnterCreditCode"]" required />
-                                </div>
-
-                                <div class="member-credit-form__field">
-                                    <label>@L["ValueOfCreditRm"]</label>
-                                    <input type="number" step="0.01" @bind="NewMemberCreditValue" placeholder="0.00" required />
-                                </div>
-
-                                <div class="member-credit-form__field">
-                                    <label>@L["PriceForThisCreditRm"]</label>
-                                    <input type="number" step="0.01" @bind="NewMemberCreditPrice" placeholder="0.00" required />
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            }
-        }
         else if (ActiveTab == "Membership")
         {
-            <div class="membership-options">
-                <div class="membership-options__grid">
+            <div class="membership-options membership-config">
+                <div class="membership-config__header">
+                    <div class="membership-config__title">
+                        <span class="membership-config__eyebrow">Customer Loyalty</span>
+                        <h2>Membership Configuration</h2>
+                        <p>Manage membership tiers, stored credits and point earning rules from one place.</p>
+                    </div>
+                    <div class="membership-config__summary" aria-label="Membership configuration summary">
+                        <div>
+                            <strong>@MemberTypeItems.Count</strong>
+                            <span>Member Types</span>
+                        </div>
+                        <div>
+                            <strong>@MemberCreditItems.Count</strong>
+                            <span>Credits</span>
+                        </div>
+                        <div>
+                            <strong>@MemberPointItems.Count</strong>
+                            <span>Point Rules</span>
+                        </div>
+                    </div>
+                </div>
+
+                <nav class="membership-config__tabs" aria-label="Membership configuration sections">
+                    <button type="button"
+                            class="@(MembershipConfigTab == "MemberType" ? "active" : string.Empty)"
+                            @onclick='() => SetMembershipConfigTab("MemberType")'>
+                        <i class="bi bi-person-badge"></i>
+                        <span>
+                            <strong>Member Type</strong>
+                            <small>Membership tiers</small>
+                        </span>
+                    </button>
+                    <button type="button"
+                            class="@(MembershipConfigTab == "MemberCredit" ? "active" : string.Empty)"
+                            @onclick='() => SetMembershipConfigTab("MemberCredit")'>
+                        <i class="bi bi-wallet2"></i>
+                        <span>
+                            <strong>Member Credit</strong>
+                            <small>Stored value setup</small>
+                        </span>
+                    </button>
+                    <button type="button"
+                            class="@(MembershipConfigTab == "MemberPoint" ? "active" : string.Empty)"
+                            @onclick='() => SetMembershipConfigTab("MemberPoint")'>
+                        <i class="bi bi-stars"></i>
+                        <span>
+                            <strong>Member Point</strong>
+                            <small>Earning rules</small>
+                        </span>
+                    </button>
+                </nav>
+
+                <div class="membership-options__grid membership-options__grid--single">
+                    @if (MembershipConfigTab == "MemberType")
+                    {
                     <!-- Member Type Section -->
                     <div class="membership-options__card membership-options__card--member-type">
                         <div class="membership-options__card-header">
@@ -855,6 +685,184 @@
                             </div>
                         </div>
                     </div>
+
+                    }
+                    else if (MembershipConfigTab == "MemberCredit")
+                    {
+                        <div class="membership-config__credit-panel">
+                            <div class="services__section services__section--member-credit">
+                            <div class="services__toolbar">
+                            <div class="services__toolbar-primary">
+                            <div class="services__action-buttons">
+                            <button class="services__action-btn" title="@L["AddMemberCredit"]" @onclick="ShowAddMemberCreditForm">
+                            <i class="bi bi-plus-lg"></i>
+                            </button>
+                            <button class="btn-delete" title="@L["DeleteMemberCredits"]" @onclick="ToggleMemberCreditDeleteMode">
+                            <i class="bi bi-trash3"></i>
+                            </button>
+                            </div>
+                            <div class="services__search-container">
+                            <input class="services__search"
+                            type="search"
+                            placeholder="@L["Search"]..."
+                            value="@MemberCreditSearchQuery"
+                            @oninput="OnMemberCreditSearchChanged" />
+                            <i class="bi bi-search services__search-icon"></i>
+                            </div>
+                            </div>
+                            <AdvancedInventoryFilter Columns="@MemberCreditFilterColumns"
+                            OnApply="@HandleMemberCreditFiltersApplied"
+                            OnClear="@HandleMemberCreditFiltersCleared"
+                            ModuleName="Member Credit"
+                            ContextLabel="Membership Configuration"
+                            ResultCount="@FilteredMemberCredits.Count()" />
+                            </div>
+                            
+                            
+                            @if (IsMemberCreditDeleteMode)
+                            {
+                            <div class="services__delete-bar">
+                            <button type="button" class="selected-delete-banner-close" @onclick="CancelMemberCreditDeleteMode" title="Cancel delete mode">
+                            <i class="bi bi-x-lg"></i>
+                            </button>
+                            <div class="services__delete-info">
+                            <span>@SelectedMemberCreditsForDeletion.Count @L["ItemsSelected"]</span>
+                            </div>
+                            <div class="services__delete-actions">
+                            <button class="services__btn services__btn--secondary" @onclick="CancelMemberCreditDeleteMode">
+                            @L["Cancel"]
+                            </button>
+                            <button class="services__btn services__btn--danger" @onclick='() => RequestSelectedDeleteConfirmation("memberCredits", SelectedMemberCreditsForDeletion.Count, "member credit(s)")' disabled="@(!SelectedMemberCreditsForDeletion.Any())">
+                            @L["DeleteSelected"]
+                            </button>
+                            </div>
+                            </div>
+                            }
+                            
+                            <div class="services__table-wrapper desktop-view">
+                            <table class="services__table">
+                            <thead>
+                            <tr>
+                            @if (IsMemberCreditDeleteMode)
+                            {
+                            <th class="services__checkbox-col">
+                            <input type="checkbox" @onchange="ToggleSelectAllMemberCredits" checked="@IsAllMemberCreditsSelected" />
+                            </th>
+                            }
+                            <th class='@GetServiceSortHeaderClass(MemberCreditSortColumn, MemberCreditSortAscending, "Name")' @onclick='() => ToggleMemberCreditSort("Name")'>
+                            @L["CreditName"]
+                            </th>
+                            <th class='@GetServiceSortHeaderClass(MemberCreditSortColumn, MemberCreditSortAscending, "Code")' @onclick='() => ToggleMemberCreditSort("Code")'>
+                            @L["CreditCode"]
+                            </th>
+                            <th class='@GetServiceSortHeaderClass(MemberCreditSortColumn, MemberCreditSortAscending, "CreditValue")' @onclick='() => ToggleMemberCreditSort("CreditValue")'>
+                            @L["CreditValueMyr"]
+                            </th>
+                            <th class='@GetServiceSortHeaderClass(MemberCreditSortColumn, MemberCreditSortAscending, "Price")' @onclick='() => ToggleMemberCreditSort("Price")'>
+                            @L["PriceMyr"]
+                            </th>
+                            <th class="services__actions-col">Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (var memberCredit in PaginatedMemberCredits)
+                            {
+                            var isSelected = SelectedMemberCredit == memberCredit && !IsMemberCreditDeleteMode;
+                            <tr class="@(isSelected ? "selected" : string.Empty)" @onclick="() => ToggleMobileMemberCreditRow(memberCredit)">
+                            @if (IsMemberCreditDeleteMode)
+                            {
+                            <td class="services__checkbox-col" @onclick:stopPropagation="true">
+                            <input type="checkbox" checked="@SelectedMemberCreditsForDeletion.Contains(memberCredit)" @onchange="() => ToggleMemberCreditSelection(memberCredit)" />
+                            </td>
+                            }
+                            <td>@memberCredit.Name</td>
+                            <td>@memberCredit.Code</td>
+                            <td class="services-money-value">@memberCredit.CreditValue.ToString("N2")</td>
+                            <td class="services-money-value">@memberCredit.Price.ToString("N2")</td>
+                            <td class="services__actions-col" @onclick:stopPropagation="true">
+                            <div class="services__row-actions">
+                            <button type="button" class="services__action-btn services__action-btn--view" title="View details" @onclick="() => ShowMemberCreditDetails(memberCredit)">
+                            <i class="bi bi-eye"></i>
+                            </button>
+                            <button type="button" class="services__action-btn services__action-btn--edit" title="@L["EditMemberCredit"]" @onclick="() => EditMemberCredit(memberCredit)">
+                            <i class="bi bi-pencil"></i>
+                            </button>
+                            </div>
+                            </td>
+                            </tr>
+                            }
+                            </tbody>
+                            </table>
+                            </div>
+                            
+                            <div class="service-mobile-records mobile-view">
+                            @if (!PaginatedMemberCredits.Any())
+                            {
+                            <div class="service-mobile-records__empty">No member credits found. Tap the + button to add one.</div>
+                            }
+                            else
+                            {
+                            @foreach (var memberCredit in PaginatedMemberCredits)
+                            {
+                            <article class="service-mobile-record @(SelectedMemberCredit == memberCredit && !IsMemberCreditDeleteMode ? "is-selected" : string.Empty)"
+                            @onclick="() => HandleMobileMemberCreditCardClick(memberCredit)">
+                            <div class="service-mobile-record__header">
+                            @if (IsMemberCreditDeleteMode)
+                            {
+                            <label class="service-mobile-record__select" @onclick:stopPropagation="true">
+                            <input type="checkbox"
+                            aria-label="Select @memberCredit.Name"
+                            checked="@SelectedMemberCreditsForDeletion.Contains(memberCredit)"
+                            @onchange="() => ToggleMemberCreditSelection(memberCredit)" />
+                            </label>
+                            }
+                            <div class="service-mobile-record__icon" aria-hidden="true">
+                            <i class="bi bi-credit-card"></i>
+                            </div>
+                            <div class="service-mobile-record__identity">
+                            <h3>@memberCredit.Name</h3>
+                            <p>Code: @memberCredit.Code</p>
+                            </div>
+                            </div>
+                            <div class="service-mobile-record__facts">
+                            <div class="service-mobile-record__fact">
+                            <span>@L["CreditValueMyr"]</span>
+                            <strong>MYR @memberCredit.CreditValue.ToString("N2")</strong>
+                            </div>
+                            <div class="service-mobile-record__fact">
+                            <span>@L["PriceMyr"]</span>
+                            <strong>MYR @memberCredit.Price.ToString("N2")</strong>
+                            </div>
+                            </div>
+                            @if (!IsMemberCreditDeleteMode)
+                            {
+                            <div class="service-mobile-record__actions" @onclick:stopPropagation="true">
+                            <button type="button" class="services__action-btn services__action-btn--view" title="View details" aria-label="View member credit details" @onclick="() => ShowMemberCreditDetails(memberCredit)">
+                            <i class="bi bi-eye"></i>
+                            </button>
+                            <button type="button" class="services__action-btn services__action-btn--edit" title="@L["EditMemberCredit"]" aria-label="@L["EditMemberCredit"]" @onclick="() => EditMemberCredit(memberCredit)">
+                            <i class="bi bi-pencil"></i>
+                            </button>
+                            </div>
+                            }
+                            </article>
+                            }
+                            }
+                            </div>
+                            
+                            <Pagination CurrentPage="@MemberCreditCurrentPage"
+                            ItemsPerPage="5"
+                            TotalItems="@FilteredMemberCredits.Count()"
+                            OnPageChanged="@HandleMemberCreditPageChanged" />
+                            <div class="pagination-summary">
+                            @L["TotalItems"]: @FilteredMemberCredits.Count()
+                            </div>
+                            
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
                     <!-- Member Point Section -->
                     <div class="membership-options__card membership-options__card--member-point">
                         <div class="membership-options__card-header">
@@ -979,6 +987,7 @@
                             </div>
                         </div>
                     </div>
+                    }
                 </div>
 
                 @* Add Member Type Modal *@
@@ -2475,6 +2484,7 @@
 
 
     private string ActiveTab { get; set; } = "Services";
+    private string MembershipConfigTab { get; set; } = "MemberType";
     private MembershipViewModel MembershipViewModel { get; } = new();
     private InventoryViewModel InventoryViewModel { get; } = new();
 
@@ -3398,6 +3408,31 @@
         ExpandedMobileServiceSku = null;
         ExpandedMobileMemberCreditCode = null;
         ExpandedMobileBundleSku = null;
+
+        if (string.Equals(tab, "Membership", StringComparison.Ordinal))
+        {
+            MembershipConfigTab = string.IsNullOrWhiteSpace(MembershipConfigTab)
+                ? "MemberType"
+                : MembershipConfigTab;
+        }
+    }
+
+    private void SetMembershipConfigTab(string tab)
+    {
+        MembershipConfigTab = tab;
+        SelectedMemberType = null;
+        SelectedMemberCredit = null;
+        SelectedMemberPoint = null;
+        MemberTypeCurrentPage = 1;
+        MemberCreditCurrentPage = 1;
+        MemberPointCurrentPage = 1;
+
+        IsMemberTypeDeleteMode = false;
+        IsMemberCreditDeleteMode = false;
+        IsMemberPointDeleteMode = false;
+        SelectedMemberTypesForDeletion.Clear();
+        SelectedMemberCreditsForDeletion.Clear();
+        SelectedMemberPointsForDeletion.Clear();
     }
 
     private void OnTabSelectChanged(ChangeEventArgs e)
