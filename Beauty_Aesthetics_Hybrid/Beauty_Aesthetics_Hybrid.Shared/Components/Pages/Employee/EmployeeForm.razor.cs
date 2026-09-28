@@ -59,6 +59,10 @@ public partial class EmployeeFormBase : ComponentBase
             ViewModel.IsEditMode = false;
             Feedback.Info("Enter the employee details and save when ready.", "New employee", 2600);
         }
+        ViewModel.Employee.BranchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID)
+            ? "HQ"
+            : AppState.SelectedBranchID!.Trim();
+
         var branches = await BranchLookupService.LoadBranchesAsync();
         if (branches.Success && branches.Value is not null)
         {
