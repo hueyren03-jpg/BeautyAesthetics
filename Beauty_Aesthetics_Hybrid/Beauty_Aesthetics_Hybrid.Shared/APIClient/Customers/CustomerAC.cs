@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.Services.Auth;
@@ -71,9 +72,20 @@ public sealed class CustomerAC
         string customerId,
         CancellationToken cancellationToken = default)
     {
-        using var request = CreatePostRequest("/api/Customer/GetMemberBalanceSummary", new CustomerLookupDTO { Id = customerId });
+        // Match Senang Retails exactly: POST application/json with { "id": customerId }.
+        var requestJson = JsonSerializer.Serialize(new { id = customerId }, JsonOptions);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            "/api/Customer/GetMemberBalanceSummary")
+        {
+            Content = new StringContent(requestJson, Encoding.UTF8, "application/json")
+        };
+
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
-        return await ReadApiResponseAsync<MemberBalanceSummaryDTO>(response, "Member balance summary response was invalid.", cancellationToken);
+        return await ReadApiResponseAsync<MemberBalanceSummaryDTO>(
+            response,
+            "Member balance summary response was invalid.",
+            cancellationToken);
     }
 
     public async Task<ApiCallResult<List<MemberOtherBalanceSummaryDTO>>> GetMemberOtherBalanceSummaryAsync(
