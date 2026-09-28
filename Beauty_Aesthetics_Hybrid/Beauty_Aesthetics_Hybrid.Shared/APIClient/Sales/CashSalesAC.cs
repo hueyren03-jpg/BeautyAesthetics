@@ -68,6 +68,15 @@ public sealed class CashSalesAC
             "/api/Doc_CashSales_POSPaymentLineType/LoadProxy", payload: null,
             "Payment method response was invalid.", cancellationToken);
 
+    public Task<ApiCallResult<List<CashSalesPaymentTypeDTO>>> LoadSystemPaymentTypesAsync(
+        CashSalesPaymentTypeRequestDTO request,
+        CancellationToken cancellationToken = default) =>
+        SendAsync<List<CashSalesPaymentTypeDTO>>(HttpMethod.Post,
+            "/api/Doc_CashSales_POSPaymentLineType/GetSystemControlledSalesSettlementType",
+            request,
+            "Payment method response was invalid.",
+            cancellationToken);
+
     public Task<ApiCallResult<List<CashSalesReceiptLineDTO>>> LoadReceiptLinesAsync(
         string documentId,
         CancellationToken cancellationToken = default) =>
