@@ -909,6 +909,41 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                 preserveCurrentSelection: false);
         }
 
+        private void SyncAppointmentFormStaffIntoScheduler()
+        {
+            if (AppointmentFormStaffList.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var formStaff in AppointmentFormStaffList)
+            {
+                var existing = StaffList.FirstOrDefault(staff =>
+                    string.Equals(staff.Id, formStaff.Id, StringComparison.OrdinalIgnoreCase));
+
+                if (existing is null)
+                {
+                    StaffList.Add(new Staff
+                    {
+                        Id = formStaff.Id,
+                        Name = formStaff.Name,
+                        Role = formStaff.Role,
+                        Color = formStaff.Color
+                    });
+                }
+                else
+                {
+                    existing.Name = formStaff.Name;
+                    existing.Role = formStaff.Role;
+                }
+
+                if (!staffVisibility.ContainsKey(formStaff.Id))
+                {
+                    staffVisibility[formStaff.Id] = true;
+                }
+            }
+        }
+
         private async Task LoadAppointmentFormStaffAsync(
             string branchId,
             bool preserveCurrentSelection)
@@ -961,6 +996,8 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                     })
                     .ToList();
 
+                SyncAppointmentFormStaffIntoScheduler();
+
                 var selected = AppointmentFormStaffList.FirstOrDefault(staff =>
                     !string.IsNullOrWhiteSpace(previousEmployeeId) &&
                     string.Equals(
@@ -1005,6 +1042,13 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                     StringComparison.OrdinalIgnoreCase));
 
             editingAppointment.StaffName = staff?.Name ?? string.Empty;
+
+            if (staff is not null)
+            {
+                // A branch-loaded employee must also remain visible in the scheduler.
+                // Otherwise the appointment is saved correctly but has no visible staff row.
+                staffVisibility[staff.Id] = true;
+            }
         }
 
         private string GetSelectedAppointmentBranchName()
@@ -2626,6 +2670,8 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             }
 
             editingAppointment.StaffName = validBranchStaff.Name;
+            SyncAppointmentFormStaffIntoScheduler();
+            staffVisibility[validBranchStaff.Id] = true;
 
             ConstrainAppointmentToWorkingHours(editingAppointment, preserveDuration: false);
             PrepareAppointmentReferences(editingAppointment);
@@ -2658,10 +2704,19 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                 }
 
                 NormalizeAppointmentDisplayValues();
+
+                var savedStaff = StaffList.FirstOrDefault(staff =>
+                    string.Equals(staff.Id, editingAppointment.EmployeeId, StringComparison.OrdinalIgnoreCase));
+                if (savedStaff is not null)
+                {
+                    staffVisibility[savedStaff.Id] = true;
+                }
+
                 Feedback.Success(
                     isCreate ? "Appointment created successfully." : "Appointment updated successfully.",
                     isCreate ? "Appointment created" : "Appointment updated");
                 CloseModal();
+                await ReloadAppointmentsAsync();
             }
             catch (Exception exception)
             {
