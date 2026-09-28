@@ -1040,7 +1040,11 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
 
         private void SyncAppointmentFormStaffIntoScheduler()
         {
-            if (AppointmentFormStaffList.Count == 0)
+            if (AppointmentFormStaffList.Count == 0 ||
+                !string.Equals(
+                    editingAppointment.BranchId?.Trim(),
+                    CurrentSchedulerBranchId,
+                    StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
