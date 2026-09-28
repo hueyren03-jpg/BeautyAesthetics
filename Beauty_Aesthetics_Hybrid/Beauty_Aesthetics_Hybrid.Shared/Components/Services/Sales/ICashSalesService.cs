@@ -11,6 +11,7 @@ public interface ICashSalesService
     Task<ApiCallResult<IReadOnlyList<SalesByCollectionDTO>>> LoadSalesByCollectionAsync(DateTime startDate, DateTime endDate, string branchId, CancellationToken cancellationToken = default);
     Task<ApiCallResult<Transaction>> LoadTransactionAsync(string documentId, CancellationToken cancellationToken = default);
     Task<ApiCallResult<string>> RequestInvoiceLinkAsync(string documentId, CancellationToken cancellationToken = default);
+    Task<ApiCallResult<string>> RequestEInvoiceLinkAsync(string documentId, CancellationToken cancellationToken = default);
     Task<ApiCallResult<IReadOnlyList<CashSalesPaymentTypeDTO>>> LoadPaymentTypesAsync(CancellationToken cancellationToken = default);
     Task<ApiCallResult<IReadOnlyList<CashSalesPaymentTypeDTO>>> LoadPaymentTypesAsync(string branchId, string groupId, string customerId, CancellationToken cancellationToken = default);
     Task<ApiCallResult<Transaction>> CreateTransactionAsync(Transaction transaction, CancellationToken cancellationToken = default);
