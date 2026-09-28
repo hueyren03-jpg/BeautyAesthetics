@@ -63,7 +63,7 @@ builder.Services.AddScoped<AuthAC>();
             builder.Services.AddScoped<CashSalesAC>();
             builder.Services.AddScoped<ICashSalesService, CashSalesService>();
 builder.Services.AddScoped<IFileDownloadService, WebFileDownloadService>();
-builder.Services.AddScoped<IBluetoothPrinterService, WebPrinterSelectionService>();
+builder.Services.AddScoped<IPrinterSelectionService, WebPrinterSelectionService>();
 builder.Services.AddScoped<IReceiptPrinterService, WebReceiptPrinterService>();
 builder.Services.AddScoped<WhatsAppService>();
             builder.Services.AddSingleton<IPendingOrderService, PendingOrderService>();
