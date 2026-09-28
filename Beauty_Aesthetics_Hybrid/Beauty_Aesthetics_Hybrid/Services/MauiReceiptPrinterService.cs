@@ -65,7 +65,7 @@ public sealed class MauiReceiptPrinterService : IReceiptPrinterService
         try
         {
             using var client = new TcpClient();
-            var connectTask = client.ConnectAsync(ipAddress.Trim(), 9100, cancellationToken).AsTask();
+            var connectTask = client.ConnectAsync(ipAddress.Trim(), 9100);
             var timeoutTask = Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
 
             if (await Task.WhenAny(connectTask, timeoutTask) != connectTask)
@@ -118,7 +118,6 @@ public sealed class MauiReceiptPrinterService : IReceiptPrinterService
                 return (false, "Please turn on Bluetooth and try again.");
             }
 
-            adapter.CancelDiscovery();
             var device = FindPrinterDevice(adapter);
             if (device is null)
             {
@@ -139,8 +138,8 @@ public sealed class MauiReceiptPrinterService : IReceiptPrinterService
                 return (false, "Unable to open the Bluetooth printer output stream.");
             }
 
-            await output.WriteAsync(data, cancellationToken);
-            await output.FlushAsync(cancellationToken);
+            await output.WriteAsync(data);
+            await output.FlushAsync();
             output.Close();
 
             return (true, string.Empty);
