@@ -154,6 +154,36 @@ public sealed class CashSalesService : ICashSalesService
         return ApiCallResult<IReadOnlyList<CashSalesPaymentTypeDTO>>.Ok(result.StatusCode, values);
     }
 
+    public async Task<ApiCallResult<IReadOnlyList<CashSalesPaymentTypeDTO>>> LoadPaymentTypesAsync(
+        string branchId,
+        string groupId,
+        string customerId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await cashSalesAC.LoadSystemPaymentTypesAsync(new CashSalesPaymentTypeRequestDTO
+        {
+            BranchId = string.IsNullOrWhiteSpace(branchId) ? null : branchId,
+            GroupId = string.IsNullOrWhiteSpace(groupId) ? null : groupId,
+            CustomerId = string.IsNullOrWhiteSpace(customerId) ? null : customerId
+        }, cancellationToken);
+
+        if (!result.Success || result.Value is null)
+            return ApiCallResult<IReadOnlyList<CashSalesPaymentTypeDTO>>.Failure(
+                result.StatusCode,
+                result.ErrorMessage ?? "Unable to load payment methods.");
+
+        var values = result.Value
+            .Where(item => item.Active &&
+                           (string.IsNullOrWhiteSpace(item.VisibleInModules) ||
+                            item.VisibleInModules.Contains("Sales", StringComparison.OrdinalIgnoreCase)))
+            .OrderBy(item => item.Sorting)
+            .ThenBy(item => item.POSPaymentTypeName)
+            .ToList();
+
+        return ApiCallResult<IReadOnlyList<CashSalesPaymentTypeDTO>>.Ok(result.StatusCode, values);
+    }
+
+
     public async Task<ApiCallResult<Transaction>> CreateTransactionAsync(Transaction transaction, CancellationToken cancellationToken = default)
     {
         var templateResult = await cashSalesAC.LoadRecordAsync(string.Empty, cancellationToken);
@@ -168,7 +198,7 @@ public sealed class CashSalesService : ICashSalesService
         ApplyHeader(header, transaction, true);
         document["objDoc_CashSales"] = header;
         document["lstDocumentLine"] = BuildDocumentLines(document, transaction);
-        document["lstReceiptLines"] = new JsonArray();
+        document["lstReceiptLines"] = BuildReceiptLines(transaction);
 
         var createResult = await cashSalesAC.CreateRecordAsync(document, cancellationToken);
         if (!createResult.Success)
@@ -179,17 +209,6 @@ public sealed class CashSalesService : ICashSalesService
 
         transaction.DocumentId = FindString(createResult.Value, "DocumentID", "Id") ?? transaction.DocumentId;
         transaction.InvoiceNumber = FindString(createResult.Value, "DisplayCode") ?? transaction.InvoiceNumber;
-
-        if (!string.IsNullOrWhiteSpace(transaction.DocumentId) &&
-            (transaction.Payments.Count > 0 || transaction.PaymentTypeId != 0))
-        {
-            var paymentResult = await SavePaymentsAsync(transaction, cancellationToken);
-            if (!paymentResult.Success)
-            {
-                var message = paymentResult.ErrorMessage ?? "The sale was created, but its payment could not be saved.";
-                return ApiCallResult<Transaction>.Failure(paymentResult.StatusCode, message);
-            }
-        }
 
         return ApiCallResult<Transaction>.Ok(createResult.StatusCode, transaction);
     }
@@ -467,6 +486,61 @@ public sealed class CashSalesService : ICashSalesService
         return lines;
     }
 
+    private static JsonArray BuildReceiptLines(Transaction transaction)
+    {
+        var payments = transaction.Payments.Count > 0
+            ? transaction.Payments
+            : transaction.PaymentTypeId != 0
+                ? new List<TransactionPayment>
+                {
+                    new()
+                    {
+                        PaymentTypeId = transaction.PaymentTypeId,
+                        PaymentMethod = transaction.PaymentMethod,
+                        Amount = transaction.Amount
+                    }
+                }
+                : new List<TransactionPayment>();
+
+        var lines = new JsonArray();
+        if (payments.Count == 0)
+            return lines;
+
+        var totalTendered = payments.Sum(payment => payment.Amount);
+        var changeDue = Math.Max(0m, totalTendered - transaction.Amount);
+        var changePayment = payments.LastOrDefault(payment =>
+                                payment.PaymentMethod.Contains("cash", StringComparison.OrdinalIgnoreCase))
+                            ?? payments.Last();
+
+        foreach (var payment in payments.Where(payment => payment.PaymentTypeId != 0 && payment.Amount > 0))
+        {
+            lines.Add(new JsonObject
+            {
+                ["POSReceiptLineID"] = string.Empty,
+                ["DocumentID"] = string.Empty,
+                ["AccountID"] = transaction.AccountId,
+                ["AccountTypeID"] = 3,
+                ["Reference"] = transaction.ReferenceNumber,
+                ["Description"] = payment.PaymentMethod,
+                ["POSPaymentTypeID"] = payment.PaymentTypeId,
+                ["POSReceiptLineAmount"] = payment.Amount,
+                ["POSReceiptChangeAmount"] = ReferenceEquals(payment, changePayment) && changeDue > 0m ? -changeDue : 0m,
+                ["FinancialAccountID"] = payment.FinancialAccountId,
+                ["BankName"] = payment.BankName,
+                ["BranchID"] = transaction.BranchId,
+                ["GroupID"] = transaction.GroupId,
+                ["FinancialDate"] = transaction.Date,
+                ["ExchangeRate"] = 1m,
+                ["CurrencyID"] = "MYR",
+                ["CurrencyName"] = "MYR",
+                ["SaveAction"] = 1,
+                ["IsDirty"] = true
+            });
+        }
+
+        return lines;
+    }
+
     private static void ApplyReceiptLines(
         Transaction transaction,
         IEnumerable<CashSalesReceiptLineDTO> receiptLines,
@@ -508,6 +582,7 @@ public sealed class CashSalesService : ICashSalesService
         header["FriendlyDocumentName"] = "CashSales";
         header["BranchID"] = transaction.BranchId;
         header["EditBranchID"] = transaction.BranchId;
+        header["GroupID"] = transaction.GroupId;
         header["FinancialDate"] = transaction.Date;
         header["AccountID"] = transaction.AccountId;
         header["AccountName"] = transaction.CustomerName;
@@ -529,6 +604,7 @@ public sealed class CashSalesService : ICashSalesService
         header["LocalCurrencyName"] = "MYR";
         header["Remarks"] = transaction.Notes;
         header["Phone"] = transaction.CustomerContact;
+        header["CashierName"] = transaction.CreatedBy;
         header["ModifiedDateTime"] = now;
         header["UpdateTimeStamp"] = now;
         header["IsVoid"] = string.Equals(transaction.Status, "Cancelled", StringComparison.OrdinalIgnoreCase);
