@@ -12,15 +12,18 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.Sales;
 public sealed class CashSalesService : ICashSalesService
 {
     private readonly CashSalesAC cashSalesAC;
+    private readonly BranchAC branchAC;
     private readonly WebDashboardAC dashboardAC;
     private readonly AppFeedbackService feedback;
 
     public CashSalesService(
         CashSalesAC cashSalesAC,
+        BranchAC branchAC,
         WebDashboardAC dashboardAC,
         AppFeedbackService feedback)
     {
         this.cashSalesAC = cashSalesAC;
+        this.branchAC = branchAC;
         this.dashboardAC = dashboardAC;
         this.feedback = feedback;
     }
@@ -198,6 +201,84 @@ public sealed class CashSalesService : ICashSalesService
         }
 
         return ApiCallResult<string>.Ok(invoiceResult.StatusCode, invoiceResult.Value);
+    }
+
+    public async Task<ApiCallResult<string>> RequestEInvoiceLinkAsync(
+        string documentId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+        {
+            return ApiCallResult<string>.Failure(
+                HttpStatusCode.BadRequest,
+                "A completed cash sale document is required before requesting an e-Invoice.");
+        }
+
+        var loadResult = await cashSalesAC.LoadRecordAsync(documentId, cancellationToken);
+        if (!loadResult.Success || loadResult.Value is null)
+        {
+            return ApiCallResult<string>.Failure(
+                loadResult.StatusCode,
+                loadResult.ErrorMessage ?? "Unable to load the completed cash sale.");
+        }
+
+        var header = loadResult.Value["objDoc_CashSales"] as JsonObject;
+        if (header is null)
+        {
+            return ApiCallResult<string>.Failure(
+                HttpStatusCode.OK,
+                "The completed cash sale did not contain an e-Invoice header.");
+        }
+
+        var savedDocumentId = TextIgnoreCase(header, "DocumentID");
+        if (string.IsNullOrWhiteSpace(savedDocumentId))
+        {
+            savedDocumentId = documentId;
+        }
+
+        var status = TextIgnoreCase(header, "eInvoiceStatus");
+        var documentUid = TextIgnoreCase(header, "eInvoiceDocumentUid");
+        var longId = TextIgnoreCase(header, "eInvoiceLongId");
+
+        if (string.Equals(status, "Valid", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(documentUid) &&
+            !string.IsNullOrWhiteSpace(longId))
+        {
+            var branchId = TextIgnoreCase(header, "BranchID");
+            var financialDate = DateValueIgnoreCase(header, "FinancialDate") ?? DateTime.Now;
+
+            if (!string.IsNullOrWhiteSpace(branchId))
+            {
+                var branchResult = await branchAC.LoadRecordAsync(branchId, cancellationToken);
+                if (branchResult.Success && branchResult.Value is not null)
+                {
+                    var liveDate = FindDateIgnoreCase(branchResult.Value, "eInvoiceLiveDate");
+                    if (liveDate.HasValue)
+                    {
+                        var baseUrl = liveDate.Value > DateTime.MinValue &&
+                                      financialDate >= liveDate.Value
+                            ? "https://myinvois.hasil.gov.my"
+                            : "https://preprod.myinvois.hasil.gov.my";
+
+                        var existingUrl = $"{baseUrl}/{documentUid}/share/{longId}";
+                        return ApiCallResult<string>.Ok(loadResult.StatusCode, existingUrl);
+                    }
+                }
+            }
+        }
+
+        var submitResult = await cashSalesAC.RequestEInvoiceDirectSubmitAsync(
+            savedDocumentId,
+            cancellationToken);
+
+        if (!submitResult.Success || string.IsNullOrWhiteSpace(submitResult.Value))
+        {
+            return ApiCallResult<string>.Failure(
+                submitResult.StatusCode,
+                submitResult.ErrorMessage ?? "The e-Invoice link was empty.");
+        }
+
+        return ApiCallResult<string>.Ok(submitResult.StatusCode, submitResult.Value);
     }
 
     public async Task<ApiCallResult<IReadOnlyList<CashSalesPaymentTypeDTO>>> LoadPaymentTypesAsync(CancellationToken cancellationToken = default)
@@ -685,6 +766,90 @@ public sealed class CashSalesService : ICashSalesService
     private static string NormalizeType(string? value) => value?.Contains("Service", StringComparison.OrdinalIgnoreCase) == true ? "Service" : value?.Contains("Product", StringComparison.OrdinalIgnoreCase) == true ? "Product" : "Mixed";
     private static string NormalizeStatus(string? value) => value?.Contains("void", StringComparison.OrdinalIgnoreCase) == true || value?.Contains("cancel", StringComparison.OrdinalIgnoreCase) == true ? "Cancelled" : value?.Contains("pending", StringComparison.OrdinalIgnoreCase) == true ? "Pending" : "Paid";
     private static string Text(JsonObject? source, string name) => source?[name]?.GetValue<string?>() ?? string.Empty;
+    private static string TextIgnoreCase(JsonObject? source, string name)
+    {
+        if (source is null)
+        {
+            return string.Empty;
+        }
+
+        foreach (var item in source)
+        {
+            if (string.Equals(item.Key, name, StringComparison.OrdinalIgnoreCase) &&
+                item.Value is JsonValue value &&
+                value.TryGetValue<string>(out var text))
+            {
+                return text ?? string.Empty;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static DateTime? DateValueIgnoreCase(JsonObject? source, string name)
+    {
+        if (source is null)
+        {
+            return null;
+        }
+
+        foreach (var item in source)
+        {
+            if (!string.Equals(item.Key, name, StringComparison.OrdinalIgnoreCase) ||
+                item.Value is not JsonValue value)
+            {
+                continue;
+            }
+
+            if (value.TryGetValue<DateTime>(out var date))
+            {
+                return date;
+            }
+
+            if (value.TryGetValue<string>(out var text) &&
+                DateTime.TryParse(text, out date))
+            {
+                return date;
+            }
+        }
+
+        return null;
+    }
+
+    private static DateTime? FindDateIgnoreCase(JsonNode? node, string name)
+    {
+        if (node is JsonObject obj)
+        {
+            var direct = DateValueIgnoreCase(obj, name);
+            if (direct.HasValue)
+            {
+                return direct;
+            }
+
+            foreach (var child in obj)
+            {
+                var nested = FindDateIgnoreCase(child.Value, name);
+                if (nested.HasValue)
+                {
+                    return nested;
+                }
+            }
+        }
+        else if (node is JsonArray array)
+        {
+            foreach (var child in array)
+            {
+                var nested = FindDateIgnoreCase(child, name);
+                if (nested.HasValue)
+                {
+                    return nested;
+                }
+            }
+        }
+
+        return null;
+    }
+
     private static decimal Number(JsonObject? source, string name) => source?[name] is JsonValue value && value.TryGetValue<decimal>(out var number) ? number : 0;
     private static int Integer(JsonObject? source, string name) => source?[name] is JsonValue value && value.TryGetValue<int>(out var number) ? number : 0;
     private static bool Bool(JsonObject? source, string name) => source?[name] is JsonValue value && value.TryGetValue<bool>(out var result) && result;
