@@ -1289,9 +1289,11 @@
                                             <input class="multi-payment-input"
                                                    type="text"
                                                    inputmode="decimal"
-                                                   value="@split.AmountText"
-                                                   @oninput="e => OnSplitAmountInput(split, e)"
-                                                   placeholder="0.00" />
+                                                   value="@(split.Amount.HasValue && split.Amount.Value > 0m ? split.Amount.Value.ToString("0.00") : string.Empty)"
+                                                   placeholder="0.00"
+                                                   readonly
+                                                   title="Click to enter this payment amount"
+                                                   @onclick="() => OpenBillingSplitCalculator(split)" />
                                         </div>
                                     }
                                 </div>
@@ -2779,6 +2781,22 @@
         }
 
         await InvokeAsync(StateHasChanged);
+    }
+
+    private void OpenBillingSplitCalculator(PaymentSplit split)
+    {
+        var method = AvailablePaymentMethods.FirstOrDefault(item =>
+            item.POSPaymentTypeID == split.PaymentTypeId);
+
+        if (method is null)
+        {
+            Feedback.Error(
+                "The selected payment method is not available in the current payment configuration.",
+                "Payment method unavailable");
+            return;
+        }
+
+        OpenBillingPaymentCalculator(method);
     }
 
     private void TogglePaymentGroup(PaymentMethodGroup group)
