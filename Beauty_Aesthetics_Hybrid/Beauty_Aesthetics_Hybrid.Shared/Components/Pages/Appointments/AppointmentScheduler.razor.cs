@@ -715,7 +715,8 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                         Id = employee.Code,
                         Name = employee.Name,
                         Role = employee.EmployeeLevel,
-                        Color = colors[index % colors.Length]
+                        Color = colors[index % colors.Length],
+                        SalesPersonCode = employee.SalesPersonCode
                     })
                     .Where(staff => !string.IsNullOrWhiteSpace(staff.Id) && !string.IsNullOrWhiteSpace(staff.Name))
                     .ToList();
@@ -972,13 +973,15 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                         Id = formStaff.Id,
                         Name = formStaff.Name,
                         Role = formStaff.Role,
-                        Color = formStaff.Color
+                        Color = formStaff.Color,
+                        SalesPersonCode = formStaff.SalesPersonCode
                     });
                 }
                 else
                 {
                     existing.Name = formStaff.Name;
                     existing.Role = formStaff.Role;
+                    existing.SalesPersonCode = formStaff.SalesPersonCode;
                 }
 
                 if (!staffVisibility.ContainsKey(formStaff.Id))
@@ -1036,7 +1039,8 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                         Id = employee.Code.Trim(),
                         Name = employee.Name.Trim(),
                         Role = employee.EmployeeLevel,
-                        Color = colors[index % colors.Length]
+                        Color = colors[index % colors.Length],
+                        SalesPersonCode = employee.SalesPersonCode ?? string.Empty
                     })
                     .ToList();
 
@@ -1053,6 +1057,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                 {
                     editingAppointment.EmployeeId = selected.Id;
                     editingAppointment.StaffName = selected.Name;
+                    editingAppointment.SalesPersonCode = selected.SalesPersonCode;
                 }
                 else
                 {
@@ -1086,6 +1091,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                     StringComparison.OrdinalIgnoreCase));
 
             editingAppointment.StaffName = staff?.Name ?? string.Empty;
+            editingAppointment.SalesPersonCode = staff?.SalesPersonCode ?? string.Empty;
 
             if (staff is not null)
             {
@@ -2714,6 +2720,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             }
 
             editingAppointment.StaffName = validBranchStaff.Name;
+            editingAppointment.SalesPersonCode = validBranchStaff.SalesPersonCode;
             SyncAppointmentFormStaffIntoScheduler();
             staffVisibility[validBranchStaff.Id] = true;
 
