@@ -1481,6 +1481,8 @@
     {
         AmountReceivedError,
         _showPrescriptionValidationError ? "Please fill in prescription frequency, duration, and reason." : null,
+        _paymentValidationError,
+        _paymentMethodsError,
         _multiPaymentError,
         _postPaymentEmailError,
         _discountError
@@ -1490,6 +1492,8 @@
     {
         AmountReceivedError = null;
         _showPrescriptionValidationError = false;
+        _paymentValidationError = null;
+        _paymentMethodsError = null;
         _multiPaymentError = string.Empty;
         _postPaymentEmailError = string.Empty;
         _discountError = string.Empty;
@@ -2568,6 +2572,24 @@
 
         var total = MultiPaymentTotal;
 
+        if (total < TotalPayable)
+        {
+            _multiPaymentError = $"Split payment must cover RM {TotalPayable:N2}. Remaining: RM {(TotalPayable - total):N2}.";
+            Feedback.Warning(_multiPaymentError, "Payment split incomplete");
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (total > TotalPayable &&
+            !SelectedPaymentSplits.Any(split =>
+                split.MethodLabel.Contains("cash", StringComparison.OrdinalIgnoreCase)))
+        {
+            _multiPaymentError = "Payment split exceeds the amount due. Only a cash split can include change.";
+            Feedback.Warning(_multiPaymentError, "Payment split not applied");
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
         AmountReceived = total;
         AmountReceivedText = total.ToString("0.##");
         AmountReceivedError = null;
@@ -2638,10 +2660,40 @@
     {
         _paymentValidationError = null;
 
+        if (_isPaymentMethodsLoading)
+        {
+            _paymentValidationError = "Payment methods are still loading.";
+            Feedback.Warning(_paymentValidationError, "Payment not ready");
+            return;
+        }
+
+        if (SelectedPaymentSplits.Any())
+        {
+            if (MultiPaymentTotal < TotalPayable)
+            {
+                _showInsufficientAmountModal = true;
+                Feedback.Warning($"Split payment must cover RM {TotalPayable:N2}.", "Insufficient payment");
+                return;
+            }
+        }
+        else if (SelectedPaymentTypeId == 0)
+        {
+            _paymentValidationError = "Select a payment method before confirming.";
+            Feedback.Warning(_paymentValidationError, "Payment method required");
+            return;
+        }
+
         if (AmountReceived is null || AmountReceived < TotalPayable)
         {
             _showInsufficientAmountModal = true;
             Feedback.Warning($"Amount received must cover RM {TotalPayable:N2}.", "Insufficient payment");
+            return;
+        }
+
+        if (PrescriptionItems.Count == 0 && ServiceItems.Count == 0)
+        {
+            _paymentValidationError = "Add at least one billing item or service before payment.";
+            Feedback.Warning(_paymentValidationError, "Billing is empty");
             return;
         }
 
@@ -2666,27 +2718,163 @@
             return;
         }
 
+        _paymentValidationError = null;
         _isProcessingPayment = true;
         await InvokeAsync(StateHasChanged);
 
         try
         {
-            // Simulate payment processing
-            await Task.Delay(800);
+            var transaction = BuildBillingTransaction();
+            var result = await CashSalesService.CreateTransactionAsync(transaction);
 
-            // Mark as paid
+            if (!result.Success || result.Value is null)
+            {
+                _paymentValidationError = result.ErrorMessage ?? "Unable to complete the payment.";
+                Feedback.Error(_paymentValidationError, "Payment failed");
+                return;
+            }
+
+            _completedSaleDocumentId = result.Value.DocumentId;
+            _completedReceiptNumber = result.Value.InvoiceNumber;
             BillingStatusText = "Paid";
-            Feedback.Success($"Payment of RM {AmountReceived:N2} completed successfully.", "Payment completed");
 
-            // Close confirm modal and show summary
+            var receiptSuffix = string.IsNullOrWhiteSpace(_completedReceiptNumber)
+                ? string.Empty
+                : $" Receipt: {_completedReceiptNumber}.";
+            Feedback.Success(
+                $"Payment of RM {AmountReceived:N2} completed successfully.{receiptSuffix}",
+                "Payment completed");
+
             _showConfirmPaymentModal = false;
             _showPaymentSummaryModal = true;
+        }
+        catch (Exception ex)
+        {
+            _paymentValidationError = $"Unable to complete payment: {ex.Message}";
+            Feedback.Error(_paymentValidationError, "Payment failed");
         }
         finally
         {
             _isProcessingPayment = false;
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    private Transaction BuildBillingTransaction()
+    {
+        var branchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID)
+            ? "HQ"
+            : AppState.SelectedBranchID!;
+        var branchGroupId = AppState.CurrentBranch?.GroupId ?? string.Empty;
+
+        var transaction = new Transaction
+        {
+            AccountId = _billingCustomerId,
+            BranchId = branchId,
+            GroupId = branchGroupId,
+            Date = DateTime.Now,
+            CustomerName = PatientName,
+            CustomerContact = PatientPhone == "-" ? string.Empty : PatientPhone,
+            Branch = AppState.CurrentBranch?.Name ?? branchId,
+            Type = PrescriptionItems.Count > 0 && ServiceItems.Count > 0
+                ? "Mixed"
+                : ServiceItems.Count > 0 ? "Service" : "Product",
+            ItemCount = PrescriptionItems.Sum(item => item.Quantity) + ServiceItems.Sum(item => item.Quantity),
+            Amount = TotalPayable,
+            Subtotal = Math.Max(0m, Subtotal - DiscountTotal - McCoverage),
+            Tax = TaxAmount,
+            Discount = DiscountTotal,
+            PaymentTypeId = SelectedPaymentSplits.Any() ? 0 : SelectedPaymentTypeId,
+            PaymentMethod = PaymentMethodDisplay,
+            Status = "Paid",
+            Notes = BuildBillingPaymentNotes(),
+            CreatedBy = SelectedCollector,
+            Items = BuildBillingTransactionItems(),
+            Payments = BuildBillingTransactionPayments()
+        };
+
+        return transaction;
+    }
+
+    private List<TransactionItem> BuildBillingTransactionItems()
+    {
+        var items = new List<TransactionItem>();
+
+        items.AddRange(PrescriptionItems.Select(item => new TransactionItem
+        {
+            InventoryId = item.SourceId,
+            Name = item.Name,
+            Description = BuildPrescriptionLineDescription(item),
+            Category = "Product",
+            Quantity = item.Quantity,
+            UnitPrice = item.UnitPrice,
+            Discount = item.Discount,
+            TotalPrice = item.LineTotal
+        }));
+
+        items.AddRange(ServiceItems.Select(item => new TransactionItem
+        {
+            InventoryId = item.SourceId,
+            Name = item.Name,
+            Description = item.Name,
+            Category = "Service",
+            Quantity = item.Quantity,
+            UnitPrice = item.UnitPrice,
+            Discount = item.Discount,
+            TotalPrice = item.LineTotal
+        }));
+
+        return items;
+    }
+
+    private List<TransactionPayment> BuildBillingTransactionPayments()
+    {
+        if (SelectedPaymentSplits.Any())
+        {
+            return SelectedPaymentSplits
+                .Select(split => new TransactionPayment
+                {
+                    PaymentTypeId = split.PaymentTypeId,
+                    PaymentMethod = split.MethodLabel,
+                    Amount = split.Amount ?? 0m,
+                    FinancialAccountId = split.FinancialAccountId
+                })
+                .Where(payment => payment.PaymentTypeId != 0 && payment.Amount > 0)
+                .ToList();
+        }
+
+        var method = AvailablePaymentMethods.FirstOrDefault(item =>
+            item.POSPaymentTypeID == SelectedPaymentTypeId);
+
+        return method is null
+            ? new List<TransactionPayment>()
+            : new List<TransactionPayment>
+            {
+                new()
+                {
+                    PaymentTypeId = method.POSPaymentTypeID,
+                    PaymentMethod = method.POSPaymentTypeName ?? SelectedPaymentMethod,
+                    Amount = AmountReceived ?? TotalPayable,
+                    FinancialAccountId = method.FinancialAccountID ?? string.Empty
+                }
+            };
+    }
+
+    private string BuildBillingPaymentNotes()
+    {
+        var parts = new List<string>();
+        if (McCoverage > 0m) parts.Add($"MC Coverage RM {McCoverage:N2}");
+        if (BillDiscount > 0m) parts.Add($"Bill Discount RM {BillDiscount:N2}");
+        if (!string.IsNullOrWhiteSpace(SelectedCollectorId)) parts.Add($"Collector {SelectedCollector} ({SelectedCollectorId})");
+        return string.Join(" | ", parts);
+    }
+
+    private static string BuildPrescriptionLineDescription(BillingItem item)
+    {
+        var details = new[] { item.Frequency, item.Duration, item.Reason }
+            .Where(value => !string.IsNullOrWhiteSpace(value));
+        var suffix = string.Join(" · ", details);
+        return string.IsNullOrWhiteSpace(suffix) ? item.Name : $"{item.Name} - {suffix}";
     }
 
     private void ClosePaymentSummaryModal()
