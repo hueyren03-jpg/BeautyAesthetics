@@ -9,7 +9,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages.ConfigPages
         [Inject]
         private NavigationManager navigationManager { get; set; } = default!;
         [Inject]
-        private IBluetoothPrinterService PrinterSelectionService { get; set; } = default!;
+        private IPrinterSelectionService PrinterSelectionService { get; set; } = default!;
 
         // State for the active tab
         private string ActiveTab { get; set; } = "Printer";
