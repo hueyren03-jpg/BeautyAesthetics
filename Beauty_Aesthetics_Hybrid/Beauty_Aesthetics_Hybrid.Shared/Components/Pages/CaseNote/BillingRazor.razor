@@ -485,11 +485,12 @@
                                                 @foreach (var method in AvailablePaymentMethods)
                                                 {
                                                     var methodName = method.POSPaymentTypeName ?? $"Payment {method.POSPaymentTypeID}";
-                                                    var isSelected = SelectedPaymentTypeId == method.POSPaymentTypeID && !SelectedPaymentSplits.Any();
+                                                    var allocation = BillingPaymentFor(method.POSPaymentTypeID);
+                                                    var isSelected = allocation?.Amount is > 0;
                                                     <button type="button"
                                                             class="payment-method-card @(isSelected ? "active" : string.Empty)"
                                                             aria-pressed="@isSelected"
-                                                            @onclick="() => SelectPaymentMethod(method)">
+                                                            @onclick="() => OpenBillingPaymentCalculator(method)">
                                                         <span class="payment-method-card__icon"><i class="@GetPaymentMethodIcon(methodName)"></i></span>
                                                         <span class="payment-method-card__copy">
                                                             <strong>@methodName</strong>
@@ -688,7 +689,8 @@
                                                    inputmode="decimal"
                                                    placeholder="0.00"
                                                    value="@AmountReceivedText"
-                                                   @oninput="HandleAmountInputDebounced" />
+                                                   readonly
+                                                   title="Amount received is calculated from the selected payment method amount(s)." />
                                         </div>
                                     </div>
 
@@ -1031,6 +1033,74 @@
     </div>
 }
 
+@* Payment calculator - follows Sales > New Sale payment workflow *@
+@if (_billingCalculatorMethod is not null)
+{
+    <div class="modal-overlay" @onclick="CloseBillingPaymentCalculator">
+        <div class="modal-container billing-payment-calculator" @onclick:stopPropagation="true">
+            <div class="modal-header modal-header-info billing-payment-calculator__header">
+                <span class="billing-payment-calculator__method-icon">
+                    <i class="@GetPaymentMethodIcon(_billingCalculatorMethod.POSPaymentTypeName ?? string.Empty)"></i>
+                </span>
+                <div class="billing-payment-calculator__method">
+                    <small>Payment Method</small>
+                    <h3>@(_billingCalculatorMethod.POSPaymentTypeName ?? "Payment")</h3>
+                </div>
+                <button type="button"
+                        class="billing-payment-calculator__close"
+                        aria-label="Close payment calculator"
+                        @onclick="CloseBillingPaymentCalculator">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+
+            <div class="billing-payment-calculator__summary">
+                <div><span>Total Payable</span><strong>RM @TotalPayable.ToString("N2")</strong></div>
+                <div><span>Already Paid</span><strong>RM @BillingPaidExcludingCalculatorMethod.ToString("N2")</strong></div>
+                <div><span>Remaining</span><strong>RM @BillingCalculatorRemaining.ToString("N2")</strong></div>
+            </div>
+
+            <div class="billing-payment-calculator__display">
+                <span>RM</span>
+                <strong>@BillingCalculatorAmount.ToString("N2")</strong>
+            </div>
+
+            <button type="button"
+                    class="billing-payment-calculator__exact"
+                    @onclick="UseBillingExactAmount"
+                    disabled="@(BillingCalculatorRemaining <= 0)">
+                <i class="bi bi-check2-circle"></i>
+                <span>Pay Remaining | RM @BillingCalculatorRemaining.ToString("N2")</span>
+            </button>
+
+            <div class="billing-payment-calculator__keypad">
+                @foreach (var key in BillingKeypadKeys)
+                {
+                    <button type="button" @onclick="() => PressBillingCalculatorKey(key)">@key</button>
+                }
+                <button type="button" @onclick="ClearBillingCalculator">Clear</button>
+                <button type="button" @onclick="BillingCalculatorZero">0</button>
+                <button type="button" @onclick="BackspaceBillingCalculator"><i class="bi bi-backspace"></i></button>
+                <button type="button" class="double-zero" @onclick="BillingCalculatorDoubleZero">00</button>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn-modal-cancel" @onclick="CloseBillingPaymentCalculator">
+                    <i class="bi bi-x-circle"></i>
+                    <span>Cancel</span>
+                </button>
+                <button type="button"
+                        class="btn-modal-confirm"
+                        disabled="@(BillingCalculatorAmount <= 0)"
+                        @onclick="ConfirmBillingPaymentAmount">
+                    <i class="bi bi-check-circle-fill"></i>
+                    <span>Use RM @BillingCalculatorAmount.ToString("N2")</span>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @* Payment confirmation & post-payment option modals *@
 @if (_showConfirmPaymentModal)
 {
@@ -1041,7 +1111,7 @@
                 <h3>Confirm Payment</h3>
             </div>
             <div class="modal-body">
-                <p>Are you sure you want to proceed with this payment?</p>
+                <p>Complete this payment using <strong>@PaymentMethodDisplay</strong>?</p>
                 <div class="payment-summary-box">
                     <div class="summary-detail-row">
                         <span class="summary-label">Total Payable:</span>
@@ -1051,6 +1121,13 @@
                         <span class="summary-label">Amount Received:</span>
                         <strong class="summary-value">RM @(AmountReceived?.ToString("N2") ?? "0.00")</strong>
                     </div>
+                    @if (ChangeAmount > 0)
+                    {
+                        <div class="summary-detail-row highlight-change">
+                            <span class="summary-label">Change:</span>
+                            <strong class="summary-value change-amount">RM @ChangeAmount.ToString("N2")</strong>
+                        </div>
+                    }
                 </div>
             </div>
             <div class="modal-footer">
@@ -1060,7 +1137,7 @@
                 </button>
                 <button class="btn-modal-confirm" @onclick="ConfirmPaymentAsync">
                     <i class="bi bi-check-circle-fill"></i>
-                    <span>Confirm</span>
+                    <span>Complete Payment</span>
                 </button>
             </div>
         </div>
