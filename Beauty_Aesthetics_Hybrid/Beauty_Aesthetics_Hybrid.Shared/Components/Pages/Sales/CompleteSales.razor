@@ -31,10 +31,11 @@
         <h2 class="success-title">Payment Successful!</h2>
 
         <p class="transaction-id">
-            Transaction ID: @(salesRecord?.InvoiceNumber
-                ?? (!string.IsNullOrWhiteSpace(AppState.LastReceiptNo)
-                    ? AppState.LastReceiptNo
-                    : AppState.LastSaleDocumentId))
+            Transaction ID: @FirstNonEmpty(
+                salesRecord?.InvoiceNumber,
+                AppState.LastReceiptNo,
+                AppState.LastSaleDocumentId,
+                "—")
         </p>
 
         @if (isLoadingRecord)
@@ -139,15 +140,6 @@
                 salesRecord = result.Value;
                 AppState.LastCompletedTransaction = result.Value;
             }
-
-            if (!string.IsNullOrWhiteSpace(AppState.SelectedBranchID))
-            {
-                var branchResult = await BranchAC.LoadRecordAsync(AppState.SelectedBranchID);
-                if (branchResult.Success)
-                {
-                    branchRecord = branchResult.Value;
-                }
-            }
             else if (AppState.LastCompletedTransaction is not null)
             {
                 salesRecord = AppState.LastCompletedTransaction;
@@ -156,6 +148,15 @@
             {
                 await ShowNotification(
                     result.ErrorMessage ?? "Failed to load sales details from server.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(AppState.SelectedBranchID))
+            {
+                var branchResult = await BranchAC.LoadRecordAsync(AppState.SelectedBranchID);
+                if (branchResult.Success)
+                {
+                    branchRecord = branchResult.Value;
+                }
             }
         }
         catch (Exception ex)
