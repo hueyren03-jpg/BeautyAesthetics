@@ -1789,13 +1789,16 @@
                                 </div>
                                 <div class="field-group">
                                     <label>@Localizer["ColLocation"]</label>
-                                    <select @bind="editingAppointment.BranchId">
+                                    <select @bind="editingAppointment.BranchId"
+                                            @bind:after="OnEditingAppointmentBranchChangedAsync"
+                                            disabled="@isAppointmentFormStaffLoading">
                                         <option value="">@Localizer["SelectLocation"]</option>
                                         @foreach (var branch in branchOptions)
                                         {
                                             <option value="@branch.Id">@branch.DisplayName</option>
                                         }
                                     </select>
+                                    <small class="appointment-field-hint">Select the appointment location before choosing staff.</small>
                                 </div>
                                 <div class="field-group">
                                     <label>Room</label>
@@ -1819,13 +1822,49 @@
                                 </div>
                                 <div class="field-group">
                                     <label>@Localizer["ColStaff"]</label>
-                                    <select @bind="editingAppointment.EmployeeId">
-                                        <option value="">@Localizer["SelectStaff"]</option>
-                                        @foreach (var s in StaffList)
+                                    <select @bind="editingAppointment.EmployeeId"
+                                            @bind:after="OnEditingAppointmentStaffChanged"
+                                            disabled="@(string.IsNullOrWhiteSpace(editingAppointment.BranchId) || isAppointmentFormStaffLoading)">
+                                        @if (string.IsNullOrWhiteSpace(editingAppointment.BranchId))
                                         {
-                                            <option value="@s.Id">@s.Name (@s.Id)</option>
+                                            <option value="">Select location first</option>
+                                        }
+                                        else if (isAppointmentFormStaffLoading)
+                                        {
+                                            <option value="">Loading staff...</option>
+                                        }
+                                        else if (!string.IsNullOrWhiteSpace(appointmentFormStaffError))
+                                        {
+                                            <option value="">Unable to load staff</option>
+                                        }
+                                        else if (AppointmentFormStaffList.Count == 0)
+                                        {
+                                            <option value="">No active staff at this location</option>
+                                        }
+                                        else
+                                        {
+                                            <option value="">@Localizer["SelectStaff"]</option>
+                                            @foreach (var staff in AppointmentFormStaffList)
+                                            {
+                                                <option value="@staff.Id">@staff.Name (@staff.Id)</option>
+                                            }
                                         }
                                     </select>
+                                    @if (!string.IsNullOrWhiteSpace(appointmentFormStaffError) &&
+                                         !string.IsNullOrWhiteSpace(editingAppointment.BranchId))
+                                    {
+                                        <div class="appointment-field-error">
+                                            <span>@appointmentFormStaffError</span>
+                                            <button type="button" @onclick="RetryAppointmentFormStaffAsync">Retry</button>
+                                        </div>
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(editingAppointment.BranchId) &&
+                                             !isAppointmentFormStaffLoading)
+                                    {
+                                        <small class="appointment-field-hint">
+                                            Active staff for @GetSelectedAppointmentBranchName()
+                                        </small>
+                                    }
                                 </div>
                                 <div class="field-group">
                                     <label>Status</label>
