@@ -627,6 +627,7 @@ public sealed class CashSalesService : ICashSalesService
             InventoryId = Text(line, "InventoryID"),
             Name = First(Text(line, "ItemName"), Text(line, "Description"), "Item")!,
             Description = Text(line, "Description"),
+            Remarks = Text(line, "RefCompanyName"),
             Category = inventoryType == 3 ? "Service" : "Product",
             Quantity = (int)Math.Max(1, quantity),
             UnitPrice = unitPrice,
