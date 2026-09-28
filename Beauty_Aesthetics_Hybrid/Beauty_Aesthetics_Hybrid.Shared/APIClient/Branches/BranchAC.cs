@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.Services.Auth;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
@@ -18,6 +19,52 @@ public sealed class BranchAC
     public BranchAC(IAuthService authService)
     {
         this.authService = authService;
+    }
+
+    public async Task<ApiCallResult<JsonObject>> LoadRecordAsync(
+        string branchId,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/Branch/LoadRecord")
+        {
+            Content = JsonContent.Create(
+                new { id = branchId },
+                mediaType: JsonPatchMediaType,
+                options: JsonOptions)
+        };
+        using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+
+        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            return ApiCallResult<JsonObject>.Unauthorized(response.StatusCode);
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return ApiCallResult<JsonObject>.Failure(
+                response.StatusCode,
+                $"Unable to load branch ({(int)response.StatusCode}).");
+        }
+
+        try
+        {
+            var wrapped = JsonSerializer.Deserialize<ApiResponse<JsonObject>>(body, JsonOptions);
+            if (wrapped is null || !wrapped.IsSuccess || wrapped.Result is null)
+            {
+                return ApiCallResult<JsonObject>.Failure(
+                    response.StatusCode,
+                    wrapped?.Message ?? "Branch record response was invalid.");
+            }
+
+            return ApiCallResult<JsonObject>.Ok(response.StatusCode, wrapped.Result);
+        }
+        catch (JsonException)
+        {
+            return ApiCallResult<JsonObject>.Failure(
+                response.StatusCode,
+                "Branch record response was invalid.");
+        }
     }
 
     public async Task<ApiCallResult<List<BranchLookupDTO>>> LoadBranchesAsync(
