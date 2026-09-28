@@ -21,6 +21,11 @@ public interface ICustomerService
         string customerId,
         CancellationToken cancellationToken = default);
 
+    Task<CustomerOperationResult<MemberOtherBalanceSummaryDTO?>> GetOtherBalanceSummaryAsync(
+        string customerId,
+        DateTime cutOffDate,
+        CancellationToken cancellationToken = default);
+
     Task<CustomerOperationResult<Customer>> CreateCustomerAsync(
         Customer customer,
         CancellationToken cancellationToken = default);
