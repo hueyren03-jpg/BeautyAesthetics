@@ -2716,7 +2716,6 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                     isCreate ? "Appointment created successfully." : "Appointment updated successfully.",
                     isCreate ? "Appointment created" : "Appointment updated");
                 CloseModal();
-                await ReloadAppointmentsAsync();
             }
             catch (Exception exception)
             {
