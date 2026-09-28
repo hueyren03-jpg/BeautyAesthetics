@@ -707,7 +707,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             ViewModel?.Appointments?
                 .Where(IsAppointmentForCurrentBranch)
                 .ToList()
-            ?? Array.Empty<Appointment>();
+            ?? new List<Appointment>();
 
         private bool IsAppointmentForCurrentBranch(Appointment appointment)
         {
