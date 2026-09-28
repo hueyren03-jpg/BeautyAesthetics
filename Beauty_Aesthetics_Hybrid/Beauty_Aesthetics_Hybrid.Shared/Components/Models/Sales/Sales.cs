@@ -44,6 +44,8 @@ namespace Beauty_Aesthetics_WebPos.Components.Models
         public int PaymentTypeId { get; set; }
         public string PaymentMethod { get; set; } = "";
         public decimal Amount { get; set; }
+        public string FinancialAccountId { get; set; } = "";
+        public string BankName { get; set; } = "";
     }
 
     /// <summary>
