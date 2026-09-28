@@ -18,6 +18,7 @@
 @inject Beauty_Aesthetics_WebPos.Components.Services.Sales.ICashSalesService CashSalesService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.ProductImageService ProductImageService
 @inject Beauty_Aesthetics_WebPos.Components.Services.AppState AppState
+@inject Microsoft.JSInterop.IJSRuntime JS
 
 <PageTitle>Billing - Beauty Aesthetics</PageTitle>
 
@@ -1584,6 +1585,7 @@
     private string? _paymentMethodsError;
     private string _completedSaleDocumentId = string.Empty;
     private string _completedReceiptNumber = string.Empty;
+    private string _invoiceDownloadUrl = string.Empty;
     private string SelectedCollectorId { get; set; } = string.Empty;
     private string SelectedCollector { get; set; } = string.Empty;
     private List<Employee> CollectorOptions { get; set; } = new();
@@ -3079,22 +3081,74 @@
             return;
         }
 
+        _postPaymentEmailError = null;
+
+        if (string.IsNullOrWhiteSpace(_completedSaleDocumentId))
+        {
+            _postPaymentEmailError = "The completed sales document ID is missing.";
+            Feedback.Error(_postPaymentEmailError, "Invoice unavailable");
+            return;
+        }
+
         _isProcessingPayment = true;
+        var completed = false;
         await InvokeAsync(StateHasChanged);
 
         try
         {
-            // Simulate backend processing - replace with real API call later
-            await Task.Delay(1200);
-            Feedback.Success(
-                action == "print" ? "Invoice sent to print." : $"Invoice prepared for {_postPaymentEmail}.",
-                action == "print" ? "Invoice print ready" : "Invoice email ready",
-                2400);
+            var invoiceResult = await CashSalesService.RequestInvoiceLinkAsync(_completedSaleDocumentId);
+            if (!invoiceResult.Success || string.IsNullOrWhiteSpace(invoiceResult.Value))
+            {
+                _postPaymentEmailError = invoiceResult.ErrorMessage ?? "Unable to generate the invoice link.";
+                Feedback.Error(_postPaymentEmailError, "Invoice unavailable");
+                return;
+            }
+
+            _invoiceDownloadUrl = invoiceResult.Value;
+
+            if (string.Equals(action, "print", StringComparison.OrdinalIgnoreCase))
+            {
+                await JS.InvokeVoidAsync("open", _invoiceDownloadUrl, "_blank");
+                Feedback.Success(
+                    string.IsNullOrWhiteSpace(_completedReceiptNumber)
+                        ? "Invoice PDF opened."
+                        : $"Invoice {_completedReceiptNumber} opened.",
+                    "Invoice ready",
+                    2400);
+            }
+            else
+            {
+                var subject = Uri.EscapeDataString(
+                    string.IsNullOrWhiteSpace(_completedReceiptNumber)
+                        ? "Your invoice"
+                        : $"Invoice {_completedReceiptNumber}");
+                var body = Uri.EscapeDataString(
+                    $"Your invoice is available here:{Environment.NewLine}{_invoiceDownloadUrl}");
+                var email = Uri.EscapeDataString(_postPaymentEmail);
+                var mailto = $"mailto:{email}?subject={subject}&body={body}";
+
+                await JS.InvokeVoidAsync("open", mailto, "_self");
+                Feedback.Success(
+                    $"Invoice link prepared for {_postPaymentEmail}.",
+                    "Invoice email ready",
+                    2400);
+            }
+
+            completed = true;
+        }
+        catch (Exception ex)
+        {
+            _postPaymentEmailError = $"Unable to prepare invoice: {ex.Message}";
+            Feedback.Error(_postPaymentEmailError, "Invoice unavailable");
         }
         finally
         {
             _isProcessingPayment = false;
-            _showPostPaymentModal = false;
+            if (completed)
+            {
+                _showPostPaymentModal = false;
+            }
+
             await InvokeAsync(StateHasChanged);
         }
     }
