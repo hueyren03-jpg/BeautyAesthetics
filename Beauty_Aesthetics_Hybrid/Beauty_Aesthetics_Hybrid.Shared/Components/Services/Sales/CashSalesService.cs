@@ -281,6 +281,59 @@ public sealed class CashSalesService : ICashSalesService
         return ApiCallResult<string>.Ok(submitResult.StatusCode, submitResult.Value);
     }
 
+    public async Task<ApiCallResult<string>> RequestReceiptPdfAsync(
+        string documentId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+        {
+            return ApiCallResult<string>.Failure(
+                HttpStatusCode.BadRequest,
+                "A completed cash sale document is required before requesting a receipt.");
+        }
+
+        var loadResult = await cashSalesAC.LoadRecordAsync(documentId, cancellationToken);
+        if (!loadResult.Success || loadResult.Value is null)
+        {
+            return ApiCallResult<string>.Failure(
+                loadResult.StatusCode,
+                loadResult.ErrorMessage ?? "Unable to load the completed cash sale.");
+        }
+
+        var savedDocumentId = documentId;
+        var header = loadResult.Value["objDoc_CashSales"] as JsonObject;
+        if (header is not null)
+        {
+            var headerDocumentId = TextIgnoreCase(header, "DocumentID");
+            if (!string.IsNullOrWhiteSpace(headerDocumentId))
+            {
+                savedDocumentId = headerDocumentId;
+            }
+        }
+
+        var documentTypeId = 5;
+        var lines = loadResult.Value["lstDocumentLine"] as JsonArray;
+        if (lines is not null && lines.OfType<JsonObject>().Any(line =>
+                IntegerIgnoreCase(line, "OwnerDocumentTypeID") == 52))
+        {
+            documentTypeId = 52;
+        }
+
+        var receiptResult = await cashSalesAC.GetThermalReceiptPdfAsync(
+            savedDocumentId,
+            documentTypeId,
+            cancellationToken);
+
+        if (!receiptResult.Success || string.IsNullOrWhiteSpace(receiptResult.Value))
+        {
+            return ApiCallResult<string>.Failure(
+                receiptResult.StatusCode,
+                receiptResult.ErrorMessage ?? "The receipt PDF was empty.");
+        }
+
+        return ApiCallResult<string>.Ok(receiptResult.StatusCode, receiptResult.Value);
+    }
+
     public async Task<ApiCallResult<IReadOnlyList<CashSalesPaymentTypeDTO>>> LoadPaymentTypesAsync(CancellationToken cancellationToken = default)
     {
         var result = await cashSalesAC.LoadPaymentTypesAsync(cancellationToken);
@@ -852,6 +905,36 @@ public sealed class CashSalesService : ICashSalesService
 
     private static decimal Number(JsonObject? source, string name) => source?[name] is JsonValue value && value.TryGetValue<decimal>(out var number) ? number : 0;
     private static int Integer(JsonObject? source, string name) => source?[name] is JsonValue value && value.TryGetValue<int>(out var number) ? number : 0;
+    private static int IntegerIgnoreCase(JsonObject? source, string name)
+    {
+        if (source is null)
+        {
+            return 0;
+        }
+
+        foreach (var item in source)
+        {
+            if (!string.Equals(item.Key, name, StringComparison.OrdinalIgnoreCase) ||
+                item.Value is not JsonValue value)
+            {
+                continue;
+            }
+
+            if (value.TryGetValue<int>(out var number))
+            {
+                return number;
+            }
+
+            if (value.TryGetValue<string>(out var text) &&
+                int.TryParse(text, out number))
+            {
+                return number;
+            }
+        }
+
+        return 0;
+    }
+
     private static bool Bool(JsonObject? source, string name) => source?[name] is JsonValue value && value.TryGetValue<bool>(out var result) && result;
     private static DateTime? DateValue(JsonObject? source, string name) => source?[name] is JsonValue value && value.TryGetValue<DateTime>(out var result) ? result : null;
 
