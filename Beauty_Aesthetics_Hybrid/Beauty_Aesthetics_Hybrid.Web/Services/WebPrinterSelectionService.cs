@@ -2,13 +2,13 @@ using Beauty_Aesthetics_WebPos.Components.Services.Printing;
 
 namespace Beauty_Aesthetics_Hybrid.Web.Services;
 
-public sealed class WebPrinterSelectionService : IPrinterSelectionService
+public sealed class WebPrinterSelectionService : IBluetoothPrinterService, IPrinterSelectionService
 {
     private string selectedKey = string.Empty;
     private string net58Ip = "192.168.1.200";
     private string net80Ip = "192.168.1.200";
 
-    public IReadOnlyList<PrinterOption> GetPrinterOptions() => new List<PrinterOption>
+    public List<PrinterOption> GetPrinterOptions() => new List<PrinterOption>
     {
         new() { Name = "iMin Printer (58mm/80mm)", IsIminPrinter = true, ReceiptMM = 100, IsSelected = selectedKey == "Imin_100" },
         new() { Name = "Bluetooth Printer (58mm)", IsBluetoothPrinter = true, ReceiptMM = 58, IsSelected = selectedKey == "BT_58" },
