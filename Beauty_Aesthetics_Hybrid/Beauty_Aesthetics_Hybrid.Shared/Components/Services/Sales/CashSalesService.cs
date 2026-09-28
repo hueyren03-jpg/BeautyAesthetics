@@ -5,6 +5,7 @@ using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.Models;
 using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
+using Beauty_Aesthetics_WebPos.Components.Services.Files;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.Sales;
@@ -15,17 +16,20 @@ public sealed class CashSalesService : ICashSalesService
     private readonly BranchAC branchAC;
     private readonly WebDashboardAC dashboardAC;
     private readonly AppFeedbackService feedback;
+    private readonly IFileDownloadService fileDownloadService;
 
     public CashSalesService(
         CashSalesAC cashSalesAC,
         BranchAC branchAC,
         WebDashboardAC dashboardAC,
-        AppFeedbackService feedback)
+        AppFeedbackService feedback,
+        IFileDownloadService fileDownloadService)
     {
         this.cashSalesAC = cashSalesAC;
         this.branchAC = branchAC;
         this.dashboardAC = dashboardAC;
         this.feedback = feedback;
+        this.fileDownloadService = fileDownloadService;
     }
 
     public async Task<ApiCallResult<IReadOnlyList<Transaction>>> LoadTransactionsAsync(
@@ -332,6 +336,34 @@ public sealed class CashSalesService : ICashSalesService
         }
 
         return ApiCallResult<string>.Ok(receiptResult.StatusCode, receiptResult.Value);
+    }
+
+    public async Task<bool> DownloadReceiptPdfAsync(
+        string documentId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var result = await RequestReceiptPdfAsync(documentId, cancellationToken);
+            if (!result.Success || string.IsNullOrWhiteSpace(result.Value))
+            {
+                return false;
+            }
+
+            var fileName = $"Thermal_Receipt_{documentId}.pdf";
+            await fileDownloadService.DownloadBinaryFileAsync(
+                fileName,
+                result.Value,
+                "application/pdf",
+                cancellationToken);
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Receipt download error: {ex.Message}");
+            return false;
+        }
     }
 
     public async Task<ApiCallResult<IReadOnlyList<CashSalesPaymentTypeDTO>>> LoadPaymentTypesAsync(CancellationToken cancellationToken = default)
