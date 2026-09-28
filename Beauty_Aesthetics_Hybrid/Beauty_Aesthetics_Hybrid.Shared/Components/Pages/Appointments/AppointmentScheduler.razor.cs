@@ -2825,6 +2825,54 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             CloseDateSelector();
         }
 
+        private void NavigateToBilling()
+        {
+            PrepareAppointmentReferences(editingAppointment);
+
+            var customer = customerOptions.FirstOrDefault(item =>
+                !string.IsNullOrWhiteSpace(editingAppointment.CustomerId) &&
+                string.Equals(
+                    item.SystemID,
+                    editingAppointment.CustomerId,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (customer is null && !string.IsNullOrWhiteSpace(editingAppointment.CustomerName))
+            {
+                customer = customerOptions.FirstOrDefault(item =>
+                    string.Equals(
+                        $"{item.FirstName} {item.LastName}".Trim(),
+                        editingAppointment.CustomerName.Trim(),
+                        StringComparison.OrdinalIgnoreCase) &&
+                    (string.IsNullOrWhiteSpace(editingAppointment.Phone) ||
+                     string.Equals(
+                         item.ContactNumber1,
+                         editingAppointment.Phone,
+                         StringComparison.OrdinalIgnoreCase)));
+            }
+
+            if (customer is not null)
+            {
+                editingAppointment.CustomerId = customer.SystemID ?? string.Empty;
+                editingAppointment.CustomerName =
+                    $"{customer.FirstName} {customer.LastName}".Trim();
+                editingAppointment.Phone = customer.ContactNumber1;
+                AppState.SelectCustomer(customer);
+            }
+
+            if (string.IsNullOrWhiteSpace(editingAppointment.CustomerId))
+            {
+                Feedback.Warning(
+                    "Select a valid customer before creating a bill.",
+                    "Customer required");
+                return;
+            }
+
+            CloseModal();
+
+            NavigationManager.NavigateTo(
+                $"/billing?customerId={Uri.EscapeDataString(editingAppointment.CustomerId)}");
+        }
+
         private void NavigateToCaseNotes()
         {
             PrepareAppointmentReferences(editingAppointment);
