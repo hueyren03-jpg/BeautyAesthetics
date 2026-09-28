@@ -64,6 +64,18 @@ public sealed class CashSalesProxyDTO
     public Dictionary<string, JsonElement>? AdditionalData { get; set; }
 }
 
+public sealed class CashSalesPaymentTypeRequestDTO
+{
+    [JsonPropertyName("ID")]
+    public string? CustomerId { get; set; }
+
+    [JsonPropertyName("BranchID")]
+    public string? BranchId { get; set; }
+
+    [JsonPropertyName("GroupID")]
+    public string? GroupId { get; set; }
+}
+
 public sealed class CashSalesPaymentTypeDTO
 {
     public int POSPaymentTypeID { get; set; }
