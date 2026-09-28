@@ -436,135 +436,267 @@
                                 <div class="payment-step-heading">
                                     <span class="payment-step-kicker">Step 2 of 2</span>
                                     <h3>Complete Payment</h3>
-                                    <p>Review the amount due and choose how the customer will pay.</p>
+                                    <p>Select how the customer is paying, apply available balances if needed, then confirm the amount received.</p>
                                 </div>
                             </div>
 
-                            <div class="payment-amount-hero">
-                                <div>
-                                    <span class="payment-amount-label">Total Payable</span>
-                                    <strong>RM @TotalPayable.ToString("N2")</strong>
-                                </div>
-                                <span class="payment-amount-status @BillingStatusCss">@BillingStatusText</span>
-                            </div>
-
-                        <div class="billing-section">
-                            <div class="section-header">
-                                <h3>Payment</h3>
-                            </div>
-                            <div class="payment-methods">
-                                <label class="payment-label">Payment Method</label>
-                                <div class="custom-dropdown-wrapper form-dropdown">
-                                    <div class="custom-dropdown-trigger @(_isPaymentMethodDropdownOpen ? "open" : "")" @onclick="TogglePaymentMethodDropdown">
-                                        <span>@GetPaymentMethodLabel(SelectedPaymentMethod)</span>
-                                        <i class="bi bi-chevron-down dropdown-arrow"></i>
-                                    </div>
-                                    @if (_isPaymentMethodDropdownOpen)
-                                    {
-                                        <div class="custom-dropdown-menu">
-                                            <div class="dropdown-item @(SelectedPaymentMethod == "cash" ? "selected" : "")" @onclick="@(() => SelectPaymentMethod("cash"))">Cash</div>
-                                            <div class="dropdown-item @(SelectedPaymentMethod == "debit-card" ? "selected" : "")" @onclick="@(() => SelectPaymentMethod("debit-card"))">Debit Card</div>
-                                            <div class="dropdown-item @(SelectedPaymentMethod == "credit-card" ? "selected" : "")" @onclick="@(() => SelectPaymentMethod("credit-card"))">Credit Card</div>
-                                            <div class="dropdown-item @(SelectedPaymentMethod == "tng" ? "selected" : "")" @onclick="@(() => SelectPaymentMethod("tng"))">Touch 'n Go eWallet</div>
-                                            <div class="dropdown-item @(SelectedPaymentMethod == "grabpay" ? "selected" : "")" @onclick="@(() => SelectPaymentMethod("grabpay"))">GrabPay</div>
-                                            <div class="dropdown-item @(SelectedPaymentMethod == "boost" ? "selected" : "")" @onclick="@(() => SelectPaymentMethod("boost"))">Boost</div>
-                                            <div class="dropdown-item @(SelectedPaymentMethod == "shopeepay" ? "selected" : "")" @onclick="@(() => SelectPaymentMethod("shopeepay"))">ShopeePay</div>
-                                            <div class="dropdown-item @(SelectedPaymentMethod == "bank" ? "selected" : "")" @onclick="@(() => SelectPaymentMethod("bank"))">FPX Bank Transfer</div>
+                            <div class="payment-checkout-grid">
+                                <div class="payment-checkout-main">
+                                    <section class="payment-panel">
+                                        <div class="payment-panel-heading">
+                                            <div class="payment-panel-icon"><i class="bi bi-credit-card-2-front"></i></div>
+                                            <div>
+                                                <h4>Payment Method</h4>
+                                                <p>Choose the primary payment method.</p>
+                                            </div>
                                         </div>
-                                    }
-                                </div>
 
-                                <label class="payment-label">Collected By</label>
-                                <div class="custom-dropdown-wrapper form-dropdown">
-                                    <div class="custom-dropdown-trigger @(_isCollectorDropdownOpen ? "open" : "")" @onclick="ToggleCollectorDropdown">
-                                        <span>@SelectedCollector</span>
-                                        <i class="bi bi-chevron-down dropdown-arrow"></i>
-                                    </div>
-                                    @if (_isCollectorDropdownOpen)
-                                    {
-                                        <div class="custom-dropdown-menu">
-                                            @foreach (var staff in CollectorOptions)
-                                            {
-                                                <div class="dropdown-item @(SelectedCollector == staff ? "selected" : "")" @onclick="@(() => SelectCollector(staff))">
-                                                    @staff
-                                                </div>
-                                            }
+                                        <div class="payment-method-card-grid" role="group" aria-label="Payment method">
+                                            <button type="button"
+                                                    class="payment-method-card @(SelectedPaymentMethod == "cash" ? "active" : string.Empty)"
+                                                    aria-pressed="@(SelectedPaymentMethod == "cash")"
+                                                    @onclick='() => SelectPaymentMethod("cash")'>
+                                                <span class="payment-method-card__icon"><i class="bi bi-cash-stack"></i></span>
+                                                <span class="payment-method-card__copy"><strong>Cash</strong><small>Counter payment</small></span>
+                                                <span class="payment-method-card__check"><i class="bi bi-check-lg"></i></span>
+                                            </button>
+                                            <button type="button"
+                                                    class="payment-method-card @(SelectedPaymentMethod == "debit-card" ? "active" : string.Empty)"
+                                                    aria-pressed="@(SelectedPaymentMethod == "debit-card")"
+                                                    @onclick='() => SelectPaymentMethod("debit-card")'>
+                                                <span class="payment-method-card__icon"><i class="bi bi-credit-card"></i></span>
+                                                <span class="payment-method-card__copy"><strong>Debit Card</strong><small>Card terminal</small></span>
+                                                <span class="payment-method-card__check"><i class="bi bi-check-lg"></i></span>
+                                            </button>
+                                            <button type="button"
+                                                    class="payment-method-card @(SelectedPaymentMethod == "credit-card" ? "active" : string.Empty)"
+                                                    aria-pressed="@(SelectedPaymentMethod == "credit-card")"
+                                                    @onclick='() => SelectPaymentMethod("credit-card")'>
+                                                <span class="payment-method-card__icon"><i class="bi bi-credit-card-2-back"></i></span>
+                                                <span class="payment-method-card__copy"><strong>Credit Card</strong><small>Card terminal</small></span>
+                                                <span class="payment-method-card__check"><i class="bi bi-check-lg"></i></span>
+                                            </button>
+                                            <button type="button"
+                                                    class="payment-method-card @(SelectedPaymentMethod == "tng" ? "active" : string.Empty)"
+                                                    aria-pressed="@(SelectedPaymentMethod == "tng")"
+                                                    @onclick='() => SelectPaymentMethod("tng")'>
+                                                <span class="payment-method-card__icon"><i class="bi bi-phone"></i></span>
+                                                <span class="payment-method-card__copy"><strong>Touch 'n Go</strong><small>E-Wallet</small></span>
+                                                <span class="payment-method-card__check"><i class="bi bi-check-lg"></i></span>
+                                            </button>
+                                            <button type="button"
+                                                    class="payment-method-card @(SelectedPaymentMethod == "grabpay" ? "active" : string.Empty)"
+                                                    aria-pressed="@(SelectedPaymentMethod == "grabpay")"
+                                                    @onclick='() => SelectPaymentMethod("grabpay")'>
+                                                <span class="payment-method-card__icon"><i class="bi bi-phone"></i></span>
+                                                <span class="payment-method-card__copy"><strong>GrabPay</strong><small>E-Wallet</small></span>
+                                                <span class="payment-method-card__check"><i class="bi bi-check-lg"></i></span>
+                                            </button>
+                                            <button type="button"
+                                                    class="payment-method-card @(SelectedPaymentMethod == "boost" ? "active" : string.Empty)"
+                                                    aria-pressed="@(SelectedPaymentMethod == "boost")"
+                                                    @onclick='() => SelectPaymentMethod("boost")'>
+                                                <span class="payment-method-card__icon"><i class="bi bi-phone"></i></span>
+                                                <span class="payment-method-card__copy"><strong>Boost</strong><small>E-Wallet</small></span>
+                                                <span class="payment-method-card__check"><i class="bi bi-check-lg"></i></span>
+                                            </button>
+                                            <button type="button"
+                                                    class="payment-method-card @(SelectedPaymentMethod == "shopeepay" ? "active" : string.Empty)"
+                                                    aria-pressed="@(SelectedPaymentMethod == "shopeepay")"
+                                                    @onclick='() => SelectPaymentMethod("shopeepay")'>
+                                                <span class="payment-method-card__icon"><i class="bi bi-phone"></i></span>
+                                                <span class="payment-method-card__copy"><strong>ShopeePay</strong><small>E-Wallet</small></span>
+                                                <span class="payment-method-card__check"><i class="bi bi-check-lg"></i></span>
+                                            </button>
+                                            <button type="button"
+                                                    class="payment-method-card @(SelectedPaymentMethod == "bank" ? "active" : string.Empty)"
+                                                    aria-pressed="@(SelectedPaymentMethod == "bank")"
+                                                    @onclick='() => SelectPaymentMethod("bank")'>
+                                                <span class="payment-method-card__icon"><i class="bi bi-bank"></i></span>
+                                                <span class="payment-method-card__copy"><strong>FPX / Bank</strong><small>Bank transfer</small></span>
+                                                <span class="payment-method-card__check"><i class="bi bi-check-lg"></i></span>
+                                            </button>
                                         </div>
-                                    }
-                                </div>
 
-                                <label class="payment-label">Use Wallet / Points</label>
-                                <div class="payment-toggle-row">
-                                    <label class="toggle-option">
-                                        <input type="checkbox" @bind="UseCashWallet" disabled="@(!CashWalletAmount.HasValue || CashWalletAmount.Value <= 0)" />
-                                        <span>Use Cash Wallet</span>
-                                    </label>
-                                    <label class="toggle-option">
-                                        <input type="checkbox" @bind="UseCreditVoucher" disabled="@(!CreditVoucherAmount.HasValue || CreditVoucherAmount.Value <= 0)" />
-                                        <span>Use Credit Voucher</span>
-                                    </label>
-                                    <label class="toggle-option">
-                                        <input type="checkbox" @bind="UseBeautiPoints" disabled="@(!BeautiPoints.HasValue || BeautiPoints.Value <= 0)" />
-                                        <span>Use Beauty Points</span>
-                                    </label>
-                                    <label class="toggle-option">
-                                        <input type="checkbox" @bind="UseLoyaltyPoints" disabled="@(!LoyaltyPoints.HasValue || LoyaltyPoints.Value <= 0)" />
-                                        <span>Use Loyalty Points</span>
-                                    </label>
-                                </div>
-
-                                <div class="payment-multi-row">
-                                    <div class="payment-multi-summary">
-                                        <span class="payment-label">Multi-payment</span>
-                                        <span class="payment-multi-summary-text">
-                                            @if (SelectedPaymentSplits.Any())
-                                            {
-                                                @foreach (var split in SelectedPaymentSplits)
+                                        <div class="payment-split-strip">
+                                            <div>
+                                                <span class="payment-split-strip__label">Need more than one method?</span>
+                                                @if (SelectedPaymentSplits.Any())
                                                 {
-                                                    <span class="payment-multi-badge">
-                                                        <span>@split.MethodLabel</span>
-                                                        <strong>RM @split.Amount!.Value.ToString("N2")</strong>
-                                                    </span>
+                                                    <div class="payment-split-badges">
+                                                        @foreach (var split in SelectedPaymentSplits)
+                                                        {
+                                                            <span class="payment-multi-badge">
+                                                                <span>@split.MethodLabel</span>
+                                                                <strong>RM @split.Amount!.Value.ToString("N2")</strong>
+                                                            </span>
+                                                        }
+                                                    </div>
                                                 }
-                                            }
-                                            else
-                                            {
-                                                <span>No split configured</span>
-                                            }
+                                                else
+                                                {
+                                                    <span class="payment-split-strip__hint">Split the amount across cash, card, e-wallet or bank transfer.</span>
+                                                }
+                                            </div>
+                                            <button type="button" class="btn-multi-payment" @onclick="OpenMultiPaymentModal">
+                                                <i class="bi bi-distribute-horizontal"></i>
+                                                <span>Configure split</span>
+                                            </button>
+                                        </div>
+                                    </section>
+
+                                    <section class="payment-panel">
+                                        <div class="payment-panel-heading">
+                                            <div class="payment-panel-icon"><i class="bi bi-person-check"></i></div>
+                                            <div>
+                                                <h4>Collected By</h4>
+                                                <p>Assign the staff member receiving this payment.</p>
+                                            </div>
+                                        </div>
+                                        <div class="payment-field-block">
+                                            <label class="payment-field-label">Staff</label>
+                                            <div class="custom-dropdown-wrapper form-dropdown payment-collector-dropdown">
+                                                <div class="custom-dropdown-trigger @(_isCollectorDropdownOpen ? "open" : "")" @onclick="ToggleCollectorDropdown">
+                                                    <span>@SelectedCollector</span>
+                                                    <i class="bi bi-chevron-down dropdown-arrow"></i>
+                                                </div>
+                                                @if (_isCollectorDropdownOpen)
+                                                {
+                                                    <div class="custom-dropdown-menu">
+                                                        @foreach (var staff in CollectorOptions)
+                                                        {
+                                                            <div class="dropdown-item @(SelectedCollector == staff ? "selected" : "")" @onclick="@(() => SelectCollector(staff))">
+                                                                @staff
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                    </section>
+
+                                    <section class="payment-panel">
+                                        <div class="payment-panel-heading payment-panel-heading--spread">
+                                            <div class="payment-panel-heading__main">
+                                                <div class="payment-panel-icon"><i class="bi bi-wallet2"></i></div>
+                                                <div>
+                                                    <h4>Wallet & Points</h4>
+                                                    <p>Optional balances available for this customer.</p>
+                                                </div>
+                                            </div>
+                                            <span class="payment-optional-badge">Optional</span>
+                                        </div>
+
+                                        <div class="payment-balance-grid">
+                                            <label class="payment-balance-card @((!CashWalletAmount.HasValue || CashWalletAmount.Value <= 0) ? "disabled" : string.Empty)">
+                                                <input type="checkbox" @bind="UseCashWallet" disabled="@(!CashWalletAmount.HasValue || CashWalletAmount.Value <= 0)" />
+                                                <span class="payment-balance-card__icon"><i class="bi bi-cash-coin"></i></span>
+                                                <span class="payment-balance-card__copy">
+                                                    <strong>Cash Wallet</strong>
+                                                    <small>@FormatMoneyBalance(CashWalletAmount)</small>
+                                                </span>
+                                                <span class="payment-balance-card__check"><i class="bi bi-check"></i></span>
+                                            </label>
+                                            <label class="payment-balance-card @((!CreditVoucherAmount.HasValue || CreditVoucherAmount.Value <= 0) ? "disabled" : string.Empty)">
+                                                <input type="checkbox" @bind="UseCreditVoucher" disabled="@(!CreditVoucherAmount.HasValue || CreditVoucherAmount.Value <= 0)" />
+                                                <span class="payment-balance-card__icon"><i class="bi bi-ticket-perforated"></i></span>
+                                                <span class="payment-balance-card__copy">
+                                                    <strong>Credit Voucher</strong>
+                                                    <small>@FormatMoneyBalance(CreditVoucherAmount)</small>
+                                                </span>
+                                                <span class="payment-balance-card__check"><i class="bi bi-check"></i></span>
+                                            </label>
+                                            <label class="payment-balance-card @((!BeautiPoints.HasValue || BeautiPoints.Value <= 0) ? "disabled" : string.Empty)">
+                                                <input type="checkbox" @bind="UseBeautiPoints" disabled="@(!BeautiPoints.HasValue || BeautiPoints.Value <= 0)" />
+                                                <span class="payment-balance-card__icon"><i class="bi bi-stars"></i></span>
+                                                <span class="payment-balance-card__copy">
+                                                    <strong>Beauty Points</strong>
+                                                    <small>@FormatPointBalance(BeautiPoints)</small>
+                                                </span>
+                                                <span class="payment-balance-card__check"><i class="bi bi-check"></i></span>
+                                            </label>
+                                            <label class="payment-balance-card @((!LoyaltyPoints.HasValue || LoyaltyPoints.Value <= 0) ? "disabled" : string.Empty)">
+                                                <input type="checkbox" @bind="UseLoyaltyPoints" disabled="@(!LoyaltyPoints.HasValue || LoyaltyPoints.Value <= 0)" />
+                                                <span class="payment-balance-card__icon"><i class="bi bi-gift"></i></span>
+                                                <span class="payment-balance-card__copy">
+                                                    <strong>Loyalty Points</strong>
+                                                    <small>@FormatPointBalance(LoyaltyPoints)</small>
+                                                </span>
+                                                <span class="payment-balance-card__check"><i class="bi bi-check"></i></span>
+                                            </label>
+                                        </div>
+                                    </section>
+                                </div>
+
+                                <aside class="payment-review-card">
+                                    <div class="payment-review-card__header">
+                                        <div>
+                                            <span>Payment Summary</span>
+                                            <small>Review before confirming</small>
+                                        </div>
+                                        <span class="payment-review-status @BillingStatusCss">@BillingStatusText</span>
+                                    </div>
+
+                                    <div class="payment-review-total">
+                                        <span>Total Payable</span>
+                                        <strong>RM @TotalPayable.ToString("N2")</strong>
+                                    </div>
+
+                                    <div class="payment-review-breakdown">
+                                        <div><span>Subtotal</span><strong>RM @Subtotal.ToString("N2")</strong></div>
+                                        <div><span>Discounts</span><strong>-RM @DiscountTotal.ToString("N2")</strong></div>
+                                        <div><span>MC Coverage</span><strong>-RM @McCoverage.ToString("N2")</strong></div>
+                                        <div><span>Tax</span><strong>RM @TaxAmount.ToString("N2")</strong></div>
+                                    </div>
+
+                                    <div class="payment-review-divider"></div>
+
+                                    <div class="payment-selected-method">
+                                        <span class="payment-selected-method__icon"><i class="bi bi-credit-card-2-front"></i></span>
+                                        <div>
+                                            <small>Payment method</small>
+                                            <strong>@GetPaymentMethodLabel(SelectedPaymentMethod)</strong>
+                                        </div>
+                                    </div>
+
+                                    <div class="payment-amount-entry">
+                                        <label for="billing-amount-received">Amount Received</label>
+                                        <div class="payment-amount-input-wrap">
+                                            <span>RM</span>
+                                            <input id="billing-amount-received"
+                                                   class="payment-input payment-input--amount"
+                                                   type="text"
+                                                   inputmode="decimal"
+                                                   placeholder="0.00"
+                                                   value="@AmountReceivedText"
+                                                   @oninput="HandleAmountInputDebounced" />
+                                        </div>
+                                    </div>
+
+                                    <div class="payment-result-grid">
+                                        <div class="payment-result-box">
+                                            <span>Outstanding</span>
+                                            <strong class="@(OutstandingAmount > 0 ? "is-due" : string.Empty)">RM @OutstandingAmount.ToString("N2")</strong>
+                                        </div>
+                                        <div class="payment-result-box">
+                                            <span>Change</span>
+                                            <strong class="@(ChangeAmount > 0 ? "is-change" : string.Empty)">RM @ChangeAmount.ToString("N2")</strong>
+                                        </div>
+                                    </div>
+
+                                    <button type="button" class="payment-confirm-button" @onclick="OnConfirmPaymentClicked">
+                                        <span>
+                                            <small>Confirm payment</small>
+                                            <strong>RM @TotalPayable.ToString("N2")</strong>
                                         </span>
-                                    </div>
-                                    <button type="button" class="btn-multi-payment" @onclick="OpenMultiPaymentModal">
-                                        <i class="bi bi-cash-stack"></i>
-                                        <span>Multi-payment</span>
+                                        <i class="bi bi-arrow-right-circle-fill"></i>
                                     </button>
-                                </div>
 
-                                <label class="payment-label">Amount Received</label>
-                                <input class="payment-input"
-                                       type="text"
-                                       inputmode="decimal"
-                                       value="@AmountReceivedText"
-                                       @oninput="HandleAmountInputDebounced" />
-
-                                <div class="amount-summary amount-summary-inline">
-                                    <div class="amount-row">
-                                        <span class="amount-label">Total</span>
-                                        <span class="amount-value">RM @TotalAmount.ToString("N2")</span>
+                                    <div class="payment-security-note">
+                                        <i class="bi bi-shield-check"></i>
+                                        <span>Confirm only after the payment amount has been received.</span>
                                     </div>
-                                    <div class="amount-row">
-                                        <span class="amount-label">Outstanding</span>
-                                        <span class="amount-value outstanding">RM @OutstandingAmount.ToString("N2")</span>
-                                    </div>
-                                </div>
-
-                                <div class="summary-row change-row">
-                                    <span>Change</span>
-                                    <span>RM @ChangeAmount.ToString("N2")</span>
-                                </div>
-                            </div>
-
-                            <div class="payment-actions">
-                                <button class="btn-primary" @onclick="OnConfirmPaymentClicked">Confirm Payment</button>
+                                </aside>
                             </div>
                         </div>
                         </div>
