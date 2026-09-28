@@ -2439,7 +2439,6 @@
             if (!result.Success || result.Value is null)
             {
                 AvailablePaymentMethods = new List<CashSalesPaymentTypeDTO>();
-                PaymentMethodGroups = new List<PaymentMethodGroup>();
                 SelectedPaymentTypeId = 0;
                 SelectedPaymentMethod = string.Empty;
                 _paymentMethodsError = result.ErrorMessage ?? "Unable to load payment methods.";
@@ -2452,16 +2451,15 @@
                                  !string.IsNullOrWhiteSpace(method.POSPaymentTypeName))
                 .ToList();
 
-            BuildPaymentMethodGroups();
+            var validPaymentIds = AvailablePaymentMethods
+                .Select(method => method.POSPaymentTypeID)
+                .ToHashSet();
 
-            var selected = AvailablePaymentMethods.FirstOrDefault(method =>
-                method.POSPaymentTypeID == SelectedPaymentTypeId);
+            BillingPayments = BillingPayments
+                .Where(payment => validPaymentIds.Contains(payment.PaymentTypeId))
+                .ToList();
 
-            if (selected is null)
-            {
-                SelectedPaymentTypeId = 0;
-                SelectedPaymentMethod = string.Empty;
-            }
+            SynchronizeBillingPaymentTotals();
         }
         catch (Exception ex)
         {
@@ -2477,30 +2475,6 @@
             _isPaymentMethodsLoading = false;
             await InvokeAsync(StateHasChanged);
         }
-    }
-
-    private void BuildPaymentMethodGroups()
-    {
-        PaymentMethodGroups = AvailablePaymentMethods
-            .GroupBy(method => GetPaymentGroupKey(method))
-            .Select(group =>
-            {
-                var first = group.First();
-                var key = group.Key;
-                var label = GetPaymentGroupLabel(key, first);
-                return new PaymentMethodGroup(
-                    key,
-                    label,
-                    GetPaymentMethodIcon(first.POSPaymentTypeName ?? string.Empty),
-                    GetPaymentGroupDescription(key),
-                    group.Select(method => new PaymentSplit(
-                        method.POSPaymentTypeID,
-                        method.POSPaymentTypeName ?? $"Payment {method.POSPaymentTypeID}",
-                        method.FinancialAccountID ?? string.Empty)).ToArray());
-            })
-            .OrderBy(group => GetPaymentGroupSort(group.Key))
-            .ThenBy(group => group.Label)
-            .ToList();
     }
 
     private static string GetPaymentGroupKey(CashSalesPaymentTypeDTO method)
@@ -2520,24 +2494,6 @@
             name.Contains("touch", StringComparison.OrdinalIgnoreCase)) return "ewallet";
         return "other";
     }
-
-    private static int GetPaymentGroupSort(string key) => key switch
-    {
-        "cash" => 0,
-        "card" => 1,
-        "ewallet" => 2,
-        "bank" => 3,
-        _ => 9
-    };
-
-    private static string GetPaymentGroupLabel(string key, CashSalesPaymentTypeDTO method) => key switch
-    {
-        "cash" => "Cash",
-        "card" => "Card",
-        "ewallet" => "E-Wallet",
-        "bank" => "Bank / Transfer",
-        _ => string.IsNullOrWhiteSpace(method.Grouping) ? "Other" : method.Grouping!
-    };
 
     private static string GetPaymentGroupDescription(string key) => key switch
     {
@@ -2570,24 +2526,14 @@
         return GetPaymentGroupDescription(GetPaymentGroupKey(method));
     }
 
-    private string PaymentMethodDisplay
-    {
-        get
-        {
-            var applied = SelectedPaymentSplits.ToList();
-            if (applied.Count > 0)
-            {
-                return string.Join(
-                    " + ",
-                    applied.Select(payment => payment.MethodLabel)
-                        .Distinct(StringComparer.OrdinalIgnoreCase));
-            }
-
-            return string.IsNullOrWhiteSpace(SelectedPaymentMethod)
-                ? "Not selected"
-                : SelectedPaymentMethod;
-        }
-    }
+    private string PaymentMethodDisplay =>
+        BillingPayments.Count == 0
+            ? "Not selected"
+            : string.Join(
+                " + ",
+                BillingPayments
+                    .Select(payment => payment.PaymentMethod)
+                    .Distinct(StringComparer.OrdinalIgnoreCase));
 
     private async Task LoadCustomerBalancesAsync(string? customerId)
     {
@@ -2636,105 +2582,6 @@
     private void ClosePatientDrawer()
     {
         _isPatientDrawerOpen = false;
-    }
-
-    private void OpenMultiPaymentModal()
-    {
-        _multiPaymentError = null;
-        foreach (var group in PaymentMethodGroups)
-        {
-            group.IsExpanded = false;
-        }
-        _showMultiPaymentModal = true;
-    }
-
-    private void CloseMultiPaymentModal()
-    {
-        _showMultiPaymentModal = false;
-        _multiPaymentError = null;
-    }
-
-    private async Task OnSplitAmountInput(PaymentSplit split, ChangeEventArgs args)
-    {
-        var text = args.Value?.ToString() ?? string.Empty;
-        split.AmountText = text;
-        split.Amount = null;
-
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            await InvokeAsync(StateHasChanged);
-            return;
-        }
-
-        var trimmed = text.Trim();
-        var pattern = @"^[0-9]+(\.[0-9]{0,2})?$";
-        if (!Regex.IsMatch(trimmed, pattern))
-        {
-            await InvokeAsync(StateHasChanged);
-            return;
-        }
-
-        if (decimal.TryParse(trimmed, out var parsed))
-        {
-            split.Amount = parsed;
-        }
-
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private void OpenBillingSplitCalculator(PaymentSplit split)
-    {
-        var method = AvailablePaymentMethods.FirstOrDefault(item =>
-            item.POSPaymentTypeID == split.PaymentTypeId);
-
-        if (method is null)
-        {
-            Feedback.Error(
-                "The selected payment method is not available in the current payment configuration.",
-                "Payment method unavailable");
-            return;
-        }
-
-        OpenBillingPaymentCalculator(method, returnToMultiPayment: true);
-    }
-
-    private void TogglePaymentGroup(PaymentMethodGroup group)
-    {
-        var index = PaymentMethodGroups.FindIndex(g => g.Key == group.Key);
-        if (index < 0)
-        {
-            group.IsExpanded = !group.IsExpanded;
-            return;
-        }
-
-        var newState = !PaymentMethodGroups[index].IsExpanded;
-        var rowStart = (index / 2) * 2;
-        var rowEnd = Math.Min(rowStart + 1, PaymentMethodGroups.Count - 1);
-
-        for (var i = rowStart; i <= rowEnd; i++)
-        {
-            PaymentMethodGroups[i].IsExpanded = newState;
-        }
-    }
-
-    private async Task ConfirmMultiPaymentSelection()
-    {
-        _multiPaymentError = null;
-
-        if (!SelectedPaymentSplits.Any())
-        {
-            _multiPaymentError = "Enter at least one payment amount before applying.";
-            Feedback.Warning(_multiPaymentError, "Payment split not applied");
-            await InvokeAsync(StateHasChanged);
-            return;
-        }
-
-        var total = MultiPaymentTotal;
-
-        SynchronizeBillingPaymentTotals();
-
-        _showMultiPaymentModal = false;
-        await InvokeAsync(StateHasChanged);
     }
 
     private async Task HandleAmountInputDebounced(ChangeEventArgs args)
@@ -2805,8 +2652,7 @@
             return;
         }
 
-        var appliedPayments = SelectedPaymentSplits.ToList();
-        if (appliedPayments.Count == 0)
+        if (BillingPayments.Count == 0)
         {
             _paymentValidationError = "Select a payment method and enter an amount before confirming.";
             Feedback.Warning(_paymentValidationError, "Payment method required");
@@ -2815,11 +2661,11 @@
 
         SynchronizeBillingPaymentTotals();
 
-        if (MultiPaymentTotal < TotalPayable)
+        if (BillingPaidAmount < TotalPayable)
         {
             _showInsufficientAmountModal = true;
             Feedback.Warning(
-                $"Add RM {(TotalPayable - MultiPaymentTotal):N2} more before completing the sale.",
+                $"Add RM {(TotalPayable - BillingPaidAmount):N2} more before completing the sale.",
                 "Payment incomplete");
             return;
         }
@@ -2936,7 +2782,7 @@
             Subtotal = Math.Max(0m, Subtotal - DiscountTotal - McCoverage),
             Tax = TaxAmount,
             Discount = DiscountTotal,
-            PaymentTypeId = SelectedPaymentSplits.FirstOrDefault()?.PaymentTypeId ?? SelectedPaymentTypeId,
+            PaymentTypeId = BillingPayments.FirstOrDefault()?.PaymentTypeId ?? 0,
             PaymentMethod = PaymentMethodDisplay,
             Status = "Paid",
             Notes = BuildBillingPaymentNotes(),
@@ -2982,38 +2828,18 @@
         return items;
     }
 
-    private List<TransactionPayment> BuildBillingTransactionPayments()
-    {
-        if (SelectedPaymentSplits.Any())
-        {
-            return SelectedPaymentSplits
-                .Select(split => new TransactionPayment
-                {
-                    PaymentTypeId = split.PaymentTypeId,
-                    PaymentMethod = split.MethodLabel,
-                    Amount = split.Amount ?? 0m,
-                    FinancialAccountId = split.FinancialAccountId
-                })
-                .Where(payment => payment.PaymentTypeId != 0 && payment.Amount > 0)
-                .ToList();
-        }
-
-        var method = AvailablePaymentMethods.FirstOrDefault(item =>
-            item.POSPaymentTypeID == SelectedPaymentTypeId);
-
-        return method is null
-            ? new List<TransactionPayment>()
-            : new List<TransactionPayment>
+    private List<TransactionPayment> BuildBillingTransactionPayments() =>
+        BillingPayments
+            .Where(payment => payment.PaymentTypeId != 0 && payment.Amount > 0m)
+            .Select(payment => new TransactionPayment
             {
-                new()
-                {
-                    PaymentTypeId = method.POSPaymentTypeID,
-                    PaymentMethod = method.POSPaymentTypeName ?? SelectedPaymentMethod,
-                    Amount = AmountReceived ?? TotalPayable,
-                    FinancialAccountId = method.FinancialAccountID ?? string.Empty
-                }
-            };
-    }
+                PaymentTypeId = payment.PaymentTypeId,
+                PaymentMethod = payment.PaymentMethod,
+                Amount = payment.Amount,
+                FinancialAccountId = payment.FinancialAccountId,
+                BankName = payment.BankName
+            })
+            .ToList();
 
     private string BuildBillingPaymentNotes()
     {
@@ -3531,41 +3357,42 @@
         _selectedDiscountItem = null;
     }
 
-    // Billing payment calculator intentionally mirrors Sales > New Sale behavior.
-    private void OpenBillingPaymentCalculator(
-        CashSalesPaymentTypeDTO method,
-        bool returnToMultiPayment = false)
+    // Billing payment calculator mirrors Sales > New Sale behavior.
+    private void OpenBillingPaymentCalculator(CashSalesPaymentTypeDTO method)
     {
-        _returnToMultiPaymentAfterCalculator = returnToMultiPayment;
-        if (returnToMultiPayment)
-        {
-            _showMultiPaymentModal = false;
-        }
-
         _billingCalculatorMethod = method;
         SelectedPaymentTypeId = method.POSPaymentTypeID;
         SelectedPaymentMethod = method.POSPaymentTypeName ?? $"Payment {method.POSPaymentTypeID}";
 
         var existing = BillingPaymentFor(method.POSPaymentTypeID);
-        var existingAmount = existing?.Amount ?? 0m;
-        _billingCalculatorDigits = existingAmount > 0m
-            ? ((long)Math.Round(existingAmount * 100m)).ToString()
-            : string.Empty;
+        _billingCalculatorDigits = existing is null
+            ? string.Empty
+            : ((long)Math.Round(existing.Amount * 100m)).ToString();
+    }
+
+    private void EditBillingPayment(TransactionPayment payment)
+    {
+        var method = AvailablePaymentMethods.FirstOrDefault(item =>
+            item.POSPaymentTypeID == payment.PaymentTypeId);
+
+        if (method is not null)
+        {
+            OpenBillingPaymentCalculator(method);
+        }
+    }
+
+    private void RemoveBillingPayment(TransactionPayment payment)
+    {
+        BillingPayments.Remove(payment);
+        SynchronizeBillingPaymentTotals();
+        StateHasChanged();
     }
 
     private void CloseBillingPaymentCalculator()
     {
-        var returnToMultiPayment = _returnToMultiPaymentAfterCalculator;
-
         _billingCalculatorMethod = null;
         _billingCalculatorDigits = string.Empty;
-        _returnToMultiPaymentAfterCalculator = false;
         SynchronizeBillingPaymentTotals();
-
-        if (returnToMultiPayment)
-        {
-            _showMultiPaymentModal = true;
-        }
     }
 
     private void PressBillingCalculatorKey(string key)
@@ -3590,11 +3417,9 @@
         }
     }
 
-    private void UseBillingExactAmount()
-    {
+    private void UseBillingExactAmount() =>
         _billingCalculatorDigits =
             ((long)Math.Round(BillingCalculatorRemaining * 100m)).ToString();
-    }
 
     private void ConfirmBillingPaymentAmount()
     {
@@ -3607,14 +3432,18 @@
         var payment = BillingPaymentFor(_billingCalculatorMethod.POSPaymentTypeID);
         if (payment is null)
         {
-            Feedback.Error(
-                "The selected payment method is not available in the current payment configuration.",
-                "Payment method unavailable");
-            return;
+            payment = new TransactionPayment
+            {
+                PaymentTypeId = _billingCalculatorMethod.POSPaymentTypeID
+            };
+            BillingPayments.Add(payment);
         }
 
+        payment.PaymentMethod =
+            _billingCalculatorMethod.POSPaymentTypeName ?? "Payment";
         payment.Amount = BillingCalculatorAmount;
-        payment.AmountText = BillingCalculatorAmount.ToString("0.00");
+        payment.FinancialAccountId =
+            _billingCalculatorMethod.FinancialAccountID ?? string.Empty;
 
         SynchronizeBillingPaymentTotals();
         CloseBillingPaymentCalculator();
@@ -3623,12 +3452,12 @@
 
     private void SynchronizeBillingPaymentTotals()
     {
-        var total = MultiPaymentTotal;
+        var total = BillingPaidAmount;
         AmountReceived = total > 0m ? total : null;
         AmountReceivedText = total > 0m ? total.ToString("0.00") : string.Empty;
         AmountReceivedError = null;
 
-        var first = SelectedPaymentSplits.FirstOrDefault();
+        var first = BillingPayments.FirstOrDefault();
         if (first is null)
         {
             SelectedPaymentTypeId = 0;
@@ -3637,7 +3466,7 @@
         }
 
         SelectedPaymentTypeId = first.PaymentTypeId;
-        SelectedPaymentMethod = first.MethodLabel;
+        SelectedPaymentMethod = first.PaymentMethod;
     }
 
     // Custom Dropdown Logic
@@ -3650,24 +3479,6 @@
     private void TogglePaymentMethodDropdown()
     {
         _isPaymentMethodDropdownOpen = !_isPaymentMethodDropdownOpen;
-        StateHasChanged();
-    }
-
-    private void SelectPaymentMethod(CashSalesPaymentTypeDTO method, bool clearSplits = true)
-    {
-        SelectedPaymentTypeId = method.POSPaymentTypeID;
-        SelectedPaymentMethod = method.POSPaymentTypeName ?? $"Payment {method.POSPaymentTypeID}";
-        _isPaymentMethodDropdownOpen = false;
-
-        if (clearSplits)
-        {
-            foreach (var split in AllPaymentSplits)
-            {
-                split.Amount = null;
-                split.AmountText = string.Empty;
-            }
-        }
-
         StateHasChanged();
     }
 
@@ -3869,45 +3680,6 @@
 
         CloseDiscountModal();
         Feedback.Success("Discount applied successfully.", "Discount applied", 2200);
-    }
-
-    private sealed class PaymentMethodGroup
-    {
-        public PaymentMethodGroup(string key, string label, string icon, string? description, params PaymentSplit[] methods)
-        {
-            Key = key;
-            Label = label;
-            Icon = icon;
-            Description = description;
-            Methods = methods.ToList();
-        }
-
-        public string Key { get; }
-        public string Label { get; }
-        public string Icon { get; }
-        public string? Description { get; }
-        public List<PaymentSplit> Methods { get; }
-        public bool IsExpanded { get; set; }
-
-        public decimal GroupTotal => Methods
-            .Where(p => p.Amount.HasValue && p.Amount.Value > 0)
-            .Sum(p => p.Amount!.Value);
-    }
-
-    private sealed class PaymentSplit
-    {
-        public PaymentSplit(int paymentTypeId, string methodLabel, string financialAccountId)
-        {
-            PaymentTypeId = paymentTypeId;
-            MethodLabel = methodLabel;
-            FinancialAccountId = financialAccountId;
-        }
-
-        public int PaymentTypeId { get; }
-        public string MethodLabel { get; }
-        public string FinancialAccountId { get; }
-        public string AmountText { get; set; } = string.Empty;
-        public decimal? Amount { get; set; }
     }
 
     private record BillingItem(string Name, int Quantity, decimal UnitPrice, decimal Discount, 
