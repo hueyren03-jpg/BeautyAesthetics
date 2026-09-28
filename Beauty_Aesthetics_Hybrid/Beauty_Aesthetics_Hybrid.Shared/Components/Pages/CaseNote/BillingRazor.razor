@@ -4,6 +4,8 @@
 @using Microsoft.AspNetCore.Components
 @using Beauty_Aesthetics_WebPos.Components.ViewModels
 @using Beauty_Aesthetics_WebPos.Components.Models.Employee
+@using Beauty_Aesthetics_WebPos.Components.Models
+@using Beauty_Aesthetics_WebPos.Models.DTOs
 @using System.Linq
 @using System.Text.RegularExpressions
 @inject NavigationManager NavigationManager
@@ -13,6 +15,7 @@
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.IProductInventoryService ProductInventoryService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.IServiceItemService ServiceItemService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Employees.IEmployeeService EmployeeService
+@inject Beauty_Aesthetics_WebPos.Components.Services.Sales.ICashSalesService CashSalesService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.ProductImageService ProductImageService
 @inject Beauty_Aesthetics_WebPos.Components.Services.AppState AppState
 
@@ -453,72 +456,45 @@
                                             </div>
                                         </div>
 
-                                        <div class="payment-method-card-grid" role="group" aria-label="Payment method">
-                                            <button type="button"
-                                                    class="payment-method-card @(SelectedPaymentMethod == "cash" ? "active" : string.Empty)"
-                                                    aria-pressed="@(SelectedPaymentMethod == "cash")"
-                                                    @onclick='() => SelectPaymentMethod("cash")'>
-                                                <span class="payment-method-card__icon"><i class="bi bi-cash-stack"></i></span>
-                                                <span class="payment-method-card__copy"><strong>Cash</strong><small>Counter payment</small></span>
-                                                <span class="payment-method-card__check"><i class="bi bi-check-lg"></i></span>
-                                            </button>
-                                            <button type="button"
-                                                    class="payment-method-card @(SelectedPaymentMethod == "debit-card" ? "active" : string.Empty)"
-                                                    aria-pressed="@(SelectedPaymentMethod == "debit-card")"
-                                                    @onclick='() => SelectPaymentMethod("debit-card")'>
-                                                <span class="payment-method-card__icon"><i class="bi bi-credit-card"></i></span>
-                                                <span class="payment-method-card__copy"><strong>Debit Card</strong><small>Card terminal</small></span>
-                                                <span class="payment-method-card__check"><i class="bi bi-check-lg"></i></span>
-                                            </button>
-                                            <button type="button"
-                                                    class="payment-method-card @(SelectedPaymentMethod == "credit-card" ? "active" : string.Empty)"
-                                                    aria-pressed="@(SelectedPaymentMethod == "credit-card")"
-                                                    @onclick='() => SelectPaymentMethod("credit-card")'>
-                                                <span class="payment-method-card__icon"><i class="bi bi-credit-card-2-back"></i></span>
-                                                <span class="payment-method-card__copy"><strong>Credit Card</strong><small>Card terminal</small></span>
-                                                <span class="payment-method-card__check"><i class="bi bi-check-lg"></i></span>
-                                            </button>
-                                            <button type="button"
-                                                    class="payment-method-card @(SelectedPaymentMethod == "tng" ? "active" : string.Empty)"
-                                                    aria-pressed="@(SelectedPaymentMethod == "tng")"
-                                                    @onclick='() => SelectPaymentMethod("tng")'>
-                                                <span class="payment-method-card__icon"><i class="bi bi-phone"></i></span>
-                                                <span class="payment-method-card__copy"><strong>Touch 'n Go</strong><small>E-Wallet</small></span>
-                                                <span class="payment-method-card__check"><i class="bi bi-check-lg"></i></span>
-                                            </button>
-                                            <button type="button"
-                                                    class="payment-method-card @(SelectedPaymentMethod == "grabpay" ? "active" : string.Empty)"
-                                                    aria-pressed="@(SelectedPaymentMethod == "grabpay")"
-                                                    @onclick='() => SelectPaymentMethod("grabpay")'>
-                                                <span class="payment-method-card__icon"><i class="bi bi-phone"></i></span>
-                                                <span class="payment-method-card__copy"><strong>GrabPay</strong><small>E-Wallet</small></span>
-                                                <span class="payment-method-card__check"><i class="bi bi-check-lg"></i></span>
-                                            </button>
-                                            <button type="button"
-                                                    class="payment-method-card @(SelectedPaymentMethod == "boost" ? "active" : string.Empty)"
-                                                    aria-pressed="@(SelectedPaymentMethod == "boost")"
-                                                    @onclick='() => SelectPaymentMethod("boost")'>
-                                                <span class="payment-method-card__icon"><i class="bi bi-phone"></i></span>
-                                                <span class="payment-method-card__copy"><strong>Boost</strong><small>E-Wallet</small></span>
-                                                <span class="payment-method-card__check"><i class="bi bi-check-lg"></i></span>
-                                            </button>
-                                            <button type="button"
-                                                    class="payment-method-card @(SelectedPaymentMethod == "shopeepay" ? "active" : string.Empty)"
-                                                    aria-pressed="@(SelectedPaymentMethod == "shopeepay")"
-                                                    @onclick='() => SelectPaymentMethod("shopeepay")'>
-                                                <span class="payment-method-card__icon"><i class="bi bi-phone"></i></span>
-                                                <span class="payment-method-card__copy"><strong>ShopeePay</strong><small>E-Wallet</small></span>
-                                                <span class="payment-method-card__check"><i class="bi bi-check-lg"></i></span>
-                                            </button>
-                                            <button type="button"
-                                                    class="payment-method-card @(SelectedPaymentMethod == "bank" ? "active" : string.Empty)"
-                                                    aria-pressed="@(SelectedPaymentMethod == "bank")"
-                                                    @onclick='() => SelectPaymentMethod("bank")'>
-                                                <span class="payment-method-card__icon"><i class="bi bi-bank"></i></span>
-                                                <span class="payment-method-card__copy"><strong>FPX / Bank</strong><small>Bank transfer</small></span>
-                                                <span class="payment-method-card__check"><i class="bi bi-check-lg"></i></span>
-                                            </button>
-                                        </div>
+                                        @if (_isPaymentMethodsLoading)
+                                        {
+                                            <div class="payment-method-loading">
+                                                <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                                <span>Loading payment methods...</span>
+                                            </div>
+                                        }
+                                        else if (!string.IsNullOrWhiteSpace(_paymentMethodsError))
+                                        {
+                                            <div class="payment-method-error">
+                                                <span>@_paymentMethodsError</span>
+                                                <button type="button" @onclick="LoadPaymentMethodsAsync">Retry</button>
+                                            </div>
+                                        }
+                                        else if (AvailablePaymentMethods.Count == 0)
+                                        {
+                                            <div class="payment-method-empty">No payment methods are available for this branch.</div>
+                                        }
+                                        else
+                                        {
+                                            <div class="payment-method-card-grid" role="group" aria-label="Payment method">
+                                                @foreach (var method in AvailablePaymentMethods)
+                                                {
+                                                    var methodName = method.POSPaymentTypeName ?? $"Payment {method.POSPaymentTypeID}";
+                                                    var isSelected = SelectedPaymentTypeId == method.POSPaymentTypeID && !SelectedPaymentSplits.Any();
+                                                    <button type="button"
+                                                            class="payment-method-card @(isSelected ? "active" : string.Empty)"
+                                                            aria-pressed="@isSelected"
+                                                            @onclick="() => SelectPaymentMethod(method)">
+                                                        <span class="payment-method-card__icon"><i class="@GetPaymentMethodIcon(methodName)"></i></span>
+                                                        <span class="payment-method-card__copy">
+                                                            <strong>@methodName</strong>
+                                                            <small>@GetPaymentMethodDescription(method)</small>
+                                                        </span>
+                                                        <span class="payment-method-card__check"><i class="bi bi-check-lg"></i></span>
+                                                    </button>
+                                                }
+                                            </div>
+                                        }
 
                                         <div class="payment-split-strip">
                                             <div>
@@ -693,7 +669,7 @@
                                         <span class="payment-selected-method__icon"><i class="bi bi-credit-card-2-front"></i></span>
                                         <div>
                                             <small>Payment method</small>
-                                            <strong>@GetPaymentMethodLabel(SelectedPaymentMethod)</strong>
+                                            <strong>@PaymentMethodDisplay</strong>
                                         </div>
                                     </div>
 
@@ -1522,6 +1498,7 @@
     private string PatientName { get; set; } = "-";
     private string PatientBirthday { get; set; } = "-";
     private string PatientPhone { get; set; } = "-";
+    private string _billingCustomerId = string.Empty;
 
     private bool _isPatientInfoCollapsed = false;
     private bool _isPatientDrawerOpen = false;
@@ -1531,7 +1508,9 @@
     private string DoctorName { get; set; } = "Dr. Example";
 
     private string BillingStatusText { get; set; } = "Unpaid";
-    private string BillingStatusCss => "status-unpaid";
+    private string BillingStatusCss => string.Equals(BillingStatusText, "Paid", StringComparison.OrdinalIgnoreCase)
+        ? "status-paid"
+        : "status-unpaid";
 
     private decimal? CashWalletAmount { get; set; }
     private decimal? CreditVoucherAmount { get; set; }
@@ -1581,7 +1560,13 @@
     private decimal TotalAmount => TotalPayable;
     private decimal OutstandingAmount => Math.Max(0m, TotalPayable - (AmountReceived ?? 0m));
 
-    private string SelectedPaymentMethod { get; set; } = "cash";
+    private int SelectedPaymentTypeId { get; set; }
+    private string SelectedPaymentMethod { get; set; } = string.Empty;
+    private List<CashSalesPaymentTypeDTO> AvailablePaymentMethods { get; set; } = new();
+    private bool _isPaymentMethodsLoading;
+    private string? _paymentMethodsError;
+    private string _completedSaleDocumentId = string.Empty;
+    private string _completedReceiptNumber = string.Empty;
     private string SelectedCollectorId { get; set; } = string.Empty;
     private string SelectedCollector { get; set; } = string.Empty;
     private List<Employee> CollectorOptions { get; set; } = new();
@@ -1641,41 +1626,7 @@
     // Service picker modal state
     private bool _showServicePickerModal;
 
-    private List<PaymentMethodGroup> PaymentMethodGroups { get; } = new()
-    {
-        new PaymentMethodGroup(
-            "cash",
-            "Cash",
-            "bi-cash-coin",
-            "Counter collection",
-            new PaymentSplit("cash", "Cash")
-        ),
-        new PaymentMethodGroup(
-            "ewallet",
-            "E-Wallet",
-            "bi-phone",
-            "Touch 'n Go, GrabPay, Boost, ShopeePay",
-            new PaymentSplit("tng", "Touch 'n Go eWallet"),
-            new PaymentSplit("grabpay", "GrabPay"),
-            new PaymentSplit("boost", "Boost"),
-            new PaymentSplit("shopeepay", "ShopeePay")
-        ),
-        new PaymentMethodGroup(
-            "card",
-            "Card",
-            "bi-credit-card-2-front-fill",
-            "Debit & credit terminals",
-            new PaymentSplit("debit-card", "Debit Card"),
-            new PaymentSplit("credit-card", "Credit Card")
-        ),
-        new PaymentMethodGroup(
-            "bank",
-            "FPX / Bank Transfer",
-            "bi-bank",
-            "Online banking transfer",
-            new PaymentSplit("fpx", "FPX Bank Transfer")
-        )
-    };
+    private List<PaymentMethodGroup> PaymentMethodGroups { get; set; } = new();
 
     private IEnumerable<PaymentSplit> AllPaymentSplits =>
         PaymentMethodGroups.SelectMany(g => g.Methods);
@@ -2257,7 +2208,10 @@
             PatientName = Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext.GetDisplayName(result.Value);
             PatientBirthday = result.Value.DateOfBirth?.ToString("dd/MM/yyyy") ?? "-";
             PatientPhone = string.IsNullOrWhiteSpace(result.Value.ContactNumber1) ? "-" : result.Value.ContactNumber1;
-            await LoadCustomerBalancesAsync(result.Value.SystemID);
+            _billingCustomerId = result.Value.SystemID ?? string.Empty;
+            await Task.WhenAll(
+                LoadCustomerBalancesAsync(_billingCustomerId),
+                LoadPaymentMethodsAsync());
         }
         else
         {
@@ -2329,6 +2283,164 @@
             await InvokeAsync(StateHasChanged);
         }
     }
+
+    private async Task LoadPaymentMethodsAsync()
+    {
+        _isPaymentMethodsLoading = true;
+        _paymentMethodsError = null;
+
+        try
+        {
+            var branchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID)
+                ? "HQ"
+                : AppState.SelectedBranchID!;
+            var groupId = AppState.CurrentBranch?.GroupId ?? string.Empty;
+
+            var result = await CashSalesService.LoadPaymentTypesAsync(
+                branchId,
+                groupId,
+                _billingCustomerId);
+
+            if (!result.Success || result.Value is null)
+            {
+                AvailablePaymentMethods = new List<CashSalesPaymentTypeDTO>();
+                PaymentMethodGroups = new List<PaymentMethodGroup>();
+                SelectedPaymentTypeId = 0;
+                SelectedPaymentMethod = string.Empty;
+                _paymentMethodsError = result.ErrorMessage ?? "Unable to load payment methods.";
+                Feedback.Error(_paymentMethodsError, "Payment methods not loaded");
+                return;
+            }
+
+            AvailablePaymentMethods = result.Value
+                .Where(method => method.POSPaymentTypeID != 0 &&
+                                 !string.IsNullOrWhiteSpace(method.POSPaymentTypeName))
+                .ToList();
+
+            BuildPaymentMethodGroups();
+
+            var selected = AvailablePaymentMethods.FirstOrDefault(method =>
+                               method.POSPaymentTypeID == SelectedPaymentTypeId)
+                           ?? AvailablePaymentMethods.FirstOrDefault(method =>
+                               (method.POSPaymentTypeName ?? string.Empty)
+                                   .Contains("cash", StringComparison.OrdinalIgnoreCase))
+                           ?? AvailablePaymentMethods.FirstOrDefault();
+
+            if (selected is not null)
+            {
+                SelectPaymentMethod(selected, clearSplits: false);
+            }
+        }
+        catch (Exception ex)
+        {
+            AvailablePaymentMethods = new List<CashSalesPaymentTypeDTO>();
+            PaymentMethodGroups = new List<PaymentMethodGroup>();
+            SelectedPaymentTypeId = 0;
+            SelectedPaymentMethod = string.Empty;
+            _paymentMethodsError = $"Unable to load payment methods: {ex.Message}";
+            Feedback.Error(_paymentMethodsError, "Payment methods not loaded");
+        }
+        finally
+        {
+            _isPaymentMethodsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void BuildPaymentMethodGroups()
+    {
+        PaymentMethodGroups = AvailablePaymentMethods
+            .GroupBy(method => GetPaymentGroupKey(method))
+            .Select(group =>
+            {
+                var first = group.First();
+                var key = group.Key;
+                var label = GetPaymentGroupLabel(key, first);
+                return new PaymentMethodGroup(
+                    key,
+                    label,
+                    GetPaymentMethodIcon(first.POSPaymentTypeName ?? string.Empty),
+                    GetPaymentGroupDescription(key),
+                    group.Select(method => new PaymentSplit(
+                        method.POSPaymentTypeID,
+                        method.POSPaymentTypeName ?? $"Payment {method.POSPaymentTypeID}",
+                        method.FinancialAccountID ?? string.Empty)).ToArray());
+            })
+            .OrderBy(group => GetPaymentGroupSort(group.Key))
+            .ThenBy(group => group.Label)
+            .ToList();
+    }
+
+    private static string GetPaymentGroupKey(CashSalesPaymentTypeDTO method)
+    {
+        if (!string.IsNullOrWhiteSpace(method.Grouping))
+            return method.Grouping.Trim().ToLowerInvariant();
+
+        var name = method.POSPaymentTypeName ?? string.Empty;
+        if (name.Contains("cash", StringComparison.OrdinalIgnoreCase)) return "cash";
+        if (name.Contains("card", StringComparison.OrdinalIgnoreCase)) return "card";
+        if (name.Contains("bank", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("fpx", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("transfer", StringComparison.OrdinalIgnoreCase)) return "bank";
+        if (name.Contains("wallet", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("pay", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("tng", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("touch", StringComparison.OrdinalIgnoreCase)) return "ewallet";
+        return "other";
+    }
+
+    private static int GetPaymentGroupSort(string key) => key switch
+    {
+        "cash" => 0,
+        "card" => 1,
+        "ewallet" => 2,
+        "bank" => 3,
+        _ => 9
+    };
+
+    private static string GetPaymentGroupLabel(string key, CashSalesPaymentTypeDTO method) => key switch
+    {
+        "cash" => "Cash",
+        "card" => "Card",
+        "ewallet" => "E-Wallet",
+        "bank" => "Bank / Transfer",
+        _ => string.IsNullOrWhiteSpace(method.Grouping) ? "Other" : method.Grouping!
+    };
+
+    private static string GetPaymentGroupDescription(string key) => key switch
+    {
+        "cash" => "Counter collection",
+        "card" => "Debit and credit card methods",
+        "ewallet" => "Electronic wallet methods",
+        "bank" => "FPX and bank transfer methods",
+        _ => "Other configured payment methods"
+    };
+
+    private static string GetPaymentMethodIcon(string name)
+    {
+        if (name.Contains("cash", StringComparison.OrdinalIgnoreCase)) return "bi bi-cash-stack";
+        if (name.Contains("card", StringComparison.OrdinalIgnoreCase)) return "bi bi-credit-card-2-front";
+        if (name.Contains("bank", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("fpx", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("transfer", StringComparison.OrdinalIgnoreCase)) return "bi bi-bank";
+        if (name.Contains("wallet", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("pay", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("tng", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("touch", StringComparison.OrdinalIgnoreCase)) return "bi bi-phone";
+        return "bi bi-wallet2";
+    }
+
+    private static string GetPaymentMethodDescription(CashSalesPaymentTypeDTO method)
+    {
+        if (!string.IsNullOrWhiteSpace(method.Grouping))
+            return method.Grouping;
+
+        return GetPaymentGroupDescription(GetPaymentGroupKey(method));
+    }
+
+    private string PaymentMethodDisplay => SelectedPaymentSplits.Any()
+        ? $"Multi-payment ({SelectedPaymentSplits.Count()})"
+        : string.IsNullOrWhiteSpace(SelectedPaymentMethod) ? "Not selected" : SelectedPaymentMethod;
 
     private async Task LoadCustomerBalancesAsync(string? customerId)
     {
@@ -2718,27 +2830,22 @@
         StateHasChanged();
     }
 
-    private void SelectPaymentMethod(string method)
+    private void SelectPaymentMethod(CashSalesPaymentTypeDTO method, bool clearSplits = true)
     {
-        SelectedPaymentMethod = method;
+        SelectedPaymentTypeId = method.POSPaymentTypeID;
+        SelectedPaymentMethod = method.POSPaymentTypeName ?? $"Payment {method.POSPaymentTypeID}";
         _isPaymentMethodDropdownOpen = false;
-        StateHasChanged();
-    }
 
-    private string GetPaymentMethodLabel(string method)
-    {
-        return method switch
+        if (clearSplits)
         {
-            "cash" => "Cash",
-            "debit-card" => "Debit Card",
-            "credit-card" => "Credit Card",
-            "tng" => "Touch 'n Go eWallet",
-            "grabpay" => "GrabPay",
-            "boost" => "Boost",
-            "shopeepay" => "ShopeePay",
-            "bank" => "FPX Bank Transfer",
-            _ => method
-        };
+            foreach (var split in AllPaymentSplits)
+            {
+                split.Amount = null;
+                split.AmountText = string.Empty;
+            }
+        }
+
+        StateHasChanged();
     }
 
     private void ToggleCollectorDropdown()
@@ -2966,14 +3073,16 @@
 
     private sealed class PaymentSplit
     {
-        public PaymentSplit(string methodKey, string methodLabel)
+        public PaymentSplit(int paymentTypeId, string methodLabel, string financialAccountId)
         {
-            MethodKey = methodKey;
+            PaymentTypeId = paymentTypeId;
             MethodLabel = methodLabel;
+            FinancialAccountId = financialAccountId;
         }
 
-        public string MethodKey { get; }
+        public int PaymentTypeId { get; }
         public string MethodLabel { get; }
+        public string FinancialAccountId { get; }
         public string AmountText { get; set; } = string.Empty;
         public decimal? Amount { get; set; }
     }
