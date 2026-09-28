@@ -1500,6 +1500,7 @@
     private string PatientBirthday { get; set; } = "-";
     private string PatientPhone { get; set; } = "-";
     private string _billingCustomerId = string.Empty;
+    private string? _loadedBillingCustomerKey;
 
     private bool _isPatientInfoCollapsed = false;
     private bool _isPatientDrawerOpen = false;
@@ -2317,6 +2318,28 @@
         var catalogLoadTask = LoadBillingCatalogsAsync();
         var staffLoadTask = LoadBillingStaffAsync();
 
+        await LoadBillingPatientAsync(force: true);
+        await Task.WhenAll(catalogLoadTask, staffLoadTask);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadBillingPatientAsync(force: false);
+    }
+
+    private async Task LoadBillingPatientAsync(bool force)
+    {
+        var requestedKey = !string.IsNullOrWhiteSpace(CustomerId)
+            ? CustomerId.Trim()
+            : PatientContext.CustomerId?.Trim();
+
+        if (!force &&
+            !string.IsNullOrWhiteSpace(requestedKey) &&
+            string.Equals(_loadedBillingCustomerKey, requestedKey, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
         var result = await PatientContext.LoadAsync(CustomerId);
         if (result.Success && result.Value is not null)
         {
@@ -2324,16 +2347,20 @@
             PatientBirthday = result.Value.DateOfBirth?.ToString("dd/MM/yyyy") ?? "-";
             PatientPhone = string.IsNullOrWhiteSpace(result.Value.ContactNumber1) ? "-" : result.Value.ContactNumber1;
             _billingCustomerId = result.Value.SystemID ?? string.Empty;
+            _loadedBillingCustomerKey = _billingCustomerId;
+
+            BillingPayments.Clear();
+            SynchronizeBillingPaymentTotals();
+
             await Task.WhenAll(
                 LoadCustomerBalancesAsync(_billingCustomerId),
                 LoadPaymentMethodsAsync());
         }
         else
         {
+            _loadedBillingCustomerKey = requestedKey;
             Feedback.Error(result.ErrorMessage ?? "Unable to load the appointment patient.", "Patient not loaded");
         }
-
-        await Task.WhenAll(catalogLoadTask, staffLoadTask);
     }
 
     private async Task LoadBillingStaffAsync()
