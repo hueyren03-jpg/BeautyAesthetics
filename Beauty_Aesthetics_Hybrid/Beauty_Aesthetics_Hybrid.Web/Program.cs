@@ -14,6 +14,7 @@ using Beauty_Aesthetics_WebPos.Components.Services.Branches;
 using Beauty_Aesthetics_WebPos.Components.Services.MembershipTypes;
 using Beauty_Aesthetics_WebPos.Components.Services.PointConversions;
 using Beauty_Aesthetics_WebPos.Components.Services.Sales;
+using Beauty_Aesthetics_WebPos.Components.Services.Files;
 using Beauty_Aesthetics_WebPos.Components.ViewModels;
 using Beauty_Aesthetics_WebPos.Components.Pages;
 using Beauty_Aesthetics_WebPos.Components.Pages.Voucher;
@@ -59,6 +60,7 @@ builder.Services.AddSingleton(sp => new HttpClient
 builder.Services.AddScoped<AuthAC>();
             builder.Services.AddScoped<CashSalesAC>();
             builder.Services.AddScoped<ICashSalesService, CashSalesService>();
+builder.Services.AddScoped<IFileDownloadService, WebFileDownloadService>();
             builder.Services.AddSingleton<IPendingOrderService, PendingOrderService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<IAuthService>(sp => sp.GetRequiredService<AuthService>());
