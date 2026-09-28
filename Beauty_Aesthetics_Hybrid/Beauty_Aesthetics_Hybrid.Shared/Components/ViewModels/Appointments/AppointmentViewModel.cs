@@ -43,47 +43,21 @@ public sealed class AppointmentViewModel
         return result;
     }
 
-    public async Task<ApiCallResult<Appointment>> AddAppointmentAsync(Appointment appointment, CancellationToken cancellationToken = default)
+    public async Task<ApiCallResult<Appointment>> AddAppointmentAsync(
+        Appointment appointment,
+        CancellationToken cancellationToken = default)
     {
         var result = await appointmentService.AddAppointmentAsync(appointment, cancellationToken);
-        if (!result.Success || result.Value is null) return result;
-
-        ApiCallResult<IReadOnlyList<Appointment>>? reloadResult = null;
-        var dayStart = appointment.Start.Date;
-        var dayEnd = dayStart.AddDays(1).AddTicks(-1);
-
-        // Confirm the create against the API instead of displaying a local-only copy.
-        for (var attempt = 0; attempt < 3; attempt++)
+        if (!result.Success || result.Value is null)
         {
-            if (attempt > 0)
-            {
-                await Task.Delay(300, cancellationToken);
-            }
-
-            reloadResult = await appointmentService.GetAllAppointmentsAsync(dayStart, dayEnd, cancellationToken);
-            if (!reloadResult.Success || reloadResult.Value is null)
-            {
-                continue;
-            }
-
-            var persisted = reloadResult.Value.FirstOrDefault(item => IsPersistedCreate(item, result.Value));
-            if (persisted is not null)
-            {
-                Appointments = reloadResult.Value.OrderBy(item => item.Start).ToList();
-                return ApiCallResult<Appointment>.Ok(result.StatusCode, persisted);
-            }
+            return result;
         }
 
-        if (reloadResult is { Success: false })
-        {
-            return ApiCallResult<Appointment>.Failure(
-                reloadResult.StatusCode,
-                reloadResult.ErrorMessage ?? "The appointment was submitted, but the schedule could not be reloaded.");
-        }
-
-        return ApiCallResult<Appointment>.Failure(
-            result.StatusCode,
-            "The API accepted the request, but the new appointment was not returned by the server. Please try again.");
+        // CreateAppointment already succeeded on the backend. Keep the confirmed
+        // returned appointment immediately instead of dropping it when an immediate
+        // GetAllAppointments reload is branch-scoped or eventually consistent.
+        MergeSavedAppointment(result.Value);
+        return result;
     }
 
     public async Task<ApiCallResult<Appointment>> UpdateAppointmentAsync(Appointment appointment, CancellationToken cancellationToken = default)
