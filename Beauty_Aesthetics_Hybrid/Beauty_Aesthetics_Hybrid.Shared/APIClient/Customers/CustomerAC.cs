@@ -76,6 +76,27 @@ public sealed class CustomerAC
         return await ReadApiResponseAsync<MemberBalanceSummaryDTO>(response, "Member balance summary response was invalid.", cancellationToken);
     }
 
+    public async Task<ApiCallResult<List<MemberOtherBalanceSummaryDTO>>> GetMemberOtherBalanceSummaryAsync(
+        string customerId,
+        DateTime cutOffDate,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = CreatePostRequest(
+            "/api/WebDashboard/GetMemberOtherBalanceSummary",
+            new MemberOtherBalanceSummaryRequestDTO
+            {
+                Id = customerId,
+                CutOffDate = cutOffDate
+            });
+
+        using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+
+        return await ReadApiResponseAsync<List<MemberOtherBalanceSummaryDTO>>(
+            response,
+            "Member outstanding balance response was invalid.",
+            cancellationToken);
+    }
+
     public async Task<ApiCallResult<List<PackageBalanceDetailDTO>>> GetPackageBalanceDetailsAsync(
         string customerId,
         CancellationToken cancellationToken = default)
