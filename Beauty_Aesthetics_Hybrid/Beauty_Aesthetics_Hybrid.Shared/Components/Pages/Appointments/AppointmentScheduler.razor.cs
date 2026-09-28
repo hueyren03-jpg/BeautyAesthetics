@@ -723,22 +723,20 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                 StringComparison.OrdinalIgnoreCase);
         }
 
-        private async Task LoadSchedulerStaffForCurrentBranchAsync()
+        private static List<Staff> BuildStaffForBranch(
+            IEnumerable<Beauty_Aesthetics_WebPos.Components.Models.Employee.Employee> employees,
+            string branchId)
         {
-            var result = await EmployeeService.GetActiveEmployeesByBranchAsync(CurrentSchedulerBranchId);
-            if (!result.Success || result.Value is null)
-            {
-                StaffList = new List<Staff>();
-                staffVisibility.Clear();
-                appointmentError = result.ErrorMessage ??
-                    $"Unable to load active staff for branch {CurrentSchedulerBranchId}.";
-                return;
-            }
-
+            var normalizedBranchId = branchId?.Trim() ?? string.Empty;
             var colors = new[] { "sara", "rin", "ken" };
-            StaffList = result.Value
+
+            return employees
                 .Where(employee =>
                     string.Equals(employee.Status, "Active", StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(
+                        employee.BranchId?.Trim(),
+                        normalizedBranchId,
+                        StringComparison.OrdinalIgnoreCase) &&
                     !string.IsNullOrWhiteSpace(employee.Code) &&
                     !string.IsNullOrWhiteSpace(employee.Name))
                 .GroupBy(employee => employee.Code.Trim(), StringComparer.OrdinalIgnoreCase)
@@ -753,6 +751,21 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                     SalesPersonCode = employee.SalesPersonCode ?? string.Empty
                 })
                 .ToList();
+        }
+
+        private async Task LoadSchedulerStaffForCurrentBranchAsync()
+        {
+            var result = await EmployeeService.GetAllEmployeesAsync();
+            if (!result.Success || result.Value is null)
+            {
+                StaffList = new List<Staff>();
+                staffVisibility.Clear();
+                appointmentError = result.ErrorMessage ??
+                    $"Unable to load employees for branch {CurrentSchedulerBranchId}.";
+                return;
+            }
+
+            StaffList = BuildStaffForBranch(result.Value, CurrentSchedulerBranchId);
 
             staffVisibility.Clear();
             foreach (var staff in StaffList)
@@ -781,32 +794,15 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
         {
             var errors = new List<string>();
 
-            var employeeResult = await EmployeeService.GetActiveEmployeesByBranchAsync(CurrentSchedulerBranchId);
+            var employeeResult = await EmployeeService.GetAllEmployeesAsync();
             if (employeeResult.Success && employeeResult.Value is not null)
             {
-                var colors = new[] { "sara", "rin", "ken" };
-                StaffList = employeeResult.Value
-                    .Where(employee =>
-                        string.Equals(employee.Status, "Active", StringComparison.OrdinalIgnoreCase) &&
-                        !string.IsNullOrWhiteSpace(employee.Code) &&
-                        !string.IsNullOrWhiteSpace(employee.Name))
-                    .GroupBy(employee => employee.Code.Trim(), StringComparer.OrdinalIgnoreCase)
-                    .Select(group => group.First())
-                    .OrderBy(employee => employee.Name)
-                    .Select((employee, index) => new Staff
-                    {
-                        Id = employee.Code.Trim(),
-                        Name = employee.Name.Trim(),
-                        Role = employee.EmployeeLevel,
-                        Color = colors[index % colors.Length],
-                        SalesPersonCode = employee.SalesPersonCode ?? string.Empty
-                    })
-                    .ToList();
+                StaffList = BuildStaffForBranch(employeeResult.Value, CurrentSchedulerBranchId);
             }
             else
             {
                 errors.Add(employeeResult.ErrorMessage ??
-                    $"Unable to load active staff for branch {CurrentSchedulerBranchId}.");
+                    $"Unable to load employees for branch {CurrentSchedulerBranchId}.");
             }
 
             var customerResult = await CustomerService.SearchCustomersAsync(string.Empty);
@@ -1102,35 +1098,18 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
 
             try
             {
-                var result = await EmployeeService.GetActiveEmployeesByBranchAsync(branchId.Trim());
+                var result = await EmployeeService.GetAllEmployeesAsync();
                 if (!result.Success || result.Value is null)
                 {
                     editingAppointment.EmployeeId = string.Empty;
                     editingAppointment.StaffName = string.Empty;
                     editingAppointment.SalesPersonCode = string.Empty;
                     appointmentFormStaffError =
-                        result.ErrorMessage ?? "Unable to load active staff for this location.";
+                        result.ErrorMessage ?? "Unable to load staff for this location.";
                     return;
                 }
 
-                var colors = new[] { "sara", "rin", "ken" };
-                AppointmentFormStaffList = result.Value
-                    .Where(employee =>
-                        string.Equals(employee.Status, "Active", StringComparison.OrdinalIgnoreCase) &&
-                        !string.IsNullOrWhiteSpace(employee.Code) &&
-                        !string.IsNullOrWhiteSpace(employee.Name))
-                    .GroupBy(employee => employee.Code.Trim(), StringComparer.OrdinalIgnoreCase)
-                    .Select(group => group.First())
-                    .OrderBy(employee => employee.Name)
-                    .Select((employee, index) => new Staff
-                    {
-                        Id = employee.Code.Trim(),
-                        Name = employee.Name.Trim(),
-                        Role = employee.EmployeeLevel,
-                        Color = colors[index % colors.Length],
-                        SalesPersonCode = employee.SalesPersonCode ?? string.Empty
-                    })
-                    .ToList();
+                AppointmentFormStaffList = BuildStaffForBranch(result.Value, branchId.Trim());
 
                 SyncAppointmentFormStaffIntoScheduler();
 
