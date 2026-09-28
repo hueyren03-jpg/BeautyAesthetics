@@ -3,6 +3,7 @@
 @layout EmptyLayout
 @using Microsoft.AspNetCore.Components
 @using Beauty_Aesthetics_WebPos.Components.ViewModels
+@using Beauty_Aesthetics_WebPos.Components.Models.Employee
 @using System.Linq
 @using System.Text.RegularExpressions
 @inject NavigationManager NavigationManager
@@ -11,6 +12,7 @@
 @inject Beauty_Aesthetics_WebPos.Components.Services.Customers.ICustomerService CustomerService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.IProductInventoryService ProductInventoryService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.IServiceItemService ServiceItemService
+@inject Beauty_Aesthetics_WebPos.Components.Services.Employees.IEmployeeService EmployeeService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.ProductImageService ProductImageService
 @inject Beauty_Aesthetics_WebPos.Components.Services.AppState AppState
 
@@ -556,22 +558,58 @@
                                         <div class="payment-field-block">
                                             <label class="payment-field-label">Staff</label>
                                             <div class="custom-dropdown-wrapper form-dropdown payment-collector-dropdown">
-                                                <div class="custom-dropdown-trigger @(_isCollectorDropdownOpen ? "open" : "")" @onclick="ToggleCollectorDropdown">
-                                                    <span>@SelectedCollector</span>
-                                                    <i class="bi bi-chevron-down dropdown-arrow"></i>
+                                                <div class="custom-dropdown-trigger @(_isCollectorDropdownOpen ? "open" : "") @(_isStaffLoading ? "disabled" : "")"
+                                                     @onclick="ToggleCollectorDropdown">
+                                                    <span>@(_isStaffLoading ? "Loading staff..." : string.IsNullOrWhiteSpace(SelectedCollector) ? "Select staff" : SelectedCollector)</span>
+                                                    @if (_isStaffLoading)
+                                                    {
+                                                        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <i class="bi bi-chevron-down dropdown-arrow"></i>
+                                                    }
                                                 </div>
-                                                @if (_isCollectorDropdownOpen)
+                                                @if (_isCollectorDropdownOpen && !_isStaffLoading)
                                                 {
                                                     <div class="custom-dropdown-menu">
-                                                        @foreach (var staff in CollectorOptions)
+                                                        @if (!string.IsNullOrWhiteSpace(_staffLoadError))
                                                         {
-                                                            <div class="dropdown-item @(SelectedCollector == staff ? "selected" : "")" @onclick="@(() => SelectCollector(staff))">
-                                                                @staff
+                                                            <div class="dropdown-item payment-staff-state">
+                                                                <span>@_staffLoadError</span>
+                                                                <button type="button" class="payment-staff-retry" @onclick="LoadBillingStaffAsync">Retry</button>
                                                             </div>
+                                                        }
+                                                        else if (CollectorOptions.Count == 0)
+                                                        {
+                                                            <div class="dropdown-item payment-staff-state">No active staff found for this branch.</div>
+                                                        }
+                                                        else
+                                                        {
+                                                            @foreach (var staff in CollectorOptions)
+                                                            {
+                                                                <button type="button"
+                                                                        class="dropdown-item payment-staff-option @(SelectedCollectorId == staff.Code ? "selected" : string.Empty)"
+                                                                        @onclick="() => SelectCollector(staff)">
+                                                                    <span class="payment-staff-option__avatar">@GetStaffInitials(staff.Name)</span>
+                                                                    <span class="payment-staff-option__copy">
+                                                                        <strong>@staff.Name</strong>
+                                                                        <small>@GetStaffSecondaryText(staff)</small>
+                                                                    </span>
+                                                                    @if (SelectedCollectorId == staff.Code)
+                                                                    {
+                                                                        <i class="bi bi-check-lg payment-staff-option__check"></i>
+                                                                    }
+                                                                </button>
+                                                            }
                                                         }
                                                     </div>
                                                 }
                                             </div>
+                                            @if (!string.IsNullOrWhiteSpace(SelectedCollectorId))
+                                            {
+                                                <small class="payment-field-help">Employee ID: @SelectedCollectorId</small>
+                                            }
                                         </div>
                                     </section>
 
@@ -1544,8 +1582,11 @@
     private decimal OutstandingAmount => Math.Max(0m, TotalPayable - (AmountReceived ?? 0m));
 
     private string SelectedPaymentMethod { get; set; } = "cash";
+    private string SelectedCollectorId { get; set; } = string.Empty;
     private string SelectedCollector { get; set; } = string.Empty;
-    private List<string> CollectorOptions { get; set; } = new();
+    private List<Employee> CollectorOptions { get; set; } = new();
+    private bool _isStaffLoading;
+    private string? _staffLoadError;
     private bool UseCashWallet { get; set; }
     private bool UseCreditVoucher { get; set; }
     private bool UseBeautiPoints { get; set; }
@@ -2208,6 +2249,8 @@
     protected override async Task OnInitializedAsync()
     {
         var catalogLoadTask = LoadBillingCatalogsAsync();
+        var staffLoadTask = LoadBillingStaffAsync();
+
         var result = await PatientContext.LoadAsync(CustomerId);
         if (result.Success && result.Value is not null)
         {
@@ -2221,17 +2264,70 @@
             Feedback.Error(result.ErrorMessage ?? "Unable to load the appointment patient.", "Patient not loaded");
         }
 
-        await catalogLoadTask;
+        await Task.WhenAll(catalogLoadTask, staffLoadTask);
+    }
 
-        // Pre-fill available collectors with doctor and sample receptionists
-        CollectorOptions = new List<string>
+    private async Task LoadBillingStaffAsync()
+    {
+        _isStaffLoading = true;
+        _staffLoadError = null;
+
+        try
         {
-            DoctorName,
-            "Receptionist A",
-            "Receptionist B"
-        };
+            var branchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID)
+                ? "HQ"
+                : AppState.SelectedBranchID!;
 
-        SelectedCollector = DoctorName;
+            var result = await EmployeeService.GetActiveEmployeesByBranchAsync(branchId);
+            if (!result.Success || result.Value is null)
+            {
+                CollectorOptions = new List<Employee>();
+                SelectedCollectorId = string.Empty;
+                SelectedCollector = string.Empty;
+                _staffLoadError = result.ErrorMessage ?? "Unable to load active staff.";
+                Feedback.Error(_staffLoadError, "Staff not loaded");
+                return;
+            }
+
+            CollectorOptions = result.Value
+                .Where(employee =>
+                    string.Equals(employee.Status, "Active", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(employee.Code) &&
+                    !string.IsNullOrWhiteSpace(employee.Name))
+                .OrderBy(employee => employee.Name)
+                .ToList();
+
+            var selectedStillAvailable = CollectorOptions.FirstOrDefault(employee =>
+                string.Equals(employee.Code, SelectedCollectorId, StringComparison.OrdinalIgnoreCase));
+
+            var defaultStaff = selectedStillAvailable
+                ?? CollectorOptions.FirstOrDefault(employee => employee.IsCashier)
+                ?? CollectorOptions.FirstOrDefault(employee => employee.IsServiceStaff)
+                ?? CollectorOptions.FirstOrDefault();
+
+            if (defaultStaff is not null)
+            {
+                SelectCollector(defaultStaff, closeDropdown: false);
+            }
+            else
+            {
+                SelectedCollectorId = string.Empty;
+                SelectedCollector = string.Empty;
+            }
+        }
+        catch (Exception ex)
+        {
+            CollectorOptions = new List<Employee>();
+            SelectedCollectorId = string.Empty;
+            SelectedCollector = string.Empty;
+            _staffLoadError = $"Unable to load active staff: {ex.Message}";
+            Feedback.Error(_staffLoadError, "Staff not loaded");
+        }
+        finally
+        {
+            _isStaffLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private async Task LoadCustomerBalancesAsync(string? customerId)
@@ -2647,15 +2743,54 @@
 
     private void ToggleCollectorDropdown()
     {
+        if (_isStaffLoading)
+        {
+            return;
+        }
+
         _isCollectorDropdownOpen = !_isCollectorDropdownOpen;
         StateHasChanged();
     }
 
-    private void SelectCollector(string collector)
+    private void SelectCollector(Employee employee, bool closeDropdown = true)
     {
-        SelectedCollector = collector;
-        _isCollectorDropdownOpen = false;
+        SelectedCollectorId = employee.Code;
+        SelectedCollector = employee.Name;
+
+        if (closeDropdown)
+        {
+            _isCollectorDropdownOpen = false;
+        }
+
         StateHasChanged();
+    }
+
+    private static string GetStaffInitials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return "?";
+        }
+
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 1
+            ? parts[0][..1].ToUpperInvariant()
+            : $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant();
+    }
+
+    private static string GetStaffSecondaryText(Employee employee)
+    {
+        if (!string.IsNullOrWhiteSpace(employee.JobTitle))
+        {
+            return employee.JobTitle;
+        }
+
+        if (!string.IsNullOrWhiteSpace(employee.SalesPersonCode))
+        {
+            return employee.SalesPersonCode;
+        }
+
+        return employee.IsServiceStaff ? "Service staff" : "Active staff";
     }
 
     private void ToggleFrequencyDropdown()
