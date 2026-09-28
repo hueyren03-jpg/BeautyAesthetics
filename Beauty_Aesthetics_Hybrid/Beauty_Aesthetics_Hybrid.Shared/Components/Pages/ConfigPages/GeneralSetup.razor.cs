@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
+using Beauty_Aesthetics_WebPos.Components.Services.Printing;
 
 namespace Beauty_Aesthetics_WebPos.Components.Pages.ConfigPages
 {
@@ -7,8 +8,60 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages.ConfigPages
     {
         [Inject]
         private NavigationManager navigationManager { get; set; } = default!;
+        [Inject]
+        private IPrinterSelectionService PrinterSelectionService { get; set; } = default!;
+
         // State for the active tab
         private string ActiveTab { get; set; } = "Printer";
+
+        private IReadOnlyList<PrinterOption> PrinterOptions { get; set; } = Array.Empty<PrinterOption>();
+        private string SelectedPrinterKey { get; set; } = string.Empty;
+        private string NetworkPrinterIp { get; set; } = string.Empty;
+        private PrinterOption? SelectedPrinter =>
+            PrinterOptions.FirstOrDefault(printer =>
+                string.Equals(printer.Key, SelectedPrinterKey, StringComparison.OrdinalIgnoreCase));
+
+        protected override void OnInitialized()
+        {
+            ReloadPrinterOptions();
+        }
+
+        private void ReloadPrinterOptions()
+        {
+            PrinterOptions = PrinterSelectionService.GetPrinterOptions();
+            var selected = PrinterSelectionService.GetSelectedPrinter();
+            SelectedPrinterKey = selected?.Key ?? string.Empty;
+            NetworkPrinterIp = selected?.IpAddress ?? string.Empty;
+        }
+
+        private void OnPrinterChanged(ChangeEventArgs args)
+        {
+            var key = args.Value?.ToString() ?? string.Empty;
+            var selected = PrinterOptions.FirstOrDefault(printer =>
+                string.Equals(printer.Key, key, StringComparison.OrdinalIgnoreCase));
+
+            if (selected is null)
+            {
+                SelectedPrinterKey = string.Empty;
+                NetworkPrinterIp = string.Empty;
+                return;
+            }
+
+            PrinterSelectionService.SelectPrinter(selected);
+            ReloadPrinterOptions();
+        }
+
+        private void SaveNetworkPrinterIp()
+        {
+            var selected = SelectedPrinter;
+            if (selected is null || !selected.IsNetworkPrinter)
+            {
+                return;
+            }
+
+            PrinterSelectionService.UpdateNetworkPrinterIp(selected, NetworkPrinterIp);
+            ReloadPrinterOptions();
+        }
 
         //The state of the dropdown bar in Rfid reader
         private bool RFIDIsOpen { get; set; } = false;
