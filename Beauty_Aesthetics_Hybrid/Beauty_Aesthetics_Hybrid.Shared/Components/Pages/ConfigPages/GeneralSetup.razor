@@ -191,34 +191,64 @@
                 @if (ActiveTab == "Printer")
                 {
                     <div class="SingleInput">
-                        <div class="InputTextField">
-                            <span>@L["PrinterName"]</span>
-                            <input placeholder="Printer's name as appear in window" type="text" />
+                        <div class="SelectField">
+                            <span>Receipt Printer</span>
+                            <select class="DropdownSelect"
+                                    value="@SelectedPrinterKey"
+                                    @onchange="OnPrinterChanged">
+                                <option value="">Select printer</option>
+                                @foreach (var printer in PrinterOptions)
+                                {
+                                    <option value="@printer.Key">@printer.Name</option>
+                                }
+                            </select>
                         </div>
                     </div>
 
-                    <div class="SingleInput">
-                        <div class="InputTextField">
-                            <span>@L["DefaultFormat"]</span>
-                            <input type="text"
-                                   class="InputTextField"/>
+                    @if (SelectedPrinter is not null)
+                    {
+                        <div class="SingleInput">
+                            <div class="InputTextField">
+                                <span>Receipt Width</span>
+                                <input type="text"
+                                       value="@($"{SelectedPrinter.ReceiptMM:0} mm")"
+                                       readonly />
+                            </div>
                         </div>
-                    </div>
-                    <div class="SingleInput">
-                        <div class="InputTextField">
-                            <span>@L["ReceiptCopies"]</span>
-                            <input type="number"
-                                   class="InputTextField"/>
+
+                        @if (SelectedPrinter.IsNetworkPrinter)
+                        {
+                            <div class="SingleInput">
+                                <div class="InputTextField">
+                                    <span>Printer IP Address</span>
+                                    <input type="text"
+                                           @bind="NetworkPrinterIp"
+                                           placeholder="192.168.1.200" />
+                                </div>
+                            </div>
+
+                            <div class="SingleInput">
+                                <button type="button"
+                                        class="btn-back"
+                                        @onclick="SaveNetworkPrinterIp">
+                                    Save Printer IP
+                                </button>
+                            </div>
+                        }
+
+                        <div class="SingleInput">
+                            <div class="InputTextField">
+                                <span>Connection</span>
+                                <input type="text"
+                                       value="@(SelectedPrinter.IsBluetoothPrinter ? "Bluetooth ESC/POS" : "Network TCP/IP : 9100")"
+                                       readonly />
+                            </div>
                         </div>
-                    </div>
+                    }
 
                     <div class="SingleInput">
                         <div class="InputButton">
-                            <span>@L["PrintPreview"]</span>
-                            <label class="switch">
-                                <input type="checkbox">
-                                <span class="slider"></span>
-                            </label>
+                            <span>Physical printing is available in the MAUI app. Web can use PDF receipt download.</span>
                         </div>
                     </div>
                 }
