@@ -82,7 +82,10 @@
                     <div class="form-row">
                         <div class="field-group">
                             <label>@L["Code"]</label>
-                            <InputText @bind-Value="ViewModel.Employee.Code" placeholder="e.g. E00001" class="custom-input" />
+                            <InputText @bind-Value="ViewModel.Employee.Code"
+                                       placeholder="e.g. E00001"
+                                       class="custom-input"
+                                       readonly="@ViewModel.IsEditMode" />
                         </div>
                         <div class="field-group">
                             <label>@L["Status"]</label>
@@ -109,14 +112,15 @@
                         <div class="field-group">
                             <label>Branch</label>
                             <InputSelect @bind-Value="ViewModel.Employee.BranchId"
-                                         class="custom-input"
-                                         disabled>
+                                         @bind-Value:after="ViewModel.SyncBranchAvailabilityFromEmployee"
+                                         class="custom-input">
+                                <option value="">Select branch</option>
                                 @foreach (var branch in ViewModel.BranchList)
                                 {
                                     <option value="@branch.BranchId">@branch.BranchName</option>
                                 }
                             </InputSelect>
-                            <small class="form-hint">Employee branch follows the currently selected app branch.</small>
+                            <small class="form-hint">This is the employee's saved branch assignment.</small>
                         </div>
                         <div class="field-group">
                             <label>NRIC</label>
@@ -275,10 +279,9 @@
     {
         <div class="branch-control-section fade-in">
             <div class="branch-header">
-                <div class="section-title2">@L["BranchControl"]</div>
-                <div class="branch-actions">
-                    <button type="button" class="btn-branch-action remove-all" @onclick="ViewModel.RemoveAllBranches">@L["RemoveAll"]</button>
-                    <button type="button" class="btn-branch-action select-all" @onclick="ViewModel.SelectAllBranches">@L["SelectAll"]</button>
+                <div>
+                    <div class="section-title2">@L["BranchControl"]</div>
+                    <small class="form-hint">Branch Control uses the same saved Branch as Employee Details.</small>
                 </div>
             </div>
 
@@ -286,7 +289,7 @@
                 <thead>
                     <tr>
                         <th>@L["Branch"]</th>
-                        <th>@L["Available"]</th>
+                        <th>Assigned</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -295,7 +298,11 @@
                         <tr>
                             <td>@branch.BranchName</td>
                             <td>
-                                <InputCheckbox @bind-Value="branch.Available" />
+                                <input type="radio"
+                                       name="employeeBranchControl"
+                                       value="@branch.BranchId"
+                                       checked="@branch.Available"
+                                       @onchange="() => ViewModel.SelectBranch(branch.BranchId)" />
                             </td>
                         </tr>
                     }
