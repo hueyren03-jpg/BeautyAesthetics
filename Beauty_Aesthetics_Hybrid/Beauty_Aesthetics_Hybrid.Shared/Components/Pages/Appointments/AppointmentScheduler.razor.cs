@@ -62,6 +62,9 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
         }
 
         private List<Staff> StaffList = new();
+        private List<Staff> AppointmentFormStaffList = new();
+        private bool isAppointmentFormStaffLoading;
+        private string? appointmentFormStaffError;
         private readonly Dictionary<string, bool> staffVisibility = new();
 
         private List<string> RoomList = new()
@@ -873,6 +876,151 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
 
                 EnsureRoomOption(appointment.Room);
             }
+        }
+
+        private async Task OnEditingAppointmentBranchChangedAsync()
+        {
+            editingAppointment.EmployeeId = string.Empty;
+            editingAppointment.StaffName = string.Empty;
+            editingAppointment.SalesPersonCode = string.Empty;
+            AppointmentFormStaffList.Clear();
+            appointmentFormStaffError = null;
+
+            if (string.IsNullOrWhiteSpace(editingAppointment.BranchId))
+            {
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            await LoadAppointmentFormStaffAsync(
+                editingAppointment.BranchId,
+                preserveCurrentSelection: false);
+        }
+
+        private async Task RetryAppointmentFormStaffAsync()
+        {
+            if (string.IsNullOrWhiteSpace(editingAppointment.BranchId))
+            {
+                return;
+            }
+
+            await LoadAppointmentFormStaffAsync(
+                editingAppointment.BranchId,
+                preserveCurrentSelection: false);
+        }
+
+        private async Task LoadAppointmentFormStaffAsync(
+            string branchId,
+            bool preserveCurrentSelection)
+        {
+            if (string.IsNullOrWhiteSpace(branchId))
+            {
+                AppointmentFormStaffList.Clear();
+                appointmentFormStaffError = null;
+                isAppointmentFormStaffLoading = false;
+                return;
+            }
+
+            var previousEmployeeId = preserveCurrentSelection
+                ? editingAppointment.EmployeeId?.Trim() ?? string.Empty
+                : string.Empty;
+
+            isAppointmentFormStaffLoading = true;
+            appointmentFormStaffError = null;
+            AppointmentFormStaffList.Clear();
+            await InvokeAsync(StateHasChanged);
+
+            try
+            {
+                var result = await EmployeeService.GetActiveEmployeesByBranchAsync(branchId.Trim());
+                if (!result.Success || result.Value is null)
+                {
+                    editingAppointment.EmployeeId = string.Empty;
+                    editingAppointment.StaffName = string.Empty;
+                    editingAppointment.SalesPersonCode = string.Empty;
+                    appointmentFormStaffError =
+                        result.ErrorMessage ?? "Unable to load active staff for this location.";
+                    return;
+                }
+
+                var colors = new[] { "sara", "rin", "ken" };
+                AppointmentFormStaffList = result.Value
+                    .Where(employee =>
+                        string.Equals(employee.Status, "Active", StringComparison.OrdinalIgnoreCase) &&
+                        !string.IsNullOrWhiteSpace(employee.Code) &&
+                        !string.IsNullOrWhiteSpace(employee.Name))
+                    .GroupBy(employee => employee.Code.Trim(), StringComparer.OrdinalIgnoreCase)
+                    .Select(group => group.First())
+                    .OrderBy(employee => employee.Name)
+                    .Select((employee, index) => new Staff
+                    {
+                        Id = employee.Code.Trim(),
+                        Name = employee.Name.Trim(),
+                        Role = employee.EmployeeLevel,
+                        Color = colors[index % colors.Length]
+                    })
+                    .ToList();
+
+                var selected = AppointmentFormStaffList.FirstOrDefault(staff =>
+                    !string.IsNullOrWhiteSpace(previousEmployeeId) &&
+                    string.Equals(
+                        staff.Id,
+                        previousEmployeeId,
+                        StringComparison.OrdinalIgnoreCase));
+
+                if (selected is not null)
+                {
+                    editingAppointment.EmployeeId = selected.Id;
+                    editingAppointment.StaffName = selected.Name;
+                }
+                else
+                {
+                    editingAppointment.EmployeeId = string.Empty;
+                    editingAppointment.StaffName = string.Empty;
+                    editingAppointment.SalesPersonCode = string.Empty;
+                }
+            }
+            catch (Exception ex)
+            {
+                editingAppointment.EmployeeId = string.Empty;
+                editingAppointment.StaffName = string.Empty;
+                editingAppointment.SalesPersonCode = string.Empty;
+                AppointmentFormStaffList.Clear();
+                appointmentFormStaffError =
+                    $"Unable to load active staff for this location: {ex.Message}";
+            }
+            finally
+            {
+                isAppointmentFormStaffLoading = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+
+        private void OnEditingAppointmentStaffChanged()
+        {
+            var staff = AppointmentFormStaffList.FirstOrDefault(item =>
+                string.Equals(
+                    item.Id,
+                    editingAppointment.EmployeeId,
+                    StringComparison.OrdinalIgnoreCase));
+
+            editingAppointment.StaffName = staff?.Name ?? string.Empty;
+        }
+
+        private string GetSelectedAppointmentBranchName()
+        {
+            if (string.IsNullOrWhiteSpace(editingAppointment.BranchId))
+            {
+                return "selected location";
+            }
+
+            return branchOptions.FirstOrDefault(branch =>
+                       string.Equals(
+                           branch.Id,
+                           editingAppointment.BranchId,
+                           StringComparison.OrdinalIgnoreCase))
+                   ?.DisplayName
+                   ?? editingAppointment.BranchId;
         }
 
         private void OnCustomerSelectionChanged()
@@ -1695,19 +1843,19 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             var defaultStartMinutes = GetScheduleStartMinutes();
             var defaultDuration = DefaultAppointmentDurationMinutes;
             var defaultStart = ViewModel.SelectedDate.Date.AddMinutes(defaultStartMinutes);
-            var mobileStaff = isMobileScheduler
-                ? GetVisibleStaff().FirstOrDefault(staff =>
-                    string.Equals(staff.Id.Trim(), mobileSelectedEmployeeId.Trim(), StringComparison.OrdinalIgnoreCase))
-                : null;
-
             editingAppointment = new Appointment
             {
-                EmployeeId = mobileStaff?.Id ?? string.Empty,
-                StaffName = mobileStaff?.Name ?? string.Empty,
+                EmployeeId = string.Empty,
+                StaffName = string.Empty,
+                BranchId = string.Empty,
+                Location = string.Empty,
                 Room = isMobileScheduler && currentGroupBy == GroupByOption.Room ? mobileSelectedRoom : string.Empty,
                 Start = defaultStart,
                 End = defaultStart.AddMinutes(defaultDuration)
             };
+            AppointmentFormStaffList.Clear();
+            appointmentFormStaffError = null;
+            isAppointmentFormStaffLoading = false;
             ConstrainAppointmentToWorkingHours(editingAppointment, preserveDuration: false);
             appointmentCreateSubmitted = false;
             showModal = true;
@@ -1748,7 +1896,17 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             };
             ConstrainAppointmentToWorkingHours(editingAppointment, preserveDuration: false);
             appointmentCreateSubmitted = false;
+            AppointmentFormStaffList.Clear();
+            appointmentFormStaffError = null;
             showModal = true;
+
+            if (!string.IsNullOrWhiteSpace(editingAppointment.BranchId))
+            {
+                _ = LoadAppointmentFormStaffAsync(
+                    editingAppointment.BranchId,
+                    preserveCurrentSelection: true);
+            }
+
             Feedback.Info(
                 string.IsNullOrWhiteSpace(appt.CustomerName)
                     ? "Appointment opened for editing."
@@ -2430,6 +2588,44 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
         {
             var isCreate = editingAppointment.Id == 0;
             if (isAppointmentSaving || (isCreate && appointmentCreateSubmitted)) return;
+
+            if (string.IsNullOrWhiteSpace(editingAppointment.BranchId))
+            {
+                appointmentError = "Select a location before saving the appointment.";
+                Feedback.Warning(appointmentError, "Location required");
+                return;
+            }
+
+            if (isAppointmentFormStaffLoading)
+            {
+                appointmentError = "Staff for the selected location is still loading.";
+                Feedback.Warning(appointmentError, "Staff still loading");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(editingAppointment.EmployeeId))
+            {
+                appointmentError = "Select a staff member from the selected location.";
+                Feedback.Warning(appointmentError, "Staff required");
+                return;
+            }
+
+            var validBranchStaff = AppointmentFormStaffList.FirstOrDefault(staff =>
+                string.Equals(
+                    staff.Id,
+                    editingAppointment.EmployeeId,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (validBranchStaff is null)
+            {
+                appointmentError = "The selected staff member does not belong to the selected location. Please select staff again.";
+                editingAppointment.EmployeeId = string.Empty;
+                editingAppointment.StaffName = string.Empty;
+                Feedback.Warning(appointmentError, "Invalid staff selection");
+                return;
+            }
+
+            editingAppointment.StaffName = validBranchStaff.Name;
 
             ConstrainAppointmentToWorkingHours(editingAppointment, preserveDuration: false);
             PrepareAppointmentReferences(editingAppointment);
