@@ -16,6 +16,7 @@
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.IServiceItemService ServiceItemService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Employees.IEmployeeService EmployeeService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Sales.ICashSalesService CashSalesService
+@inject Beauty_Aesthetics_WebPos.Components.Services.Files.IFileDownloadService FileDownloadService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.ProductImageService ProductImageService
 @inject Beauty_Aesthetics_WebPos.Components.Services.AppState AppState
 @inject Microsoft.JSInterop.IJSRuntime JS
@@ -3056,11 +3057,6 @@
             }
 
             var receiptPdf = result.Value.Trim();
-            var receiptDataUrl = receiptPdf.StartsWith(
-                "data:application/pdf;base64,",
-                StringComparison.OrdinalIgnoreCase)
-                ? receiptPdf
-                : $"data:application/pdf;base64,{receiptPdf}";
 
             var safeDocumentId = Regex.Replace(
                 string.IsNullOrWhiteSpace(_completedSaleDocumentId)
@@ -3071,18 +3067,10 @@
 
             var fileName = $"Thermal_Receipt_{safeDocumentId}.pdf";
 
-            var downloaded = await JS.InvokeAsync<bool>(
-                "downloadDocumentFile",
+            await FileDownloadService.DownloadBinaryFileAsync(
                 fileName,
-                receiptDataUrl);
-
-            if (!downloaded)
-            {
-                Feedback.Error(
-                    "The receipt PDF was generated, but the file could not be downloaded.",
-                    "Receipt download failed");
-                return;
-            }
+                receiptPdf,
+                "application/pdf");
 
             Feedback.Success(
                 $"{fileName} downloaded.",
