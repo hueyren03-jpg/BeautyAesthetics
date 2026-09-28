@@ -48,22 +48,45 @@ namespace Beauty_Aesthetics_WebPos.ViewModels
                 .Where(branch => !string.IsNullOrWhiteSpace(branch.Id))
                 .Select(branch => new BranchModel
                 {
-                    BranchId = branch.Id,
-                    BranchName = branch.Name,
-                    Available = string.Equals(branch.Id, Employee.BranchId, StringComparison.OrdinalIgnoreCase)
+                    BranchId = branch.Id.Trim(),
+                    BranchName = string.IsNullOrWhiteSpace(branch.Name) ? branch.Id.Trim() : branch.Name.Trim(),
+                    Available = string.Equals(branch.Id.Trim(), Employee.BranchId?.Trim(), StringComparison.OrdinalIgnoreCase)
                 })
+                .GroupBy(branch => branch.BranchId, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .OrderBy(branch => branch.BranchName)
                 .ToList();
-        }
-        public void SelectAllBranches()
-        {
-            foreach (var branch in BranchList)
-                branch.Available = true;
+
+            var employeeBranchId = Employee.BranchId?.Trim() ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(employeeBranchId) &&
+                !BranchList.Any(branch => string.Equals(branch.BranchId, employeeBranchId, StringComparison.OrdinalIgnoreCase)))
+            {
+                BranchList.Insert(0, new BranchModel
+                {
+                    BranchId = employeeBranchId,
+                    BranchName = employeeBranchId,
+                    Available = true
+                });
+            }
+
+            SyncBranchAvailabilityFromEmployee();
         }
 
-        public void RemoveAllBranches()
+        public void SelectBranch(string branchId)
+        {
+            Employee.BranchId = branchId?.Trim() ?? string.Empty;
+            SyncBranchAvailabilityFromEmployee();
+        }
+
+        public void SyncBranchAvailabilityFromEmployee()
         {
             foreach (var branch in BranchList)
-                branch.Available = false;
+            {
+                branch.Available = string.Equals(
+                    branch.BranchId,
+                    Employee.BranchId?.Trim(),
+                    StringComparison.OrdinalIgnoreCase);
+            }
         }
 
         public void SetNavigationManager(NavigationManager navigationManager)
@@ -104,6 +127,27 @@ namespace Beauty_Aesthetics_WebPos.ViewModels
             }
 
             Employee = result.Value;
+            EnsureCurrentEmployeeOptions();
+        }
+
+        private void EnsureCurrentEmployeeOptions()
+        {
+            EnsureOption(EmployeeLevels, Employee.EmployeeLevel);
+            EnsureOption(Genders, Employee.Gender);
+            EnsureOption(WorkingShifts, Employee.WorkingShift);
+            EnsureOption(CommissionSchemes, Employee.CommissionScheme);
+            EnsureOption(AutoAllocationGroups, Employee.AutoAllocationGroup);
+        }
+
+        private static void EnsureOption(List<string> options, string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value) ||
+                options.Any(option => string.Equals(option, value.Trim(), StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
+
+            options.Insert(0, value.Trim());
         }
 
         public async Task SaveAsync()
