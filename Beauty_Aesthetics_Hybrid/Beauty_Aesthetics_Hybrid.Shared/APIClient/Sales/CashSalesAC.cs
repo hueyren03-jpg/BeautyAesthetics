@@ -59,6 +59,15 @@ public sealed class CashSalesAC
             "Invoice link response was invalid.",
             cancellationToken);
 
+    public Task<ApiCallResult<string>> RequestEInvoiceDirectSubmitAsync(
+        string documentId,
+        CancellationToken cancellationToken = default) =>
+        SendAsync<string>(HttpMethod.Post,
+            "/api/Doc_CashSales/RequestEInvoice_DirectSubmitMethod",
+            new CashSalesLookupDTO { Id = documentId },
+            "e-Invoice response was invalid.",
+            cancellationToken);
+
     public Task<ApiCallResult<JsonElement>> SaveHeaderAsync(
         JsonObject header,
         CancellationToken cancellationToken = default) =>
