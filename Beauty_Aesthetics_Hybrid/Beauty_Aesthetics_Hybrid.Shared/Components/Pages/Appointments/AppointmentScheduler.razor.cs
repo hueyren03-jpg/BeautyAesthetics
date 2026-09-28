@@ -749,13 +749,13 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
 
         private async Task LoadSchedulerStaffForCurrentBranchAsync()
         {
-            var result = await EmployeeService.GetActiveEmployeesByBranchAsync(CurrentSchedulerBranchId);
+            var result = await EmployeeService.GetAllEmployeesAsync();
             if (!result.Success || result.Value is null)
             {
                 StaffList = new List<Staff>();
                 staffVisibility.Clear();
                 appointmentError = result.ErrorMessage ??
-                    $"Unable to load active employees for branch {CurrentSchedulerBranchId}.";
+                    "Unable to load active employees.";
                 return;
             }
 
@@ -788,7 +788,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
         {
             var errors = new List<string>();
 
-            var employeeResult = await EmployeeService.GetActiveEmployeesByBranchAsync(CurrentSchedulerBranchId);
+            var employeeResult = await EmployeeService.GetAllEmployeesAsync();
             if (employeeResult.Success && employeeResult.Value is not null)
             {
                 StaffList = BuildStaffList(employeeResult.Value);
@@ -796,7 +796,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             else
             {
                 errors.Add(employeeResult.ErrorMessage ??
-                    $"Unable to load active employees for branch {CurrentSchedulerBranchId}.");
+                    "Unable to load active employees.");
             }
 
             var customerResult = await CustomerService.SearchCustomersAsync(string.Empty);
@@ -1030,11 +1030,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
 
         private void SyncAppointmentFormStaffIntoScheduler()
         {
-            if (AppointmentFormStaffList.Count == 0 ||
-                !string.Equals(
-                    editingAppointment.BranchId?.Trim(),
-                    CurrentSchedulerBranchId,
-                    StringComparison.OrdinalIgnoreCase))
+            if (AppointmentFormStaffList.Count == 0)
             {
                 return;
             }
@@ -1092,14 +1088,14 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
 
             try
             {
-                var result = await EmployeeService.GetActiveEmployeesByBranchAsync(branchId.Trim());
+                var result = await EmployeeService.GetAllEmployeesAsync();
                 if (!result.Success || result.Value is null)
                 {
                     editingAppointment.EmployeeId = string.Empty;
                     editingAppointment.StaffName = string.Empty;
                     editingAppointment.SalesPersonCode = string.Empty;
                     appointmentFormStaffError =
-                        result.ErrorMessage ?? "Unable to load active staff for this location.";
+                        result.ErrorMessage ?? "Unable to load active staff.";
                     return;
                 }
 
@@ -1134,7 +1130,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                 editingAppointment.SalesPersonCode = string.Empty;
                 AppointmentFormStaffList.Clear();
                 appointmentFormStaffError =
-                    $"Unable to load active staff for this location: {ex.Message}";
+                    $"Unable to load active staff: {ex.Message}";
             }
             finally
             {
@@ -2785,15 +2781,15 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                 return;
             }
 
-            var validBranchStaff = AppointmentFormStaffList.FirstOrDefault(staff =>
+            var validActiveStaff = AppointmentFormStaffList.FirstOrDefault(staff =>
                 string.Equals(
                     staff.Id,
                     editingAppointment.EmployeeId,
                     StringComparison.OrdinalIgnoreCase));
 
-            if (validBranchStaff is null)
+            if (validActiveStaff is null)
             {
-                appointmentError = "The selected staff member does not belong to the selected location. Please select staff again.";
+                appointmentError = "The selected staff member is not in the active employee list. Please select staff again.";
                 editingAppointment.EmployeeId = string.Empty;
                 editingAppointment.StaffName = string.Empty;
                 Feedback.Warning(appointmentError, "Invalid staff selection");
@@ -2801,10 +2797,10 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             }
 
             editingAppointment.Location = editingAppointment.BranchId.Trim();
-            editingAppointment.StaffName = validBranchStaff.Name;
-            editingAppointment.SalesPersonCode = validBranchStaff.SalesPersonCode;
+            editingAppointment.StaffName = validActiveStaff.Name;
+            editingAppointment.SalesPersonCode = validActiveStaff.SalesPersonCode;
             SyncAppointmentFormStaffIntoScheduler();
-            staffVisibility[validBranchStaff.Id] = true;
+            staffVisibility[validActiveStaff.Id] = true;
 
             ConstrainAppointmentToWorkingHours(editingAppointment, preserveDuration: false);
             PrepareAppointmentReferences(editingAppointment);
