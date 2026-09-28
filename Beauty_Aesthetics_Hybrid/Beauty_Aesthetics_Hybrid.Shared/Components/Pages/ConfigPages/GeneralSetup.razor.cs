@@ -54,7 +54,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages.ConfigPages
         private void SaveNetworkPrinterIp()
         {
             var selected = SelectedPrinter;
-            if (selected is null || !selected.IsNetworkPrinter)
+            if (selected is null || !selected.IsWifiPrinter)
             {
                 return;
             }
