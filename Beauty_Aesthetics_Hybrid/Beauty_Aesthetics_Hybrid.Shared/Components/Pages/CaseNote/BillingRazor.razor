@@ -1698,6 +1698,7 @@
     // Same payment calculator behavior as Sales > New Sale.
     private CashSalesPaymentTypeDTO? _billingCalculatorMethod;
     private string _billingCalculatorDigits = string.Empty;
+    private bool _returnToMultiPaymentAfterCalculator;
     private static readonly string[] BillingKeypadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
     private decimal ChangeAmount => Math.Max(0m, (AmountReceived ?? 0m) - TotalPayable);
@@ -2796,7 +2797,7 @@
             return;
         }
 
-        OpenBillingPaymentCalculator(method);
+        OpenBillingPaymentCalculator(method, returnToMultiPayment: true);
     }
 
     private void TogglePaymentGroup(PaymentMethodGroup group)
@@ -3633,8 +3634,16 @@
     }
 
     // Billing payment calculator intentionally mirrors Sales > New Sale behavior.
-    private void OpenBillingPaymentCalculator(CashSalesPaymentTypeDTO method)
+    private void OpenBillingPaymentCalculator(
+        CashSalesPaymentTypeDTO method,
+        bool returnToMultiPayment = false)
     {
+        _returnToMultiPaymentAfterCalculator = returnToMultiPayment;
+        if (returnToMultiPayment)
+        {
+            _showMultiPaymentModal = false;
+        }
+
         _billingCalculatorMethod = method;
         SelectedPaymentTypeId = method.POSPaymentTypeID;
         SelectedPaymentMethod = method.POSPaymentTypeName ?? $"Payment {method.POSPaymentTypeID}";
@@ -3648,9 +3657,17 @@
 
     private void CloseBillingPaymentCalculator()
     {
+        var returnToMultiPayment = _returnToMultiPaymentAfterCalculator;
+
         _billingCalculatorMethod = null;
         _billingCalculatorDigits = string.Empty;
+        _returnToMultiPaymentAfterCalculator = false;
         SynchronizeBillingPaymentTotals();
+
+        if (returnToMultiPayment)
+        {
+            _showMultiPaymentModal = true;
+        }
     }
 
     private void PressBillingCalculatorKey(string key)
