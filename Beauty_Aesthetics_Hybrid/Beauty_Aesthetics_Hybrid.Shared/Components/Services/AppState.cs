@@ -13,6 +13,14 @@ public sealed class AppState
     public BranchLookupItem? CurrentBranch { get; private set; }
     public Customer? SelectedCustomer { get; private set; }
     public string? SelectedBranchID => CurrentBranch?.Id;
+
+    // Completed payment state, matching the Senang Retails complete-sales workflow.
+    public string LastSaleDocumentId { get; set; } = string.Empty;
+    public string LastReceiptNo { get; set; } = string.Empty;
+    public decimal LastPaidAmount { get; set; }
+    public string LastPaymentMethod { get; set; } = string.Empty;
+    public Transaction? LastCompletedTransaction { get; set; }
+    public string LastPaymentReturnUrl { get; set; } = "/case-notes";
     public event Action? AuthenticationChanged;
     public event Action? BranchChanged;
     public event Action? CustomerChanged;
@@ -69,11 +77,22 @@ public sealed class AppState
         CustomerChanged?.Invoke();
     }
 
+    public void ResetPaymentState()
+    {
+        LastSaleDocumentId = string.Empty;
+        LastReceiptNo = string.Empty;
+        LastPaidAmount = 0m;
+        LastPaymentMethod = string.Empty;
+        LastCompletedTransaction = null;
+        LastPaymentReturnUrl = "/case-notes";
+    }
+
     public void ClearBranchSession()
     {
         AvailableBranches = [];
         CurrentBranch = null;
         SelectedCustomer = null;
+        ResetPaymentState();
         BranchChanged?.Invoke();
         CustomerChanged?.Invoke();
     }
