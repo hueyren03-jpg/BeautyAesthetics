@@ -274,7 +274,7 @@ public sealed class AppointmentService
         record.TransactionTimeStamp = now;
         record.InventoryIDs = appointment.ServiceInventoryId;
         record.SalesDescriptions = appointment.ServiceItem;
-        record.SalesPersonCode = existing?.SalesPersonCode ?? string.Empty;
+        record.SalesPersonCode = First(appointment.SalesPersonCode, existing?.SalesPersonCode);
         record.RequestedBy = appointment.RequestedBy;
         record.SaveAction = saveAction;
         record.IsDirty = true;
@@ -290,6 +290,13 @@ public sealed class AppointmentService
         saved.End = source.Start.Add(duration);
         saved.Room = source.Room;
         saved.Phone = source.Phone;
+        saved.BranchId = source.BranchId;
+        saved.Location = source.Location;
+        saved.EmployeeId = source.EmployeeId;
+        saved.StaffName = source.StaffName;
+        saved.SalesPersonCode = source.SalesPersonCode;
+        saved.ServiceItem = source.ServiceItem;
+        saved.ServiceInventoryId = source.ServiceInventoryId;
         saved.Tags = source.Tags.ToList();
         saved.IsAllDay = source.IsAllDay;
         saved.IsRecurring = source.IsRecurring;
