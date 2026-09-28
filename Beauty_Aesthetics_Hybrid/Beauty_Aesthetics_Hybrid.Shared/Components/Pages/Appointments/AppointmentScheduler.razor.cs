@@ -424,7 +424,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
 
         private List<Appointment> GetAppointmentsForDate(DateTime date)
         {
-            return ViewModel.Appointments
+            return CurrentBranchAppointments
                 .Where(a => a.Start.Date == date.Date)
                 .OrderBy(a => a.Start)
                 .ToList();
@@ -682,6 +682,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             isAppointmentPageInitializing = true;
             ViewModel = new AppointmentViewModel(AppointmentService);
             AppointmentService.OnChange += OnAppointmentServiceChanged;
+            AppState.BranchChanged += OnAppBranchChanged;
             RebuildTimeSlots();
             queueItems = new List<QueueItem>();
             nextQueueId = 1;
@@ -697,33 +698,115 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             }
         }
 
+        private string CurrentSchedulerBranchId =>
+            string.IsNullOrWhiteSpace(AppState.SelectedBranchID)
+                ? "HQ"
+                : AppState.SelectedBranchID!.Trim();
+
+        private IReadOnlyList<Appointment> CurrentBranchAppointments =>
+            ViewModel?.Appointments?
+                .Where(IsAppointmentForCurrentBranch)
+                .ToList()
+            ?? Array.Empty<Appointment>();
+
+        private bool IsAppointmentForCurrentBranch(Appointment appointment)
+        {
+            var appointmentBranch = !string.IsNullOrWhiteSpace(appointment.BranchId)
+                ? appointment.BranchId.Trim()
+                : !string.IsNullOrWhiteSpace(appointment.Location)
+                    ? appointment.Location.Trim()
+                    : "HQ";
+
+            return string.Equals(
+                appointmentBranch,
+                CurrentSchedulerBranchId,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        private async Task LoadSchedulerStaffForCurrentBranchAsync()
+        {
+            var result = await EmployeeService.GetActiveEmployeesByBranchAsync(CurrentSchedulerBranchId);
+            if (!result.Success || result.Value is null)
+            {
+                StaffList = new List<Staff>();
+                staffVisibility.Clear();
+                appointmentError = result.ErrorMessage ??
+                    $"Unable to load active staff for branch {CurrentSchedulerBranchId}.";
+                return;
+            }
+
+            var colors = new[] { "sara", "rin", "ken" };
+            StaffList = result.Value
+                .Where(employee =>
+                    string.Equals(employee.Status, "Active", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(employee.Code) &&
+                    !string.IsNullOrWhiteSpace(employee.Name))
+                .GroupBy(employee => employee.Code.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .OrderBy(employee => employee.Name)
+                .Select((employee, index) => new Staff
+                {
+                    Id = employee.Code.Trim(),
+                    Name = employee.Name.Trim(),
+                    Role = employee.EmployeeLevel,
+                    Color = colors[index % colors.Length],
+                    SalesPersonCode = employee.SalesPersonCode ?? string.Empty
+                })
+                .ToList();
+
+            staffVisibility.Clear();
+            foreach (var staff in StaffList)
+            {
+                staffVisibility[staff.Id] = true;
+            }
+
+            selectedEmployeeFilterId = string.Empty;
+            selectedEmployeeLevelFilter = string.Empty;
+            selectedStatusFilter = null;
+
+            EnsureMobileEmployeeSelection();
+        }
+
+        private void OnAppBranchChanged()
+        {
+            _ = InvokeAsync(async () =>
+            {
+                await LoadSchedulerStaffForCurrentBranchAsync();
+                await ReloadAppointmentsAsync();
+                StateHasChanged();
+            });
+        }
+
         private async Task LoadReferenceDataAsync()
         {
             var errors = new List<string>();
 
-            var employeeResult = await EmployeeService.GetAllEmployeesAsync();
+            var employeeResult = await EmployeeService.GetActiveEmployeesByBranchAsync(CurrentSchedulerBranchId);
             if (employeeResult.Success && employeeResult.Value is not null)
             {
                 var colors = new[] { "sara", "rin", "ken" };
                 StaffList = employeeResult.Value
-                    .Where(employee => string.Equals(employee.Status, "Active", StringComparison.OrdinalIgnoreCase))
-                    .Where(employee => !string.IsNullOrWhiteSpace(employee.Code) && !string.IsNullOrWhiteSpace(employee.Name))
+                    .Where(employee =>
+                        string.Equals(employee.Status, "Active", StringComparison.OrdinalIgnoreCase) &&
+                        !string.IsNullOrWhiteSpace(employee.Code) &&
+                        !string.IsNullOrWhiteSpace(employee.Name))
                     .GroupBy(employee => employee.Code.Trim(), StringComparer.OrdinalIgnoreCase)
                     .Select(group => group.First())
+                    .OrderBy(employee => employee.Name)
                     .Select((employee, index) => new Staff
                     {
-                        Id = employee.Code,
-                        Name = employee.Name,
+                        Id = employee.Code.Trim(),
+                        Name = employee.Name.Trim(),
                         Role = employee.EmployeeLevel,
                         Color = colors[index % colors.Length],
-                        SalesPersonCode = employee.SalesPersonCode
+                        SalesPersonCode = employee.SalesPersonCode ?? string.Empty
                     })
-                    .Where(staff => !string.IsNullOrWhiteSpace(staff.Id) && !string.IsNullOrWhiteSpace(staff.Name))
                     .ToList();
             }
             else
             {
-                errors.Add(employeeResult.ErrorMessage ?? "Unable to load employees.");
+                errors.Add(employeeResult.ErrorMessage ??
+                    $"Unable to load active staff for branch {CurrentSchedulerBranchId}.");
             }
 
             var customerResult = await CustomerService.SearchCustomersAsync(string.Empty);
@@ -841,14 +924,14 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
 
         private void EnsureAppointmentStaffRows()
         {
-            if (ViewModel?.Appointments is null || ViewModel.Appointments.Count == 0)
+            if (ViewModel?.Appointments is null || CurrentBranchAppointments.Count == 0)
             {
                 return;
             }
 
             var colors = new[] { "sara", "rin", "ken" };
 
-            foreach (var appointment in ViewModel.Appointments)
+            foreach (var appointment in CurrentBranchAppointments)
             {
                 var employeeId = appointment.EmployeeId?.Trim() ?? string.Empty;
                 if (string.IsNullOrWhiteSpace(employeeId))
@@ -885,7 +968,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
         {
             EnsureAppointmentStaffRows();
 
-            foreach (var appointment in ViewModel.Appointments)
+            foreach (var appointment in CurrentBranchAppointments)
             {
                 ConstrainAppointmentToWorkingHours(appointment, preserveDuration: false);
 
@@ -1280,7 +1363,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                 }
             }
 
-            var scheduledEmployeeIds = ViewModel.Appointments
+            var scheduledEmployeeIds = CurrentBranchAppointments
                 .Where(appointment => appointment.Start.Date == SelectedDate.Date)
                 .Select(appointment => appointment.EmployeeId?.Trim())
                 .Where(employeeId => !string.IsNullOrWhiteSpace(employeeId))
@@ -1774,7 +1857,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             {
                 var slotStart = ViewModel.SelectedDate.AddHours(timeSlot.Hour).AddMinutes(timeSlot.Minute);
                 var slotEnd = slotStart.AddMinutes(GetTimeScaleMinutes());
-                var hasAppointments = ViewModel.Appointments
+                var hasAppointments = CurrentBranchAppointments
                     .Any(a => a.Room == room &&
                             a.Start.Date == ViewModel.SelectedDate.Date &&
                             a.Start >= slotStart && a.Start < slotEnd);
@@ -2203,7 +2286,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             {
                 var slotStart = ViewModel.SelectedDate.AddHours(timeSlot.Hour).AddMinutes(timeSlot.Minute);
                 var slotEnd = slotStart.AddMinutes(GetTimeScaleMinutes());
-                var hasAppointments = ViewModel.Appointments
+                var hasAppointments = CurrentBranchAppointments
                     .Any(a => IsAppointmentForStaff(a, staff) &&
                             a.Start.Date == ViewModel.SelectedDate.Date &&
                             a.Start >= slotStart && a.Start < slotEnd);
@@ -2916,7 +2999,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             {
                 var slotStart = ViewModel.SelectedDate.AddHours(timeSlot.Hour).AddMinutes(timeSlot.Minute);
                 var slotEnd = slotStart.AddMinutes(GetTimeScaleMinutes());
-                var hasAppointments = ViewModel.Appointments
+                var hasAppointments = CurrentBranchAppointments
                     .Any(a => a.Start.Date == ViewModel.SelectedDate.Date &&
                             a.Start >= slotStart && a.Start < slotEnd);
 
@@ -3120,6 +3203,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
         public void Dispose()
         {
             AppointmentService.OnChange -= OnAppointmentServiceChanged;
+            AppState.BranchChanged -= OnAppBranchChanged;
         }
 
         private void OnAppointmentServiceChanged()
