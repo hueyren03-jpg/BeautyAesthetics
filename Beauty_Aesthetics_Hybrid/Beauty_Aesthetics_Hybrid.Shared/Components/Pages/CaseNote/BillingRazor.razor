@@ -5,6 +5,7 @@
 @using Beauty_Aesthetics_WebPos.Components.ViewModels
 @using Beauty_Aesthetics_WebPos.Components.Models.Employee
 @using Beauty_Aesthetics_WebPos.Components.Models
+@using Beauty_Aesthetics_WebPos.Components.Services.Printing
 @using Beauty_Aesthetics_WebPos.Models.DTOs
 @using System.Linq
 @using System.Text.RegularExpressions
@@ -17,6 +18,8 @@
 @inject Beauty_Aesthetics_WebPos.Components.Services.Employees.IEmployeeService EmployeeService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Sales.ICashSalesService CashSalesService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Files.IFileDownloadService FileDownloadService
+@inject Beauty_Aesthetics_WebPos.Components.Services.Printing.IPrinterSelectionService PrinterSelectionService
+@inject Beauty_Aesthetics_WebPos.Components.Services.Printing.IReceiptPrinterService ReceiptPrinterService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.ProductImageService ProductImageService
 @inject Beauty_Aesthetics_WebPos.Components.Services.AppState AppState
 @inject Microsoft.JSInterop.IJSRuntime JS
@@ -3016,7 +3019,146 @@
 
     private async Task PrintReceiptAndClose()
     {
-        await ProcessReceiptAction("print");
+        if (_isProcessingPayment)
+        {
+            return;
+        }
+
+        var printer = PrinterSelectionService.GetSelectedPrinter();
+        if (printer is null)
+        {
+            Feedback.Warning(
+                "No receipt printer is selected. Configure one in General Setup > Hardware Control > Printer.",
+                "Printer not configured");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_completedSaleDocumentId))
+        {
+            Feedback.Error(
+                "The completed sales document ID is missing.",
+                "Receipt unavailable");
+            return;
+        }
+
+        _isProcessingPayment = true;
+        var completed = false;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var saleResult = await CashSalesService.LoadTransactionAsync(
+                _completedSaleDocumentId);
+
+            if (!saleResult.Success || saleResult.Value is null)
+            {
+                Feedback.Error(
+                    saleResult.ErrorMessage ?? "Unable to load the completed sale for printing.",
+                    "Receipt print failed");
+                return;
+            }
+
+            var transaction = saleResult.Value;
+            var receiptData = BuildPhysicalReceiptData(transaction);
+
+            var printResult = await ReceiptPrinterService.PrintAsync(
+                printer,
+                receiptData);
+
+            if (!printResult.Success)
+            {
+                Feedback.Error(
+                    string.IsNullOrWhiteSpace(printResult.Error)
+                        ? "The receipt printer did not complete the print job."
+                        : printResult.Error,
+                    "Receipt print failed");
+                return;
+            }
+
+            Feedback.Success(
+                string.IsNullOrWhiteSpace(transaction.InvoiceNumber)
+                    ? $"Receipt printed to {printer.Name}."
+                    : $"Receipt {transaction.InvoiceNumber} printed to {printer.Name}.",
+                "Receipt printed",
+                2400);
+
+            completed = true;
+        }
+        catch (Exception ex)
+        {
+            Feedback.Error(
+                $"Unable to print receipt: {ex.Message}",
+                "Receipt print failed");
+        }
+        finally
+        {
+            _isProcessingPayment = false;
+            if (completed)
+            {
+                _showPaymentSummaryModal = false;
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private ReceiptData BuildPhysicalReceiptData(Transaction transaction)
+    {
+        var paidAmount = transaction.Payments.Count > 0
+            ? transaction.Payments.Sum(payment => payment.Amount)
+            : AmountReceived ?? transaction.Amount;
+
+        var payments = transaction.Payments.Count > 0
+            ? transaction.Payments
+                .Select(payment => new ReceiptPaymentLine
+                {
+                    Method = payment.PaymentMethod,
+                    Amount = payment.Amount
+                })
+                .ToList()
+            : new List<ReceiptPaymentLine>
+            {
+                new()
+                {
+                    Method = PaymentMethodDisplay,
+                    Amount = AmountReceived ?? transaction.Amount
+                }
+            };
+
+        return new ReceiptData
+        {
+            CompanyName = "Beauty Aesthetics",
+            BranchName = AppState.CurrentBranch?.Name ?? transaction.Branch,
+            ReceiptNo = string.IsNullOrWhiteSpace(transaction.InvoiceNumber)
+                ? _completedReceiptNumber
+                : transaction.InvoiceNumber,
+            DateTimeOfSale = transaction.Date,
+            CustomerName = transaction.CustomerName,
+            CustomerPhone = transaction.CustomerContact,
+            CashierName = string.IsNullOrWhiteSpace(transaction.CreatedBy)
+                ? SelectedCollector
+                : transaction.CreatedBy,
+            CurrencyName = "MYR",
+            Items = transaction.Items.Select(item => new ReceiptLineItem
+            {
+                Name = item.Name,
+                Quantity = item.Quantity,
+                UnitPrice = item.UnitPrice,
+                Discount = item.Discount,
+                LineTotal = item.TotalPrice,
+                Remarks = string.Equals(item.Description, item.Name, StringComparison.OrdinalIgnoreCase)
+                    ? string.Empty
+                    : item.Description
+            }).ToList(),
+            Payments = payments,
+            Subtotal = transaction.Subtotal,
+            Discount = transaction.Discount,
+            TaxAmount = transaction.Tax,
+            GrandTotal = transaction.Amount,
+            PaidAmount = paidAmount,
+            ChangeAmount = Math.Max(0m, paidAmount - transaction.Amount),
+            EInvoiceQrUrl = _eInvoiceUrl
+        };
     }
 
     private async Task EmailReceiptAndClose()
