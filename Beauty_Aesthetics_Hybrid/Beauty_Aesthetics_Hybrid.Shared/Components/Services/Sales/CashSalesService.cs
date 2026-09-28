@@ -140,6 +140,66 @@ public sealed class CashSalesService : ICashSalesService
         return ApiCallResult<Transaction>.Ok(result.StatusCode, transaction);
     }
 
+    public async Task<ApiCallResult<string>> RequestInvoiceLinkAsync(
+        string documentId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+        {
+            return ApiCallResult<string>.Failure(
+                HttpStatusCode.BadRequest,
+                "A completed cash sale document is required before requesting an invoice.");
+        }
+
+        var loadResult = await cashSalesAC.LoadRecordAsync(documentId, cancellationToken);
+        if (!loadResult.Success || loadResult.Value is null)
+        {
+            return ApiCallResult<string>.Failure(
+                loadResult.StatusCode,
+                loadResult.ErrorMessage ?? "Unable to load the completed cash sale.");
+        }
+
+        var header = loadResult.Value["objDoc_CashSales"] as JsonObject;
+        if (header is null)
+        {
+            return ApiCallResult<string>.Failure(
+                HttpStatusCode.OK,
+                "The completed cash sale did not contain an invoice header.");
+        }
+
+        var savedDocumentId = Text(header, "DocumentID");
+        if (string.IsNullOrWhiteSpace(savedDocumentId))
+        {
+            savedDocumentId = documentId;
+        }
+
+        var documentTypeId = Integer(header, "DocumentTypeID");
+        if (documentTypeId == 0)
+        {
+            documentTypeId = 5;
+        }
+
+        var financialDate = DateValue(header, "FinancialDate") ?? DateTime.Now;
+
+        var invoiceResult = await cashSalesAC.RequestBillDownloadLinkAsync(
+            new CashSalesBillLinkRequestDTO
+            {
+                DocumentTypeId = documentTypeId,
+                DocumentId = savedDocumentId,
+                FinancialDate = financialDate
+            },
+            cancellationToken);
+
+        if (!invoiceResult.Success || string.IsNullOrWhiteSpace(invoiceResult.Value))
+        {
+            return ApiCallResult<string>.Failure(
+                invoiceResult.StatusCode,
+                invoiceResult.ErrorMessage ?? "The invoice link was empty.");
+        }
+
+        return ApiCallResult<string>.Ok(invoiceResult.StatusCode, invoiceResult.Value);
+    }
+
     public async Task<ApiCallResult<IReadOnlyList<CashSalesPaymentTypeDTO>>> LoadPaymentTypesAsync(CancellationToken cancellationToken = default)
     {
         var result = await cashSalesAC.LoadPaymentTypesAsync(cancellationToken);
