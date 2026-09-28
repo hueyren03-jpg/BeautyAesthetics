@@ -70,3 +70,50 @@ function dataURLtoBlob(dataurl) {
 
 console.log('✓ Document Download Module Loaded');
 
+
+
+// Print receipt HTML using the browser/system print dialog
+window.printReceiptHtml = function (html) {
+    try {
+        const frame = document.createElement('iframe');
+        frame.setAttribute('aria-hidden', 'true');
+        frame.style.position = 'fixed';
+        frame.style.right = '0';
+        frame.style.bottom = '0';
+        frame.style.width = '1px';
+        frame.style.height = '1px';
+        frame.style.border = '0';
+        frame.style.opacity = '0';
+        document.body.appendChild(frame);
+
+        const doc = frame.contentDocument || frame.contentWindow.document;
+        doc.open();
+        doc.write(html);
+        doc.close();
+
+        const doPrint = () => {
+            try {
+                const win = frame.contentWindow;
+                win.focus();
+                win.print();
+            } finally {
+                setTimeout(() => {
+                    if (frame.parentNode) {
+                        frame.parentNode.removeChild(frame);
+                    }
+                }, 1500);
+            }
+        };
+
+        if (doc.readyState === 'complete') {
+            setTimeout(doPrint, 50);
+        } else {
+            frame.onload = () => setTimeout(doPrint, 50);
+        }
+
+        return true;
+    } catch (error) {
+        console.error('Error printing receipt:', error);
+        return false;
+    }
+};
