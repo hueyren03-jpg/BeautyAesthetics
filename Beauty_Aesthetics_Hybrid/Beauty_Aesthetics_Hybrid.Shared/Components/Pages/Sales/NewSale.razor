@@ -1006,7 +1006,10 @@
         var branch = BranchSession.CurrentBranch;
         var branchId = branch?.Id ?? "HQ";
 
-        var paymentTask = CashSalesService.LoadPaymentTypesAsync();
+        var paymentTask = CashSalesService.LoadPaymentTypesAsync(
+            branchId,
+            branch?.GroupId ?? string.Empty,
+            string.Empty);
         var customerTask = CustomerService.SearchCustomersAsync(string.Empty);
         var productTask = ProductInventoryService.LoadProductsAsync(branchId);
         var serviceTask = ServiceItemService.LoadServiceItemsAsync(branchId);
@@ -1364,13 +1367,34 @@
 
     // ========================================= PAYMENT & COMPLETE =========================================
 
-    private void ContinueToPayment()
+    private async Task ContinueToPayment()
     {
         if (!currentOrder.Items.Any())
         {
             Feedback.Warning("Please add at least one item before proceeding to payment.", "Cart is empty");
             return;
         }
+
+        var branch = BranchSession.CurrentBranch;
+        var branchId = string.IsNullOrWhiteSpace(currentOrder.BranchId)
+            ? branch?.Id ?? "HQ"
+            : currentOrder.BranchId;
+        var groupId = branch?.GroupId ?? string.Empty;
+
+        var paymentResult = await CashSalesService.LoadPaymentTypesAsync(
+            branchId,
+            groupId,
+            currentOrder.AccountId);
+
+        if (!paymentResult.Success || paymentResult.Value is null)
+        {
+            Feedback.Error(
+                paymentResult.ErrorMessage ?? "Unable to load payment methods.",
+                "Payment methods not loaded");
+            return;
+        }
+
+        paymentTypes = paymentResult.Value.ToList();
 
         PendingOrderService.SaveOrUpdate(currentOrder);
         stage = SaleStage.Payment;
