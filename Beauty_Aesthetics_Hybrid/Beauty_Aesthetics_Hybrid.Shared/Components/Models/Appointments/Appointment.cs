@@ -38,6 +38,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Models
         public string Name { get; set; } = string.Empty;
         public string Role { get; set; } = string.Empty;
         public string Color { get; set; } = string.Empty;
+        public string SalesPersonCode { get; set; } = string.Empty;
     }
 
     public class ServiceItem
