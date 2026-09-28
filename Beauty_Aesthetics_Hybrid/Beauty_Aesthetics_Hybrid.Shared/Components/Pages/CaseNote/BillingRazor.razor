@@ -1099,6 +1099,10 @@
                             <i class="bi bi-printer"></i>
                             <span>Print Receipt</span>
                         </button>
+                        <button class="btn-receipt-option" @onclick="DownloadReceiptPdfAndClose" disabled="@_isProcessingPayment">
+                            <i class="bi bi-download"></i>
+                            <span>Download PDF Receipt</span>
+                        </button>
                         <button class="btn-receipt-option" @onclick="EmailReceiptAndClose" disabled="@_isProcessingPayment">
                             <i class="bi bi-envelope"></i>
                             <span>Email Receipt</span>
@@ -3017,6 +3021,92 @@
     private async Task EmailReceiptAndClose()
     {
         await ProcessReceiptAction("email");
+    }
+
+    private async Task DownloadReceiptPdfAndClose()
+    {
+        if (_isProcessingPayment)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_completedSaleDocumentId))
+        {
+            Feedback.Error(
+                "The completed sales document ID is missing.",
+                "Receipt unavailable");
+            return;
+        }
+
+        _isProcessingPayment = true;
+        var completed = false;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var result = await CashSalesService.RequestReceiptPdfAsync(
+                _completedSaleDocumentId);
+
+            if (!result.Success || string.IsNullOrWhiteSpace(result.Value))
+            {
+                Feedback.Error(
+                    result.ErrorMessage ?? "Unable to generate the receipt PDF.",
+                    "Receipt unavailable");
+                return;
+            }
+
+            var receiptPdf = result.Value.Trim();
+            var receiptDataUrl = receiptPdf.StartsWith(
+                "data:application/pdf;base64,",
+                StringComparison.OrdinalIgnoreCase)
+                ? receiptPdf
+                : $"data:application/pdf;base64,{receiptPdf}";
+
+            var safeDocumentId = Regex.Replace(
+                string.IsNullOrWhiteSpace(_completedSaleDocumentId)
+                    ? "Receipt"
+                    : _completedSaleDocumentId,
+                @"[^A-Za-z0-9_-]+",
+                "_");
+
+            var fileName = $"Thermal_Receipt_{safeDocumentId}.pdf";
+
+            var downloaded = await JS.InvokeAsync<bool>(
+                "downloadDocumentFile",
+                fileName,
+                receiptDataUrl);
+
+            if (!downloaded)
+            {
+                Feedback.Error(
+                    "The receipt PDF was generated, but the file could not be downloaded.",
+                    "Receipt download failed");
+                return;
+            }
+
+            Feedback.Success(
+                $"{fileName} downloaded.",
+                "Receipt downloaded",
+                2400);
+
+            completed = true;
+        }
+        catch (Exception ex)
+        {
+            Feedback.Error(
+                $"Unable to download receipt: {ex.Message}",
+                "Receipt download failed");
+        }
+        finally
+        {
+            _isProcessingPayment = false;
+            if (completed)
+            {
+                _showPaymentSummaryModal = false;
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private async Task ProcessReceiptAction(string action)
