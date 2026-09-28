@@ -581,6 +581,9 @@ public sealed class CashSalesService : ICashSalesService
             Subtotal = Number(header, "TotalBeforeTax"),
             Tax = Number(header, "TaxAmount"),
             Discount = lines.Sum(line => Number(line as JsonObject, "DiscountAmount")),
+            RoundingAmount = Number(header, "RoundingAmount"),
+            ServiceChargeAmount = Number(header, "TotalBeforeTax_ServiceCharge"),
+            CurrencyName = First(Text(header, "LocalCurrencyName"), Text(header, "TransactionCurrencyName"), "MYR")!,
             Status = Bool(header, "IsVoid") ? "Cancelled" : "Paid",
             ReferenceNumber = Text(header, "ReferenceNumber"),
             Notes = Text(header, "Remarks"),
@@ -594,7 +597,8 @@ public sealed class CashSalesService : ICashSalesService
                 ReceiptLineId = Text(receipt, "POSReceiptLineID"),
                 PaymentTypeId = Integer(receipt, "POSPaymentTypeID"),
                 PaymentMethod = First(Text(receipt, "POSPaymentTypeName"), Text(receipt, "Description"), "Payment")!,
-                Amount = Number(receipt, "POSReceiptLineAmount")
+                Amount = Number(receipt, "POSReceiptLineAmount"),
+                ChangeAmount = Math.Abs(Number(receipt, "POSReceiptChangeAmount"))
             })
             .Where(payment => payment.PaymentTypeId != 0 && payment.Amount > 0)
             .ToList();
@@ -627,7 +631,12 @@ public sealed class CashSalesService : ICashSalesService
             Quantity = (int)Math.Max(1, quantity),
             UnitPrice = unitPrice,
             TotalPrice = total != 0 ? total : quantity * unitPrice,
-            Discount = Number(line, "DiscountAmount")
+            Discount = Number(line, "DiscountAmount"),
+            TaxCodeId = Text(line, "TaxCodeID"),
+            TaxPercentage = Number(line, "TaxPercentage"),
+            TaxAmount = Number(line, "TaxAmount"),
+            UnitOfMeasureId = Text(line, "UnitOfMeasureID"),
+            IsTaxInclusive = Bool(line, "IsTaxInclusive")
         };
     }
 
