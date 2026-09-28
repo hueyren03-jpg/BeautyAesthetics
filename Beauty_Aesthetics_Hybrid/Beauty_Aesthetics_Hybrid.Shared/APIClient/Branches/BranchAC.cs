@@ -28,7 +28,7 @@ public sealed class BranchAC
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/Branch/LoadRecord")
         {
             Content = JsonContent.Create(
-                new { id = branchId },
+                new { Id = branchId },
                 mediaType: JsonPatchMediaType,
                 options: JsonOptions)
         };
