@@ -13,49 +13,49 @@ namespace Beauty_Aesthetics_Hybrid.Services;
 public sealed class MauiReceiptPrinterService : IReceiptPrinterService
 {
     private static readonly string[] PrinterKeywords =
-    [
+    {
         "printer", "print", "pos", "thermal", "receipt",
         "mpt", "rpp", "zj", "goojprt", "xprinter", "epson",
-        "bixolon", "star", "citizen", "zebra", "tsc"
-    ];
+        "bixolon", "star", "citizen", "zebra", "tsc", "imin"
+    };
+
+    private readonly IminPrinterHelperService iminService = new();
 
     public async Task<(bool Success, string Error)> PrintAsync(
         PrinterOption printer,
-        ReceiptData data,
-        CancellationToken cancellationToken = default)
+        ReceiptData data)
     {
         try
         {
-            var width = printer.ReceiptMM == 80 ? 48 : 32;
-            var receiptBytes = BuildEscPosReceipt(data, width);
-
-            if (printer.IsNetworkPrinter)
+            if (printer.IsIminPrinter)
             {
-                return await PrintNetworkAsync(
-                    printer.IpAddress,
-                    receiptBytes,
-                    cancellationToken);
+                return await iminService.PrintReceiptAsync(data);
             }
 
-            if (printer.IsBluetoothPrinter)
+            var receipt = BuildEscPosReceipt(data, printer.ReceiptMM == 80 ? 48 : 32);
+
+            if (printer.IsWifiPrinter)
             {
-                return await PrintBluetoothAsync(
-                    receiptBytes,
-                    cancellationToken);
+                return await PrintNetworkAsync(printer.IpAddress, receipt);
             }
 
-            return (false, "No supported printer type is selected.");
+            if (printer.IsBluetoothPrinter || printer.IsIminPrinter)
+            {
+                return await PrintBluetoothAsync(receipt);
+            }
+
+            return (false, "No printer type selected.");
         }
         catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[MauiReceiptPrinterService] PrintAsync error: {ex.Message}");
             return (false, ex.Message);
         }
     }
 
     private static async Task<(bool Success, string Error)> PrintNetworkAsync(
         string ipAddress,
-        byte[] data,
-        CancellationToken cancellationToken)
+        byte[] data)
     {
         if (string.IsNullOrWhiteSpace(ipAddress))
         {
@@ -66,22 +66,20 @@ public sealed class MauiReceiptPrinterService : IReceiptPrinterService
         {
             using var client = new TcpClient();
             var connectTask = client.ConnectAsync(ipAddress.Trim(), 9100);
-            var timeoutTask = Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
 
-            if (await Task.WhenAny(connectTask, timeoutTask) != connectTask)
+            if (await Task.WhenAny(connectTask, Task.Delay(5000)) != connectTask)
             {
                 return (false, $"Connection to {ipAddress}:9100 timed out.");
             }
 
             await connectTask;
-            await using var stream = client.GetStream();
-            await stream.WriteAsync(data, cancellationToken);
-            await stream.FlushAsync(cancellationToken);
+            using var stream = client.GetStream();
+            stream.WriteTimeout = 10000;
+            await stream.WriteAsync(data);
+            await stream.FlushAsync();
+            await Task.Delay(1500);
+
             return (true, string.Empty);
-        }
-        catch (OperationCanceledException)
-        {
-            return (false, "Network printing was cancelled.");
         }
         catch (Exception ex)
         {
@@ -89,9 +87,7 @@ public sealed class MauiReceiptPrinterService : IReceiptPrinterService
         }
     }
 
-    private static async Task<(bool Success, string Error)> PrintBluetoothAsync(
-        byte[] data,
-        CancellationToken cancellationToken)
+    private static async Task<(bool Success, string Error)> PrintBluetoothAsync(byte[] data)
     {
 #if ANDROID
         try
@@ -108,9 +104,10 @@ public sealed class MauiReceiptPrinterService : IReceiptPrinterService
 #pragma warning disable CA1422
             var adapter = BluetoothAdapter.DefaultAdapter;
 #pragma warning restore CA1422
+
             if (adapter is null)
             {
-                return (false, "Bluetooth is not available on this device.");
+                return (false, "Bluetooth not available on this device.");
             }
 
             if (!adapter.IsEnabled)
@@ -121,32 +118,45 @@ public sealed class MauiReceiptPrinterService : IReceiptPrinterService
             var device = FindPrinterDevice(adapter);
             if (device is null)
             {
-                return (false, "No paired Bluetooth receipt printer was found. Pair the printer in Android Bluetooth settings first.");
+                return (false, "No paired Bluetooth printer found. Please pair your printer in Android Bluetooth settings.");
             }
 
             var uuid = Java.Util.UUID.FromString("00001101-0000-1000-8000-00805F9B34FB");
-            using var socket = device.CreateInsecureRfcommSocketToServiceRecord(uuid);
-            if (socket is null)
+            var socket = device.CreateInsecureRfcommSocketToServiceRecord(uuid)
+                ?? throw new Exception("Failed to create Bluetooth socket.");
+
+            try
             {
-                return (false, "Unable to create a Bluetooth printer connection.");
-            }
+                await socket.ConnectAsync();
+                var stream = socket.OutputStream
+                    ?? throw new Exception("Could not open printer output stream.");
 
-            await socket.ConnectAsync();
-            var output = socket.OutputStream;
-            if (output is null)
+                await stream.WriteAsync(data);
+                await stream.FlushAsync();
+                await Task.Delay(2000);
+
+                stream.Close();
+                return (true, string.Empty);
+            }
+            finally
             {
-                return (false, "Unable to open the Bluetooth printer output stream.");
+                try
+                {
+                    if (socket.IsConnected)
+                    {
+                        socket.Close();
+                    }
+
+                    socket.Dispose();
+                }
+                catch
+                {
+                }
             }
-
-            await output.WriteAsync(data);
-            await output.FlushAsync();
-            output.Close();
-
-            return (true, string.Empty);
         }
         catch (Java.IO.IOException ex)
         {
-            return (false, $"Bluetooth connection failed: {ex.Message}");
+            return (false, $"Bluetooth connection failed. Ensure printer is on and nearby. ({ex.Message})");
         }
         catch (Exception ex)
         {
@@ -154,7 +164,7 @@ public sealed class MauiReceiptPrinterService : IReceiptPrinterService
         }
 #else
         await Task.CompletedTask;
-        return (false, "Bluetooth receipt printing is only supported on Android.");
+        return (false, "Bluetooth printing is only supported on Android.");
 #endif
     }
 
@@ -168,9 +178,9 @@ public sealed class MauiReceiptPrinterService : IReceiptPrinterService
         }
 
         var byName = devices.FirstOrDefault(device =>
-            !string.IsNullOrWhiteSpace(device.Name) &&
+            device.Name is not null &&
             PrinterKeywords.Any(keyword =>
-                device.Name!.Contains(keyword, StringComparison.OrdinalIgnoreCase)));
+                device.Name.Contains(keyword, StringComparison.OrdinalIgnoreCase)));
 
         if (byName is not null)
         {
@@ -178,6 +188,7 @@ public sealed class MauiReceiptPrinterService : IReceiptPrinterService
         }
 
         var spp = Java.Util.UUID.FromString("00001101-0000-1000-8000-00805F9B34FB");
+
         foreach (var device in devices)
         {
             try
@@ -194,7 +205,8 @@ public sealed class MauiReceiptPrinterService : IReceiptPrinterService
                 }
 
                 var uuids = device.GetUuids();
-                if (uuids is not null && uuids.Any(item => item.Uuid?.Equals(spp) == true))
+                if (uuids is not null &&
+                    uuids.Any(item => item.Uuid?.Equals(spp) == true))
                 {
                     return device;
                 }
@@ -209,187 +221,360 @@ public sealed class MauiReceiptPrinterService : IReceiptPrinterService
 
     private sealed class BluetoothConnectPermission : Permissions.BasePlatformPermission
     {
-        public BluetoothConnectPermission()
-        {
-        }
-
         public override (string androidPermission, bool isRuntime)[] RequiredPermissions =>
             OperatingSystem.IsAndroidVersionAtLeast(31)
-                ? [(Manifest.Permission.BluetoothConnect, true)]
-                : [];
+                ? new[] { (Manifest.Permission.BluetoothConnect, true) }
+                : Array.Empty<(string androidPermission, bool isRuntime)>();
     }
 #endif
 
     private static byte[] BuildEscPosReceipt(ReceiptData data, int width)
     {
-        var encoding = Encoding.UTF8;
-        var bytes = new List<byte>();
+        Encoding encoding;
+        try
+        {
+            encoding = Encoding.GetEncoding("GBK");
+        }
+        catch
+        {
+            encoding = Encoding.UTF8;
+        }
 
-        bytes.AddRange([0x1B, 0x40]);
-        bytes.AddRange(Center());
+        var buffer = new List<byte>();
+        var saleDate = data.DateTimeOfSale ?? DateTime.Now;
+
+        buffer.AddRange(new byte[] { 0x1B, 0x40 });
 
         if (!string.IsNullOrWhiteSpace(data.CompanyName))
         {
-            bytes.AddRange(Bold(true));
-            WriteLine(bytes, encoding, Truncate(data.CompanyName, width));
-            bytes.AddRange(Bold(false));
+            buffer.AddRange(Center());
+            buffer.AddRange(Bold(true));
+            WriteLine(buffer, encoding, Truncate(data.CompanyName, width));
+            buffer.AddRange(Bold(false));
         }
 
-        if (!string.IsNullOrWhiteSpace(data.BranchName))
+        foreach (var addressLine in new[] { data.Address1, data.Address2, data.Address3 })
         {
-            WriteLine(bytes, encoding, Truncate(data.BranchName, width));
+            if (!string.IsNullOrWhiteSpace(addressLine))
+            {
+                buffer.AddRange(Center());
+                WriteLine(buffer, encoding, Truncate(addressLine, width));
+            }
         }
 
-        WriteLine(bytes, encoding, new string('-', width));
-        bytes.AddRange(Left());
-        WriteLine(bytes, encoding, $"Receipt: {data.ReceiptNo}");
-        WriteLine(bytes, encoding, $"Date: {data.DateTimeOfSale:dd/MM/yyyy HH:mm}");
-
-        if (!string.IsNullOrWhiteSpace(data.CustomerName))
+        if (!string.IsNullOrWhiteSpace(data.Phone))
         {
-            WriteLine(bytes, encoding, $"Customer: {data.CustomerName}");
+            buffer.AddRange(Center());
+            WriteLine(buffer, encoding, $"Tel: {data.Phone}");
         }
 
-        if (!string.IsNullOrWhiteSpace(data.CustomerPhone))
+        if (!string.IsNullOrWhiteSpace(data.Email))
         {
-            WriteLine(bytes, encoding, $"Phone: {data.CustomerPhone}");
+            buffer.AddRange(Center());
+            WriteLine(buffer, encoding, $"Email: {data.Email}");
         }
 
-        WriteLine(bytes, encoding, new string('-', width));
+        if (!string.IsNullOrWhiteSpace(data.CoRegistrationNo))
+        {
+            buffer.AddRange(Center());
+            WriteLine(buffer, encoding, $"Co No: {data.CoRegistrationNo}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(data.TIN))
+        {
+            buffer.AddRange(Center());
+            WriteLine(buffer, encoding, $"Tax No: {data.TIN}");
+        }
+
+        WriteRule(buffer, encoding, width);
+        buffer.AddRange(Center());
+        buffer.AddRange(Bold(true));
+        WriteLine(buffer, encoding, "Invoice");
+        buffer.AddRange(Bold(false));
+
+        buffer.AddRange(Left());
+        WriteLine(buffer, encoding, $"Date: {saleDate:dd/MM/yyyy HH:mm}");
+        WriteLine(buffer, encoding, $"Doc No: {data.ReceiptNo}");
+        WriteLine(buffer, encoding, $"Ref No: {data.ReferenceNumber}");
+        WriteRule(buffer, encoding, width);
+
+        if (!string.IsNullOrWhiteSpace(data.CustomerID))
+        {
+            if (!string.IsNullOrWhiteSpace(data.CustomerName))
+            {
+                PrintLeft(buffer, encoding, $"  {data.CustomerName}", width);
+            }
+
+            foreach (var customerLine in new[]
+            {
+                data.CustomerAddress1,
+                data.CustomerAddress2,
+                data.CustomerAddress3,
+                data.CustomerCountry,
+                data.CustomerPhone
+            })
+            {
+                if (!string.IsNullOrWhiteSpace(customerLine))
+                {
+                    PrintLeft(buffer, encoding, $"  {customerLine}", width);
+                }
+            }
+
+            WriteRule(buffer, encoding, width);
+        }
+
+        var qtyWidth = 3;
+        var priceWidth = 8;
+        var totalWidth = 10;
+        var nameWidth = width - qtyWidth - priceWidth - totalWidth - 3;
+
+        var header =
+            PadRightDisplay("Item", nameWidth) + " " +
+            PadLeftDisplay("Qty", qtyWidth) + " " +
+            PadLeftDisplay("Price", priceWidth) + " " +
+            PadLeftDisplay("Total", totalWidth);
+
+        WriteLine(buffer, encoding, header);
+        WriteRule(buffer, encoding, width);
+
+        decimal itemCount = 0;
+        decimal totalDiscount = 0;
 
         foreach (var item in data.Items)
         {
-            foreach (var part in Wrap(item.Name, width))
-            {
-                WriteLine(bytes, encoding, part);
-            }
+            itemCount += item.Quantity;
+            totalDiscount += item.Discount;
 
-            var qty = item.Quantity.ToString("0.##");
-            var amount = item.LineTotal.ToString("0.00");
-            WriteLine(bytes, encoding, AlignPair($"{qty} x {item.UnitPrice:0.00}", amount, width));
-
-            if (item.Discount > 0)
+            foreach (var namePart in WrapDisplay(item.Name, width))
             {
-                WriteLine(bytes, encoding, AlignPair("Discount", $"-{item.Discount:0.00}", width));
+                WriteLine(buffer, encoding, namePart);
             }
 
             if (!string.IsNullOrWhiteSpace(item.Remarks))
             {
-                foreach (var part in Wrap($"  {item.Remarks}", width))
+                foreach (var remarkPart in WrapDisplay(item.Remarks, Math.Max(1, width - 2)))
                 {
-                    WriteLine(bytes, encoding, part);
+                    WriteLine(buffer, encoding, $"  {remarkPart}");
                 }
             }
+
+            var unitPrice = item.LineTotal / Math.Max(1m, item.Quantity);
+            var metrics =
+                new string(' ', nameWidth) + " " +
+                PadLeftDisplay(item.Quantity.ToString("0.##"), qtyWidth) + " " +
+                PadLeftDisplay(unitPrice.ToString("F2"), priceWidth) + " " +
+                PadLeftDisplay(item.LineTotal.ToString("F2"), totalWidth);
+
+            WriteLine(buffer, encoding, metrics);
+
+            if (item.Discount > 0)
+            {
+                WriteLine(
+                    buffer,
+                    encoding,
+                    PadLeftDisplay($"(Disc: {item.Discount:F2})", width));
+            }
+
+            buffer.Add(0x0A);
         }
 
-        WriteLine(bytes, encoding, new string('-', width));
-        WriteLine(bytes, encoding, AlignPair("Subtotal", data.Subtotal.ToString("0.00"), width));
-        if (data.Discount > 0)
-        {
-            WriteLine(bytes, encoding, AlignPair("Discount", $"-{data.Discount:0.00}", width));
-        }
-        WriteLine(bytes, encoding, AlignPair("Tax", data.TaxAmount.ToString("0.00"), width));
+        WriteRule(buffer, encoding, width);
 
-        bytes.AddRange(Bold(true));
-        WriteLine(bytes, encoding, AlignPair("TOTAL", data.GrandTotal.ToString("0.00"), width));
-        bytes.AddRange(Bold(false));
+        var labelWidth = width - totalWidth;
+        var serviceChargeText = data.TotalBeforeTax_ServiceCharge <= 0
+            ? "-"
+            : data.TotalBeforeTax_ServiceCharge.ToString("0.00");
 
-        WriteLine(bytes, encoding, new string('-', width));
-        if (!string.IsNullOrWhiteSpace(data.CashierName))
-        {
-            WriteLine(bytes, encoding, $"Cashier: {data.CashierName}");
-        }
+        WriteLine(buffer, encoding, PadRightDisplay("Item Count:", labelWidth) + PadLeftDisplay(itemCount.ToString("0.##"), totalWidth));
+        WriteLine(buffer, encoding, PadRightDisplay("Total Discount:", labelWidth) + PadLeftDisplay(totalDiscount.ToString("F2"), totalWidth));
+        WriteLine(buffer, encoding, PadRightDisplay("Subtotal:", labelWidth) + PadLeftDisplay(data.Subtotal.ToString("F2"), totalWidth));
+        WriteLine(buffer, encoding, PadRightDisplay("Service Charge:", labelWidth) + PadLeftDisplay(serviceChargeText, totalWidth));
+        WriteLine(buffer, encoding, PadRightDisplay("Gov Tax:", labelWidth) + PadLeftDisplay(data.TaxAmount.ToString("F2"), totalWidth));
+        WriteLine(buffer, encoding, PadRightDisplay("Rounding Adj:", labelWidth) + PadLeftDisplay(data.RoundingAmount.ToString("F2"), totalWidth));
+
+        WriteRule(buffer, encoding, width);
+        buffer.AddRange(Bold(true));
+        WriteLine(buffer, encoding, PadRightDisplay("GRAND TOTAL:", labelWidth) + PadLeftDisplay(data.GrandTotal.ToString("F2"), totalWidth));
+        buffer.AddRange(Bold(false));
+        WriteRule(buffer, encoding, width);
+
+        WriteLine(buffer, encoding, PadRightDisplay("Cashier:", labelWidth) + PadLeftDisplay(data.CashierName, totalWidth));
 
         foreach (var payment in data.Payments)
         {
-            WriteLine(bytes, encoding, AlignPair(payment.Method, payment.Amount.ToString("0.00"), width));
+            WriteLine(
+                buffer,
+                encoding,
+                PadRightDisplay(payment.Method + ":", width - 12) +
+                PadLeftDisplay(payment.Amount.ToString("F2"), 12));
         }
 
         if (data.ChangeAmount > 0)
         {
-            WriteLine(bytes, encoding, AlignPair("Change", data.ChangeAmount.ToString("0.00"), width));
+            WriteLine(
+                buffer,
+                encoding,
+                PadRightDisplay("Change:", width - 12) +
+                PadLeftDisplay($"({data.ChangeAmount:F2})", 12));
+        }
+
+        WriteRule(buffer, encoding, width);
+
+        if (data.TaxSummary.Count > 0)
+        {
+            var taxColumnWidth = width == 48 ? 14 : 12;
+            var valueColumnWidth = (width - taxColumnWidth) / 2;
+
+            WriteLine(
+                buffer,
+                encoding,
+                PadRightDisplay("Tax Summary", taxColumnWidth) +
+                PadLeftDisplay("Amount", valueColumnWidth) +
+                PadLeftDisplay("Tax", valueColumnWidth));
+
+            foreach (var tax in data.TaxSummary)
+            {
+                WriteLine(
+                    buffer,
+                    encoding,
+                    PadRightDisplay(tax.TaxCode, taxColumnWidth) +
+                    PadLeftDisplay(tax.Amount.ToString("F2"), valueColumnWidth) +
+                    PadLeftDisplay(tax.Tax.ToString("F2"), valueColumnWidth));
+            }
+
+            WriteRule(buffer, encoding, width);
         }
 
         if (!string.IsNullOrWhiteSpace(data.EInvoiceQrUrl))
         {
-            WriteLine(bytes, encoding, new string('-', width));
-            bytes.AddRange(Center());
-            WriteLine(bytes, encoding, "e-Invoice");
-            AddQrCode(bytes, data.EInvoiceQrUrl);
-            bytes.AddRange(Left());
+            var lastDayOfMonth = new DateTime(saleDate.Year, saleDate.Month, 1)
+                .AddMonths(1)
+                .AddDays(-1);
+
+            buffer.AddRange(Center());
+            buffer.AddRange(Bold(true));
+            WriteLine(buffer, encoding, "eInvoice Request QR");
+            buffer.AddRange(Bold(false));
+            WriteLine(buffer, encoding, "Request must be made by");
+            WriteLine(buffer, encoding, lastDayOfMonth.ToString("dd/MM/yyyy"));
+            buffer.Add(0x0A);
+            WriteLine(buffer, encoding, "SCAN QR CODE");
+            buffer.Add(0x0A);
+
+            AddQrCode(buffer, data.EInvoiceQrUrl);
+            buffer.Add(0x0A);
         }
 
-        WriteLine(bytes, encoding, new string('-', width));
-        bytes.AddRange(Center());
-        WriteLine(bytes, encoding, "Thank you");
-        bytes.AddRange([0x0A, 0x0A, 0x0A, 0x0A]);
-        bytes.AddRange([0x1D, 0x56, 0x01]);
+        buffer.AddRange(Center());
+        WriteLine(buffer, encoding, "Thank You And See You Soon");
+        WriteLine(buffer, encoding, "Goods sold are non-returnable");
+        WriteLine(buffer, encoding, "and non-exchangeable");
 
-        return bytes.ToArray();
+        buffer.AddRange(new byte[] { 0x0A, 0x0A, 0x0A, 0x0A, 0x0A, 0x0A });
+        buffer.AddRange(new byte[] { 0x1D, 0x56, 0x01 });
+
+        return buffer.ToArray();
     }
 
-    private static void AddQrCode(List<byte> bytes, string value)
+    private static void AddQrCode(List<byte> buffer, string value)
     {
         var qrData = Encoding.UTF8.GetBytes(value);
-        bytes.AddRange([0x1D, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00]);
-        bytes.AddRange([0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x05]);
-        bytes.AddRange([0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x30]);
+        buffer.AddRange(new byte[] { 0x1D, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00 });
+        buffer.AddRange(new byte[] { 0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x06 });
+        buffer.AddRange(new byte[] { 0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x30 });
 
         var length = qrData.Length + 3;
-        bytes.AddRange([
+        buffer.AddRange(new byte[]
+        {
             0x1D, 0x28, 0x6B,
             (byte)(length % 256),
             (byte)(length / 256),
             0x31, 0x50, 0x30
-        ]);
-        bytes.AddRange(qrData);
-        bytes.AddRange([0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30]);
-        bytes.Add(0x0A);
+        });
+        buffer.AddRange(qrData);
+        buffer.AddRange(new byte[] { 0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30 });
     }
 
-    private static byte[] Center() => [0x1B, 0x61, 0x01];
-    private static byte[] Left() => [0x1B, 0x61, 0x00];
-    private static byte[] Bold(bool enabled) => [0x1B, 0x45, (byte)(enabled ? 1 : 0)];
+    private static byte[] Center() => new byte[] { 0x1B, 0x61, 0x01 };
+    private static byte[] Left() => new byte[] { 0x1B, 0x61, 0x00 };
+    private static byte[] Bold(bool on) => new byte[] { 0x1B, 0x45, (byte)(on ? 1 : 0) };
 
-    private static void WriteLine(List<byte> bytes, Encoding encoding, string text)
+    private static void WriteLine(List<byte> buffer, Encoding encoding, string text)
     {
-        bytes.AddRange(encoding.GetBytes(text));
-        bytes.Add(0x0A);
+        buffer.AddRange(encoding.GetBytes(text));
+        buffer.Add(0x0A);
     }
 
-    private static string AlignPair(string left, string right, int width)
-    {
-        var spaces = Math.Max(1, width - left.Length - right.Length);
-        return left + new string(' ', spaces) + right;
-    }
+    private static void WriteRule(List<byte> buffer, Encoding encoding, int width) =>
+        WriteLine(buffer, encoding, new string('-', width));
 
-    private static string Truncate(string value, int width) =>
-        value.Length <= width ? value : value[..Math.Max(0, width - 1)] + "~";
+    private static string Truncate(string text, int width) =>
+        text.Length <= width ? text : text[..Math.Max(1, width - 1)] + "~";
 
-    private static IEnumerable<string> Wrap(string value, int width)
+    private static bool IsWideChar(char c) =>
+        (c >= 0x4E00 && c <= 0x9FFF) ||
+        (c >= 0x3400 && c <= 0x4DBF);
+
+    private static int GetDisplayWidth(string text)
     {
-        if (string.IsNullOrWhiteSpace(value))
+        var width = 0;
+        foreach (var c in text)
         {
-            yield break;
+            width += IsWideChar(c) ? 2 : 1;
         }
 
-        var remaining = value.Trim();
-        while (remaining.Length > width)
+        return width;
+    }
+
+    private static string PadRightDisplay(string text, int totalWidth)
+    {
+        var pad = totalWidth - GetDisplayWidth(text);
+        return text + new string(' ', Math.Max(0, pad));
+    }
+
+    private static string PadLeftDisplay(string text, int totalWidth)
+    {
+        var pad = totalWidth - GetDisplayWidth(text);
+        return new string(' ', Math.Max(0, pad)) + text;
+    }
+
+    private static List<string> WrapDisplay(string text, int maxWidth)
+    {
+        var lines = new List<string>();
+        var current = new StringBuilder();
+        var width = 0;
+
+        foreach (var c in text ?? string.Empty)
         {
-            var take = remaining[..width];
-            var split = take.LastIndexOf(' ');
-            if (split <= 0)
+            var charWidth = IsWideChar(c) ? 2 : 1;
+            if (width + charWidth > maxWidth)
             {
-                split = width;
+                lines.Add(current.ToString());
+                current.Clear();
+                width = 0;
             }
 
-            yield return remaining[..split].TrimEnd();
-            remaining = remaining[split..].TrimStart();
+            current.Append(c);
+            width += charWidth;
         }
 
-        if (remaining.Length > 0)
+        if (current.Length > 0)
         {
-            yield return remaining;
+            lines.Add(current.ToString());
+        }
+
+        return lines;
+    }
+
+    private static void PrintLeft(
+        List<byte> buffer,
+        Encoding encoding,
+        string text,
+        int width)
+    {
+        foreach (var line in WrapDisplay(text, width))
+        {
+            WriteLine(buffer, encoding, line);
         }
     }
 }
