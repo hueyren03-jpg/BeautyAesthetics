@@ -1,5 +1,6 @@
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.Components.Services.Employees;
+using Beauty_Aesthetics_WebPos.Components.Services;
 using Beauty_Aesthetics_WebPos.Components.Services.Inventory;
 using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.ViewModels;
@@ -22,6 +23,9 @@ public partial class EmployeeFormBase : ComponentBase
 
     [Inject]
     public AppFeedbackService Feedback { get; set; } = default!;
+
+    [Inject]
+    public AppState AppState { get; set; } = default!;
 
     public EmployeeFormViewModel? ViewModel { get; set; }
 
@@ -49,6 +53,9 @@ public partial class EmployeeFormBase : ComponentBase
         else
         {
             ViewModel.InitializeNewEmployee();
+            ViewModel.Employee.BranchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID)
+                ? "HQ"
+                : AppState.SelectedBranchID!.Trim();
             ViewModel.IsEditMode = false;
             Feedback.Info("Enter the employee details and save when ready.", "New employee", 2600);
         }
@@ -90,6 +97,10 @@ public partial class EmployeeFormBase : ComponentBase
         {
             return;
         }
+
+        ViewModel.Employee.BranchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID)
+            ? "HQ"
+            : AppState.SelectedBranchID!.Trim();
 
         var wasEditing = ViewModel.IsEditMode;
         var feedbackId = Feedback.Loading(
