@@ -925,6 +925,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
 
         private async Task OnEditingAppointmentBranchChangedAsync()
         {
+            editingAppointment.Location = editingAppointment.BranchId?.Trim() ?? string.Empty;
             editingAppointment.EmployeeId = string.Empty;
             editingAppointment.StaffName = string.Empty;
             editingAppointment.SalesPersonCode = string.Empty;
@@ -1098,6 +1099,26 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                 // A branch-loaded employee must also remain visible in the scheduler.
                 // Otherwise the appointment is saved correctly but has no visible staff row.
                 staffVisibility[staff.Id] = true;
+
+                // Do not let an old scheduler employee/level filter hide the appointment
+                // immediately after the user assigns a different branch staff member.
+                if (!string.IsNullOrWhiteSpace(selectedEmployeeFilterId) &&
+                    !string.Equals(selectedEmployeeFilterId, staff.Id, StringComparison.OrdinalIgnoreCase))
+                {
+                    selectedEmployeeFilterId = string.Empty;
+                    selectedStatusFilter = null;
+                }
+
+                if (!string.IsNullOrWhiteSpace(selectedEmployeeLevelFilter) &&
+                    !MatchesEmployeeLevelFilter(staff))
+                {
+                    selectedEmployeeLevelFilter = string.Empty;
+                }
+
+                if (isMobileScheduler)
+                {
+                    mobileSelectedEmployeeId = staff.Id;
+                }
             }
         }
 
@@ -2719,6 +2740,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                 return;
             }
 
+            editingAppointment.Location = editingAppointment.BranchId.Trim();
             editingAppointment.StaffName = validBranchStaff.Name;
             editingAppointment.SalesPersonCode = validBranchStaff.SalesPersonCode;
             SyncAppointmentFormStaffIntoScheduler();
