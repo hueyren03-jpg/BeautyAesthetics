@@ -2814,16 +2814,6 @@
 
         var total = MultiPaymentTotal;
 
-        if (total > TotalPayable &&
-            !SelectedPaymentSplits.Any(split =>
-                split.MethodLabel.Contains("cash", StringComparison.OrdinalIgnoreCase)))
-        {
-            _multiPaymentError = "Payment exceeds the amount due. Only a cash payment can include change.";
-            Feedback.Warning(_multiPaymentError, "Payment not applied");
-            await InvokeAsync(StateHasChanged);
-            return;
-        }
-
         SynchronizeBillingPaymentTotals();
 
         _showMultiPaymentModal = false;
@@ -2914,15 +2904,6 @@
             Feedback.Warning(
                 $"Add RM {(TotalPayable - MultiPaymentTotal):N2} more before completing the sale.",
                 "Payment incomplete");
-            return;
-        }
-
-        if (MultiPaymentTotal > TotalPayable &&
-            !appliedPayments.Any(payment =>
-                payment.MethodLabel.Contains("cash", StringComparison.OrdinalIgnoreCase)))
-        {
-            _paymentValidationError = "Payment exceeds the amount due. Only cash can include change.";
-            Feedback.Warning(_paymentValidationError, "Payment not ready");
             return;
         }
 
