@@ -1,0 +1,584 @@
+@page "/complete-sales"
+@using Beauty_Aesthetics_WebPos.APIClient
+@using Beauty_Aesthetics_WebPos.Components.Layout
+@using Beauty_Aesthetics_WebPos.Components.Models
+@using Beauty_Aesthetics_WebPos.Components.Services
+@using Beauty_Aesthetics_WebPos.Components.Services.Customers
+@using Beauty_Aesthetics_WebPos.Components.Services.Files
+@using Beauty_Aesthetics_WebPos.Components.Services.Printing
+@using Beauty_Aesthetics_WebPos.Components.Services.Sales
+@using System.Text.Json.Nodes
+@layout EmptyLayout
+
+@inject AppState AppState
+@inject NavigationManager Nav
+@inject ICashSalesService SalesService
+@inject ICustomerService CustomerService
+@inject IPrinterSelectionService PrinterSvc
+@inject IReceiptPrinterService ReceiptPrinterSvc
+@inject IFileDownloadService FileDownloadService
+@inject BranchAC BranchAC
+@inject Microsoft.JSInterop.IJSRuntime JS
+
+<PageTitle>Payment Complete - Beauty Aesthetics</PageTitle>
+
+<div class="success-page-container">
+    <div class="success-card">
+        <div class="success-icon-wrap">
+            <i class="bi bi-check2"></i>
+        </div>
+
+        <h2 class="success-title">Payment Successful!</h2>
+
+        <p class="transaction-id">
+            Transaction ID: @(salesRecord?.InvoiceNumber
+                ?? (!string.IsNullOrWhiteSpace(AppState.LastReceiptNo)
+                    ? AppState.LastReceiptNo
+                    : AppState.LastSaleDocumentId))
+        </p>
+
+        @if (isLoadingRecord)
+        {
+            <div class="complete-sales-loading">
+                <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                <span>Loading sales details...</span>
+            </div>
+        }
+
+        <div class="actions-stack">
+            <div class="payment-summary-card filled">
+                <span class="psc-label">Amount Paid</span>
+                <span class="psc-amount">RM @AppState.LastPaidAmount.ToString("F2")</span>
+            </div>
+
+            <div class="payment-summary-card outlined">
+                <span class="psc-label">Change</span>
+                <span class="psc-amount change-amount">RM @ReceiptChangeAmount.ToString("F2")</span>
+            </div>
+
+            <button class="payment-action-btn"
+                    @onclick="PrintReceipt"
+                    disabled="@(isPrinting || isLoadingRecord)">
+                @(isPrinting ? "Printing..." : "Print Receipt")
+            </button>
+
+            <button class="payment-action-btn"
+                    @onclick="RequestEInvoicePrint"
+                    disabled="@(isPrintingEInvoice || isPrinting || isLoadingRecord)">
+                @(isPrintingEInvoice ? "Printing..." : "Print e-Invoice")
+            </button>
+
+            <div class="whatsapp-box">
+                <div class="input-group">
+                    <i class="bi bi-whatsapp"></i>
+                    <input type="tel"
+                           @bind="whatsappNumber"
+                           placeholder="6012xxxxxxxx"
+                           @bind:event="oninput" />
+                </div>
+                <button class="send-wa-btn"
+                        @onclick="ProcessWhatsApp"
+                        disabled="@(!IsValidPhoneNumber || isProcessingWA || isLoadingRecord)">
+                    @(isProcessingWA ? "Preparing..." : "WhatsApp")
+                </button>
+            </div>
+
+            <button class="payment-action-btn"
+                    @onclick="DownloadPDFReceipt"
+                    disabled="@(isDownloading || isLoadingRecord)">
+                @(isDownloading ? "Downloading..." : "Download PDF Receipt")
+            </button>
+
+            <button class="payment-action-btn close-btn"
+                    @onclick="Finish"
+                    disabled="@(isPrinting || isPrintingEInvoice || isDownloading || isProcessingWA)">
+                Close
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private Transaction? salesRecord;
+    private bool isLoadingRecord = true;
+    private bool isPrinting;
+    private bool isPrintingEInvoice;
+    private bool isDownloading;
+    private bool isProcessingWA;
+    private string whatsappNumber = string.Empty;
+
+    private bool IsValidPhoneNumber =>
+        !string.IsNullOrWhiteSpace(whatsappNumber) &&
+        new string(whatsappNumber.Where(char.IsDigit).ToArray()).Length >= 10;
+
+    private decimal ReceiptChangeAmount =>
+        salesRecord?.Payments.FirstOrDefault(payment => payment.ChangeAmount > 0)?.ChangeAmount
+        ?? Math.Max(0m, AppState.LastPaidAmount - (salesRecord?.Amount ?? 0m));
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(AppState.LastSaleDocumentId))
+        {
+            Nav.NavigateTo(AppState.LastPaymentReturnUrl, replace: true);
+            return;
+        }
+
+        await LoadSalesRecordDetails();
+    }
+
+    private async Task LoadSalesRecordDetails()
+    {
+        try
+        {
+            isLoadingRecord = true;
+
+            var result = await SalesService.LoadTransactionAsync(AppState.LastSaleDocumentId);
+            if (result.Success && result.Value is not null)
+            {
+                salesRecord = result.Value;
+                AppState.LastCompletedTransaction = result.Value;
+            }
+            else if (AppState.LastCompletedTransaction is not null)
+            {
+                salesRecord = AppState.LastCompletedTransaction;
+            }
+            else
+            {
+                await ShowNotification(
+                    result.ErrorMessage ?? "Failed to load sales details from server.");
+            }
+        }
+        catch (Exception ex)
+        {
+            if (AppState.LastCompletedTransaction is not null)
+            {
+                salesRecord = AppState.LastCompletedTransaction;
+            }
+            else
+            {
+                await ShowNotification($"Error loading sales record: {ex.Message}");
+            }
+        }
+        finally
+        {
+            isLoadingRecord = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task PrintReceipt()
+    {
+        var printer = PrinterSvc.GetSelectedPrinter();
+        if (printer is null)
+        {
+            await ShowNotification("No printer selected.");
+            return;
+        }
+
+        if (salesRecord is null)
+        {
+            await ShowNotification("Sales data not loaded.");
+            return;
+        }
+
+        try
+        {
+            isPrinting = true;
+            await InvokeAsync(StateHasChanged);
+
+            var receiptData = await BuildBaseReceiptData();
+            var (success, error) = await ReceiptPrinterSvc.PrintAsync(printer, receiptData);
+
+            if (!success)
+            {
+                await ShowNotification($"Print failed: {error}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await ShowNotification($"An error occurred during printing: {ex.Message}");
+        }
+        finally
+        {
+            isPrinting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task RequestEInvoicePrint()
+    {
+        if (isPrintingEInvoice)
+        {
+            return;
+        }
+
+        var printer = PrinterSvc.GetSelectedPrinter();
+        if (printer is null)
+        {
+            await ShowNotification("No printer selected.");
+            return;
+        }
+
+        if (salesRecord is null)
+        {
+            await ShowNotification("Sales data not loaded.");
+            return;
+        }
+
+        try
+        {
+            isPrintingEInvoice = true;
+            await InvokeAsync(StateHasChanged);
+
+            var eInvoiceResult = await SalesService.RequestEInvoiceLinkAsync(
+                AppState.LastSaleDocumentId);
+
+            if (!eInvoiceResult.Success || string.IsNullOrWhiteSpace(eInvoiceResult.Value))
+            {
+                await ShowNotification(
+                    eInvoiceResult.ErrorMessage ?? "Unable to generate the e-Invoice link.");
+                return;
+            }
+
+            var receiptData = await BuildBaseReceiptData();
+            receiptData.EInvoiceQrUrl = eInvoiceResult.Value;
+
+            var (success, error) = await ReceiptPrinterSvc.PrintAsync(printer, receiptData);
+
+            if (!success)
+            {
+                await ShowNotification($"Print failed: {error}");
+            }
+            else
+            {
+                await ShowNotification("e-Invoice Receipt Printed.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await ShowNotification($"Print Error: {ex.Message}");
+        }
+        finally
+        {
+            isPrintingEInvoice = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task ProcessWhatsApp()
+    {
+        if (!IsValidPhoneNumber || string.IsNullOrWhiteSpace(AppState.LastSaleDocumentId))
+        {
+            return;
+        }
+
+        try
+        {
+            isProcessingWA = true;
+            await InvokeAsync(StateHasChanged);
+
+            var eInvoiceTask = SalesService.RequestEInvoiceLinkAsync(AppState.LastSaleDocumentId);
+            var billTask = SalesService.RequestInvoiceLinkAsync(AppState.LastSaleDocumentId);
+            await Task.WhenAll(eInvoiceTask, billTask);
+
+            var eInvoice = eInvoiceTask.Result.Success ? eInvoiceTask.Result.Value : string.Empty;
+            var bill = billTask.Result.Success ? billTask.Result.Value : string.Empty;
+
+            if (string.IsNullOrWhiteSpace(eInvoice) && string.IsNullOrWhiteSpace(bill))
+            {
+                await ShowNotification("Could not generate receipt links. Please try again.");
+                return;
+            }
+
+            var companyName = await GetBranchText(
+                "CompanyName",
+                "AccountName",
+                "Company");
+
+            if (string.IsNullOrWhiteSpace(companyName))
+            {
+                companyName = "Beauty Aesthetics";
+            }
+
+            var messageParts = new List<string>
+            {
+                $"Thank you for your payment to {companyName}."
+            };
+
+            if (!string.IsNullOrWhiteSpace(bill))
+            {
+                messageParts.Add($"Invoice: {bill}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(eInvoice))
+            {
+                messageParts.Add($"e-Invoice: {eInvoice}");
+            }
+
+            var phone = new string(whatsappNumber.Where(char.IsDigit).ToArray());
+            var text = Uri.EscapeDataString(string.Join(Environment.NewLine, messageParts));
+            await JS.InvokeVoidAsync(
+                "open",
+                $"https://wa.me/{phone}?text={text}",
+                "_blank");
+        }
+        catch (Exception ex)
+        {
+            await ShowNotification($"WhatsApp Error: {ex.Message}");
+        }
+        finally
+        {
+            isProcessingWA = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task DownloadPDFReceipt()
+    {
+        if (isDownloading || string.IsNullOrWhiteSpace(AppState.LastSaleDocumentId))
+        {
+            return;
+        }
+
+        try
+        {
+            isDownloading = true;
+            await InvokeAsync(StateHasChanged);
+
+            var result = await SalesService.RequestReceiptPdfAsync(
+                AppState.LastSaleDocumentId);
+
+            if (!result.Success || string.IsNullOrWhiteSpace(result.Value))
+            {
+                await ShowNotification(
+                    result.ErrorMessage ?? "Unable to generate the receipt PDF.");
+                return;
+            }
+
+            var fileName = $"Thermal_Receipt_{SafeFileName(AppState.LastSaleDocumentId)}.pdf";
+            await FileDownloadService.DownloadBinaryFileAsync(
+                fileName,
+                result.Value,
+                "application/pdf");
+        }
+        catch (Exception ex)
+        {
+            await ShowNotification($"Download error: {ex.Message}");
+        }
+        finally
+        {
+            isDownloading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task<ReceiptData> BuildBaseReceiptData()
+    {
+        if (salesRecord is null)
+        {
+            return new ReceiptData();
+        }
+
+        Customer? fullCustomer = null;
+        if (!string.IsNullOrWhiteSpace(salesRecord.AccountId))
+        {
+            var customerResult = await CustomerService.LoadCustomerAsync(
+                salesRecord.AccountId);
+
+            if (customerResult.Success)
+            {
+                fullCustomer = customerResult.Value;
+            }
+        }
+
+        var payments = salesRecord.Payments
+            .Where(payment => payment.Amount > 0)
+            .Select(payment => new ReceiptPaymentLine
+            {
+                Method = payment.PaymentMethod,
+                Amount = payment.Amount
+            })
+            .ToList();
+
+        if (payments.Count == 0 && AppState.LastPaidAmount > 0)
+        {
+            payments.Add(new ReceiptPaymentLine
+            {
+                Method = AppState.LastPaymentMethod,
+                Amount = AppState.LastPaidAmount
+            });
+        }
+
+        var taxSummary = salesRecord.Items
+            .Where(item => !string.IsNullOrWhiteSpace(item.TaxCodeId))
+            .GroupBy(item => new { item.TaxCodeId, item.TaxPercentage })
+            .Select(group => new TaxSummaryLine
+            {
+                TaxCode = $"{group.Key.TaxCodeId} {group.Key.TaxPercentage * 100:0.#}%",
+                Amount = group.Sum(item =>
+                    (item.UnitPrice * item.Quantity) - item.Discount),
+                Tax = group.Sum(item => item.TaxAmount)
+            })
+            .ToList();
+
+        return new ReceiptData
+        {
+            CompanyName = FirstNonEmpty(
+                await GetBranchText("CompanyName", "AccountName", "Company"),
+                "Beauty Aesthetics"),
+            BranchName = AppState.CurrentBranch?.Name ?? salesRecord.Branch,
+            Address1 = await GetBranchText("Address1"),
+            Address2 = await GetBranchText("Address2"),
+            Address3 = await GetBranchText("Address3"),
+            Phone = await GetBranchText("Phone", "Contact"),
+            Email = await GetBranchText("Email"),
+            CoRegistrationNo = await GetBranchText(
+                "CoRegistrationNo",
+                "CompanyRegistrationNo",
+                "RegistrationNo"),
+            TIN = await GetBranchText("TIN", "TaxIdentificationNumber"),
+            CurrencyName = FirstNonEmpty(salesRecord.CurrencyName, "MYR"),
+            CashierName = salesRecord.CreatedBy,
+            ReceiptNo = FirstNonEmpty(
+                salesRecord.InvoiceNumber,
+                AppState.LastReceiptNo,
+                AppState.LastSaleDocumentId),
+            DateTimeOfSale = salesRecord.Date,
+            ReferenceNumber = salesRecord.ReferenceNumber,
+            CustomerName = salesRecord.CustomerName,
+            CustomerID = salesRecord.AccountId,
+            CustomerAddress1 = fullCustomer?.Address1 ?? string.Empty,
+            CustomerAddress2 = fullCustomer?.Address2 ?? string.Empty,
+            CustomerAddress3 = fullCustomer?.Address3 ?? string.Empty,
+            CustomerCity = fullCustomer?.City ?? string.Empty,
+            CustomerPostcode = fullCustomer?.Postcode ?? string.Empty,
+            CustomerState = fullCustomer?.State ?? string.Empty,
+            CustomerCountry = fullCustomer?.Country ?? string.Empty,
+            CustomerPhone = FirstNonEmpty(
+                fullCustomer?.ContactNumber1,
+                salesRecord.CustomerContact),
+            Items = salesRecord.Items.Select(item => new ReceiptLineItem
+            {
+                Name = FirstNonEmpty(item.Description, item.Name),
+                Quantity = item.Quantity,
+                Discount = item.Discount,
+                LineTotal = item.TotalPrice != 0
+                    ? item.TotalPrice
+                    : (item.UnitPrice * item.Quantity) - item.Discount,
+                Remarks = !string.IsNullOrWhiteSpace(item.Description) &&
+                          !string.Equals(item.Description, item.Name, StringComparison.OrdinalIgnoreCase)
+                    ? item.Description
+                    : string.Empty,
+                PaymentMethod = item.Description
+            }).ToList(),
+            Payments = payments,
+            ChangeAmount = ReceiptChangeAmount,
+            TaxSummary = taxSummary,
+            Subtotal = salesRecord.Subtotal,
+            TaxAmount = salesRecord.Tax,
+            TotalBeforeTax_ServiceCharge = salesRecord.ServiceChargeAmount,
+            RoundingAmount = salesRecord.RoundingAmount,
+            GrandTotal = salesRecord.Amount,
+            PaymentMethod = AppState.LastPaymentMethod,
+            PaidAmount = AppState.LastPaidAmount
+        };
+    }
+
+    private async Task<string> GetBranchText(params string[] names)
+    {
+        if (string.IsNullOrWhiteSpace(AppState.SelectedBranchID))
+        {
+            return string.Empty;
+        }
+
+        var result = await BranchAC.LoadRecordAsync(AppState.SelectedBranchID);
+        if (!result.Success || result.Value is null)
+        {
+            return string.Empty;
+        }
+
+        foreach (var name in names)
+        {
+            var value = FindStringIgnoreCase(result.Value, name);
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static string FindStringIgnoreCase(JsonNode? node, string name)
+    {
+        if (node is JsonObject obj)
+        {
+            foreach (var item in obj)
+            {
+                if (string.Equals(item.Key, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (item.Value is JsonValue value &&
+                        value.TryGetValue<string>(out var text))
+                    {
+                        return text ?? string.Empty;
+                    }
+
+                    var rendered = item.Value?.ToJsonString().Trim('"');
+                    if (!string.IsNullOrWhiteSpace(rendered) &&
+                        rendered != "null")
+                    {
+                        return rendered;
+                    }
+                }
+
+                var nested = FindStringIgnoreCase(item.Value, name);
+                if (!string.IsNullOrWhiteSpace(nested))
+                {
+                    return nested;
+                }
+            }
+        }
+        else if (node is JsonArray array)
+        {
+            foreach (var item in array)
+            {
+                var nested = FindStringIgnoreCase(item, name);
+                if (!string.IsNullOrWhiteSpace(nested))
+                {
+                    return nested;
+                }
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private void Finish()
+    {
+        var returnUrl = string.IsNullOrWhiteSpace(AppState.LastPaymentReturnUrl)
+            ? "/case-notes"
+            : AppState.LastPaymentReturnUrl;
+
+        AppState.ResetPaymentState();
+        Nav.NavigateTo(returnUrl, replace: true);
+    }
+
+    private async Task ShowNotification(string message)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("alert", message);
+        }
+        catch
+        {
+            Console.WriteLine($"NOTIF: {message}");
+        }
+    }
+
+    private static string FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+
+    private static string SafeFileName(string value) =>
+        string.Concat(value.Select(ch =>
+            char.IsLetterOrDigit(ch) || ch is '-' or '_' ? ch : '_'));
+}
