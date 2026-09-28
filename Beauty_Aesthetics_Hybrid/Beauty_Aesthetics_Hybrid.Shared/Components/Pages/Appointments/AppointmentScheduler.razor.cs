@@ -838,8 +838,52 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             await ReloadAppointmentsAsync();
         }
 
+        private void EnsureAppointmentStaffRows()
+        {
+            if (ViewModel?.Appointments is null || ViewModel.Appointments.Count == 0)
+            {
+                return;
+            }
+
+            var colors = new[] { "sara", "rin", "ken" };
+
+            foreach (var appointment in ViewModel.Appointments)
+            {
+                var employeeId = appointment.EmployeeId?.Trim() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(employeeId))
+                {
+                    continue;
+                }
+
+                var existing = StaffList.FirstOrDefault(staff =>
+                    string.Equals(staff.Id, employeeId, StringComparison.OrdinalIgnoreCase));
+
+                if (existing is null)
+                {
+                    var displayName = string.IsNullOrWhiteSpace(appointment.StaffName)
+                        ? employeeId
+                        : appointment.StaffName.Trim();
+
+                    StaffList.Add(new Staff
+                    {
+                        Id = employeeId,
+                        Name = displayName,
+                        Role = "Unassigned",
+                        Color = colors[StaffList.Count % colors.Length]
+                    });
+                }
+
+                if (!staffVisibility.ContainsKey(employeeId))
+                {
+                    staffVisibility[employeeId] = true;
+                }
+            }
+        }
+
         private void NormalizeAppointmentDisplayValues()
         {
+            EnsureAppointmentStaffRows();
+
             foreach (var appointment in ViewModel.Appointments)
             {
                 ConstrainAppointmentToWorkingHours(appointment, preserveDuration: false);
