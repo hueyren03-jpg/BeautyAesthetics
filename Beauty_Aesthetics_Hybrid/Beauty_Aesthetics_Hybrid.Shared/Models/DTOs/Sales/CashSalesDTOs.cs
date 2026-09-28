@@ -21,6 +21,18 @@ public sealed class CashSalesLookupDTO
     public string Id { get; set; } = string.Empty;
 }
 
+public sealed class CashSalesBillLinkRequestDTO
+{
+    [JsonPropertyName("DocumentTypeID")]
+    public int DocumentTypeId { get; set; }
+
+    [JsonPropertyName("DocumentID")]
+    public string DocumentId { get; set; } = string.Empty;
+
+    [JsonPropertyName("FinancialDate")]
+    public DateTime FinancialDate { get; set; }
+}
+
 public sealed class CashSalesDeleteDTO
 {
     [JsonPropertyName("id")]
