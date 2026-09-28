@@ -1,4 +1,7 @@
 using Beauty_Aesthetics_WebPos.Components.Services.Files;
+using Microsoft.Maui.ApplicationModel;
+using Microsoft.Maui.ApplicationModel.DataTransfer;
+using Microsoft.Maui.Storage;
 
 namespace Beauty_Aesthetics_Hybrid.Services;
 
