@@ -68,6 +68,63 @@ public sealed class CashSalesAC
             "e-Invoice response was invalid.",
             cancellationToken);
 
+    public async Task<ApiCallResult<string>> GetThermalReceiptPdfAsync(
+        string documentId,
+        int documentTypeId,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/POSReceipt_ThermalPOS")
+        {
+            Content = JsonContent.Create(
+                new CashSalesThermalReceiptRequestDTO
+                {
+                    Id = documentId,
+                    DocumentTypeId = documentTypeId
+                },
+                mediaType: JsonPatchMediaType,
+                options: JsonOptions)
+        };
+
+        using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            return ApiCallResult<string>.Unauthorized(response.StatusCode);
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return ApiCallResult<string>.Failure(
+                response.StatusCode,
+                ReadError(body, "Unable to generate the thermal receipt."));
+        }
+
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return ApiCallResult<string>.Failure(
+                response.StatusCode,
+                "Thermal receipt response was empty.");
+        }
+
+        try
+        {
+            using var json = JsonDocument.Parse(body);
+            var base64Pdf = FindReceiptBase64(json.RootElement);
+            return string.IsNullOrWhiteSpace(base64Pdf)
+                ? ApiCallResult<string>.Failure(
+                    response.StatusCode,
+                    "Thermal receipt PDF was missing from the response.")
+                : ApiCallResult<string>.Ok(response.StatusCode, base64Pdf);
+        }
+        catch (JsonException)
+        {
+            return ApiCallResult<string>.Failure(
+                response.StatusCode,
+                "Thermal receipt response was invalid.");
+        }
+    }
+
+
     public Task<ApiCallResult<JsonElement>> SaveHeaderAsync(
         JsonObject header,
         CancellationToken cancellationToken = default) =>
@@ -153,6 +210,58 @@ public sealed class CashSalesAC
         {
             return ApiCallResult<T>.Failure(response.StatusCode, invalidResponseMessage);
         }
+    }
+
+    private static string? FindReceiptBase64(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.String)
+        {
+            var value = element.GetString();
+            return LooksLikePdfBase64(value) ? value : null;
+        }
+
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var preferredName in new[] { "Result", "result" })
+            {
+                if (element.TryGetProperty(preferredName, out var preferred))
+                {
+                    var value = FindReceiptBase64(preferred);
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        return value;
+                    }
+                }
+            }
+
+            foreach (var property in element.EnumerateObject())
+            {
+                var value = FindReceiptBase64(property.Value);
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static bool LooksLikePdfBase64(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var normalized = value.Trim();
+        if (normalized.StartsWith("data:application/pdf;base64,", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // PDF files start with %PDF; its Base64 prefix is JVBER.
+        return normalized.StartsWith("JVBER", StringComparison.Ordinal);
     }
 
     private static string ReadError(string body, string fallback)
