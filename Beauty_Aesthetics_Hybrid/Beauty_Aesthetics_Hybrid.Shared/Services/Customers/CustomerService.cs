@@ -108,6 +108,31 @@ public sealed class CustomerService : ICustomerService
         return CustomerOperationResult<MemberBalanceSummaryDTO>.Ok(result.Value);
     }
 
+    public async Task<CustomerOperationResult<MemberOtherBalanceSummaryDTO?>> GetOtherBalanceSummaryAsync(
+        string customerId,
+        DateTime cutOffDate,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(customerId))
+        {
+            return CustomerOperationResult<MemberOtherBalanceSummaryDTO?>.Fail("Customer ID is required.");
+        }
+
+        var result = await customerAC.GetMemberOtherBalanceSummaryAsync(
+            customerId,
+            cutOffDate,
+            cancellationToken);
+
+        if (!result.Success || result.Value is null)
+        {
+            return CustomerOperationResult<MemberOtherBalanceSummaryDTO?>.Fail(
+                ToCustomerError(result.ErrorMessage));
+        }
+
+        return CustomerOperationResult<MemberOtherBalanceSummaryDTO?>.Ok(
+            result.Value.FirstOrDefault());
+    }
+
     public async Task<CustomerOperationResult<Customer>> CreateCustomerAsync(
         Customer customer,
         CancellationToken cancellationToken = default)
