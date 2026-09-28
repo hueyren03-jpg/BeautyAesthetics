@@ -3,13 +3,13 @@ using Microsoft.Maui.Storage;
 
 namespace Beauty_Aesthetics_Hybrid.Services;
 
-public sealed class MauiPrinterSelectionService : IPrinterSelectionService
+public sealed class MauiPrinterSelectionService : IBluetoothPrinterService, IPrinterSelectionService
 {
     private const string PrefSelectedKey = "PrinterSelectedKey";
     private const string PrefNet58Ip = "PrinterNet58Ip";
     private const string PrefNet80Ip = "PrinterNet80Ip";
 
-    public IReadOnlyList<PrinterOption> GetPrinterOptions()
+    public List<PrinterOption> GetPrinterOptions()
     {
         var selectedKey = Preferences.Get(PrefSelectedKey, string.Empty);
         var net58Ip = Preferences.Get(PrefNet58Ip, "192.168.1.200");
