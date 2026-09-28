@@ -23,6 +23,9 @@ namespace Beauty_Aesthetics_WebPos.Components.Models
         public decimal Subtotal { get; set; }
         public decimal Tax { get; set; }
         public decimal Discount { get; set; }
+        public decimal RoundingAmount { get; set; }
+        public decimal ServiceChargeAmount { get; set; }
+        public string CurrencyName { get; set; } = "MYR";
         public string PaymentMethod { get; set; } = ""; // Cash, Card, Online Transfer, E-Wallet
         public List<TransactionPayment> Payments { get; set; } = new();
         public string Status { get; set; } = ""; // Paid, Pending, Cancelled, Voided
@@ -45,6 +48,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Models
         public int PaymentTypeId { get; set; }
         public string PaymentMethod { get; set; } = "";
         public decimal Amount { get; set; }
+        public decimal ChangeAmount { get; set; }
         public string FinancialAccountId { get; set; } = "";
         public string BankName { get; set; } = "";
     }
@@ -67,6 +71,8 @@ namespace Beauty_Aesthetics_WebPos.Components.Models
         public decimal Discount { get; set; }
         public string UnitOfMeasureId { get; set; } = "";
         public string TaxCodeId { get; set; } = "";
+        public decimal TaxPercentage { get; set; }
+        public decimal TaxAmount { get; set; }
         public bool IsTaxInclusive { get; set; }
     }
 
