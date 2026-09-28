@@ -4,7 +4,6 @@
 @using Beauty_Aesthetics_WebPos.Components.Models
 @using Beauty_Aesthetics_WebPos.Components.Services
 @using Beauty_Aesthetics_WebPos.Components.Services.Customers
-@using Beauty_Aesthetics_WebPos.Components.Services.Files
 @using Beauty_Aesthetics_WebPos.Components.Services.Printing
 @using Beauty_Aesthetics_WebPos.Components.Services.Sales
 @using Beauty_Aesthetics_WebPos.Components.Services.WhatsApp
@@ -17,7 +16,6 @@
 @inject ICustomerService CustomerService
 @inject IBluetoothPrinterService PrinterSvc
 @inject IReceiptPrinterService ReceiptPrinterSvc
-@inject IFileDownloadService FileDownloadService
 @inject WhatsAppService WhatsApp
 @inject BranchAC BranchAC
 @inject Microsoft.JSInterop.IJSRuntime JS
@@ -339,21 +337,13 @@
             isDownloading = true;
             await InvokeAsync(StateHasChanged);
 
-            var result = await SalesService.RequestReceiptPdfAsync(
+            var downloaded = await SalesService.DownloadReceiptPdfAsync(
                 AppState.LastSaleDocumentId);
 
-            if (!result.Success || string.IsNullOrWhiteSpace(result.Value))
+            if (!downloaded)
             {
-                await ShowNotification(
-                    result.ErrorMessage ?? "Unable to generate the receipt PDF.");
-                return;
+                await ShowNotification("Unable to download the receipt PDF.");
             }
-
-            var fileName = $"Thermal_Receipt_{SafeFileName(AppState.LastSaleDocumentId)}.pdf";
-            await FileDownloadService.DownloadBinaryFileAsync(
-                fileName,
-                result.Value,
-                "application/pdf");
         }
         catch (Exception ex)
         {
@@ -562,8 +552,4 @@
 
     private static string FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
-
-    private static string SafeFileName(string value) =>
-        string.Concat(value.Select(ch =>
-            char.IsLetterOrDigit(ch) || ch is '-' or '_' ? ch : '_'));
 }
