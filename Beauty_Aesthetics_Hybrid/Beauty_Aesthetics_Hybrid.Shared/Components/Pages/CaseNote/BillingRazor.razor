@@ -1394,7 +1394,8 @@
                     {
                         @foreach (var svc in FilteredServiceCatalog)
                         {
-                            <div class="service-catalog-row" @onclick="() => AddServiceFromCatalog(svc)">
+                            <div class="service-catalog-row @(_loadingServiceId == svc.MasterAccountId ? "loading" : string.Empty)"
+                                 @onclick="() => AddServiceFromCatalogAsync(svc)">
                                 <div class="service-icon">
                                     @if (!string.IsNullOrWhiteSpace(ResolveCatalogImage(svc.MasterAccountId, svc.ImagePath, svc.ImageFileName)))
                                     {
@@ -1419,8 +1420,20 @@
                                     </div>
                                 </div>
                                 <div class="service-price">RM @svc.Price.ToString("N2")</div>
-                                <button type="button" class="btn-add-service-item" aria-label="Add @svc.ServiceName">
-                                    <i class="bi bi-plus-lg"></i>
+                                <button type="button"
+                                        class="btn-add-service-item"
+                                        aria-label="Add @svc.ServiceName"
+                                        disabled="@(_loadingServiceId == svc.MasterAccountId)"
+                                        @onclick:stopPropagation="true"
+                                        @onclick="() => AddServiceFromCatalogAsync(svc)">
+                                    @if (_loadingServiceId == svc.MasterAccountId)
+                                    {
+                                        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-plus-lg"></i>
+                                    }
                                 </button>
                             </div>
                         }
@@ -1648,6 +1661,7 @@
     private List<ServiceViewModel.ServiceItem> ServiceCatalog { get; set; } = new();
     private bool _isProductCatalogLoading;
     private bool _isServiceCatalogLoading;
+    private string? _loadingServiceId;
     private string? _productCatalogError;
     private string? _serviceCatalogError;
 
@@ -1785,26 +1799,125 @@
         _showServicePickerModal = false;
     }
 
-    private void AddServiceFromCatalog(ServiceViewModel.ServiceItem svc)
+    private async Task AddServiceFromCatalogAsync(ServiceViewModel.ServiceItem svc)
     {
         var serviceId = svc.MasterAccountId?.Trim() ?? string.Empty;
-        var existing = ServiceItems.FirstOrDefault(item =>
-            (!string.IsNullOrWhiteSpace(serviceId) && string.Equals(item.SourceId, serviceId, StringComparison.OrdinalIgnoreCase)) ||
-            (string.IsNullOrWhiteSpace(serviceId) && item.Name.Equals(svc.ServiceName, StringComparison.OrdinalIgnoreCase)));
-
-        if (existing != null)
+        if (string.IsNullOrWhiteSpace(serviceId))
         {
-            var idx = ServiceItems.IndexOf(existing);
-            ServiceItems[idx] = existing with { Quantity = existing.Quantity + 1 };
-        }
-        else
-        {
-            // Default staff can be set later; for now use doctor as placeholder
-            ServiceItems.Add(new BillingService(svc.ServiceName, DoctorName, 1, svc.Price, 0m, serviceId, svc.Sku));
+            Feedback.Warning("The selected service has no inventory record ID.", "Service not added");
+            return;
         }
 
-        _showServicePickerModal = false;
-        Feedback.Success($"{svc.ServiceName} added to billing.", "Service added", 2200);
+        if (!string.IsNullOrWhiteSpace(_loadingServiceId))
+        {
+            return;
+        }
+
+        _loadingServiceId = serviceId;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var detailResult = await ServiceItemService.LoadServiceAsync(serviceId);
+            if (!detailResult.Success || detailResult.Value is null)
+            {
+                Feedback.Error(
+                    detailResult.ErrorMessage ?? "Unable to load the selected service.",
+                    "Service not added");
+                return;
+            }
+
+            var detail = detailResult.Value;
+            if (!detail.IsActive ||
+                string.Equals(detail.Status, "Inactive", StringComparison.OrdinalIgnoreCase))
+            {
+                Feedback.Warning($"{detail.ServiceName} is inactive.", "Service unavailable");
+                return;
+            }
+
+            if (!IsServiceAvailableNow(detail, out var availabilityMessage))
+            {
+                Feedback.Warning(availabilityMessage, "Service unavailable");
+                return;
+            }
+
+            var existing = ServiceItems.FirstOrDefault(item =>
+                string.Equals(item.SourceId, serviceId, StringComparison.OrdinalIgnoreCase));
+
+            if (existing is not null)
+            {
+                var idx = ServiceItems.IndexOf(existing);
+                ServiceItems[idx] = existing with { Quantity = existing.Quantity + 1 };
+            }
+            else
+            {
+                var serviceStaff = CollectorOptions.FirstOrDefault(employee => employee.IsServiceStaff);
+                ServiceItems.Add(new BillingService(
+                    detail.ServiceName,
+                    serviceStaff?.Name ?? "Unassigned",
+                    1,
+                    detail.Price,
+                    0m,
+                    serviceId,
+                    detail.Sku,
+                    detail.Description,
+                    detail.Category,
+                    detail.DurationSpend,
+                    detail.UnitOfMeasureId,
+                    detail.TaxCode,
+                    detail.IsTaxInclusive));
+            }
+
+            _showServicePickerModal = false;
+            Feedback.Success($"{detail.ServiceName} added to billing.", "Service added", 2200);
+        }
+        catch (Exception ex)
+        {
+            Feedback.Error($"Unable to add service: {ex.Message}", "Service not added");
+        }
+        finally
+        {
+            _loadingServiceId = null;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private static bool IsServiceAvailableNow(
+        ServiceViewModel.ServiceItem service,
+        out string message)
+    {
+        var now = DateTime.Now;
+
+        if (service.AvailableDateFrom.HasValue &&
+            now.Date < service.AvailableDateFrom.Value.Date)
+        {
+            message = $"{service.ServiceName} is only available from {service.AvailableDateFrom.Value:dd/MM/yyyy}.";
+            return false;
+        }
+
+        if (service.AvailableDateTo.HasValue &&
+            now.Date > service.AvailableDateTo.Value.Date)
+        {
+            message = $"{service.ServiceName} is no longer available.";
+            return false;
+        }
+
+        if (service.AvailableTimeFrom.HasValue &&
+            now.TimeOfDay < service.AvailableTimeFrom.Value)
+        {
+            message = $"{service.ServiceName} is available from {service.AvailableTimeFrom.Value:hh\:mm}.";
+            return false;
+        }
+
+        if (service.AvailableTimeTo.HasValue &&
+            now.TimeOfDay > service.AvailableTimeTo.Value)
+        {
+            message = $"{service.ServiceName} is only available until {service.AvailableTimeTo.Value:hh\:mm}.";
+            return false;
+        }
+
+        message = string.Empty;
+        return true;
     }
 
     private async Task OpenPrescriptionModal()
@@ -2816,12 +2929,15 @@
         {
             InventoryId = item.SourceId,
             Name = item.Name,
-            Description = item.Name,
+            Description = string.IsNullOrWhiteSpace(item.Description) ? item.Name : item.Description,
             Category = "Service",
             Quantity = item.Quantity,
             UnitPrice = item.UnitPrice,
             Discount = item.Discount,
-            TotalPrice = item.LineTotal
+            TotalPrice = item.LineTotal,
+            UnitOfMeasureId = item.UnitOfMeasureId,
+            TaxCodeId = item.TaxCode,
+            IsTaxInclusive = item.IsTaxInclusive
         }));
 
         return items;
@@ -3289,7 +3405,13 @@
         decimal UnitPrice,
         decimal Discount,
         string SourceId = "",
-        string Sku = "")
+        string Sku = "",
+        string Description = "",
+        string Category = "",
+        string Duration = "",
+        string UnitOfMeasureId = "",
+        string TaxCode = "",
+        bool IsTaxInclusive = false)
     {
         public decimal LineTotal => Math.Max(0m, UnitPrice * Quantity - Discount);
     }
