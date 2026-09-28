@@ -15,6 +15,7 @@ using Beauty_Aesthetics_WebPos.Components.Services.MembershipTypes;
 using Beauty_Aesthetics_WebPos.Components.Services.PointConversions;
 using Beauty_Aesthetics_WebPos.Components.Services.Sales;
 using Beauty_Aesthetics_WebPos.Components.Services.Files;
+using Beauty_Aesthetics_WebPos.Components.Services.Printing;
 using Beauty_Aesthetics_WebPos.Components.ViewModels;
 using Beauty_Aesthetics_WebPos.Components.Pages;
 using Beauty_Aesthetics_WebPos.Components.Pages.Voucher;
@@ -62,6 +63,8 @@ namespace Beauty_Aesthetics_Hybrid
             builder.Services.AddScoped<CashSalesAC>();
             builder.Services.AddScoped<ICashSalesService, CashSalesService>();
             builder.Services.AddScoped<IFileDownloadService, MauiFileDownloadService>();
+            builder.Services.AddScoped<IPrinterSelectionService, MauiPrinterSelectionService>();
+            builder.Services.AddScoped<IReceiptPrinterService, MauiReceiptPrinterService>();
             builder.Services.AddSingleton<IPendingOrderService, PendingOrderService>();
             builder.Services.AddScoped<AuthService>();
             builder.Services.AddScoped<IAuthService>(sp => sp.GetRequiredService<AuthService>());
