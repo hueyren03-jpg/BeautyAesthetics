@@ -221,6 +221,10 @@ public sealed class MauiReceiptPrinterService : IReceiptPrinterService
 
     private sealed class BluetoothConnectPermission : Permissions.BasePlatformPermission
     {
+        public BluetoothConnectPermission()
+        {
+        }
+
         public override (string androidPermission, bool isRuntime)[] RequiredPermissions =>
             OperatingSystem.IsAndroidVersionAtLeast(31)
                 ? new[] { (Manifest.Permission.BluetoothConnect, true) }
