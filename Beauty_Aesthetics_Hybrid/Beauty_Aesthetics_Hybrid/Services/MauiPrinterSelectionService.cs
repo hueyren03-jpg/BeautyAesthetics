@@ -5,35 +5,37 @@ namespace Beauty_Aesthetics_Hybrid.Services;
 
 public sealed class MauiPrinterSelectionService : IPrinterSelectionService
 {
-    private const string SelectedPrinterKey = "ReceiptPrinterSelectedKey";
-    private const string Network58IpKey = "ReceiptPrinterNetwork58Ip";
-    private const string Network80IpKey = "ReceiptPrinterNetwork80Ip";
+    private const string PrefSelectedKey = "PrinterSelectedKey";
+    private const string PrefNet58Ip = "PrinterNet58Ip";
+    private const string PrefNet80Ip = "PrinterNet80Ip";
 
     public IReadOnlyList<PrinterOption> GetPrinterOptions()
     {
-        var selectedKey = Preferences.Get(SelectedPrinterKey, string.Empty);
-        var network58Ip = Preferences.Get(Network58IpKey, "192.168.1.200");
-        var network80Ip = Preferences.Get(Network80IpKey, "192.168.1.200");
+        var selectedKey = Preferences.Get(PrefSelectedKey, string.Empty);
+        var net58Ip = Preferences.Get(PrefNet58Ip, "192.168.1.200");
+        var net80Ip = Preferences.Get(PrefNet80Ip, "192.168.1.200");
 
-        return
-        [
+        return new List<PrinterOption>
+        {
+            new() { Name = "iMin Printer (58mm/80mm)", IsIminPrinter = true, ReceiptMM = 100, IsSelected = selectedKey == "Imin_100" },
             new() { Name = "Bluetooth Printer (58mm)", IsBluetoothPrinter = true, ReceiptMM = 58, IsSelected = selectedKey == "BT_58" },
             new() { Name = "Bluetooth Printer (80mm)", IsBluetoothPrinter = true, ReceiptMM = 80, IsSelected = selectedKey == "BT_80" },
-            new() { Name = "Network Printer (58mm)", IsNetworkPrinter = true, ReceiptMM = 58, IpAddress = network58Ip, IsSelected = selectedKey == "NET_58" },
-            new() { Name = "Network Printer (80mm)", IsNetworkPrinter = true, ReceiptMM = 80, IpAddress = network80Ip, IsSelected = selectedKey == "NET_80" }
-        ];
+            new() { Name = "Network Printer (58mm)", IsWifiPrinter = true, ReceiptMM = 58, IsSelected = selectedKey == "Net_58", IpAddress = net58Ip },
+            new() { Name = "Network Printer (80mm)", IsWifiPrinter = true, ReceiptMM = 80, IsSelected = selectedKey == "Net_80", IpAddress = net80Ip }
+        };
     }
 
     public PrinterOption? GetSelectedPrinter() =>
-        GetPrinterOptions().FirstOrDefault(item => item.IsSelected);
+        GetPrinterOptions().FirstOrDefault(p => p.IsSelected);
 
     public void SelectPrinter(PrinterOption printer) =>
-        Preferences.Set(SelectedPrinterKey, printer.Key);
+        Preferences.Set(PrefSelectedKey, printer.Key);
 
     public void UpdateNetworkPrinterIp(PrinterOption printer, string ipAddress)
     {
-        Preferences.Set(
-            printer.ReceiptMM == 80 ? Network80IpKey : Network58IpKey,
-            ipAddress?.Trim() ?? string.Empty);
+        if (printer.ReceiptMM == 58)
+            Preferences.Set(PrefNet58Ip, ipAddress?.Trim() ?? string.Empty);
+        else
+            Preferences.Set(PrefNet80Ip, ipAddress?.Trim() ?? string.Empty);
     }
 }
