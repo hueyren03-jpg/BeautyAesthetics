@@ -2552,15 +2552,12 @@
             BuildPaymentMethodGroups();
 
             var selected = AvailablePaymentMethods.FirstOrDefault(method =>
-                               method.POSPaymentTypeID == SelectedPaymentTypeId)
-                           ?? AvailablePaymentMethods.FirstOrDefault(method =>
-                               (method.POSPaymentTypeName ?? string.Empty)
-                                   .Contains("cash", StringComparison.OrdinalIgnoreCase))
-                           ?? AvailablePaymentMethods.FirstOrDefault();
+                method.POSPaymentTypeID == SelectedPaymentTypeId);
 
-            if (selected is not null)
+            if (selected is null)
             {
-                SelectPaymentMethod(selected, clearSplits: false);
+                SelectedPaymentTypeId = 0;
+                SelectedPaymentMethod = string.Empty;
             }
         }
         catch (Exception ex)
@@ -2670,9 +2667,24 @@
         return GetPaymentGroupDescription(GetPaymentGroupKey(method));
     }
 
-    private string PaymentMethodDisplay => SelectedPaymentSplits.Any()
-        ? $"Multi-payment ({SelectedPaymentSplits.Count()})"
-        : string.IsNullOrWhiteSpace(SelectedPaymentMethod) ? "Not selected" : SelectedPaymentMethod;
+    private string PaymentMethodDisplay
+    {
+        get
+        {
+            var applied = SelectedPaymentSplits.ToList();
+            if (applied.Count > 0)
+            {
+                return string.Join(
+                    " + ",
+                    applied.Select(payment => payment.MethodLabel)
+                        .Distinct(StringComparer.OrdinalIgnoreCase));
+            }
+
+            return string.IsNullOrWhiteSpace(SelectedPaymentMethod)
+                ? "Not selected"
+                : SelectedPaymentMethod;
+        }
+    }
 
     private async Task LoadCustomerBalancesAsync(string? customerId)
     {
@@ -2800,30 +2812,19 @@
 
         var total = MultiPaymentTotal;
 
-        if (total < TotalPayable)
-        {
-            _multiPaymentError = $"Split payment must cover RM {TotalPayable:N2}. Remaining: RM {(TotalPayable - total):N2}.";
-            Feedback.Warning(_multiPaymentError, "Payment split incomplete");
-            await InvokeAsync(StateHasChanged);
-            return;
-        }
-
         if (total > TotalPayable &&
             !SelectedPaymentSplits.Any(split =>
                 split.MethodLabel.Contains("cash", StringComparison.OrdinalIgnoreCase)))
         {
-            _multiPaymentError = "Payment split exceeds the amount due. Only a cash split can include change.";
-            Feedback.Warning(_multiPaymentError, "Payment split not applied");
+            _multiPaymentError = "Payment exceeds the amount due. Only a cash payment can include change.";
+            Feedback.Warning(_multiPaymentError, "Payment not applied");
             await InvokeAsync(StateHasChanged);
             return;
         }
 
-        AmountReceived = total;
-        AmountReceivedText = total.ToString("0.##");
-        AmountReceivedError = null;
+        SynchronizeBillingPaymentTotals();
 
         _showMultiPaymentModal = false;
-        Feedback.Success($"Payment split of RM {total:N2} applied.", "Payment split applied", 2400);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -2895,26 +2896,31 @@
             return;
         }
 
-        if (SelectedPaymentSplits.Any())
+        var appliedPayments = SelectedPaymentSplits.ToList();
+        if (appliedPayments.Count == 0)
         {
-            if (MultiPaymentTotal < TotalPayable)
-            {
-                _showInsufficientAmountModal = true;
-                Feedback.Warning($"Split payment must cover RM {TotalPayable:N2}.", "Insufficient payment");
-                return;
-            }
-        }
-        else if (SelectedPaymentTypeId == 0)
-        {
-            _paymentValidationError = "Select a payment method before confirming.";
+            _paymentValidationError = "Select a payment method and enter an amount before confirming.";
             Feedback.Warning(_paymentValidationError, "Payment method required");
             return;
         }
 
-        if (AmountReceived is null || AmountReceived < TotalPayable)
+        SynchronizeBillingPaymentTotals();
+
+        if (MultiPaymentTotal < TotalPayable)
         {
             _showInsufficientAmountModal = true;
-            Feedback.Warning($"Amount received must cover RM {TotalPayable:N2}.", "Insufficient payment");
+            Feedback.Warning(
+                $"Add RM {(TotalPayable - MultiPaymentTotal):N2} more before completing the sale.",
+                "Payment incomplete");
+            return;
+        }
+
+        if (MultiPaymentTotal > TotalPayable &&
+            !appliedPayments.Any(payment =>
+                payment.MethodLabel.Contains("cash", StringComparison.OrdinalIgnoreCase)))
+        {
+            _paymentValidationError = "Payment exceeds the amount due. Only cash can include change.";
+            Feedback.Warning(_paymentValidationError, "Payment not ready");
             return;
         }
 
@@ -3012,7 +3018,7 @@
             Subtotal = Math.Max(0m, Subtotal - DiscountTotal - McCoverage),
             Tax = TaxAmount,
             Discount = DiscountTotal,
-            PaymentTypeId = SelectedPaymentSplits.Any() ? 0 : SelectedPaymentTypeId,
+            PaymentTypeId = SelectedPaymentSplits.FirstOrDefault()?.PaymentTypeId ?? SelectedPaymentTypeId,
             PaymentMethod = PaymentMethodDisplay,
             Status = "Paid",
             Notes = BuildBillingPaymentNotes(),
@@ -3605,6 +3611,97 @@
     {
         _showDiscountModal = false;
         _selectedDiscountItem = null;
+    }
+
+    // Billing payment calculator intentionally mirrors Sales > New Sale behavior.
+    private void OpenBillingPaymentCalculator(CashSalesPaymentTypeDTO method)
+    {
+        _billingCalculatorMethod = method;
+        SelectedPaymentTypeId = method.POSPaymentTypeID;
+        SelectedPaymentMethod = method.POSPaymentTypeName ?? $"Payment {method.POSPaymentTypeID}";
+
+        var existing = BillingPaymentFor(method.POSPaymentTypeID);
+        _billingCalculatorDigits = existing?.Amount is > 0
+            ? ((long)Math.Round(existing.Amount.Value * 100m)).ToString()
+            : string.Empty;
+    }
+
+    private void CloseBillingPaymentCalculator()
+    {
+        _billingCalculatorMethod = null;
+        _billingCalculatorDigits = string.Empty;
+    }
+
+    private void PressBillingCalculatorKey(string key)
+    {
+        if (_billingCalculatorDigits.Length >= 11)
+        {
+            return;
+        }
+
+        _billingCalculatorDigits = (_billingCalculatorDigits + key).TrimStart('0');
+    }
+
+    private void BillingCalculatorZero() => PressBillingCalculatorKey("0");
+    private void BillingCalculatorDoubleZero() => PressBillingCalculatorKey("00");
+    private void ClearBillingCalculator() => _billingCalculatorDigits = string.Empty;
+
+    private void BackspaceBillingCalculator()
+    {
+        if (_billingCalculatorDigits.Length > 0)
+        {
+            _billingCalculatorDigits = _billingCalculatorDigits[..^1];
+        }
+    }
+
+    private void UseBillingExactAmount()
+    {
+        _billingCalculatorDigits =
+            ((long)Math.Round(BillingCalculatorRemaining * 100m)).ToString();
+    }
+
+    private void ConfirmBillingPaymentAmount()
+    {
+        if (_billingCalculatorMethod is null || BillingCalculatorAmount <= 0m)
+        {
+            Feedback.Warning("Enter a payment amount first.", "Payment amount required");
+            return;
+        }
+
+        var payment = BillingPaymentFor(_billingCalculatorMethod.POSPaymentTypeID);
+        if (payment is null)
+        {
+            Feedback.Error(
+                "The selected payment method is not available in the current payment configuration.",
+                "Payment method unavailable");
+            return;
+        }
+
+        payment.Amount = BillingCalculatorAmount;
+        payment.AmountText = BillingCalculatorAmount.ToString("0.00");
+
+        SynchronizeBillingPaymentTotals();
+        CloseBillingPaymentCalculator();
+        StateHasChanged();
+    }
+
+    private void SynchronizeBillingPaymentTotals()
+    {
+        var total = MultiPaymentTotal;
+        AmountReceived = total > 0m ? total : null;
+        AmountReceivedText = total > 0m ? total.ToString("0.00") : string.Empty;
+        AmountReceivedError = null;
+
+        var first = SelectedPaymentSplits.FirstOrDefault();
+        if (first is null)
+        {
+            SelectedPaymentTypeId = 0;
+            SelectedPaymentMethod = string.Empty;
+            return;
+        }
+
+        SelectedPaymentTypeId = first.PaymentTypeId;
+        SelectedPaymentMethod = first.MethodLabel;
     }
 
     // Custom Dropdown Logic
