@@ -93,55 +93,42 @@
                         </div>
                     </div>
 
-                    <!-- Wallet / Points Row inside patient info, collapsible -->
-                    <div class="wallet-strip" style="margin-top: 10px;">
-                        <div class="wallet-card cash-wallet">
-                            <div class="wallet-card-header">
-                                <i class="bi bi-cash-coin"></i>
-                                <span>Cash Wallet</span>
-                            </div>
-                            <div class="wallet-amount">@FormatMoneyBalance(CashWalletAmount)</div>
-                            <div class="wallet-footer">@BalanceFooter(CashWalletAmount, "Available balance")</div>
-                        </div>
-
-                        <div class="wallet-card credit-voucher">
-                            <div class="wallet-card-header">
-                                <i class="bi bi-ticket-perforated"></i>
-                                <span>Credit Voucher</span>
-                            </div>
-                            <div class="wallet-amount">@FormatMoneyBalance(CreditVoucherAmount)</div>
-                            <div class="wallet-footer">@BalanceFooter(CreditVoucherAmount, "Voucher balance")</div>
-                        </div>
-
-                        <div class="wallet-card beauti-points">
-                            <div class="wallet-card-header">
-                                <div class="wallet-header-main">
-                                    <i class="bi bi-stars"></i>
-                                    <span>Beauty Points</span>
-                                </div>
-                                <span class="wallet-info-icon" data-tooltip="RM 1.00 = 1 point">
-                                    <i class="bi bi-info-circle"></i>
-                                </span>
-                            </div>
-                            <div class="wallet-amount">@FormatPointBalance(BeautiPoints)</div>
-                            <div class="wallet-footer">@FormatPointValue()</div>
-                        </div>
-                        <div class="wallet-card loyalty-points">
-                            <div class="wallet-card-header">
-                                <i class="bi bi-gift"></i>
-                                <span>Loyalty Points</span>
-                            </div>
-                            <div class="wallet-amount">@FormatPointBalance(LoyaltyPoints)</div>
-                            <div class="wallet-footer">@(LoyaltyTier ?? "Unavailable")</div>
-                        </div>
-
+                    <!-- Customer balances: follows the actual member balance model -->
+                    <div class="wallet-strip customer-balance-strip" style="margin-top: 10px;">
                         <div class="wallet-card outstanding-balance">
                             <div class="wallet-card-header">
                                 <i class="bi bi-currency-exchange"></i>
                                 <span>Outstanding Balance</span>
                             </div>
-                            <div class="wallet-amount">@FormatMoneyBalance(PreviousOutstandingAmount)</div>
-                            <div class="wallet-footer">@(PreviousOutstandingAmount.HasValue ? "Previous balance owed" : "Unavailable")</div>
+                            <div class="wallet-amount">@FormatMoneyBalance(CustomerOutstandingBalance)</div>
+                            <div class="wallet-footer">@BalanceFooter(CustomerOutstandingBalance, "Amount outstanding")</div>
+                        </div>
+
+                        <div class="wallet-card points-balance">
+                            <div class="wallet-card-header">
+                                <i class="bi bi-gift"></i>
+                                <span>Point</span>
+                            </div>
+                            <div class="wallet-amount">@FormatPointBalance(CustomerPointBalance)</div>
+                            <div class="wallet-footer">@BalanceFooter(CustomerPointBalance, "Available points")</div>
+                        </div>
+
+                        <div class="wallet-card package-balance">
+                            <div class="wallet-card-header">
+                                <i class="bi bi-box2-heart"></i>
+                                <span>Package</span>
+                            </div>
+                            <div class="wallet-amount">@FormatNumericBalance(CustomerPackageBalance)</div>
+                            <div class="wallet-footer">@BalanceFooter(CustomerPackageBalance, "Package balance")</div>
+                        </div>
+
+                        <div class="wallet-card credit-balance">
+                            <div class="wallet-card-header">
+                                <i class="bi bi-credit-card-2-front"></i>
+                                <span>Credit</span>
+                            </div>
+                            <div class="wallet-amount">@FormatNumericBalance(CustomerCreditBalance)</div>
+                            <div class="wallet-footer">@BalanceFooter(CustomerCreditBalance, "Credit balance")</div>
                         </div>
                     </div>
                 </div>
@@ -603,50 +590,44 @@
                                             <div class="payment-panel-heading__main">
                                                 <div class="payment-panel-icon"><i class="bi bi-wallet2"></i></div>
                                                 <div>
-                                                    <h4>Wallet & Points</h4>
-                                                    <p>Optional balances available for this customer.</p>
+                                                    <h4>Customer Balances</h4>
+                                                    <p>Current outstanding, point, package and credit balances.</p>
                                                 </div>
                                             </div>
-                                            <span class="payment-optional-badge">Optional</span>
                                         </div>
 
                                         <div class="payment-balance-grid">
-                                            <label class="payment-balance-card @(UseCashWallet ? "active" : string.Empty) @((!CashWalletAmount.HasValue || CashWalletAmount.Value <= 0) ? "disabled" : string.Empty)">
-                                                <input type="checkbox" @bind="UseCashWallet" disabled="@(!CashWalletAmount.HasValue || CashWalletAmount.Value <= 0)" />
-                                                <span class="payment-balance-card__icon"><i class="bi bi-cash-coin"></i></span>
+                                            <div class="payment-balance-card balance-display-card">
+                                                <span class="payment-balance-card__icon"><i class="bi bi-currency-exchange"></i></span>
                                                 <span class="payment-balance-card__copy">
-                                                    <strong>Cash Wallet</strong>
-                                                    <small>@FormatMoneyBalance(CashWalletAmount)</small>
+                                                    <strong>Outstanding Balance</strong>
+                                                    <small>@FormatMoneyBalance(CustomerOutstandingBalance)</small>
                                                 </span>
-                                                <span class="payment-balance-card__check"><i class="bi bi-check"></i></span>
-                                            </label>
-                                            <label class="payment-balance-card @(UseCreditVoucher ? "active" : string.Empty) @((!CreditVoucherAmount.HasValue || CreditVoucherAmount.Value <= 0) ? "disabled" : string.Empty)">
-                                                <input type="checkbox" @bind="UseCreditVoucher" disabled="@(!CreditVoucherAmount.HasValue || CreditVoucherAmount.Value <= 0)" />
-                                                <span class="payment-balance-card__icon"><i class="bi bi-ticket-perforated"></i></span>
-                                                <span class="payment-balance-card__copy">
-                                                    <strong>Credit Voucher</strong>
-                                                    <small>@FormatMoneyBalance(CreditVoucherAmount)</small>
-                                                </span>
-                                                <span class="payment-balance-card__check"><i class="bi bi-check"></i></span>
-                                            </label>
-                                            <label class="payment-balance-card @(UseBeautiPoints ? "active" : string.Empty) @((!BeautiPoints.HasValue || BeautiPoints.Value <= 0) ? "disabled" : string.Empty)">
-                                                <input type="checkbox" @bind="UseBeautiPoints" disabled="@(!BeautiPoints.HasValue || BeautiPoints.Value <= 0)" />
-                                                <span class="payment-balance-card__icon"><i class="bi bi-stars"></i></span>
-                                                <span class="payment-balance-card__copy">
-                                                    <strong>Beauty Points</strong>
-                                                    <small>@FormatPointBalance(BeautiPoints)</small>
-                                                </span>
-                                                <span class="payment-balance-card__check"><i class="bi bi-check"></i></span>
-                                            </label>
-                                            <label class="payment-balance-card @(UseLoyaltyPoints ? "active" : string.Empty) @((!LoyaltyPoints.HasValue || LoyaltyPoints.Value <= 0) ? "disabled" : string.Empty)">
-                                                <input type="checkbox" @bind="UseLoyaltyPoints" disabled="@(!LoyaltyPoints.HasValue || LoyaltyPoints.Value <= 0)" />
+                                            </div>
+
+                                            <div class="payment-balance-card balance-display-card">
                                                 <span class="payment-balance-card__icon"><i class="bi bi-gift"></i></span>
                                                 <span class="payment-balance-card__copy">
-                                                    <strong>Loyalty Points</strong>
-                                                    <small>@FormatPointBalance(LoyaltyPoints)</small>
+                                                    <strong>Point</strong>
+                                                    <small>@FormatPointBalance(CustomerPointBalance)</small>
                                                 </span>
-                                                <span class="payment-balance-card__check"><i class="bi bi-check"></i></span>
-                                            </label>
+                                            </div>
+
+                                            <div class="payment-balance-card balance-display-card">
+                                                <span class="payment-balance-card__icon"><i class="bi bi-box2-heart"></i></span>
+                                                <span class="payment-balance-card__copy">
+                                                    <strong>Package</strong>
+                                                    <small>@FormatNumericBalance(CustomerPackageBalance)</small>
+                                                </span>
+                                            </div>
+
+                                            <div class="payment-balance-card balance-display-card">
+                                                <span class="payment-balance-card__icon"><i class="bi bi-credit-card-2-front"></i></span>
+                                                <span class="payment-balance-card__copy">
+                                                    <strong>Credit</strong>
+                                                    <small>@FormatNumericBalance(CustomerCreditBalance)</small>
+                                                </span>
+                                            </div>
                                         </div>
                                     </section>
                                 </div>
@@ -1532,27 +1513,24 @@
         ? "status-paid"
         : "status-unpaid";
 
-    private decimal? CashWalletAmount { get; set; }
-    private decimal? CreditVoucherAmount { get; set; }
-    private decimal? BeautiPoints { get; set; }
-    private decimal? BeautiPointsValue { get; set; }
-
-    // These values are intentionally unset until their API fields are supplied.
-    private decimal? LoyaltyPoints { get; set; }
-    private string? LoyaltyTier { get; set; }
-    private decimal? PreviousOutstandingAmount { get; set; }
+    private decimal? CustomerOutstandingBalance { get; set; }
+    private decimal? CustomerPointBalance { get; set; }
+    private decimal? CustomerPackageBalance { get; set; }
+    private decimal? CustomerCreditBalance { get; set; }
     private bool _isCustomerBalanceLoading;
 
-    private string FormatMoneyBalance(decimal? value) => value.HasValue ? $"RM {value.Value:N2}" : "—";
-    private string FormatPointBalance(decimal? value) => value.HasValue ? $"{value.Value:N0} pts" : "—";
+    private string FormatMoneyBalance(decimal? value) =>
+        _isCustomerBalanceLoading ? "Loading..." : value.HasValue ? $"RM {value.Value:N2}" : "—";
+
+    private string FormatPointBalance(decimal? value) =>
+        _isCustomerBalanceLoading ? "Loading..." : value.HasValue ? $"{value.Value:N0} pts" : "—";
+
+    private string FormatNumericBalance(decimal? value) =>
+        _isCustomerBalanceLoading ? "Loading..." : value.HasValue ? value.Value.ToString("N2") : "—";
+
     private string BalanceFooter(decimal? value, string loadedText) => _isCustomerBalanceLoading
         ? "Loading..."
         : value.HasValue ? loadedText : "Unavailable";
-    private string FormatPointValue() => _isCustomerBalanceLoading
-        ? "Loading..."
-        : BeautiPointsValue.HasValue
-            ? $"≈ RM {BeautiPointsValue.Value:N2}"
-            : "Unavailable";
 
     private List<BillingItem> PrescriptionItems { get; set; } = new();
     private List<BillingService> ServiceItems { get; set; } = new();
@@ -1594,10 +1572,6 @@
     private List<Employee> CollectorOptions { get; set; } = new();
     private bool _isStaffLoading;
     private string? _staffLoadError;
-    private bool UseCashWallet { get; set; }
-    private bool UseCreditVoucher { get; set; }
-    private bool UseBeautiPoints { get; set; }
-    private bool UseLoyaltyPoints { get; set; }
 
     private string AmountReceivedText { get; set; } = string.Empty;
     private decimal? AmountReceived { get; set; }
@@ -2535,6 +2509,11 @@
 
     private async Task LoadCustomerBalancesAsync(string? customerId)
     {
+        CustomerOutstandingBalance = null;
+        CustomerPointBalance = null;
+        CustomerPackageBalance = null;
+        CustomerCreditBalance = null;
+
         if (string.IsNullOrWhiteSpace(customerId))
         {
             return;
@@ -2543,17 +2522,48 @@
         _isCustomerBalanceLoading = true;
         try
         {
-            var result = await CustomerService.GetBalanceSummaryAsync(customerId);
-            if (!result.Success || result.Value is null)
+            var memberBalanceTask = CustomerService.GetBalanceSummaryAsync(customerId);
+            var otherBalanceTask = CustomerService.GetOtherBalanceSummaryAsync(
+                customerId,
+                DateTime.UtcNow);
+
+            await Task.WhenAll(memberBalanceTask, otherBalanceTask);
+
+            var memberBalance = await memberBalanceTask;
+            var otherBalance = await otherBalanceTask;
+
+            if (memberBalance.Success && memberBalance.Value is not null)
             {
-                Feedback.Error(result.ErrorMessage ?? "Unable to load customer balances.", "Balances not loaded");
-                return;
+                CustomerPointBalance = memberBalance.Value.PointBalance;
+                CustomerPackageBalance = memberBalance.Value.PackageBalance;
+                CustomerCreditBalance = memberBalance.Value.CreditBalance;
             }
 
-            CashWalletAmount = result.Value.CreditBalance;
-            CreditVoucherAmount = result.Value.VoucherBalance;
-            BeautiPoints = result.Value.PointBalance;
-            BeautiPointsValue = result.Value.PointRebateBalance;
+            if (otherBalance.Success && otherBalance.Value is not null)
+            {
+                CustomerOutstandingBalance = otherBalance.Value.Outstanding;
+            }
+
+            if (!memberBalance.Success && !otherBalance.Success)
+            {
+                Feedback.Error(
+                    memberBalance.ErrorMessage
+                    ?? otherBalance.ErrorMessage
+                    ?? "Unable to load customer balances.",
+                    "Balances not loaded");
+            }
+            else if (!memberBalance.Success)
+            {
+                Feedback.Warning(
+                    memberBalance.ErrorMessage ?? "Point, package and credit balances are unavailable.",
+                    "Some balances unavailable");
+            }
+            else if (!otherBalance.Success)
+            {
+                Feedback.Warning(
+                    otherBalance.ErrorMessage ?? "Outstanding balance is unavailable.",
+                    "Some balances unavailable");
+            }
         }
         finally
         {
