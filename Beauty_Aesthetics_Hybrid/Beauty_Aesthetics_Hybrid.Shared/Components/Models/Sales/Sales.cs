@@ -9,6 +9,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Models
         public string DocumentId { get; set; } = "";
         public string AccountId { get; set; } = "";
         public string BranchId { get; set; } = "";
+        public string GroupId { get; set; } = "";
         public int PaymentTypeId { get; set; }
         public DateTime Date { get; set; }
         public string InvoiceNumber { get; set; } = "";
