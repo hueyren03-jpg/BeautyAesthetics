@@ -92,7 +92,7 @@ public sealed class AppFeedbackService : IDisposable
         var normalizedTitle = string.IsNullOrWhiteSpace(title) ? DefaultTitle(kind) : title.Trim();
         var normalizedMessage = string.IsNullOrWhiteSpace(message) ? DefaultMessage(kind) : message.Trim();
 
-        if (!ShouldPublishActionFeedback(normalizedTitle, normalizedMessage))
+        if (!ShouldPublishActionFeedback(kind, normalizedTitle, normalizedMessage))
         {
             return Guid.Empty;
         }
@@ -350,11 +350,19 @@ public sealed class AppFeedbackService : IDisposable
 
     private void RaiseChanged() => Changed?.Invoke();
 
-    private static bool ShouldPublishActionFeedback(string title, string message)
+    private static bool ShouldPublishActionFeedback(
+        AppFeedbackKind kind,
+        string title,
+        string message)
     {
-        // Global policy: only CRUD-style confirmation feedback is shown.
-        // Informational/navigation/system events (open, upload, export, print,
-        // login, branch changes, filters, loading data, etc.) stay silent.
+        // Failures and missing/unavailable states must always be visible.
+        // The action filter below only suppresses non-critical success/info
+        // notifications for noisy actions such as print/download/navigation.
+        if (kind is AppFeedbackKind.Error or AppFeedbackKind.Warning)
+        {
+            return true;
+        }
+
         var normalizedTitle = title.Trim().ToLowerInvariant();
         var normalizedMessage = message.Trim().ToLowerInvariant();
 
