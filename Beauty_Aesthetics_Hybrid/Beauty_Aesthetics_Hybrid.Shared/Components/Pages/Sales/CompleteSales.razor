@@ -7,6 +7,7 @@
 @using Beauty_Aesthetics_WebPos.Components.Services.Files
 @using Beauty_Aesthetics_WebPos.Components.Services.Printing
 @using Beauty_Aesthetics_WebPos.Components.Services.Sales
+@using Beauty_Aesthetics_WebPos.Components.Services.WhatsApp
 @using System.Text.Json.Nodes
 @layout EmptyLayout
 
@@ -17,6 +18,7 @@
 @inject IBluetoothPrinterService PrinterSvc
 @inject IReceiptPrinterService ReceiptPrinterSvc
 @inject IFileDownloadService FileDownloadService
+@inject WhatsAppService WhatsApp
 @inject BranchAC BranchAC
 @inject Microsoft.JSInterop.IJSRuntime JS
 
@@ -311,27 +313,8 @@
                 companyName = "Beauty Aesthetics";
             }
 
-            var messageParts = new List<string>
-            {
-                $"Thank you for your payment to {companyName}."
-            };
-
-            if (!string.IsNullOrWhiteSpace(bill))
-            {
-                messageParts.Add($"Invoice: {bill}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(eInvoice))
-            {
-                messageParts.Add($"e-Invoice: {eInvoice}");
-            }
-
-            var phone = new string(whatsappNumber.Where(char.IsDigit).ToArray());
-            var text = Uri.EscapeDataString(string.Join(Environment.NewLine, messageParts));
-            await JS.InvokeVoidAsync(
-                "open",
-                $"https://wa.me/{phone}?text={text}",
-                "_blank");
+            var message = WhatsApp.BuildMessage(companyName, eInvoice, bill);
+            await WhatsApp.OpenAsync(whatsappNumber, message);
         }
         catch (Exception ex)
         {
