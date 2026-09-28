@@ -3021,23 +3021,76 @@
 
     private async Task ProcessReceiptAction(string action)
     {
+        if (_isProcessingPayment)
+        {
+            return;
+        }
+
+        if (string.Equals(action, "email", StringComparison.OrdinalIgnoreCase))
+        {
+            Feedback.Warning(
+                "The Senang receipt API generates the receipt PDF, but it does not provide a server-side email receipt endpoint.",
+                "Receipt email not available");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_completedSaleDocumentId))
+        {
+            Feedback.Error(
+                "The completed sales document ID is missing.",
+                "Receipt unavailable");
+            return;
+        }
+
         _isProcessingPayment = true;
+        var completed = false;
         await InvokeAsync(StateHasChanged);
 
         try
         {
-            // Simulate receipt processing
-            await Task.Delay(600);
+            var result = await CashSalesService.RequestReceiptPdfAsync(
+                _completedSaleDocumentId);
+
+            if (!result.Success || string.IsNullOrWhiteSpace(result.Value))
+            {
+                Feedback.Error(
+                    result.ErrorMessage ?? "Unable to generate the receipt PDF.",
+                    "Receipt unavailable");
+                return;
+            }
+
+            var receiptPdf = result.Value.Trim();
+            var receiptDataUrl = receiptPdf.StartsWith(
+                "data:application/pdf;base64,",
+                StringComparison.OrdinalIgnoreCase)
+                ? receiptPdf
+                : $"data:application/pdf;base64,{receiptPdf}";
+
+            await JS.InvokeVoidAsync("open", receiptDataUrl, "_blank");
+
             Feedback.Success(
-                action == "print" ? "Receipt sent to print." : "Receipt email prepared successfully.",
-                action == "print" ? "Receipt print ready" : "Receipt email ready",
+                string.IsNullOrWhiteSpace(_completedReceiptNumber)
+                    ? "Receipt PDF opened."
+                    : $"Receipt {_completedReceiptNumber} opened.",
+                "Receipt ready",
                 2400);
-            // Here you would call your actual print/email service
+
+            completed = true;
+        }
+        catch (Exception ex)
+        {
+            Feedback.Error(
+                $"Unable to prepare receipt: {ex.Message}",
+                "Receipt unavailable");
         }
         finally
         {
             _isProcessingPayment = false;
-            _showPaymentSummaryModal = false;
+            if (completed)
+            {
+                _showPaymentSummaryModal = false;
+            }
+
             await InvokeAsync(StateHasChanged);
         }
     }
