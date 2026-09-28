@@ -41,6 +41,7 @@ public partial class EmployeeFormBase : ComponentBase
         {
             await ViewModel.LoadEmployeeForEditAsync(EmployeeCode);
             ViewModel.IsEditMode = true;
+            ViewModel.IsExpanded = true;
             if (string.IsNullOrWhiteSpace(ViewModel.ErrorMessage))
             {
                 Feedback.Info($"Editing employee {ViewModel.Employee.Name}.", "Edit employee", 2800);
@@ -59,9 +60,6 @@ public partial class EmployeeFormBase : ComponentBase
             ViewModel.IsEditMode = false;
             Feedback.Info("Enter the employee details and save when ready.", "New employee", 2600);
         }
-        ViewModel.Employee.BranchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID)
-            ? "HQ"
-            : AppState.SelectedBranchID!.Trim();
 
         var branches = await BranchLookupService.LoadBranchesAsync();
         if (branches.Success && branches.Value is not null)
@@ -101,10 +99,6 @@ public partial class EmployeeFormBase : ComponentBase
         {
             return;
         }
-
-        ViewModel.Employee.BranchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID)
-            ? "HQ"
-            : AppState.SelectedBranchID!.Trim();
 
         var wasEditing = ViewModel.IsEditMode;
         var feedbackId = Feedback.Loading(
