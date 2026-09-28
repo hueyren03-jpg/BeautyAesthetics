@@ -1691,6 +1691,11 @@
     private string? AmountReceivedError { get; set; }
     private CancellationTokenSource? _amountInputCts;
 
+    // Same payment calculator behavior as Sales > New Sale.
+    private CashSalesPaymentTypeDTO? _billingCalculatorMethod;
+    private string _billingCalculatorDigits = string.Empty;
+    private static readonly string[] BillingKeypadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+
     private decimal ChangeAmount => Math.Max(0m, (AmountReceived ?? 0m) - TotalPayable);
 
     // Prescription modal state
@@ -1747,6 +1752,24 @@
 
     private decimal MultiPaymentTotal => SelectedPaymentSplits.Sum(p => p.Amount!.Value);
     private decimal MultiPaymentRemaining => TotalPayable - MultiPaymentTotal;
+
+    private PaymentSplit? BillingPaymentFor(int paymentTypeId) =>
+        AllPaymentSplits.FirstOrDefault(payment => payment.PaymentTypeId == paymentTypeId);
+
+    private decimal BillingPaidExcludingCalculatorMethod =>
+        _billingCalculatorMethod is null
+            ? MultiPaymentTotal
+            : SelectedPaymentSplits
+                .Where(payment => payment.PaymentTypeId != _billingCalculatorMethod.POSPaymentTypeID)
+                .Sum(payment => payment.Amount ?? 0m);
+
+    private decimal BillingCalculatorRemaining =>
+        Math.Max(0m, TotalPayable - BillingPaidExcludingCalculatorMethod);
+
+    private decimal BillingCalculatorAmount =>
+        decimal.TryParse(_billingCalculatorDigits, out var cents)
+            ? cents / 100m
+            : 0m;
 
 
 
