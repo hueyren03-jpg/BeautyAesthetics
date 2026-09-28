@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Beauty_Aesthetics_WebPos.Models.DTOs;
 
 public sealed class MemberBalanceSummaryDTO
@@ -31,4 +33,25 @@ public sealed class CreditBalanceDetailDTO
     public decimal BalanceCredit { get; set; }
     public DateTime DueDate { get; set; }
     public bool IsRedeemable { get; set; }
+}
+
+public sealed class MemberOtherBalanceSummaryRequestDTO
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("cutOffDate")]
+    public DateTime CutOffDate { get; set; }
+}
+
+public sealed class MemberOtherBalanceSummaryDTO
+{
+    public string CustomerID { get; set; } = string.Empty;
+    public string CustomerName { get; set; } = string.Empty;
+    public string Phone { get; set; } = string.Empty;
+    public decimal Outstanding { get; set; }
+    public decimal Point { get; set; }
+    public decimal PointRebate { get; set; }
+    public decimal MGM { get; set; }
+    public decimal Deposit { get; set; }
 }
