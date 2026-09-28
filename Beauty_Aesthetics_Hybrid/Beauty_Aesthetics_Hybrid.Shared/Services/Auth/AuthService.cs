@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
@@ -113,21 +114,25 @@ public sealed class AuthService : IAuthService
     {
         var firstRequest = await CloneRequestAsync(request, cancellationToken);
         await AttachAccessTokenAsync(firstRequest);
+        await LogApiRequestAsync(firstRequest, cancellationToken);
 
         HttpResponseMessage response;
         try
         {
             response = await authAC.SendAsync(firstRequest, cancellationToken);
+            await LogApiResponseAsync(firstRequest, response, cancellationToken);
         }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            LogApiTransportError(firstRequest, "TIMEOUT", "API request timed out. Please try again.");
             return CreateSyntheticErrorResponse(
                 request,
                 HttpStatusCode.RequestTimeout,
                 "API request timed out. Please try again.");
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException ex)
         {
+            LogApiTransportError(firstRequest, "ERROR", ex.Message);
             return CreateSyntheticErrorResponse(
                 request,
                 HttpStatusCode.ServiceUnavailable,
@@ -155,20 +160,25 @@ public sealed class AuthService : IAuthService
 
         var retryRequest = await CloneRequestAsync(request, cancellationToken);
         await AttachAccessTokenAsync(retryRequest);
+        await LogApiRequestAsync(retryRequest, cancellationToken, isRetry: true);
 
         try
         {
-            return await authAC.SendAsync(retryRequest, cancellationToken);
+            var retryResponse = await authAC.SendAsync(retryRequest, cancellationToken);
+            await LogApiResponseAsync(retryRequest, retryResponse, cancellationToken, isRetry: true);
+            return retryResponse;
         }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            LogApiTransportError(retryRequest, "TIMEOUT", "API retry timed out. Please try again.");
             return CreateSyntheticErrorResponse(
                 request,
                 HttpStatusCode.RequestTimeout,
                 "API request timed out. Please try again.");
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException ex)
         {
+            LogApiTransportError(retryRequest, "ERROR", ex.Message);
             return CreateSyntheticErrorResponse(
                 request,
                 HttpStatusCode.ServiceUnavailable,
@@ -272,6 +282,126 @@ public sealed class AuthService : IAuthService
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         }
     }
+
+    private static async Task LogApiRequestAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken,
+        bool isRetry = false)
+    {
+        var method = request.Method.Method.ToUpperInvariant();
+        var endpoint = request.RequestUri?.ToString() ?? "(unknown)";
+        var retry = isRetry ? " RETRY" : string.Empty;
+        var body = request.Content is null
+            ? string.Empty
+            : await request.Content.ReadAsStringAsync(cancellationToken);
+
+        var message = string.IsNullOrWhiteSpace(body)
+            ? $"[API {method}{retry} {endpoint}] Request"
+            : $"[API {method}{retry} {endpoint}] Request Body: {RedactSensitiveJson(body)}";
+
+        Debug.WriteLine(message);
+        Console.WriteLine(message);
+    }
+
+    private static async Task LogApiResponseAsync(
+        HttpRequestMessage request,
+        HttpResponseMessage response,
+        CancellationToken cancellationToken,
+        bool isRetry = false)
+    {
+        var method = request.Method.Method.ToUpperInvariant();
+        var endpoint = request.RequestUri?.ToString() ?? "(unknown)";
+        var retry = isRetry ? " RETRY" : string.Empty;
+        var body = response.Content is null
+            ? string.Empty
+            : await response.Content.ReadAsStringAsync(cancellationToken);
+
+        var message =
+            $"[API {method}{retry} {endpoint}] HTTP {(int)response.StatusCode} | Body: {RedactSensitiveJson(body)}";
+
+        Debug.WriteLine(message);
+        Console.WriteLine(message);
+    }
+
+    private static void LogApiTransportError(
+        HttpRequestMessage request,
+        string kind,
+        string detail)
+    {
+        var method = request.Method.Method.ToUpperInvariant();
+        var endpoint = request.RequestUri?.ToString() ?? "(unknown)";
+        var message = $"[API {kind}] {method} {endpoint}: {detail}";
+
+        Debug.WriteLine(message);
+        Console.WriteLine(message);
+    }
+
+    private static string RedactSensitiveJson(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return body;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            using var stream = new MemoryStream();
+            using (var writer = new Utf8JsonWriter(stream))
+            {
+                WriteRedactedJson(writer, root);
+            }
+
+            return Encoding.UTF8.GetString(stream.ToArray());
+        }
+        catch (JsonException)
+        {
+            return body;
+        }
+    }
+
+    private static void WriteRedactedJson(Utf8JsonWriter writer, JsonElement element)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                writer.WriteStartObject();
+                foreach (var property in element.EnumerateObject())
+                {
+                    writer.WritePropertyName(property.Name);
+                    if (IsSensitiveField(property.Name))
+                    {
+                        writer.WriteStringValue("***");
+                    }
+                    else
+                    {
+                        WriteRedactedJson(writer, property.Value);
+                    }
+                }
+                writer.WriteEndObject();
+                break;
+
+            case JsonValueKind.Array:
+                writer.WriteStartArray();
+                foreach (var item in element.EnumerateArray())
+                {
+                    WriteRedactedJson(writer, item);
+                }
+                writer.WriteEndArray();
+                break;
+
+            default:
+                element.WriteTo(writer);
+                break;
+        }
+    }
+
+    private static bool IsSensitiveField(string name) =>
+        name.Equals("password", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("accessToken", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("refreshToken", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("token", StringComparison.OrdinalIgnoreCase);
 
     private static async Task<HttpRequestMessage> CloneRequestAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
