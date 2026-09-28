@@ -18,6 +18,7 @@
 @inject IReceiptPrinterService ReceiptPrinterSvc
 @inject WhatsAppService WhatsApp
 @inject BranchAC BranchAC
+@inject AppFeedbackService Feedback
 @inject Microsoft.JSInterop.IJSRuntime JS
 
 <PageTitle>Payment Complete - Beauty Aesthetics</PageTitle>
@@ -146,8 +147,9 @@
             }
             else
             {
-                await ShowNotification(
-                    result.ErrorMessage ?? "Failed to load sales details from server.");
+                Feedback.Error(
+                    result.ErrorMessage ?? "Unable to load the completed sales record.",
+                    "Sales details unavailable");
             }
 
             if (!string.IsNullOrWhiteSpace(AppState.SelectedBranchID))
@@ -167,7 +169,9 @@
             }
             else
             {
-                await ShowNotification($"Error loading sales record: {ex.Message}");
+                Feedback.Error(
+                    $"Unable to load the completed sales record. {ex.Message}",
+                    "Sales details unavailable");
             }
         }
         finally
@@ -182,13 +186,17 @@
         var printer = PrinterSvc.GetSelectedPrinter();
         if (printer is null)
         {
-            await ShowNotification("No printer selected.");
+            Feedback.Warning(
+                "Select a receipt printer in General Setup > Hardware Control > Printer before printing.",
+                "Printer missing");
             return;
         }
 
         if (salesRecord is null)
         {
-            await ShowNotification("Sales data not loaded.");
+            Feedback.Error(
+                "The completed sales record is missing or could not be loaded.",
+                "Sales data missing");
             return;
         }
 
@@ -202,12 +210,18 @@
 
             if (!success)
             {
-                await ShowNotification($"Print failed: {error}");
+                Feedback.Error(
+                    string.IsNullOrWhiteSpace(error)
+                        ? "The receipt could not be printed."
+                        : error,
+                    "Receipt print failed");
             }
         }
         catch (Exception ex)
         {
-            await ShowNotification($"An error occurred during printing: {ex.Message}");
+            Feedback.Error(
+                $"Unable to print the receipt. {ex.Message}",
+                "Receipt print failed");
         }
         finally
         {
@@ -226,13 +240,17 @@
         var printer = PrinterSvc.GetSelectedPrinter();
         if (printer is null)
         {
-            await ShowNotification("No printer selected.");
+            Feedback.Warning(
+                "Select a receipt printer in General Setup > Hardware Control > Printer before printing.",
+                "Printer missing");
             return;
         }
 
         if (salesRecord is null)
         {
-            await ShowNotification("Sales data not loaded.");
+            Feedback.Error(
+                "The completed sales record is missing or could not be loaded.",
+                "Sales data missing");
             return;
         }
 
@@ -246,8 +264,9 @@
 
             if (!eInvoiceResult.Success || string.IsNullOrWhiteSpace(eInvoiceResult.Value))
             {
-                await ShowNotification(
-                    eInvoiceResult.ErrorMessage ?? "Unable to generate the e-Invoice link.");
+                Feedback.Error(
+                    eInvoiceResult.ErrorMessage ?? "Unable to generate the e-Invoice link.",
+                    "e-Invoice unavailable");
                 return;
             }
 
@@ -258,16 +277,24 @@
 
             if (!success)
             {
-                await ShowNotification($"Print failed: {error}");
+                Feedback.Error(
+                    string.IsNullOrWhiteSpace(error)
+                        ? "The receipt could not be printed."
+                        : error,
+                    "Receipt print failed");
             }
             else
             {
-                await ShowNotification("e-Invoice Receipt Printed.");
+                Feedback.Success(
+                    "The e-Invoice receipt was printed successfully.",
+                    "e-Invoice receipt printed");
             }
         }
         catch (Exception ex)
         {
-            await ShowNotification($"Print Error: {ex.Message}");
+            Feedback.Error(
+                $"Unable to print the e-Invoice receipt. {ex.Message}",
+                "e-Invoice print failed");
         }
         finally
         {
@@ -278,8 +305,19 @@
 
     private async Task ProcessWhatsApp()
     {
-        if (!IsValidPhoneNumber || string.IsNullOrWhiteSpace(AppState.LastSaleDocumentId))
+        if (!IsValidPhoneNumber)
         {
+            Feedback.Warning(
+                "Enter a valid WhatsApp phone number before sending.",
+                "Phone number missing");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(AppState.LastSaleDocumentId))
+        {
+            Feedback.Error(
+                "The completed sales DocumentID is missing.",
+                "Sales DocumentID missing");
             return;
         }
 
@@ -297,7 +335,9 @@
 
             if (string.IsNullOrWhiteSpace(eInvoice) && string.IsNullOrWhiteSpace(bill))
             {
-                await ShowNotification("Could not generate receipt links. Please try again.");
+                Feedback.Error(
+                    "Unable to generate the invoice or e-Invoice link for WhatsApp.",
+                    "WhatsApp links unavailable");
                 return;
             }
 
@@ -316,7 +356,9 @@
         }
         catch (Exception ex)
         {
-            await ShowNotification($"WhatsApp Error: {ex.Message}");
+            Feedback.Error(
+                $"Unable to open WhatsApp. {ex.Message}",
+                "WhatsApp unavailable");
         }
         finally
         {
@@ -327,8 +369,16 @@
 
     private async Task DownloadPDFReceipt()
     {
-        if (isDownloading || string.IsNullOrWhiteSpace(AppState.LastSaleDocumentId))
+        if (isDownloading)
         {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(AppState.LastSaleDocumentId))
+        {
+            Feedback.Error(
+                "The completed sales DocumentID is missing.",
+                "Receipt unavailable");
             return;
         }
 
@@ -342,12 +392,16 @@
 
             if (!downloaded)
             {
-                await ShowNotification("Unable to download the receipt PDF.");
+                Feedback.Error(
+                    "The receipt PDF could not be generated or downloaded.",
+                    "Receipt download failed");
             }
         }
         catch (Exception ex)
         {
-            await ShowNotification($"Download error: {ex.Message}");
+            Feedback.Error(
+                $"Unable to download the receipt PDF. {ex.Message}",
+                "Receipt download failed");
         }
         finally
         {
@@ -536,18 +590,6 @@
 
         AppState.ResetPaymentState();
         Nav.NavigateTo(returnUrl, replace: true);
-    }
-
-    private async Task ShowNotification(string message)
-    {
-        try
-        {
-            await JS.InvokeVoidAsync("alert", message);
-        }
-        catch
-        {
-            Console.WriteLine($"NOTIF: {message}");
-        }
     }
 
     private static string FirstNonEmpty(params string?[] values) =>
