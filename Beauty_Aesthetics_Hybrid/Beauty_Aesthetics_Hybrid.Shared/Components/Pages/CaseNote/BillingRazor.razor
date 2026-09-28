@@ -486,7 +486,7 @@
                                                 {
                                                     var methodName = method.POSPaymentTypeName ?? $"Payment {method.POSPaymentTypeID}";
                                                     var allocation = BillingPaymentFor(method.POSPaymentTypeID);
-                                                    var isSelected = allocation?.Amount is > 0;
+                                                    var isSelected = allocation is not null;
                                                     <button type="button"
                                                             class="payment-method-card @(isSelected ? "active" : string.Empty)"
                                                             aria-pressed="@isSelected"
@@ -494,7 +494,7 @@
                                                         <span class="payment-method-card__icon"><i class="@GetPaymentMethodIcon(methodName)"></i></span>
                                                         <span class="payment-method-card__copy">
                                                             <strong>@methodName</strong>
-                                                            <small>@GetPaymentMethodDescription(method)</small>
+                                                            <small>@(allocation is not null ? $"RM {allocation.Amount:N2}" : "Add payment")</small>
                                                         </span>
                                                         <span class="payment-method-card__check"><i class="bi bi-check-lg"></i></span>
                                                     </button>
@@ -502,31 +502,34 @@
                                             </div>
                                         }
 
-                                        <div class="payment-split-strip">
-                                            <div>
-                                                <span class="payment-split-strip__label">Need more than one method?</span>
-                                                @if (SelectedPaymentSplits.Any())
-                                                {
+                                        @if (BillingPayments.Count > 0)
+                                        {
+                                            <div class="payment-split-strip">
+                                                <div>
+                                                    <span class="payment-split-strip__label">Payment Breakdown</span>
                                                     <div class="payment-split-badges">
-                                                        @foreach (var split in SelectedPaymentSplits)
+                                                        @foreach (var payment in BillingPayments)
                                                         {
                                                             <span class="payment-multi-badge">
-                                                                <span>@split.MethodLabel</span>
-                                                                <strong>RM @split.Amount!.Value.ToString("N2")</strong>
+                                                                <button type="button"
+                                                                        class="payment-allocation-edit"
+                                                                        title="Edit payment"
+                                                                        @onclick="() => EditBillingPayment(payment)">
+                                                                    <span>@payment.PaymentMethod</span>
+                                                                    <strong>RM @payment.Amount.ToString("N2")</strong>
+                                                                </button>
+                                                                <button type="button"
+                                                                        class="payment-allocation-remove"
+                                                                        title="Remove payment"
+                                                                        @onclick="() => RemoveBillingPayment(payment)">
+                                                                    <i class="bi bi-trash"></i>
+                                                                </button>
                                                             </span>
                                                         }
                                                     </div>
-                                                }
-                                                else
-                                                {
-                                                    <span class="payment-split-strip__hint">Split the amount across cash, card, e-wallet or bank transfer.</span>
-                                                }
+                                                </div>
                                             </div>
-                                            <button type="button" class="btn-multi-payment" @onclick="OpenMultiPaymentModal">
-                                                <i class="bi bi-distribute-horizontal"></i>
-                                                <span>Configure split</span>
-                                            </button>
-                                        </div>
+                                        }
                                     </section>
 
                                     <section class="payment-panel">
@@ -707,7 +710,7 @@
 
                                     <button type="button"
                                             class="payment-confirm-button"
-                                            disabled="@(_isProcessingPayment || !SelectedPaymentSplits.Any() || MultiPaymentTotal < TotalPayable)"
+                                            disabled="@(_isProcessingPayment || BillingPayments.Count == 0 || BillingPaidAmount < TotalPayable)"
                                             @onclick="OnConfirmPaymentClicked">
                                         <span>
                                             <small>Confirm payment</small>
@@ -1247,98 +1250,6 @@
 }
 
 
-@if (_showMultiPaymentModal)
-{
-    <div class="modal-overlay" @onclick="CloseMultiPaymentModal">
-        <div class="modal-container billing-multi-payment-modal" @onclick:stopPropagation="true">
-            <div class="modal-header modal-header-info">
-                <i class="bi bi-columns-gap"></i>
-                <h3>Multi-payment</h3>
-            </div>
-            <div class="modal-body">
-                <div class="multi-payment-groups">
-                    @foreach (var group in PaymentMethodGroups)
-                    {
-                        <div class="multi-payment-group @(group.IsExpanded ? "expanded" : string.Empty)">
-                            <button type="button"
-                                    class="multi-payment-group-toggle @(group.IsExpanded ? "expanded" : string.Empty)"
-                                    @onclick="() => TogglePaymentGroup(group)">
-                                <div class="group-toggle-left">
-                                    <i class="@group.Icon"></i>
-                                    <div class="group-toggle-text">
-                                        <span class="group-label">@group.Label</span>
-                                        @if (!string.IsNullOrWhiteSpace(group.Description))
-                                        {
-                                            <span class="group-description">@group.Description</span>
-                                        }
-                                    </div>
-                                </div>
-                                <div class="group-toggle-right">
-                                    <span class="group-total">RM @group.GroupTotal.ToString("N2")</span>
-                                    <i class="bi @(group.IsExpanded ? "bi-chevron-up" : "bi-chevron-down")"></i>
-                                </div>
-                            </button>
-
-                            @if (group.IsExpanded)
-                            {
-                                <div class="multi-payment-group-list">
-                                    @foreach (var split in group.Methods)
-                                    {
-                                        <div class="multi-payment-row">
-                                            <span class="multi-payment-method">@split.MethodLabel</span>
-                                            <input class="multi-payment-input"
-                                                   type="text"
-                                                   inputmode="decimal"
-                                                   value="@(split.Amount.HasValue && split.Amount.Value > 0m ? split.Amount.Value.ToString("0.00") : string.Empty)"
-                                                   placeholder="0.00"
-                                                   readonly
-                                                   title="Click to enter this payment amount"
-                                                   @onclick="() => OpenBillingSplitCalculator(split)" />
-                                        </div>
-                                    }
-                                </div>
-                            }
-                        </div>
-                    }
-                </div>
-
-                <div class="multi-payment-balance-panel">
-                    <div class="balance-item">
-                        <span>Total Payable</span>
-                        <strong>RM @TotalPayable.ToString("N2")</strong>
-                    </div>
-                    <div class="balance-item">
-                        <span>Split Total</span>
-                        <strong>RM @MultiPaymentTotal.ToString("N2")</strong>
-                    </div>
-                    <div class="balance-item @(MultiPaymentRemaining < 0 ? "balance-positive" : MultiPaymentRemaining > 0 ? "balance-negative" : string.Empty)">
-                        <span>@(MultiPaymentRemaining > 0 ? "Amount Left" : MultiPaymentRemaining < 0 ? "Overpaid" : "Balanced")</span>
-                        <strong>RM @Math.Abs(MultiPaymentRemaining).ToString("N2")</strong>
-                        <small>
-                            @(MultiPaymentRemaining > 0
-                                ? "Still to collect"
-                                : MultiPaymentRemaining < 0
-                                    ? "Will be returned as change"
-                                    : "Matches total payable")
-                        </small>
-                    </div>
-                </div>
-
-            </div>
-            <div class="modal-footer">
-                <button class="btn-modal-cancel" @onclick="CloseMultiPaymentModal">
-                    <i class="bi bi-x-circle"></i>
-                    <span>Cancel</span>
-                </button>
-                <button class="btn-modal-confirm" @onclick="ConfirmMultiPaymentSelection">
-                    <i class="bi bi-check-circle-fill"></i>
-                    <span>Apply</span>
-                </button>
-            </div>
-        </div>
-    </div>
-}
-
 @if (_showPostPaymentModal)
 {
     <div class="modal-overlay" @onclick="ClosePostPaymentModal">
@@ -1590,7 +1501,6 @@
         _showPrescriptionValidationError ? "Please fill in prescription frequency, duration, and reason." : null,
         _paymentValidationError,
         _paymentMethodsError,
-        _multiPaymentError,
         _postPaymentEmailError,
         _discountError
     }.FirstOrDefault(message => !string.IsNullOrWhiteSpace(message));
@@ -1698,7 +1608,6 @@
     // Same payment calculator behavior as Sales > New Sale.
     private CashSalesPaymentTypeDTO? _billingCalculatorMethod;
     private string _billingCalculatorDigits = string.Empty;
-    private bool _returnToMultiPaymentAfterCalculator;
     private static readonly string[] BillingKeypadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
     private decimal ChangeAmount => Math.Max(0m, (AmountReceived ?? 0m) - TotalPayable);
@@ -1731,9 +1640,8 @@
     private string _postPaymentEmail = string.Empty;
     private string? _postPaymentEmailError;
 
-    // Multi-payment state
-    private bool _showMultiPaymentModal;
-    private string? _multiPaymentError;
+    // Payment allocations follow Sales > New Sale: one TransactionPayment per selected method.
+    private List<TransactionPayment> BillingPayments { get; set; } = new();
 
     // Discount Modal state
     private bool _showDiscountModal;
@@ -1745,28 +1653,18 @@
     // Service picker modal state
     private bool _showServicePickerModal;
 
-    private List<PaymentMethodGroup> PaymentMethodGroups { get; set; } = new();
+    private decimal BillingPaidAmount => BillingPayments.Sum(payment => payment.Amount);
+    private decimal BillingRemaining => Math.Max(0m, TotalPayable - BillingPaidAmount);
 
-    private IEnumerable<PaymentSplit> AllPaymentSplits =>
-        PaymentMethodGroups.SelectMany(g => g.Methods);
-
-    private IEnumerable<PaymentSplit> SelectedPaymentSplits =>
-        AllPaymentSplits
-            .Where(p => p.Amount.HasValue && p.Amount.Value > 0)
-            .ToList();
-
-    private decimal MultiPaymentTotal => SelectedPaymentSplits.Sum(p => p.Amount!.Value);
-    private decimal MultiPaymentRemaining => TotalPayable - MultiPaymentTotal;
-
-    private PaymentSplit? BillingPaymentFor(int paymentTypeId) =>
-        AllPaymentSplits.FirstOrDefault(payment => payment.PaymentTypeId == paymentTypeId);
+    private TransactionPayment? BillingPaymentFor(int paymentTypeId) =>
+        BillingPayments.FirstOrDefault(payment => payment.PaymentTypeId == paymentTypeId);
 
     private decimal BillingPaidExcludingCalculatorMethod =>
         _billingCalculatorMethod is null
-            ? MultiPaymentTotal
-            : SelectedPaymentSplits
+            ? BillingPaidAmount
+            : BillingPayments
                 .Where(payment => payment.PaymentTypeId != _billingCalculatorMethod.POSPaymentTypeID)
-                .Sum(payment => payment.Amount ?? 0m);
+                .Sum(payment => payment.Amount);
 
     private decimal BillingCalculatorRemaining =>
         Math.Max(0m, TotalPayable - BillingPaidExcludingCalculatorMethod);
