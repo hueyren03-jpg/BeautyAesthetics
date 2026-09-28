@@ -2947,13 +2947,19 @@
 
     private async Task ConfirmPaymentAsync()
     {
+        SynchronizeBillingPaymentTotals();
+
         if (AmountReceived is null || AmountReceived < TotalPayable)
         {
+            Feedback.Warning(
+                $"Add RM {Math.Max(0m, TotalPayable - (AmountReceived ?? 0m)):N2} more before completing the sale.",
+                "Payment incomplete");
             return;
         }
 
         _paymentValidationError = null;
         _isProcessingPayment = true;
+        var feedbackId = Feedback.Loading("Completing the sale...", "Saving sale");
         await InvokeAsync(StateHasChanged);
 
         try
@@ -2963,8 +2969,11 @@
 
             if (!result.Success || result.Value is null)
             {
-                _paymentValidationError = result.ErrorMessage ?? "Unable to complete the payment.";
-                Feedback.Error(_paymentValidationError, "Payment failed");
+                _paymentValidationError = result.ErrorMessage ?? "Unable to complete the sale.";
+                Feedback.Fail(
+                    feedbackId,
+                    _paymentValidationError,
+                    "Sale not completed");
                 return;
             }
 
@@ -2980,12 +2989,21 @@
             AppState.LastPaymentReturnUrl = PatientContext.WithCustomer("/case-notes");
 
             _showConfirmPaymentModal = false;
+
+            Feedback.Resolve(
+                feedbackId,
+                $"Sale {result.Value.InvoiceNumber} completed successfully.",
+                "Sale completed");
+
             NavigationManager.NavigateTo("/complete-sales");
         }
         catch (Exception ex)
         {
-            _paymentValidationError = $"Unable to complete payment: {ex.Message}";
-            Feedback.Error(_paymentValidationError, "Payment failed");
+            _paymentValidationError = $"Unable to complete the sale: {ex.Message}";
+            Feedback.Fail(
+                feedbackId,
+                _paymentValidationError,
+                "Sale not completed");
         }
         finally
         {
@@ -3621,8 +3639,9 @@
         SelectedPaymentMethod = method.POSPaymentTypeName ?? $"Payment {method.POSPaymentTypeID}";
 
         var existing = BillingPaymentFor(method.POSPaymentTypeID);
-        _billingCalculatorDigits = existing?.Amount is > 0
-            ? ((long)Math.Round(existing.Amount.Value * 100m)).ToString()
+        var existingAmount = existing?.Amount ?? 0m;
+        _billingCalculatorDigits = existingAmount > 0m
+            ? ((long)Math.Round(existingAmount * 100m)).ToString()
             : string.Empty;
     }
 
