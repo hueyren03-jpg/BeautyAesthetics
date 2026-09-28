@@ -82,6 +82,13 @@ public sealed class CustomerService : ICustomerService
             return CustomerOperationResult<CustomerBalanceSnapshot>.Fail(ToCustomerError(creditResult.ErrorMessage));
         }
 
+        // The summary endpoint currently reports a package total that does not match
+        // the customer's actual remaining package quantities. Senang's displayed
+        // package total for the same customer matches the sum of the package-detail
+        // NetBalanceAfterUtilised values, so use the detail records as the source of truth.
+        summaryResult.Value.PackageBalance = packageResult.Value
+            .Sum(package => package.NetBalanceAfterUtilised);
+
         return CustomerOperationResult<CustomerBalanceSnapshot>.Ok(new CustomerBalanceSnapshot
         {
             Summary = summaryResult.Value,
@@ -103,6 +110,13 @@ public sealed class CustomerService : ICustomerService
         if (!result.Success || result.Value is null)
         {
             return CustomerOperationResult<MemberBalanceSummaryDTO>.Fail(ToCustomerError(result.ErrorMessage));
+        }
+
+        var packageResult = await customerAC.GetPackageBalanceDetailsAsync(customerId, cancellationToken);
+        if (packageResult.Success && packageResult.Value is not null)
+        {
+            result.Value.PackageBalance = packageResult.Value
+                .Sum(package => package.NetBalanceAfterUtilised);
         }
 
         return CustomerOperationResult<MemberBalanceSummaryDTO>.Ok(result.Value);
