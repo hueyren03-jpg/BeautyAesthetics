@@ -466,6 +466,7 @@ public sealed class CashSalesService : ICashSalesService
             line["DocumentLineID"] = string.Empty;
             line["DocumentID"] = string.Empty;
             line["InventoryID"] = item.InventoryId;
+            line["LineItemID"] = item.InventoryId;
             line["LineOrder"] = lineOrder++;
             line["Description"] = First(item.Description, item.Name, $"{transaction.Type} Item");
             line["ItemName"] = First(item.Name, item.Description, $"{transaction.Type} Item");
@@ -476,6 +477,9 @@ public sealed class CashSalesService : ICashSalesService
             line["Amount"] = lineTotal;
             line["TaxAmount"] = 0;
             line["InventoryTypeID"] = InventoryTypeFor(item.Category);
+            line["UnitOfMeasureID"] = item.UnitOfMeasureId;
+            line["TaxCodeID"] = item.TaxCodeId;
+            line["IsTaxInclusive"] = item.IsTaxInclusive;
             line["BranchID"] = transaction.BranchId;
             line["FinancialDate"] = transaction.Date;
             line["SaveAction"] = 1;
