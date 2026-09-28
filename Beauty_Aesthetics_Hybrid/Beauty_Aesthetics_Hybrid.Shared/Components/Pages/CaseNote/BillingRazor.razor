@@ -144,7 +144,7 @@
                     <div class="billing-header-left">
                         <div class="billing-title-row">
                             <i class="bi bi-wallet2"></i>
-                            <h2>Billing</h2>
+                            <h2>@(_billingStep == "payment" ? "Payment" : "Billing")</h2>
                         </div>
                     </div>
                     <div class="billing-header-right">
@@ -156,7 +156,9 @@
                 </div>
 
                 <!-- Billing Content -->
-                <div class="billing-content">
+                <div class="billing-content @(_billingStep == "payment" ? "billing-content--payment-step" : "billing-content--summary-step")">
+                    @if (_billingStep == "summary")
+                    {
                     <!-- Left: Items -->
                     <div class="billing-left">
                         <div class="billing-section">
@@ -366,9 +368,12 @@
                             </div>
                         </div>
                     </div>
+                    }
 
                     <!-- Right: Summary / Payment -->
-                    <div class="billing-right">
+                    <div class="billing-right @(_billingStep == "payment" ? "billing-right--payment-step" : string.Empty)">
+                        @if (_billingStep == "summary")
+                        {
                         <div class="billing-section">
                             <div class="section-header">
                                 <h3>Summary</h3>
@@ -410,6 +415,38 @@
                                 </div>
                             </div>
                         </div>
+
+
+                        <div class="billing-next-step">
+                            <button type="button" class="btn-proceed-payment" @onclick="GoToPayment">
+                                <span>Proceed to Payment</span>
+                                <i class="bi bi-arrow-right"></i>
+                            </button>
+                        </div>
+                        }
+
+                        @if (_billingStep == "payment")
+                        {
+                        <div class="billing-payment-page">
+                            <div class="payment-step-header">
+                                <button type="button" class="btn-back-to-billing" @onclick="BackToBilling">
+                                    <i class="bi bi-arrow-left"></i>
+                                    <span>Back to Billing</span>
+                                </button>
+                                <div class="payment-step-heading">
+                                    <span class="payment-step-kicker">Step 2 of 2</span>
+                                    <h3>Complete Payment</h3>
+                                    <p>Review the amount due and choose how the customer will pay.</p>
+                                </div>
+                            </div>
+
+                            <div class="payment-amount-hero">
+                                <div>
+                                    <span class="payment-amount-label">Total Payable</span>
+                                    <strong>RM @TotalPayable.ToString("N2")</strong>
+                                </div>
+                                <span class="payment-amount-status @BillingStatusCss">@BillingStatusText</span>
+                            </div>
 
                         <div class="billing-section">
                             <div class="section-header">
@@ -530,6 +567,8 @@
                                 <button class="btn-primary" @onclick="OnConfirmPaymentClicked">Confirm Payment</button>
                             </div>
                         </div>
+                        </div>
+                        }
                     </div>
                 </div>
             </div>
@@ -1317,6 +1356,7 @@
 
     private bool _isPatientInfoCollapsed = false;
     private bool _isPatientDrawerOpen = false;
+    private string _billingStep = "summary";
 
     private string VisitDate { get; set; } = DateTime.Now.ToString("dd/MM/yyyy");
     private string DoctorName { get; set; } = "Dr. Example";
@@ -2009,6 +2049,23 @@
 
         await Task.Delay(500);
         ClosePrescriptionModal();
+        StateHasChanged();
+    }
+
+    private void GoToPayment()
+    {
+        _billingStep = "payment";
+        _isPaymentMethodDropdownOpen = false;
+        _isCollectorDropdownOpen = false;
+        _isPatientDrawerOpen = false;
+        StateHasChanged();
+    }
+
+    private void BackToBilling()
+    {
+        _billingStep = "summary";
+        _isPaymentMethodDropdownOpen = false;
+        _isCollectorDropdownOpen = false;
         StateHasChanged();
     }
 
