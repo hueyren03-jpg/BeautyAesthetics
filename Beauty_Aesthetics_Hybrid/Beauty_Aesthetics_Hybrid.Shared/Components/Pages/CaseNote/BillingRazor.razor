@@ -2866,15 +2866,15 @@
             _completedReceiptNumber = result.Value.InvoiceNumber;
             BillingStatusText = "Paid";
 
-            var receiptSuffix = string.IsNullOrWhiteSpace(_completedReceiptNumber)
-                ? string.Empty
-                : $" Receipt: {_completedReceiptNumber}.";
-            Feedback.Success(
-                $"Payment of RM {AmountReceived:N2} completed successfully.{receiptSuffix}",
-                "Payment completed");
+            AppState.LastSaleDocumentId = result.Value.DocumentId;
+            AppState.LastReceiptNo = result.Value.InvoiceNumber;
+            AppState.LastPaidAmount = AmountReceived ?? TotalPayable;
+            AppState.LastPaymentMethod = PaymentMethodDisplay;
+            AppState.LastCompletedTransaction = result.Value;
+            AppState.LastPaymentReturnUrl = PatientContext.WithCustomer("/case-notes");
 
             _showConfirmPaymentModal = false;
-            _showPaymentSummaryModal = true;
+            NavigationManager.NavigateTo("/complete-sales");
         }
         catch (Exception ex)
         {
