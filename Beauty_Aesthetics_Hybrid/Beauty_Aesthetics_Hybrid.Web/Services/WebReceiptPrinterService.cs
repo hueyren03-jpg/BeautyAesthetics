@@ -76,11 +76,11 @@ body {{
 """);
 
         if (!string.IsNullOrWhiteSpace(data.CompanyName))
-            sb.Append($"<div class="center bold">{E(data.CompanyName)}</div>");
+            sb.Append($"<div class='center bold'>{E(data.CompanyName)}</div>");
         if (!string.IsNullOrWhiteSpace(data.BranchName))
-            sb.Append($"<div class="center">{E(data.BranchName)}</div>");
+            sb.Append($"<div class='center'>{E(data.BranchName)}</div>");
 
-        sb.Append("<div class="rule"></div>");
+        sb.Append("<div class='rule'></div>");
         sb.Append($"<div>Receipt: {E(data.ReceiptNo)}</div>");
         sb.Append($"<div>Date: {data.DateTimeOfSale:dd/MM/yyyy HH:mm}</div>");
 
@@ -89,39 +89,39 @@ body {{
         if (!string.IsNullOrWhiteSpace(data.CustomerPhone))
             sb.Append($"<div>Phone: {E(data.CustomerPhone)}</div>");
 
-        sb.Append("<div class="rule"></div>");
+        sb.Append("<div class='rule'></div>");
 
         foreach (var item in data.Items)
         {
-            sb.Append("<div class="item">");
-            sb.Append($"<div class="item-name">{E(item.Name)}</div>");
-            sb.Append($"<div class="item-meta"><span>{item.Quantity:0.##} × {item.UnitPrice:0.00}</span><span>{item.LineTotal:0.00}</span></div>");
+            sb.Append("<div class='item'>");
+            sb.Append($"<div class='item-name'>{E(item.Name)}</div>");
+            sb.Append($"<div class='item-meta'><span>{item.Quantity:0.##} × {item.UnitPrice:0.00}</span><span>{item.LineTotal:0.00}</span></div>");
             if (item.Discount > 0)
-                sb.Append($"<div class="item-meta muted"><span>Discount</span><span>-{item.Discount:0.00}</span></div>");
+                sb.Append($"<div class='item-meta muted'><span>Discount</span><span>-{item.Discount:0.00}</span></div>");
             if (!string.IsNullOrWhiteSpace(item.Remarks))
-                sb.Append($"<div class="muted">{E(item.Remarks)}</div>");
+                sb.Append($"<div class='muted'>{E(item.Remarks)}</div>");
             sb.Append("</div>");
         }
 
-        sb.Append("<div class="rule"></div>");
-        sb.Append($"<div class="row"><span>Subtotal</span><span>{data.Subtotal:0.00}</span></div>");
+        sb.Append("<div class='rule'></div>");
+        sb.Append($"<div class='row'><span>Subtotal</span><span>{data.Subtotal:0.00}</span></div>");
         if (data.Discount > 0)
-            sb.Append($"<div class="row"><span>Discount</span><span>-{data.Discount:0.00}</span></div>");
-        sb.Append($"<div class="row"><span>Tax</span><span>{data.TaxAmount:0.00}</span></div>");
-        sb.Append($"<div class="row total"><span>TOTAL</span><span>{data.GrandTotal:0.00}</span></div>");
+            sb.Append($"<div class='row'><span>Discount</span><span>-{data.Discount:0.00}</span></div>");
+        sb.Append($"<div class='row'><span>Tax</span><span>{data.TaxAmount:0.00}</span></div>");
+        sb.Append($"<div class='row total'><span>TOTAL</span><span>{data.GrandTotal:0.00}</span></div>");
 
-        sb.Append("<div class="rule"></div>");
+        sb.Append("<div class='rule'></div>");
         if (!string.IsNullOrWhiteSpace(data.CashierName))
             sb.Append($"<div>Cashier: {E(data.CashierName)}</div>");
 
         foreach (var payment in data.Payments)
-            sb.Append($"<div class="payment"><span>{E(payment.Method)}</span><span>{payment.Amount:0.00}</span></div>");
+            sb.Append($"<div class='payment'><span>{E(payment.Method)}</span><span>{payment.Amount:0.00}</span></div>");
 
         if (data.ChangeAmount > 0)
-            sb.Append($"<div class="payment"><span>Change</span><span>{data.ChangeAmount:0.00}</span></div>");
+            sb.Append($"<div class='payment'><span>Change</span><span>{data.ChangeAmount:0.00}</span></div>");
 
-        sb.Append("<div class="rule"></div>");
-        sb.Append("<div class="center">Thank you</div>");
+        sb.Append("<div class='rule'></div>");
+        sb.Append("<div class='center'>Thank you</div>");
         sb.Append("</div></body></html>");
 
         return sb.ToString();
