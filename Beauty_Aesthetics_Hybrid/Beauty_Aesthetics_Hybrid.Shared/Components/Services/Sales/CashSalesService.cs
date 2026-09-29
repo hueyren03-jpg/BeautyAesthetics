@@ -794,13 +794,16 @@ public sealed class CashSalesService : ICashSalesService
                 : item.MembershipCredit;
 
             var usedCredits = new JsonArray();
-            foreach (var allocation in EffectiveMemberCreditAllocations(item))
+            if (item.MemberCreditAllocations.Count > 1)
             {
-                usedCredits.Add(new JsonObject
+                foreach (var allocation in EffectiveMemberCreditAllocations(item))
                 {
-                    ["MemberCreditAccountID"] = allocation.MemberCreditAccountId,
-                    ["MemberCredit"] = allocation.Amount
-                });
+                    usedCredits.Add(new JsonObject
+                    {
+                        ["MemberCreditAccountID"] = allocation.MemberCreditAccountId,
+                        ["MemberCredit"] = allocation.Amount
+                    });
+                }
             }
             line["lstMembershipCredit"] = usedCredits;
 
