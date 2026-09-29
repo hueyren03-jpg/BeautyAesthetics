@@ -1335,7 +1335,7 @@
                     </div>
                 }
 
-                @* Add Member Credit Modal *@
+                @* Add/Edit Member Credit Modal - follows Senang Retail Top Up fields/workflow *@
                 @if (IsAddMemberCreditFormVisible)
                 {
                     <div class="member-credit-modal-overlay" @onclick="CloseAddMemberCreditForm">
@@ -1343,7 +1343,10 @@
                             <div class="member-credit-modal__header">
                                 <div class="member-credit-modal__title">
                                     <i class="bi bi-credit-card"></i>
-                                    <h2>Credit Setup</h2>
+                                    <div>
+                                        <h2>@(IsMemberCreditEditMode ? "Edit Member Credit" : "Add Member Credit")</h2>
+                                        <small>Configure the credit item and its membership credit amounts.</small>
+                                    </div>
                                 </div>
                                 <div class="member-credit-modal__actions">
                                     <button class="member-credit-modal__btn member-credit-modal__btn--save"
@@ -1356,50 +1359,203 @@
                                     </button>
                                 </div>
                             </div>
+
+                            <div class="senang-editor__tabs">
+                                <button type="button"
+                                        class="senang-editor__tab @(MemberCreditEditorTab == "Info" ? "active" : string.Empty)"
+                                        @onclick='() => MemberCreditEditorTab = "Info"'>
+                                    Info
+                                </button>
+                                <button type="button"
+                                        class="senang-editor__tab @(MemberCreditEditorTab == "Membership" ? "active" : string.Empty)"
+                                        @onclick='() => MemberCreditEditorTab = "Membership"'>
+                                    Membership
+                                    @if (MemberCreditMembershipCredits.Count > 0)
+                                    {
+                                        <span class="senang-editor__tab-badge">@MemberCreditMembershipCredits.Count</span>
+                                    }
+                                </button>
+                            </div>
+
                             <div class="member-credit-modal__body">
                                 <form class="member-credit-form" @onsubmit:preventDefault>
-                                    <div class="member-credit-form__field">
-                                        <label>Name</label>
-                                        <input type="text" @bind="NewMemberCreditName" placeholder="Enter credit name" required />
-                                    </div>
+                                    @if (MemberCreditEditorTab == "Info")
+                                    {
+                                        <div class="senang-editor__row senang-editor__row--code-name service-code-name-row">
+                                            <div class="senang-editor__field senang-editor__field--code">
+                                                <label>Display Code</label>
+                                                <input type="text" @bind="NewMemberCreditCode" placeholder="Display code" />
+                                            </div>
+                                            <div class="senang-editor__field senang-editor__field--grow">
+                                                <label>Member Credit Name <span>*</span></label>
+                                                <input type="text" @bind="NewMemberCreditName" placeholder="Enter member credit name" />
+                                            </div>
+                                        </div>
 
-                                    <div class="member-credit-form__field">
-                                        <label>Code</label>
-                                        <input type="text" @bind="NewMemberCreditCode" placeholder="Enter credit code" required />
-                                    </div>
+                                        <div class="senang-editor__row">
+                                            <div class="senang-editor__field senang-editor__field--grow">
+                                                <label>Item Group <span>*</span></label>
+                                                <select value="@NewMemberCreditItemGroupId" @onchange="OnMemberCreditItemGroupChanged">
+                                                    <option value="">Select item group</option>
+                                                    @foreach (var section in ServiceSections)
+                                                    {
+                                                        <option value="@section.SupportingTableID">@section.SupportingTableName</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                            <label class="point-setup-toggle" style="align-self:end; margin-bottom:0.35rem;">
+                                                <input type="checkbox" @bind="NewMemberCreditIsActive" />
+                                                <span><strong>Active</strong></span>
+                                            </label>
+                                        </div>
 
-                                    <div class="member-credit-form__field">
-                                        <label>Value of Credit (RM)</label>
-                                        <input type="number" step="0.01" @bind="NewMemberCreditValue" placeholder="0.00" required />
-                                    </div>
+                                        <div class="senang-editor__row">
+                                            <div class="senang-editor__field">
+                                                <label>Tax Code</label>
+                                                <select @bind="NewMemberCreditTaxCode">
+                                                    <option value="">Select Tax Code</option>
+                                                    <option value="SV-6">SV-6</option>
+                                                    <option value="SST-8">SST-8</option>
+                                                    <option value="GST-6">GST-6</option>
+                                                    <option value="NA">NA</option>
+                                                </select>
+                                            </div>
+                                            <div class="senang-editor__field">
+                                                <label>Inclusive Tax</label>
+                                                <div class="senang-editor__radio-group">
+                                                    <label>
+                                                        <input type="radio"
+                                                               name="member-credit-inclusive-tax"
+                                                               checked="@NewMemberCreditTaxInclusive"
+                                                               @onchange="@(() => NewMemberCreditTaxInclusive = true)" />
+                                                        <span>Yes</span>
+                                                    </label>
+                                                    <label>
+                                                        <input type="radio"
+                                                               name="member-credit-inclusive-tax"
+                                                               checked="@(!NewMemberCreditTaxInclusive)"
+                                                               @onchange="@(() => NewMemberCreditTaxInclusive = false)" />
+                                                        <span>No</span>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
 
-                                    <div class="member-credit-form__field">
-                                        <label>Price for this Credit (RM)</label>
-                                        <input type="number" step="0.01" min="0" @bind="NewMemberCreditPrice" placeholder="0.00" required />
-                                    </div>
+                                        <div class="senang-editor__field">
+                                            <label>Price (MYR)</label>
+                                            <input type="number" step="0.01" min="0" @bind="NewMemberCreditPrice" />
+                                        </div>
 
-                                    <div class="member-credit-form__field">
-                                        <label>Member Type</label>
-                                        <select @bind="NewMemberCreditMemberTypeId" required>
-                                            <option value="">Select member type</option>
-                                            @foreach (var memberType in MemberTypeItems.Where(item => item.Active))
+                                        <fieldset class="point-setup-section">
+                                            <legend>Visible at Branch</legend>
+                                            <div class="point-setup-section__title-row">
+                                                @if (BranchSession.AvailableBranches.Count > 0)
+                                                {
+                                                    <label class="point-setup-select-all">
+                                                        <input type="checkbox"
+                                                               checked="@AreAllMemberCreditBranchesSelected"
+                                                               @onchange="ToggleAllMemberCreditBranches" />
+                                                        All Branches
+                                                    </label>
+                                                }
+                                            </div>
+                                            <div class="point-setup-branch-list">
+                                                @if (BranchSession.AvailableBranches.Count == 0)
+                                                {
+                                                    <p class="point-setup-branch-empty">No branches are available.</p>
+                                                }
+                                                else
+                                                {
+                                                    @foreach (var branch in BranchSession.AvailableBranches)
+                                                    {
+                                                        <label class="point-setup-branch" for="memberCreditBranch_@branch.Id">
+                                                            <input id="memberCreditBranch_@branch.Id"
+                                                                   type="checkbox"
+                                                                   checked="@SelectedMemberCreditVisibleBranchIds.Contains(branch.Id)"
+                                                                   @onchange="e => ToggleMemberCreditBranch(branch.Id, e)" />
+                                                            <span><strong>@branch.Id</strong><small>@branch.Name</small></span>
+                                                        </label>
+                                                    }
+                                                }
+                                            </div>
+                                        </fieldset>
+                                    }
+                                    else
+                                    {
+                                        <div class="senang-package-form-section">
+                                            <div class="senang-package-form-group">
+                                                <label>Credit Expiry (Days)</label>
+                                                <input type="number"
+                                                       min="0"
+                                                       placeholder="0"
+                                                       @bind="NewMemberCreditValidityDays" />
+                                                <small>Use 0 when the credit should not have a configured expiry.</small>
+                                            </div>
+
+                                            @if (MemberCreditMembershipCredits.Count > 0)
                                             {
-                                                <option value="@memberType.MemberTypeID">@memberType.MemberTypeName (@memberType.MemberTypeID)</option>
+                                                <div class="senang-package-membership-header">
+                                                    <span class="senang-package-col-member">Member Type</span>
+                                                    <span>Credit Amount</span>
+                                                    <span></span>
+                                                </div>
+
+                                                @foreach (var entry in MemberCreditMembershipCredits)
+                                                {
+                                                    <div class="senang-package-membership-row" @key="entry.MemberTypeId">
+                                                        <div class="senang-package-col-member">
+                                                            <strong>@GetMemberCreditMemberTypeName(entry.MemberTypeId)</strong>
+                                                            <small>@entry.MemberTypeId</small>
+                                                        </div>
+                                                        <div>
+                                                            <input class="senang-package-item-input"
+                                                                   type="number"
+                                                                   min="0"
+                                                                   step="0.01"
+                                                                   @bind="entry.CreditAmount" />
+                                                        </div>
+                                                        <div class="senang-package-cell-center">
+                                                            <button type="button"
+                                                                    class="senang-package-remove-btn"
+                                                                    title="Remove"
+                                                                    @onclick="() => RemoveMemberCreditMemberType(entry)">
+                                                                &times;
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                }
                                             }
-                                        </select>
-                                        <small>Required so purchased credit can be created against the correct member-credit account.</small>
-                                    </div>
+                                            else
+                                            {
+                                                <div class="senang-package-empty">
+                                                    No member type configured. Add one below.
+                                                </div>
+                                            }
 
-                                    <div class="member-credit-form__field">
-                                        <label>Credit Expiry Days</label>
-                                        <input type="number" min="0" step="1" @bind="NewMemberCreditValidityDays" />
-                                        <small>Use 0 for no configured expiry.</small>
-                                    </div>
-
-                                    <div class="member-credit-form__field">
-                                        <label>Settlement Ratio</label>
-                                        <input type="number" min="0.01" step="0.01" @bind="NewMemberCreditSettlementRatio" required />
-                                    </div>
+                                            <div class="senang-editor__row" style="margin-top:1rem;">
+                                                <div class="senang-editor__field senang-editor__field--grow">
+                                                    <label>Add Member Type</label>
+                                                    <select @bind="NewMemberCreditMemberTypeToAdd">
+                                                        <option value="">Select member type</option>
+                                                        @foreach (var memberType in MemberTypeItems
+                                                            .Where(item => item.Active &&
+                                                                !MemberCreditMembershipCredits.Any(existing =>
+                                                                    string.Equals(existing.MemberTypeId, item.MemberTypeID, StringComparison.OrdinalIgnoreCase))))
+                                                        {
+                                                            <option value="@memberType.MemberTypeID">@memberType.MemberTypeName (@memberType.MemberTypeID)</option>
+                                                        }
+                                                    </select>
+                                                </div>
+                                                <button type="button"
+                                                        class="senang-package-add-type-btn senang-package-add-type-btn--single"
+                                                        style="align-self:end;"
+                                                        disabled="@string.IsNullOrWhiteSpace(NewMemberCreditMemberTypeToAdd)"
+                                                        @onclick="AddMemberCreditMemberType">
+                                                    + Add Member Type
+                                                </button>
+                                            </div>
+                                        </div>
+                                    }
 
                                     @if (!string.IsNullOrWhiteSpace(MemberCreditApiError))
                                     {
@@ -2387,8 +2543,8 @@
                 <div class="service-detail-modal__body">
                     <div class="service-record-view__metrics">
                         <div class="service-record-view__metric">
-                            <span>Credit value</span>
-                            <strong>MYR @MemberCreditDetailsItem.CreditValue.ToString("N2")</strong>
+                            <span>Membership rates</span>
+                            <strong>@(MemberCreditDetailsItem.MembershipCredits?.Count ?? 0)</strong>
                         </div>
                         <div class="service-record-view__metric">
                             <span>Selling price</span>
@@ -2399,8 +2555,8 @@
                             <strong>@(MemberCreditDetailsItem.ValidityDays > 0 ? $"{MemberCreditDetailsItem.ValidityDays} days" : "No limit")</strong>
                         </div>
                         <div class="service-record-view__metric">
-                            <span>Settlement ratio</span>
-                            <strong>@MemberCreditDetailsItem.SettlementRatio.ToString("N2")</strong>
+                            <span>Visible branches</span>
+                            <strong>@(MemberCreditDetailsItem.VisibleBranchIds?.Count ?? 0)</strong>
                         </div>
                     </div>
 
@@ -2410,12 +2566,44 @@
                             <h3>Credit details</h3>
                         </div>
                         <dl class="service-record-view__fields">
-                            <div><dt>Branch</dt><dd>@FormatDisplay(MemberCreditDetailsItem.BranchId)</dd></div>
-                            <div><dt>Member type</dt><dd>@FormatDisplay(MemberCreditDetailsItem.MemberTypeId)</dd></div>
+                            <div><dt>Item Group</dt><dd>@FormatDisplay(MemberCreditDetailsItem.ItemGroupName)</dd></div>
+                            <div><dt>Tax Code</dt><dd>@FormatDisplay(MemberCreditDetailsItem.TaxCode)</dd></div>
+                            <div><dt>Inclusive Tax</dt><dd>@(MemberCreditDetailsItem.IsTaxInclusive ? "Yes" : "No")</dd></div>
+                            <div><dt>Status</dt><dd>@(MemberCreditDetailsItem.IsActive ? "Active" : "Inactive")</dd></div>
                             <div><dt>Inventory type</dt><dd>@FormatDisplay(MemberCreditDetailsItem.InventoryTypeName)</dd></div>
-                            <div><dt>E-Invoice code</dt><dd>@FormatDisplay(MemberCreditDetailsItem.EInvoiceClassificationCode)</dd></div>
                             <div><dt>Code</dt><dd>@FormatDisplay(MemberCreditDetailsItem.Code)</dd></div>
+                            <div class="service-record-view__field--wide"><dt>Visible at Branch</dt><dd>@(MemberCreditDetailsItem.VisibleBranchIds?.Count > 0 ? string.Join(", ", MemberCreditDetailsItem.VisibleBranchIds) : "—")</dd></div>
                         </dl>
+                    </section>
+
+                    <section class="service-record-view__section">
+                        <div class="service-record-view__section-heading">
+                            <i class="bi bi-people" aria-hidden="true"></i>
+                            <h3>Membership Credit</h3>
+                        </div>
+                        @if (MemberCreditDetailsItem.MembershipCredits?.Count > 0)
+                        {
+                            <div class="senang-package-membership-header">
+                                <span class="senang-package-col-member">Member Type</span>
+                                <span>Credit Amount</span>
+                                <span></span>
+                            </div>
+                            @foreach (var credit in MemberCreditDetailsItem.MembershipCredits)
+                            {
+                                <div class="senang-package-membership-row">
+                                    <div class="senang-package-col-member">
+                                        <strong>@GetMemberCreditMemberTypeName(credit.MemberTypeId)</strong>
+                                        <small>@credit.MemberTypeId</small>
+                                    </div>
+                                    <div><strong>MYR @credit.CreditAmount.ToString("N2")</strong></div>
+                                    <div></div>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="senang-package-empty">No membership credit configured.</div>
+                        }
                     </section>
 
                     <section class="service-record-view__section">
@@ -3029,11 +3217,20 @@
     // Add Member Credit Form properties
     private string NewMemberCreditName { get; set; } = string.Empty;
     private string NewMemberCreditCode { get; set; } = string.Empty;
-    private decimal NewMemberCreditValue { get; set; } = 0.00m;
     private decimal NewMemberCreditPrice { get; set; } = 0.00m;
-    private string NewMemberCreditMemberTypeId { get; set; } = string.Empty;
+    private string NewMemberCreditItemGroupId { get; set; } = string.Empty;
+    private string NewMemberCreditItemGroupName { get; set; } = string.Empty;
+    private bool NewMemberCreditIsActive { get; set; } = true;
+    private string NewMemberCreditTaxCode { get; set; } = string.Empty;
+    private bool NewMemberCreditTaxInclusive { get; set; }
     private int NewMemberCreditValidityDays { get; set; }
-    private decimal NewMemberCreditSettlementRatio { get; set; } = 1m;
+    private string MemberCreditEditorTab { get; set; } = "Info";
+    private string NewMemberCreditMemberTypeToAdd { get; set; } = string.Empty;
+    private List<MemberCreditMembershipEntry> MemberCreditMembershipCredits { get; set; } = new();
+    private HashSet<string> SelectedMemberCreditVisibleBranchIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    private bool AreAllMemberCreditBranchesSelected =>
+        BranchSession.AvailableBranches.Count > 0 &&
+        BranchSession.AvailableBranches.All(branch => SelectedMemberCreditVisibleBranchIds.Contains(branch.Id));
 
     // Add Member Type Form properties
     private bool IsAddMemberTypeFormVisible { get; set; }
@@ -4886,19 +5083,48 @@
         }
 
         IsMemberCreditEditMode = true;
+        MemberCreditEditorTab = "Info";
         NewMemberCreditName = SelectedMemberCredit.Name;
         NewMemberCreditCode = SelectedMemberCredit.Code;
-        NewMemberCreditValue = SelectedMemberCredit.CreditValue;
         NewMemberCreditPrice = SelectedMemberCredit.Price;
-        NewMemberCreditMemberTypeId = SelectedMemberCredit.MemberTypeId;
+        NewMemberCreditItemGroupId = SelectedMemberCredit.ItemGroupId;
+        NewMemberCreditItemGroupName = SelectedMemberCredit.ItemGroupName;
+        NewMemberCreditIsActive = SelectedMemberCredit.IsActive;
+        NewMemberCreditTaxCode = SelectedMemberCredit.TaxCode;
+        NewMemberCreditTaxInclusive = SelectedMemberCredit.IsTaxInclusive;
         NewMemberCreditValidityDays = Math.Max(0, SelectedMemberCredit.ValidityDays);
-        NewMemberCreditSettlementRatio = SelectedMemberCredit.SettlementRatio > 0m
-            ? SelectedMemberCredit.SettlementRatio
-            : 1m;
+        NewMemberCreditMemberTypeToAdd = string.Empty;
+
+        MemberCreditMembershipCredits = (SelectedMemberCredit.MembershipCredits ?? [])
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.MemberTypeId))
+            .Select(entry => new MemberCreditMembershipEntry
+            {
+                MemberTypeId = entry.MemberTypeId,
+                CreditAmount = Math.Max(0m, entry.CreditAmount)
+            })
+            .ToList();
+
+        SelectedMemberCreditVisibleBranchIds.Clear();
+        foreach (var branchId in SelectedMemberCredit.VisibleBranchIds ?? [])
+        {
+            if (!string.IsNullOrWhiteSpace(branchId))
+            {
+                SelectedMemberCreditVisibleBranchIds.Add(branchId);
+            }
+        }
+
+        if (SelectedMemberCreditVisibleBranchIds.Count == 0)
+        {
+            SelectedMemberCreditVisibleBranchIds.Add(
+                string.IsNullOrWhiteSpace(SelectedMemberCredit.BranchId)
+                    ? ServiceBranchId
+                    : SelectedMemberCredit.BranchId);
+        }
+
         MemberCreditApiError = null;
         IsAddMemberCreditFormVisible = true;
         Feedback.Info(
-            SelectedMemberCredit is null ? "Opening member credit editor." : $"Editing member credit {SelectedMemberCredit.Name}.",
+            $"Editing member credit {SelectedMemberCredit.Name}.",
             "Edit member credit",
             2200);
     }
@@ -4906,10 +5132,10 @@
     // Member Credit Form methods
     private void ShowAddMemberCreditForm()
     {
-        IsAddMemberCreditFormVisible = true;
         ResetMemberCreditForm();
         SelectedMemberCredit = null;
         IsMemberCreditEditMode = false;
+        IsAddMemberCreditFormVisible = true;
     }
 
     private void CloseAddMemberCreditForm()
@@ -4924,12 +5150,79 @@
     {
         NewMemberCreditName = string.Empty;
         NewMemberCreditCode = string.Empty;
-        NewMemberCreditValue = 0.00m;
         NewMemberCreditPrice = 0.00m;
-        NewMemberCreditMemberTypeId = string.Empty;
+        NewMemberCreditItemGroupId = string.Empty;
+        NewMemberCreditItemGroupName = string.Empty;
+        NewMemberCreditIsActive = true;
+        NewMemberCreditTaxCode = string.Empty;
+        NewMemberCreditTaxInclusive = false;
         NewMemberCreditValidityDays = 0;
-        NewMemberCreditSettlementRatio = 1m;
+        MemberCreditEditorTab = "Info";
+        NewMemberCreditMemberTypeToAdd = string.Empty;
+        MemberCreditMembershipCredits.Clear();
+        SelectedMemberCreditVisibleBranchIds.Clear();
+        SelectedMemberCreditVisibleBranchIds.Add(ServiceBranchId);
         MemberCreditApiError = null;
+    }
+
+    private void OnMemberCreditItemGroupChanged(ChangeEventArgs e)
+    {
+        NewMemberCreditItemGroupId = e.Value?.ToString()?.Trim() ?? string.Empty;
+        NewMemberCreditItemGroupName = ServiceSections.FirstOrDefault(section =>
+            string.Equals(section.SupportingTableID, NewMemberCreditItemGroupId, StringComparison.OrdinalIgnoreCase))
+            ?.SupportingTableName?.Trim() ?? string.Empty;
+    }
+
+    private string GetMemberCreditMemberTypeName(string memberTypeId) =>
+        MemberTypeItems.FirstOrDefault(item =>
+            string.Equals(item.MemberTypeID, memberTypeId, StringComparison.OrdinalIgnoreCase))
+            ?.MemberTypeName ?? memberTypeId;
+
+    private void AddMemberCreditMemberType()
+    {
+        var memberTypeId = NewMemberCreditMemberTypeToAdd?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(memberTypeId) ||
+            MemberCreditMembershipCredits.Any(entry =>
+                string.Equals(entry.MemberTypeId, memberTypeId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        MemberCreditMembershipCredits.Add(new MemberCreditMembershipEntry
+        {
+            MemberTypeId = memberTypeId,
+            CreditAmount = 0m
+        });
+        NewMemberCreditMemberTypeToAdd = string.Empty;
+    }
+
+    private void RemoveMemberCreditMemberType(MemberCreditMembershipEntry entry)
+    {
+        MemberCreditMembershipCredits.Remove(entry);
+    }
+
+    private void ToggleMemberCreditBranch(string branchId, ChangeEventArgs e)
+    {
+        if (e.Value is true)
+        {
+            SelectedMemberCreditVisibleBranchIds.Add(branchId);
+        }
+        else
+        {
+            SelectedMemberCreditVisibleBranchIds.Remove(branchId);
+        }
+    }
+
+    private void ToggleAllMemberCreditBranches(ChangeEventArgs e)
+    {
+        SelectedMemberCreditVisibleBranchIds.Clear();
+        if (e.Value is true)
+        {
+            foreach (var branch in BranchSession.AvailableBranches)
+            {
+                SelectedMemberCreditVisibleBranchIds.Add(branch.Id);
+            }
+        }
     }
 
     private async Task HandleAddMemberCredit()
@@ -4941,14 +5234,28 @@
 
         if (string.IsNullOrWhiteSpace(NewMemberCreditName) ||
             string.IsNullOrWhiteSpace(NewMemberCreditCode) ||
-            string.IsNullOrWhiteSpace(NewMemberCreditMemberTypeId) ||
-            NewMemberCreditValue < 0 ||
+            string.IsNullOrWhiteSpace(NewMemberCreditItemGroupId) ||
             NewMemberCreditPrice < 0 ||
-            NewMemberCreditValidityDays < 0 ||
-            NewMemberCreditSettlementRatio <= 0m)
+            NewMemberCreditValidityDays < 0)
         {
-            MemberCreditApiError =
-                "Credit name, code, member type, credit value, price, expiry days, and a settlement ratio above zero are required.";
+            MemberCreditApiError = "Name, code, item group, price, and valid expiry days are required.";
+            MemberCreditEditorTab = "Info";
+            return;
+        }
+
+        if (SelectedMemberCreditVisibleBranchIds.Count == 0)
+        {
+            MemberCreditApiError = "Select at least one branch where this member credit is visible.";
+            MemberCreditEditorTab = "Info";
+            return;
+        }
+
+        if (MemberCreditMembershipCredits.Count == 0 ||
+            MemberCreditMembershipCredits.Any(entry =>
+                string.IsNullOrWhiteSpace(entry.MemberTypeId) || entry.CreditAmount <= 0m))
+        {
+            MemberCreditApiError = "Add at least one member type and enter a credit amount above zero for every member type.";
+            MemberCreditEditorTab = "Membership";
             return;
         }
 
@@ -4958,28 +5265,44 @@
         try
         {
             var existing = IsMemberCreditEditMode ? SelectedMemberCredit : null;
+            var allocations = MemberCreditMembershipCredits
+                .Select(entry => new MembershipViewModel.MemberCreditAllocation(
+                    entry.MemberTypeId.Trim(),
+                    Math.Max(0m, entry.CreditAmount)))
+                .ToList();
+
+            var visibleBranches = SelectedMemberCreditVisibleBranchIds
+                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var primaryBranch = visibleBranches.FirstOrDefault() ?? ServiceBranchId;
             var memberCredit = new MembershipViewModel.MemberCredit(
                 NewMemberCreditName.Trim(),
                 NewMemberCreditCode.Trim(),
-                NewMemberCreditValue,
+                allocations.First().CreditAmount,
                 NewMemberCreditPrice,
                 IsMemberCreditEditMode ? existing?.MasterAccountId : null,
-                Status: existing?.Status ?? "Active",
-                BranchId: ServiceBranchId,
+                Status: NewMemberCreditIsActive ? "Active" : "Inactive",
+                BranchId: primaryBranch,
                 InventoryTypeName: existing?.InventoryTypeName ?? "Member Credit",
-                SalesDescription: existing?.SalesDescription ?? NewMemberCreditName.Trim(),
+                SalesDescription: NewMemberCreditName.Trim(),
                 ValidityDays: NewMemberCreditValidityDays,
-                SettlementRatio: NewMemberCreditSettlementRatio,
                 AvailableDateFrom: existing?.AvailableDateFrom,
                 AvailableDateTo: existing?.AvailableDateTo,
                 AvailableTimeFrom: existing?.AvailableTimeFrom,
                 AvailableTimeTo: existing?.AvailableTimeTo,
                 EInvoiceClassificationCode: existing?.EInvoiceClassificationCode ?? "022",
-                MemberTypeId: NewMemberCreditMemberTypeId.Trim());
+                ItemGroupId: NewMemberCreditItemGroupId,
+                ItemGroupName: NewMemberCreditItemGroupName,
+                TaxCode: NewMemberCreditTaxCode.Trim(),
+                IsTaxInclusive: NewMemberCreditTaxInclusive,
+                IsActive: NewMemberCreditIsActive,
+                VisibleBranchIds: visibleBranches,
+                MembershipCredits: allocations);
 
             var result = IsMemberCreditEditMode
-                ? await MemberCreditService.UpdateMemberCreditAsync(memberCredit, ServiceBranchId)
-                : await MemberCreditService.CreateMemberCreditAsync(memberCredit, ServiceBranchId);
+                ? await MemberCreditService.UpdateMemberCreditAsync(memberCredit, primaryBranch)
+                : await MemberCreditService.CreateMemberCreditAsync(memberCredit, primaryBranch);
 
             if (!result.Success)
             {
@@ -6977,6 +7300,12 @@
         {
             ShowServiceFeedback($"Error updating services from Excel: {ex.Message}");
         }
+    }
+
+    private sealed class MemberCreditMembershipEntry
+    {
+        public string MemberTypeId { get; set; } = string.Empty;
+        public decimal CreditAmount { get; set; }
     }
 
     private sealed class BundleMembershipCreditEntry
