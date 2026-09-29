@@ -17,6 +17,7 @@
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.IServiceItemService ServiceItemService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Employees.IEmployeeService EmployeeService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Sales.ICashSalesService CashSalesService
+@inject Beauty_Aesthetics_WebPos.Components.Services.Sales.ICashDiscountService CashDiscountService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Files.IFileDownloadService FileDownloadService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Printing.IPrinterSelectionService PrinterSelectionService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Printing.IReceiptPrinterService ReceiptPrinterService
@@ -1289,6 +1290,27 @@
                 <h3>Apply Discount</h3>
             </div>
             <div class="modal-body">
+                <div class="discount-input-group">
+                    <label>Discount Rule</label>
+                    <select value="@_selectedDiscountRuleId"
+                            @onchange="OnDiscountRuleChanged"
+                            disabled="@_isDiscountRulesLoading">
+                        <option value="">Manual discount</option>
+                        @foreach (var rule in AvailableDiscountRules)
+                        {
+                            <option value="@rule.Id">@rule.DisplayLabel</option>
+                        }
+                    </select>
+                    @if (_isDiscountRulesLoading)
+                    {
+                        <small>Loading available discounts...</small>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(_discountRulesError) && AvailableDiscountRules.Count == 0)
+                    {
+                        <small>@_discountRulesError</small>
+                    }
+                </div>
+
                 <div class="discount-toggle-row">
                     <button class="discount-type-btn @(!_isPercentageDiscount ? "active" : "")" @onclick="() => SetDiscountType(false)">
                         RM (Fixed)
@@ -1546,6 +1568,8 @@
     // MC / insurance and summary values
     private decimal McCoverage { get; set; } = 150.00m;   // e.g. MC pays RM150
     private decimal BillDiscount { get; set; } = 0m;
+    private string BillDiscountCashDiscountId { get; set; } = string.Empty;
+    private string BillDiscountMemo { get; set; } = string.Empty;
     private readonly object BillDiscountToken = new();
 
     private decimal DiscountTotal =>
@@ -1558,7 +1582,7 @@
         ServiceItems.Sum(s => s.LineTotal + s.Discount);
 
     private decimal TaxRate { get; set; } = 0.06m; // 6% SST/GST example
-    private decimal TaxAmount => Math.Round((Subtotal - McCoverage - DiscountTotal) * TaxRate, 2);
+    private decimal TaxAmount => Math.Round(Math.Max(0m, Subtotal - McCoverage - DiscountTotal) * TaxRate, 2);
 
     private decimal TotalPayable =>
         Math.Max(0m, Subtotal - McCoverage - DiscountTotal + TaxAmount);
@@ -1630,6 +1654,13 @@
     private string _discountValue = string.Empty;
     private bool _isPercentageDiscount; // true = %, false = RM
     private string? _discountError;
+    private List<CashDiscountRuleDTO> AvailableDiscountRules { get; set; } = new();
+    private bool _isDiscountRulesLoading;
+    private string? _discountRulesError;
+    private string _selectedDiscountRuleId = string.Empty;
+    private CashDiscountRuleDTO? SelectedDiscountRule =>
+        AvailableDiscountRules.FirstOrDefault(rule =>
+            rule.Id.Equals(_selectedDiscountRuleId, StringComparison.OrdinalIgnoreCase));
 
     // Service picker modal state
     private bool _showServicePickerModal;
@@ -2157,7 +2188,9 @@
                   PrescriptionViewModel.NewDrugNotes,
                   drug.InventoryId,
                   drug.DrugCode,
-                  drug.StockQuantity
+                  drug.StockQuantity,
+                  _editingPrescriptionItem?.CashDiscountId ?? string.Empty,
+                  _editingPrescriptionItem?.DiscountMemo ?? string.Empty
               );
 
              if (_editingPrescriptionItem != null)
@@ -2317,9 +2350,42 @@
     {
         var catalogLoadTask = LoadBillingCatalogsAsync();
         var staffLoadTask = LoadBillingStaffAsync();
+        var discountLoadTask = LoadDiscountRulesAsync();
 
         await LoadBillingPatientAsync(force: true);
-        await Task.WhenAll(catalogLoadTask, staffLoadTask);
+        await Task.WhenAll(catalogLoadTask, staffLoadTask, discountLoadTask);
+    }
+
+    private async Task LoadDiscountRulesAsync()
+    {
+        _isDiscountRulesLoading = true;
+        _discountRulesError = null;
+
+        try
+        {
+            var branchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID)
+                ? "HQ"
+                : AppState.SelectedBranchID!;
+
+            var result = await CashDiscountService.LoadAvailableAsync(branchId);
+            AvailableDiscountRules = result.Success && result.Value is not null
+                ? result.Value.ToList()
+                : new List<CashDiscountRuleDTO>();
+
+            if (!result.Success)
+            {
+                _discountRulesError = result.ErrorMessage ?? "Unable to load discount rules.";
+            }
+        }
+        catch (Exception ex)
+        {
+            AvailableDiscountRules = new List<CashDiscountRuleDTO>();
+            _discountRulesError = $"Unable to load discount rules: {ex.Message}";
+        }
+        finally
+        {
+            _isDiscountRulesLoading = false;
+        }
     }
 
     protected override async Task OnParametersSetAsync()
@@ -2849,6 +2915,8 @@
             Quantity = item.Quantity,
             UnitPrice = item.UnitPrice,
             Discount = item.Discount,
+            CashDiscountId = item.CashDiscountId,
+            DiscountMemo = item.DiscountMemo,
             TotalPrice = item.LineTotal
         }));
 
@@ -2861,13 +2929,74 @@
             Quantity = item.Quantity,
             UnitPrice = item.UnitPrice,
             Discount = item.Discount,
+            CashDiscountId = item.CashDiscountId,
+            DiscountMemo = item.DiscountMemo,
             TotalPrice = item.LineTotal,
             UnitOfMeasureId = item.UnitOfMeasureId,
             TaxCodeId = item.TaxCode,
             IsTaxInclusive = item.IsTaxInclusive
         }));
 
+        ApplyBillDiscountToTransactionItems(items);
         return items;
+    }
+
+    private void ApplyBillDiscountToTransactionItems(List<TransactionItem> items)
+    {
+        if (BillDiscount <= 0m || items.Count == 0)
+        {
+            return;
+        }
+
+        var eligible = items
+            .Select(item => new
+            {
+                Item = item,
+                NetBeforeBillDiscount = Math.Max(0m, item.UnitPrice * Math.Max(1, item.Quantity) - item.Discount)
+            })
+            .Where(entry => entry.NetBeforeBillDiscount > 0m)
+            .ToList();
+
+        if (eligible.Count == 0)
+        {
+            return;
+        }
+
+        var remainingBase = eligible.Sum(entry => entry.NetBeforeBillDiscount);
+        var remainingDiscount = Math.Min(BillDiscount, remainingBase);
+
+        for (var index = 0; index < eligible.Count; index++)
+        {
+            var entry = eligible[index];
+            var allocation = index == eligible.Count - 1 || remainingBase <= 0m
+                ? remainingDiscount
+                : Math.Round(
+                    remainingDiscount * entry.NetBeforeBillDiscount / remainingBase,
+                    2,
+                    MidpointRounding.AwayFromZero);
+
+            allocation = Math.Clamp(allocation, 0m, entry.NetBeforeBillDiscount);
+            entry.Item.Discount += allocation;
+            entry.Item.TotalPrice = Math.Max(
+                0m,
+                entry.Item.UnitPrice * Math.Max(1, entry.Item.Quantity) - entry.Item.Discount);
+
+            if (string.IsNullOrWhiteSpace(entry.Item.CashDiscountId))
+            {
+                entry.Item.CashDiscountId = BillDiscountCashDiscountId;
+            }
+
+            if (!string.IsNullOrWhiteSpace(BillDiscountMemo) &&
+                !entry.Item.DiscountMemo.Contains(BillDiscountMemo, StringComparison.OrdinalIgnoreCase))
+            {
+                entry.Item.DiscountMemo = string.IsNullOrWhiteSpace(entry.Item.DiscountMemo)
+                    ? BillDiscountMemo
+                    : $"{entry.Item.DiscountMemo}; {BillDiscountMemo}";
+            }
+
+            remainingDiscount -= allocation;
+            remainingBase -= entry.NetBeforeBillDiscount;
+        }
     }
 
     private List<TransactionPayment> BuildBillingTransactionPayments() =>
@@ -3387,16 +3516,40 @@
     private void OpenDiscountModal(object item)
     {
         _selectedDiscountItem = item;
-        _discountValue = string.Empty;
-        _isPercentageDiscount = false; // Default to Fixed Amount
-        _showDiscountModal = true;
         _discountError = null;
+        _selectedDiscountRuleId = string.Empty;
+        _isPercentageDiscount = false;
+
+        switch (item)
+        {
+            case BillingItem billingItem:
+                _discountValue = billingItem.Discount > 0m ? billingItem.Discount.ToString("0.00") : string.Empty;
+                _selectedDiscountRuleId = billingItem.CashDiscountId;
+                break;
+            case BillingService billingService:
+                _discountValue = billingService.Discount > 0m ? billingService.Discount.ToString("0.00") : string.Empty;
+                _selectedDiscountRuleId = billingService.CashDiscountId;
+                break;
+            default:
+                if (ReferenceEquals(item, BillDiscountToken))
+                {
+                    _discountValue = BillDiscount > 0m ? BillDiscount.ToString("0.00") : string.Empty;
+                    _selectedDiscountRuleId = BillDiscountCashDiscountId;
+                }
+                break;
+        }
+
+        var rule = SelectedDiscountRule;
+        _isPercentageDiscount = rule is { IsOpenDiscount: false, CashDiscountTypeID: 1 };
+        _showDiscountModal = true;
     }
 
     private void CloseDiscountModal()
     {
         _showDiscountModal = false;
         _selectedDiscountItem = null;
+        _selectedDiscountRuleId = string.Empty;
+        _discountError = null;
     }
 
     // Billing payment calculator mirrors Sales > New Sale behavior.
@@ -3617,15 +3770,59 @@
 
     private void SetDiscountType(bool isPercentage)
     {
+        _selectedDiscountRuleId = string.Empty;
         _isPercentageDiscount = isPercentage;
         _discountError = null;
     }
 
     private void QuickApplyDiscount(string value, bool isPercentage)
     {
+        _selectedDiscountRuleId = string.Empty;
         _discountValue = value;
         _isPercentageDiscount = isPercentage;
         _discountError = null;
+    }
+
+    private void OnDiscountRuleChanged(ChangeEventArgs e)
+    {
+        _selectedDiscountRuleId = e.Value?.ToString() ?? string.Empty;
+        _discountError = null;
+
+        var rule = SelectedDiscountRule;
+        if (rule is null)
+        {
+            return;
+        }
+
+        _isPercentageDiscount = rule is { IsOpenDiscount: false, CashDiscountTypeID: 1 };
+
+        if (rule.IsOpenDiscount)
+        {
+            _discountValue = string.Empty;
+            _isPercentageDiscount = false;
+            return;
+        }
+
+        if (rule.TryCalculate(GetSelectedDiscountGross(), 0m, out var amount, out var error))
+        {
+            _discountValue = amount.ToString("0.00");
+        }
+        else
+        {
+            _discountError = error;
+        }
+    }
+
+    private decimal GetSelectedDiscountGross()
+    {
+        return _selectedDiscountItem switch
+        {
+            BillingItem item => Math.Max(0m, item.UnitPrice * item.Quantity),
+            BillingService service => Math.Max(0m, service.UnitPrice * service.Quantity),
+            _ when ReferenceEquals(_selectedDiscountItem, BillDiscountToken) =>
+                Math.Max(0m, PrescriptionItems.Sum(item => item.LineTotal) + ServiceItems.Sum(item => item.LineTotal)),
+            _ => 0m
+        };
     }
 
     private void HandleDiscountEnterKey(KeyboardEventArgs e)
@@ -3638,95 +3835,130 @@
 
     private void ApplyDiscount()
     {
-        if (_selectedDiscountItem == null) return;
-        _discountError = null;
-
-        if (decimal.TryParse(_discountValue, out var val))
+        if (_selectedDiscountItem is null)
         {
-            if (_selectedDiscountItem is BillingItem pItem)
-            {
-                var gross = pItem.UnitPrice * pItem.Quantity;
-                var newDiscount = val;
-                
-                if (_isPercentageDiscount)
-                {
-                    newDiscount = gross * (val / 100m);
-                }
-
-                if (newDiscount > gross)
-                {
-                    _discountError = $"Discount cannot exceed item total (RM {gross:N2})";
-                    Feedback.Warning(_discountError, "Discount not applied");
-                    return;
-                }
-
-                // Update list
-                var idx = PrescriptionItems.IndexOf(pItem);
-                if (idx >= 0)
-                {
-                    PrescriptionItems[idx] = pItem with { Discount = newDiscount };
-                }
-            }
-            else if (_selectedDiscountItem is BillingService sItem)
-            {
-                var gross = sItem.UnitPrice * sItem.Quantity;
-                var newDiscount = val;
-
-                if (_isPercentageDiscount)
-                {
-                    newDiscount = gross * (val / 100m);
-                }
-
-                if (newDiscount > gross)
-                {
-                    _discountError = $"Discount cannot exceed service total (RM {gross:N2})";
-                    Feedback.Warning(_discountError, "Discount not applied");
-                    return;
-                }
-
-                var idx = ServiceItems.IndexOf(sItem);
-                if (idx >= 0)
-                {
-                    ServiceItems[idx] = sItem with { Discount = newDiscount };
-                }
-            }
-            else if (_selectedDiscountItem == BillDiscountToken)
-            {
-                // Calculate gross based on Subtotal (items + services) - existing item discounts
-                // Effectively we are discounting the "Subtotal after item discounts"
-                // OR we can discount the raw Subtotal. 
-                // Let's discount the (Subtotal - ItemDiscounts) to avoid double dipping logic, 
-                // but usually "Bill Discount" is on the running total.
-                
-                var runningTotal = PrescriptionItems.Sum(i => i.LineTotal) + ServiceItems.Sum(s => s.LineTotal);
-                // Note: LineTotal already subtracts Item Discount. 
-                // So runningTotal is (Gross - ItemDiscounts).
-                
-                var newDiscount = val;
-
-                if (_isPercentageDiscount)
-                {
-                    newDiscount = runningTotal * (val / 100m);
-                }
-
-                if (newDiscount > runningTotal)
-                {
-                    _discountError = $"Discount cannot exceed current total (RM {runningTotal:N2})";
-                    Feedback.Warning(_discountError, "Discount not applied");
-                    return;
-                }
-
-                BillDiscount = newDiscount;
-            }
+            return;
         }
 
+        _discountError = null;
+        var gross = GetSelectedDiscountGross();
+        if (gross <= 0m)
+        {
+            _discountError = "There is no amount available to discount.";
+            Feedback.Warning(_discountError, "Discount not applied");
+            return;
+        }
+
+        var hasValue = decimal.TryParse(_discountValue, out var enteredValue);
+        var rule = SelectedDiscountRule;
+        decimal newDiscount;
+        string cashDiscountId;
+        string discountMemo;
+
+        if (rule is not null)
+        {
+            if (rule.IsOpenDiscount && (!hasValue || enteredValue < 0m))
+            {
+                _discountError = "Enter a valid discount amount.";
+                Feedback.Warning(_discountError, "Discount not applied");
+                return;
+            }
+
+            if (!rule.TryCalculate(gross, hasValue ? enteredValue : 0m, out newDiscount, out var ruleError))
+            {
+                _discountError = ruleError ?? "This discount cannot be applied.";
+                Feedback.Warning(_discountError, "Discount not applied");
+                return;
+            }
+
+            cashDiscountId = rule.Id;
+            discountMemo = rule.Description;
+        }
+        else
+        {
+            if (!hasValue || enteredValue < 0m)
+            {
+                _discountError = "Enter a valid discount amount.";
+                Feedback.Warning(_discountError, "Discount not applied");
+                return;
+            }
+
+            if (_isPercentageDiscount && enteredValue > 100m)
+            {
+                _discountError = "Percentage discount cannot exceed 100%.";
+                Feedback.Warning(_discountError, "Discount not applied");
+                return;
+            }
+
+            newDiscount = _isPercentageDiscount
+                ? Math.Round(gross * (enteredValue / 100m), 2, MidpointRounding.AwayFromZero)
+                : enteredValue;
+            newDiscount = Math.Clamp(newDiscount, 0m, gross);
+            cashDiscountId = string.Empty;
+            discountMemo = newDiscount > 0m
+                ? (_isPercentageDiscount
+                    ? $"Manual discount {enteredValue:0.##}%"
+                    : $"Manual discount RM {newDiscount:0.00}")
+                : string.Empty;
+        }
+
+        switch (_selectedDiscountItem)
+        {
+            case BillingItem item:
+            {
+                var index = PrescriptionItems.IndexOf(item);
+                if (index >= 0)
+                {
+                    PrescriptionItems[index] = item with
+                    {
+                        Discount = newDiscount,
+                        CashDiscountId = cashDiscountId,
+                        DiscountMemo = discountMemo
+                    };
+                }
+                break;
+            }
+            case BillingService service:
+            {
+                var index = ServiceItems.IndexOf(service);
+                if (index >= 0)
+                {
+                    ServiceItems[index] = service with
+                    {
+                        Discount = newDiscount,
+                        CashDiscountId = cashDiscountId,
+                        DiscountMemo = discountMemo
+                    };
+                }
+                break;
+            }
+            default:
+                if (ReferenceEquals(_selectedDiscountItem, BillDiscountToken))
+                {
+                    BillDiscount = newDiscount;
+                    BillDiscountCashDiscountId = cashDiscountId;
+                    BillDiscountMemo = discountMemo;
+                }
+                break;
+        }
+
+        SynchronizeBillingPaymentTotals();
         CloseDiscountModal();
-        Feedback.Success("Discount applied successfully.", "Discount applied", 2200);
+
+        if (newDiscount > 0m)
+        {
+            Feedback.Success($"Discount of RM {newDiscount:N2} applied.", "Discount applied", 2200);
+        }
+        else
+        {
+            Feedback.Info("Discount removed.", "Discount updated", 1800);
+        }
     }
 
     private record BillingItem(string Name, int Quantity, decimal UnitPrice, decimal Discount, 
         string? Frequency = null, string? Duration = null, string? Reason = null, string? Notes = null,
-        string SourceId = "", string Sku = "", decimal? AvailableStock = null)
+        string SourceId = "", string Sku = "", decimal? AvailableStock = null,
+        string CashDiscountId = "", string DiscountMemo = "")
     {
         public decimal LineTotal => Math.Max(0m, UnitPrice * Quantity - Discount);
     }
@@ -3744,7 +3976,9 @@
         string Duration = "",
         string UnitOfMeasureId = "",
         string TaxCode = "",
-        bool IsTaxInclusive = false)
+        bool IsTaxInclusive = false,
+        string CashDiscountId = "",
+        string DiscountMemo = "")
     {
         public decimal LineTotal => Math.Max(0m, UnitPrice * Quantity - Discount);
     }

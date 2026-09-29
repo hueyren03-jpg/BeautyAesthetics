@@ -70,6 +70,8 @@ namespace Beauty_Aesthetics_WebPos.Components.Models
         public decimal UnitPrice { get; set; }
         public decimal TotalPrice { get; set; }
         public decimal Discount { get; set; }
+        public string CashDiscountId { get; set; } = "";
+        public string DiscountMemo { get; set; } = "";
         public string UnitOfMeasureId { get; set; } = "";
         public string TaxCodeId { get; set; } = "";
         public decimal TaxPercentage { get; set; }

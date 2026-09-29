@@ -61,7 +61,9 @@ builder.Services.AddSingleton(sp => new HttpClient
 });
 builder.Services.AddScoped<AuthAC>();
             builder.Services.AddScoped<CashSalesAC>();
+            builder.Services.AddScoped<CashDiscountAC>();
             builder.Services.AddScoped<ICashSalesService, CashSalesService>();
+            builder.Services.AddScoped<ICashDiscountService, CashDiscountService>();
 builder.Services.AddScoped<IFileDownloadService, WebFileDownloadService>();
 builder.Services.AddScoped<IPrinterSelectionService, WebPrinterSelectionService>();
 builder.Services.AddScoped<IReceiptPrinterService, WebReceiptPrinterService>();

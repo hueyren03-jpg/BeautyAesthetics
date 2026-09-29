@@ -56,6 +56,8 @@ public sealed class PendingOrder
                 Quantity = i.Quantity,
                 UnitPrice = i.UnitPrice,
                 Discount = i.Discount,
+                CashDiscountId = i.CashDiscountId,
+                DiscountMemo = i.DiscountMemo,
                 TotalPrice = i.TotalPrice
             }).ToList(),
             Payments = Payments.Select(p => new TransactionPayment

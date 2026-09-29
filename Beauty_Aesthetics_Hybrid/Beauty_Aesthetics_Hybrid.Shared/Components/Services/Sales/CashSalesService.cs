@@ -665,6 +665,8 @@ public sealed class CashSalesService : ICashSalesService
             UnitPrice = unitPrice,
             TotalPrice = total != 0 ? total : quantity * unitPrice,
             Discount = Number(line, "DiscountAmount"),
+            CashDiscountId = Text(line, "CashDiscountID"),
+            DiscountMemo = Text(line, "Memo"),
             TaxCodeId = Text(line, "TaxCodeID"),
             TaxPercentage = Number(line, "TaxPercentage"),
             TaxAmount = Number(line, "TaxAmount"),
@@ -709,6 +711,8 @@ public sealed class CashSalesService : ICashSalesService
             line["Quantity"] = quantity;
             line["UnitPrice"] = item.UnitPrice;
             line["DiscountAmount"] = discount;
+            line["CashDiscountID"] = item.CashDiscountId;
+            line["Memo"] = item.DiscountMemo;
             line["SubTotal"] = lineTotal;
             line["Amount"] = lineTotal;
             line["TaxAmount"] = 0;

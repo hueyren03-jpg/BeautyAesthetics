@@ -8,6 +8,7 @@
 @using Beauty_Aesthetics_WebPos.Components.ViewModels
 @using Beauty_Aesthetics_WebPos.Models.DTOs
 @inject ICashSalesService CashSalesService
+@inject ICashDiscountService CashDiscountService
 @inject IPendingOrderService PendingOrderService
 @inject IBranchSessionService BranchSession
 @inject ICustomerService CustomerService
@@ -801,8 +802,22 @@
                 <input type="number" min="1" step="1" @bind="draftQuantity" />
             </label>
             <label>
+                <span>Discount Rule</span>
+                <select value="@draftCashDiscountId" @onchange="OnDraftDiscountRuleChanged">
+                    <option value="">Manual / No preset</option>
+                    @foreach (var rule in discountRules)
+                    {
+                        <option value="@rule.Id">@rule.DisplayLabel</option>
+                    }
+                </select>
+            </label>
+            <label>
                 <span>Discount (MYR)</span>
-                <input type="number" min="0" step="0.01" @bind="draftDiscount" />
+                <input type="number"
+                       min="0"
+                       step="0.01"
+                       @bind="draftDiscount"
+                       disabled="@(SelectedDraftDiscountRule is { IsOpenDiscount: false })" />
             </label>
         </div>
 
@@ -933,6 +948,9 @@
     private TransactionItem? editingCartItem;
     private int draftQuantity = 1;
     private decimal draftDiscount;
+    private string draftCashDiscountId = string.Empty;
+    private string draftDiscountMemo = string.Empty;
+    private List<CashDiscountRuleDTO> discountRules = new();
 
     private CashSalesPaymentTypeDTO? calculatorMethod;
     private bool mobileCartOpen;
@@ -945,7 +963,13 @@
         ? PaidAmount
         : currentOrder.Payments.Where(payment => payment.PaymentTypeId != calculatorMethod.POSPaymentTypeID).Sum(payment => payment.Amount);
     private decimal CalculatorRemaining => Math.Max(0, currentOrder.Total - PaidExcludingCalculatorMethod);
-    private decimal DraftTotal => editingCatalogItem is null ? 0 : Math.Max(0, editingCatalogItem.Price * Math.Max(1, draftQuantity) - draftDiscount);
+    private CashDiscountRuleDTO? SelectedDraftDiscountRule =>
+        discountRules.FirstOrDefault(rule =>
+            rule.Id.Equals(draftCashDiscountId, StringComparison.OrdinalIgnoreCase));
+    private decimal DraftResolvedDiscount => ResolveDraftDiscount(out _);
+    private decimal DraftTotal => editingCatalogItem is null
+        ? 0
+        : Math.Max(0, editingCatalogItem.Price * Math.Max(1, draftQuantity) - DraftResolvedDiscount);
     private decimal CalculatorAmount => decimal.TryParse(calculatorDigits, out var cents) ? cents / 100m : 0;
 
     private string ReceiptNumber => string.IsNullOrWhiteSpace(savedSale?.InvoiceNumber) ? currentOrder.OrderNumber : savedSale.InvoiceNumber;
@@ -1010,19 +1034,25 @@
             branchId,
             branch?.GroupId ?? string.Empty,
             string.Empty);
+        var discountTask = CashDiscountService.LoadAvailableAsync(branchId);
         var customerTask = CustomerService.SearchCustomersAsync(string.Empty);
         var productTask = ProductInventoryService.LoadProductsAsync(branchId);
         var serviceTask = ServiceItemService.LoadServiceItemsAsync(branchId);
 
-        await Task.WhenAll(paymentTask, customerTask, productTask, serviceTask);
+        await Task.WhenAll(paymentTask, discountTask, customerTask, productTask, serviceTask);
 
         var paymentResult = await paymentTask;
+        var discountResult = await discountTask;
         var customerResult = await customerTask;
         var productResult = await productTask;
         var serviceResult = await serviceTask;
 
         if (paymentResult.Success && paymentResult.Value is not null)
             paymentTypes = paymentResult.Value.ToList();
+
+        discountRules = discountResult.Success && discountResult.Value is not null
+            ? discountResult.Value.ToList()
+            : new List<CashDiscountRuleDTO>();
 
         if (customerResult.Success && customerResult.Value is not null)
         {
@@ -1216,6 +1246,8 @@
         editingCartItem = null;
         draftQuantity = 1;
         draftDiscount = 0;
+        draftCashDiscountId = string.Empty;
+        draftDiscountMemo = string.Empty;
     }
 
     private void EditCartItem(TransactionItem item)
@@ -1225,24 +1257,85 @@
             new CatalogItem(item.InventoryId, item.Name, string.Empty, item.Category, item.UnitPrice, ItemImage(item.Category, item.ImageUrl));
         draftQuantity = item.Quantity;
         draftDiscount = item.Discount;
+        draftCashDiscountId = item.CashDiscountId;
+        draftDiscountMemo = item.DiscountMemo;
     }
 
     private void CloseItemEditor()
     {
         editingCatalogItem = null;
         editingCartItem = null;
+        draftCashDiscountId = string.Empty;
+        draftDiscountMemo = string.Empty;
+    }
+
+    private void OnDraftDiscountRuleChanged(ChangeEventArgs e)
+    {
+        draftCashDiscountId = e.Value?.ToString() ?? string.Empty;
+        var rule = SelectedDraftDiscountRule;
+        draftDiscountMemo = rule?.Description ?? string.Empty;
+
+        if (rule is null)
+        {
+            return;
+        }
+
+        if (rule.IsOpenDiscount)
+        {
+            draftDiscount = 0m;
+            return;
+        }
+
+        if (rule.TryCalculate(
+                (editingCatalogItem?.Price ?? 0m) * Math.Max(1, draftQuantity),
+                0m,
+                out var calculated,
+                out _))
+        {
+            draftDiscount = calculated;
+        }
+    }
+
+    private decimal ResolveDraftDiscount(out string? error)
+    {
+        error = null;
+        if (editingCatalogItem is null)
+        {
+            return 0m;
+        }
+
+        var gross = editingCatalogItem.Price * Math.Max(1, draftQuantity);
+        var rule = SelectedDraftDiscountRule;
+        if (rule is null)
+        {
+            return Math.Clamp(draftDiscount, 0m, gross);
+        }
+
+        return rule.TryCalculate(gross, draftDiscount, out var discount, out error)
+            ? discount
+            : 0m;
     }
 
     private void ConfirmItem()
     {
         if (editingCatalogItem is null) return;
         var quantity = Math.Max(1, draftQuantity);
-        var discount = Math.Clamp(draftDiscount, 0, editingCatalogItem.Price * quantity);
+        var discount = ResolveDraftDiscount(out var discountError);
+        if (!string.IsNullOrWhiteSpace(discountError))
+        {
+            Feedback.Warning(discountError, "Discount not applied");
+            return;
+        }
+        discount = Math.Clamp(discount, 0, editingCatalogItem.Price * quantity);
 
         if (editingCartItem is null)
         {
             var existing = currentOrder.Items.FirstOrDefault(i =>
-                string.Equals(i.InventoryId, editingCatalogItem.Id, StringComparison.OrdinalIgnoreCase) && i.Discount == 0 && discount == 0);
+                string.Equals(i.InventoryId, editingCatalogItem.Id, StringComparison.OrdinalIgnoreCase) &&
+                i.Discount == 0 &&
+                discount == 0 &&
+                string.IsNullOrWhiteSpace(i.CashDiscountId) &&
+                string.IsNullOrWhiteSpace(draftCashDiscountId));
 
             if (existing is not null)
             {
@@ -1260,6 +1353,8 @@
                     Quantity = quantity,
                     UnitPrice = editingCatalogItem.Price,
                     Discount = discount,
+                    CashDiscountId = draftCashDiscountId,
+                    DiscountMemo = draftDiscountMemo,
                     TotalPrice = editingCatalogItem.Price * quantity - discount
                 });
             }
@@ -1268,6 +1363,8 @@
         {
             editingCartItem.Quantity = quantity;
             editingCartItem.Discount = discount;
+            editingCartItem.CashDiscountId = draftCashDiscountId;
+            editingCartItem.DiscountMemo = draftDiscountMemo;
             editingCartItem.TotalPrice = editingCartItem.UnitPrice * quantity - discount;
         }
 
@@ -1284,7 +1381,20 @@
             return;
         }
         item.Quantity = newQty;
-        item.TotalPrice = Math.Max(0, item.Quantity * item.UnitPrice - item.Discount);
+        var gross = item.Quantity * item.UnitPrice;
+        if (!string.IsNullOrWhiteSpace(item.CashDiscountId))
+        {
+            var rule = discountRules.FirstOrDefault(candidate =>
+                candidate.Id.Equals(item.CashDiscountId, StringComparison.OrdinalIgnoreCase));
+            if (rule is { IsOpenDiscount: false } &&
+                rule.TryCalculate(gross, item.Discount, out var recalculated, out _))
+            {
+                item.Discount = recalculated;
+            }
+        }
+
+        item.Discount = Math.Clamp(item.Discount, 0m, gross);
+        item.TotalPrice = Math.Max(0, gross - item.Discount);
         PendingOrderService.SaveOrUpdate(currentOrder);
     }
 
@@ -1490,6 +1600,8 @@
                     Quantity = i.Quantity,
                     UnitPrice = i.UnitPrice,
                     Discount = i.Discount,
+                    CashDiscountId = i.CashDiscountId,
+                    DiscountMemo = i.DiscountMemo,
                     TotalPrice = i.TotalPrice
                 }).ToList(),
                 Payments = currentOrder.Payments.Select(p => new TransactionPayment
@@ -1498,7 +1610,7 @@
                     PaymentMethod = p.PaymentMethod,
                     Amount = p.Amount
                 }).ToList(),
-                Subtotal = currentOrder.Subtotal,
+                Subtotal = Math.Max(0m, currentOrder.Subtotal - currentOrder.Discount),
                 Discount = currentOrder.Discount,
                 Tax = 0,
                 Amount = currentOrder.Total,

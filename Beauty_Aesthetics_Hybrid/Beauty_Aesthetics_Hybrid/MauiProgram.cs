@@ -62,7 +62,9 @@ namespace Beauty_Aesthetics_Hybrid
             });
             builder.Services.AddScoped<AuthAC>();
             builder.Services.AddScoped<CashSalesAC>();
+            builder.Services.AddScoped<CashDiscountAC>();
             builder.Services.AddScoped<ICashSalesService, CashSalesService>();
+            builder.Services.AddScoped<ICashDiscountService, CashDiscountService>();
             builder.Services.AddScoped<IFileDownloadService, MauiFileDownloadService>();
             builder.Services.AddSingleton<IPrinterSelectionService, MauiPrinterSelectionService>();
             builder.Services.AddSingleton<IReceiptPrinterService, MauiReceiptPrinterService>();
