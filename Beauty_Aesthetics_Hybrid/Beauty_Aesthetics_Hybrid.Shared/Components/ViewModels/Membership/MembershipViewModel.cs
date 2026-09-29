@@ -122,6 +122,7 @@ public sealed class MembershipViewModel
         bool IsTaxInclusive = false,
         bool IsActive = true,
         IReadOnlyList<string>? VisibleBranchIds = null,
+        IReadOnlyDictionary<string, string>? VisibleBranchGroupIds = null,
         IReadOnlyList<MemberCreditAllocation>? MembershipCredits = null
     );
 
