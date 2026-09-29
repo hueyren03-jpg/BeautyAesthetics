@@ -123,7 +123,8 @@ public sealed class MembershipViewModel
         bool IsActive = true,
         IReadOnlyList<string>? VisibleBranchIds = null,
         IReadOnlyDictionary<string, string>? VisibleBranchGroupIds = null,
-        IReadOnlyList<MemberCreditAllocation>? MembershipCredits = null
+        IReadOnlyList<MemberCreditAllocation>? MembershipCredits = null,
+        decimal SettlementRatio = 1m
     );
 
     public sealed record MemberCreditAllocation(
