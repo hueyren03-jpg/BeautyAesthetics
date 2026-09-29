@@ -111,13 +111,23 @@ public sealed class MembershipViewModel
         string InventoryTypeName = "",
         string SalesDescription = "",
         int ValidityDays = 0,
-        decimal SettlementRatio = 0,
         DateTime? AvailableDateFrom = null,
         DateTime? AvailableDateTo = null,
         TimeSpan? AvailableTimeFrom = null,
         TimeSpan? AvailableTimeTo = null,
         string EInvoiceClassificationCode = "",
-        string MemberTypeId = ""
+        string ItemGroupId = "",
+        string ItemGroupName = "",
+        string TaxCode = "",
+        bool IsTaxInclusive = false,
+        bool IsActive = true,
+        IReadOnlyList<string>? VisibleBranchIds = null,
+        IReadOnlyList<MemberCreditAllocation>? MembershipCredits = null
+    );
+
+    public sealed record MemberCreditAllocation(
+        string MemberTypeId,
+        decimal CreditAmount
     );
 }
 
