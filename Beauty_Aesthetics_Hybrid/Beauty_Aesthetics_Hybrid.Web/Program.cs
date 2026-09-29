@@ -75,6 +75,8 @@ builder.Services.AddScoped<WhatsAppService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<IAuthService>(sp => sp.GetRequiredService<AuthService>());
 builder.Services.AddScoped<CustomerAC>();
+builder.Services.AddScoped<CustomerVisitNoteAC>();
+builder.Services.AddScoped<IMedicalCertificateService, MedicalCertificateService>();
 builder.Services.AddScoped<CustomerRatingAC>();
 builder.Services.AddScoped<CustomerService>();
 builder.Services.AddScoped<ICustomerService>(sp => sp.GetRequiredService<CustomerService>());
