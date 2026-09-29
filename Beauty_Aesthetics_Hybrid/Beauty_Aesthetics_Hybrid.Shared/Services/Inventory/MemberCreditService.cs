@@ -65,6 +65,7 @@ public sealed class MemberCreditService : IMemberCreditService
                     record.IsTaxInclusive,
                     !string.Equals(status, "Inactive", StringComparison.OrdinalIgnoreCase),
                     string.IsNullOrWhiteSpace(record.BranchID) ? [] : [record.BranchID],
+                    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
                     allocations);
             })
             .OrderBy(memberCredit => memberCredit.Name)
