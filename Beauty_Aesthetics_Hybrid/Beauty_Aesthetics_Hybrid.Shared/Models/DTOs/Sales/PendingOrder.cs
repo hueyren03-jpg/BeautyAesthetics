@@ -1,4 +1,5 @@
 using Beauty_Aesthetics_WebPos.Components.Models;
+using Beauty_Aesthetics_WebPos.Components.Services.Tax;
 
 namespace Beauty_Aesthetics_WebPos.Models.DTOs;
 
@@ -24,10 +25,29 @@ public sealed class PendingOrder
 
     public decimal Subtotal => Items.Sum(x => Math.Max(1, x.Quantity) * x.UnitPrice);
     public decimal Discount => Items.Sum(x => Math.Clamp(x.Discount, 0, Math.Max(1, x.Quantity) * x.UnitPrice));
-    public decimal Total => Math.Max(0, Subtotal - Discount);
+    public decimal SubtotalBeforeTax => Items.Sum(x => CalculateLine(x).BeforeTax);
+    public decimal Tax => Items.Sum(x => CalculateLine(x).Tax);
+    public decimal Total => Math.Max(0m, Items.Sum(x =>
+    {
+        var line = CalculateLine(x);
+        return line.BeforeTax + line.Tax;
+    }));
     public int ItemCount => Items.Sum(x => Math.Max(1, x.Quantity));
     public decimal PaidAmount => Payments.Sum(x => x.Amount);
     public decimal Remaining => Math.Max(0, Total - PaidAmount);
+
+    private static (decimal BeforeTax, decimal Tax) CalculateLine(TransactionItem item)
+    {
+        OrderLineTaxCalculator.ComputeLineAmounts(
+            item.UnitPrice,
+            Math.Max(1, item.Quantity),
+            item.Discount,
+            item.TaxPercentage,
+            item.IsTaxInclusive,
+            out var beforeTax,
+            out var tax);
+        return (beforeTax, tax);
+    }
 
     public PendingOrder Clone()
     {
