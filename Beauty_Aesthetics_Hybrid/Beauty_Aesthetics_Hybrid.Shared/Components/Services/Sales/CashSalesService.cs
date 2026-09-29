@@ -713,7 +713,10 @@ public sealed class CashSalesService : ICashSalesService
             ActivityTypeId = Integer(line, "ActivityTypeID") == 0 ? 1 : Integer(line, "ActivityTypeID"),
             MemberCreditAccountId = Text(line, "MemberCreditAccountID"),
             MemberTypeId = Text(line, "MemberTypeID"),
-            MembershipCredit = Text(line, "MembershipCredit")
+            MembershipCredit = Text(line, "MembershipCredit"),
+            MemberCreditAllocations = ParseMemberCreditAllocations(
+                Text(line, "MembershipCredit"),
+                Text(line, "MemberTypeID"))
         };
     }
 
@@ -782,9 +785,13 @@ public sealed class CashSalesService : ICashSalesService
             line["TaxCodeID"] = item.TaxCodeId;
             line["IsTaxInclusive"] = item.IsTaxInclusive;
             line["ActivityTypeID"] = item.ActivityTypeId <= 0 ? 1 : item.ActivityTypeId;
-            line["MemberCreditAccountID"] = item.MemberCreditAccountId;
+            line["MemberCreditAccountID"] = item.MemberCreditAllocations.Count > 1
+                ? string.Empty
+                : item.MemberCreditAccountId;
             line["MemberTypeID"] = item.MemberTypeId;
-            line["MembershipCredit"] = item.MembershipCredit;
+            line["MembershipCredit"] = item.MemberCreditAllocations.Count > 1
+                ? SerializeMemberCreditAllocations(item.MemberCreditAllocations)
+                : item.MembershipCredit;
             line["BranchID"] = transaction.BranchId;
             line["EditBranchID"] = transaction.BranchId;
             line["GroupID"] = transaction.GroupId;
@@ -1025,10 +1032,8 @@ public sealed class CashSalesService : ICashSalesService
         var totalTendered = payments.Sum(payment => payment.Amount);
         var redeemedAmount = transaction.DocumentTypeId == 52
             ? transaction.Items
-                .Where(item =>
-                    item.ActivityTypeId == 6 &&
-                    !string.IsNullOrWhiteSpace(item.MemberCreditAccountId))
-                .Sum(item => item.TotalPrice)
+                .Where(item => item.ActivityTypeId == 6)
+                .Sum(GetRedeemedCreditAmount)
             : 0m;
         var cashDue = Math.Max(0m, transaction.Amount - redeemedAmount);
         var changeDue = Math.Max(0m, totalTendered - cashDue);
@@ -1064,34 +1069,38 @@ public sealed class CashSalesService : ICashSalesService
 
         if (transaction.DocumentTypeId == 52)
         {
-            foreach (var item in transaction.Items.Where(item =>
-                         item.ActivityTypeId == 6 &&
-                         !string.IsNullOrWhiteSpace(item.MemberCreditAccountId)))
+            foreach (var item in transaction.Items.Where(item => item.ActivityTypeId == 6))
             {
-                lines.Add(new JsonObject
+                var allocations = EffectiveMemberCreditAllocations(item);
+                foreach (var allocation in allocations)
                 {
-                    ["POSReceiptLineID"] = string.Empty,
-                    ["DocumentID"] = string.Empty,
-                    ["AccountID"] = transaction.AccountId,
-                    ["AccountTypeID"] = 3,
-                    ["Reference"] = $"{item.MemberTypeId} - ({item.MemberCreditAccountId})",
-                    ["Description"] = "Member Credit",
-                    ["POSPaymentTypeID"] = -10,
-                    ["POSReceiptLineAmount"] = item.TotalPrice,
-                    ["POSReceiptChangeAmount"] = 0m,
-                    ["SourceDocumentLineID"] = item.MemberCreditAccountId,
-                    ["InventoryID"] = item.InventoryId,
-                    ["FinancialAccountID"] = string.Empty,
-                    ["BankName"] = string.Empty,
-                    ["BranchID"] = transaction.BranchId,
-                    ["GroupID"] = transaction.GroupId,
-                    ["FinancialDate"] = transaction.Date,
-                    ["ExchangeRate"] = 1m,
-                    ["CurrencyID"] = "MYR",
-                    ["CurrencyName"] = "MYR",
-                    ["SaveAction"] = 1,
-                    ["IsDirty"] = true
-                });
+                    lines.Add(new JsonObject
+                    {
+                        ["POSReceiptLineID"] = string.Empty,
+                        ["DocumentID"] = string.Empty,
+                        ["AccountID"] = transaction.AccountId,
+                        ["AccountTypeID"] = 3,
+                        ["Reference"] = string.IsNullOrWhiteSpace(allocation.MemberTypeId)
+                            ? allocation.MemberCreditAccountId
+                            : $"{allocation.MemberTypeId} - ({allocation.MemberCreditAccountId})",
+                        ["Description"] = "Member Credit",
+                        ["POSPaymentTypeID"] = -10,
+                        ["POSReceiptLineAmount"] = allocation.Amount,
+                        ["POSReceiptChangeAmount"] = 0m,
+                        ["SourceDocumentLineID"] = allocation.MemberCreditAccountId,
+                        ["InventoryID"] = item.InventoryId,
+                        ["FinancialAccountID"] = string.Empty,
+                        ["BankName"] = string.Empty,
+                        ["BranchID"] = transaction.BranchId,
+                        ["GroupID"] = transaction.GroupId,
+                        ["FinancialDate"] = transaction.Date,
+                        ["ExchangeRate"] = 1m,
+                        ["CurrencyID"] = "MYR",
+                        ["CurrencyName"] = "MYR",
+                        ["SaveAction"] = 1,
+                        ["IsDirty"] = true
+                    });
+                }
             }
         }
 
@@ -1122,6 +1131,104 @@ public sealed class CashSalesService : ICashSalesService
         transaction.PaymentMethod = string.Join(" + ", transaction.Payments
             .Select(payment => payment.PaymentMethod)
             .Distinct(StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static decimal GetRedeemedCreditAmount(TransactionItem item)
+    {
+        if (item.MemberCreditAllocations.Count > 0)
+        {
+            return item.MemberCreditAllocations
+                .Where(allocation =>
+                    !string.IsNullOrWhiteSpace(allocation.MemberCreditAccountId) &&
+                    allocation.Amount > 0m)
+                .Sum(allocation => allocation.Amount);
+        }
+
+        return string.IsNullOrWhiteSpace(item.MemberCreditAccountId)
+            ? 0m
+            : Math.Max(0m, item.TotalPrice);
+    }
+
+    private static IReadOnlyList<MemberCreditAllocation> EffectiveMemberCreditAllocations(TransactionItem item)
+    {
+        var multiple = item.MemberCreditAllocations
+            .Where(allocation =>
+                !string.IsNullOrWhiteSpace(allocation.MemberCreditAccountId) &&
+                allocation.Amount > 0m)
+            .GroupBy(allocation => allocation.MemberCreditAccountId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new MemberCreditAllocation
+            {
+                MemberCreditAccountId = group.Key,
+                MemberTypeId = group.Select(x => x.MemberTypeId).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty,
+                Amount = group.Sum(x => x.Amount)
+            })
+            .ToList();
+
+        if (multiple.Count > 0)
+        {
+            return multiple;
+        }
+
+        if (string.IsNullOrWhiteSpace(item.MemberCreditAccountId))
+        {
+            return Array.Empty<MemberCreditAllocation>();
+        }
+
+        return new[]
+        {
+            new MemberCreditAllocation
+            {
+                MemberCreditAccountId = item.MemberCreditAccountId,
+                MemberTypeId = item.MemberTypeId,
+                Amount = Math.Max(0m, item.TotalPrice)
+            }
+        };
+    }
+
+    private static string SerializeMemberCreditAllocations(IEnumerable<MemberCreditAllocation> allocations) =>
+        string.Join(
+            "|",
+            allocations
+                .Where(allocation =>
+                    !string.IsNullOrWhiteSpace(allocation.MemberCreditAccountId) &&
+                    allocation.Amount > 0m)
+                .Select(allocation =>
+                    $"{allocation.MemberCreditAccountId.Trim()},{allocation.Amount:F2}"));
+
+    private static List<MemberCreditAllocation> ParseMemberCreditAllocations(
+        string? serialized,
+        string? fallbackMemberTypeId)
+    {
+        var result = new List<MemberCreditAllocation>();
+        if (string.IsNullOrWhiteSpace(serialized))
+        {
+            return result;
+        }
+
+        foreach (var row in serialized.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var columns = row.Split(',', StringSplitOptions.TrimEntries);
+            if (columns.Length < 2 ||
+                string.IsNullOrWhiteSpace(columns[0]) ||
+                !decimal.TryParse(
+                    columns[1],
+                    System.Globalization.NumberStyles.Number,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var amount) ||
+                amount <= 0m)
+            {
+                continue;
+            }
+
+            result.Add(new MemberCreditAllocation
+            {
+                MemberCreditAccountId = columns[0],
+                MemberTypeId = fallbackMemberTypeId ?? string.Empty,
+                Amount = amount
+            });
+        }
+
+        return result;
     }
 
     private static int InventoryTypeFor(string? category)
