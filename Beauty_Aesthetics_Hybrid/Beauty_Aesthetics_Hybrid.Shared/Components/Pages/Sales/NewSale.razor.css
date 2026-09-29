@@ -104,6 +104,23 @@ button, input, select, textarea { font: inherit; }
     white-space: nowrap;
 }
 
+/* Cart header uses a dedicated mode column so changing Sales/Redemption text
+   never moves the switch itself. Only the circle moves inside the pill. */
+.cart-stage-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 82px auto;
+    align-items: center;
+}
+
+.sale-mode-slot {
+    width: 82px;
+    min-width: 82px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    justify-self: center;
+}
+
 /* Sales / Redemption mode switch - mirrors Senang Retail's moving pill. */
 .senang-mode-toggle {
     appearance: none;
@@ -933,12 +950,13 @@ textarea:focus {
 
 .customer-strip {
     display: grid;
-    grid-template-columns: 46px minmax(210px, .8fr) minmax(430px, 1.55fr) auto;
+    grid-template-columns: 46px minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
     align-items: center;
-    gap: 14px;
+    gap: 10px 14px;
     padding: 14px 18px;
     background: #fff;
-    overflow: hidden;
+    overflow: visible;
 }
 .customer-avatar {
     display: grid;
@@ -975,8 +993,10 @@ textarea:focus {
     min-width: 0;
     width: 100%;
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 7px;
+    grid-column: 2 / -1;
+    grid-row: 2;
+    grid-template-columns: repeat(4, minmax(135px, 1fr));
+    gap: 8px;
     margin-left: 0;
 }
 
@@ -1021,9 +1041,10 @@ textarea:focus {
     font-size: 11.5px;
     line-height: 1.25;
     font-weight: 750;
+    font-variant-numeric: tabular-nums;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow: visible;
+    text-overflow: clip;
 }
 
 .customer-balance-warning {
@@ -1038,6 +1059,8 @@ textarea:focus {
 
 .customer-strip-actions {
     min-width: 0;
+    grid-column: 3;
+    grid-row: 1;
     display: flex;
     align-items: center;
     justify-content: flex-end;
@@ -1986,12 +2009,13 @@ textarea:focus {
    -------------------------------------------------------------------------- */
 @media (max-width: 1280px) {
     .customer-strip {
-        grid-template-columns: 46px minmax(200px, 1fr) auto;
+        grid-template-columns: 46px minmax(0, 1fr) auto;
     }
 
     .customer-balance-summary {
         grid-column: 1 / -1;
         grid-row: 2;
+        grid-template-columns: repeat(4, minmax(125px, 1fr));
     }
 
     .customer-strip-actions {
@@ -2012,6 +2036,13 @@ textarea:focus {
     }
     .sale-page-header h1 {
         font-size: 20px;
+    }
+    .cart-stage-header {
+        grid-template-columns: minmax(0, 1fr) 76px auto;
+    }
+    .sale-mode-slot {
+        width: 76px;
+        min-width: 76px;
     }
     .senang-toggle-pill {
         width: 74px;
@@ -2264,6 +2295,25 @@ textarea:focus {
     .sale-page-header p {
         display: none;
     }
+    .cart-stage-header {
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-rows: auto auto;
+        align-items: center;
+    }
+    .cart-stage-header > div:first-child {
+        grid-column: 1 / -1;
+        grid-row: 1;
+    }
+    .cart-stage-header .sale-mode-slot {
+        grid-column: 1;
+        grid-row: 2;
+        justify-self: start;
+    }
+    .cart-stage-header .sale-progress {
+        grid-column: 2;
+        grid-row: 2;
+        justify-self: end;
+    }
     .sale-page-icon {
         width: 38px;
         height: 38px;
@@ -2449,7 +2499,7 @@ textarea:focus {
         grid-column: 1 / -1;
         width: 100%;
         min-width: 0;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         margin-left: 0;
     }
     .customer-strip-actions {
@@ -2785,6 +2835,10 @@ textarea:focus {
 @media (max-width: 520px) {
     .customer-balance-summary {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .customer-balance-item {
+        min-width: 0;
     }
 }
 
