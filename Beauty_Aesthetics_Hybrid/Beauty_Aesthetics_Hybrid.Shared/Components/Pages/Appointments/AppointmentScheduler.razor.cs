@@ -2825,19 +2825,22 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
             CloseDateSelector();
         }
 
+        private bool IsAppointmentPaidForBilling(Appointment appointment)
+        {
+            var paidStatus = appointmentStatuses.FirstOrDefault(status =>
+                status.Name.Contains("paid", StringComparison.OrdinalIgnoreCase));
+
+            return appointment.PaymentStatus > 0 ||
+                   appointment.StatusName.Contains("paid", StringComparison.OrdinalIgnoreCase) ||
+                   (paidStatus is not null && appointment.Label == paidStatus.Value) ||
+                   (paidStatus is null && appointment.Label == 4);
+        }
+
         private void NavigateToBilling()
         {
             PrepareAppointmentReferences(editingAppointment);
 
-            var paidStatus = appointmentStatuses.FirstOrDefault(status =>
-                status.Name.Contains("paid", StringComparison.OrdinalIgnoreCase));
-            var isPaid =
-                editingAppointment.PaymentStatus > 0 ||
-                editingAppointment.StatusName.Contains("paid", StringComparison.OrdinalIgnoreCase) ||
-                (paidStatus is not null && editingAppointment.Label == paidStatus.Value) ||
-                (paidStatus is null && editingAppointment.Label == 4);
-
-            if (isPaid)
+            if (IsAppointmentPaidForBilling(editingAppointment))
             {
                 Feedback.Info(
                     "This appointment has already been paid. Payment cannot be created again.",
