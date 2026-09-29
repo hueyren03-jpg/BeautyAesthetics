@@ -1954,9 +1954,12 @@
             var credit = redeemableCredits.FirstOrDefault(item =>
                 string.Equals(item.ARAPOutstandingID, pair.Key, StringComparison.OrdinalIgnoreCase));
 
-            if (credit is null || !credit.IsRedeemable || credit.NetBalanceAfterUtilised <= 0m)
+            if (credit is null ||
+                !credit.IsRedeemable ||
+                credit.NetBalanceAfterUtilised <= 0m ||
+                (credit.DueDate.Year > 1900 && credit.DueDate.Date < DateTime.Today))
             {
-                Feedback.Warning($"Member Credit {pair.Key} is no longer redeemable.", "Credit unavailable");
+                Feedback.Warning($"Member Credit {pair.Key} is expired or no longer redeemable.", "Credit unavailable");
                 return;
             }
 
@@ -2184,7 +2187,8 @@
                 .Where(credit =>
                     credit.IsRedeemable &&
                     !string.IsNullOrWhiteSpace(credit.ARAPOutstandingID) &&
-                    credit.NetBalanceAfterUtilised > 0m)
+                    credit.NetBalanceAfterUtilised > 0m &&
+                    (credit.DueDate.Year <= 1900 || credit.DueDate.Date >= DateTime.Today))
                 .OrderBy(credit => credit.DueDate)
                 .ThenBy(credit => credit.ARAPOutstandingID)
                 .ToList();
@@ -2243,7 +2247,7 @@
         string.Join(
             "|",
             allocations.Select(allocation =>
-                $"{allocation.MemberCreditAccountId},{allocation.Amount:F2}"));
+                $"{allocation.MemberCreditAccountId},{allocation.Amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}"));
 
     private static string FormatCreditDate(DateTime value) =>
         value.Year <= 1900 ? "—" : value.ToString("dd/MM/yyyy");
