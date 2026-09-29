@@ -78,8 +78,8 @@
             {
                 <span class="sale-page-icon receipt-success"><i class="bi bi-check2-circle"></i></span>
                 <div>
-                    <h1>Sale Completed</h1>
-                    <p>Transaction saved successfully and ready to print.</p>
+                    <h1>@(currentOrder.IsRedemptionMode ? "Redemption Completed" : "Sale Completed")</h1>
+                    <p>@(currentOrder.IsRedemptionMode ? "Member Credit redemption saved successfully." : "Transaction saved successfully and ready to print.")</p>
                 </div>
             }
         </div>
@@ -450,11 +450,11 @@
                             <button type="button"
                                     class="@(string.IsNullOrEmpty(selectedType) ? "active" : null)"
                                     @onclick="() => SelectType(string.Empty)">
-                                All (@catalog.Count)
+                                All (@AvailableCatalogItems.Count())
                             </button>
                             @foreach (var type in ItemTypes)
                             {
-                                var typeCount = catalog.Count(x => string.Equals(x.Type, type, StringComparison.OrdinalIgnoreCase));
+                                var typeCount = AvailableCatalogItems.Count(x => string.Equals(x.Type, type, StringComparison.OrdinalIgnoreCase));
                                 <button type="button"
                                         class="@(selectedType == type ? "active" : null)"
                                         @onclick="() => SelectType(type)">
@@ -785,7 +785,7 @@
                 <span class="receipt-success"><i class="bi bi-check2"></i></span>
                 <div>
                     <span>Payment Successful</span>
-                    <h2>Sale Completed</h2>
+                    <h2>@(currentOrder.IsRedemptionMode ? "Redemption Completed" : "Sale Completed")</h2>
                     <p>The transaction has been saved successfully and is ready to print.</p>
                 </div>
             </header>
@@ -1276,10 +1276,15 @@
         !string.IsNullOrWhiteSpace(savedSale?.DocumentId);
 
     private static readonly string[] KeypadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
-    private IEnumerable<string> ItemTypes => catalog.Select(x => x.Type).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x);
+    private IEnumerable<CatalogItem> AvailableCatalogItems => catalog
+        .Where(x => !currentOrder.IsRedemptionMode || (x.InventoryTypeId != 5 && x.InventoryTypeId != 7));
 
-    private IEnumerable<CatalogItem> FilteredItems => catalog
-        .Where(x => !currentOrder.IsRedemptionMode || (x.InventoryTypeId != 5 && x.InventoryTypeId != 7))
+    private IEnumerable<string> ItemTypes => AvailableCatalogItems
+        .Select(x => x.Type)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(x => x);
+
+    private IEnumerable<CatalogItem> FilteredItems => AvailableCatalogItems
         .Where(x => string.IsNullOrWhiteSpace(selectedType) || x.Type.Equals(selectedType, StringComparison.OrdinalIgnoreCase))
         .Where(x => string.IsNullOrWhiteSpace(searchText) || x.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase) || x.Sku.Contains(searchText, StringComparison.OrdinalIgnoreCase));
 
@@ -1725,7 +1730,7 @@
         PendingOrderService.SaveOrUpdate(currentOrder);
         Feedback.Success(
             $"{creditTargetItem.Name} assigned to {creditTargetItem.MemberCreditAccountId}.",
-            "Member Credit applied",
+            "Member Credit updated",
             2200);
         CloseLineCreditSelector();
     }
