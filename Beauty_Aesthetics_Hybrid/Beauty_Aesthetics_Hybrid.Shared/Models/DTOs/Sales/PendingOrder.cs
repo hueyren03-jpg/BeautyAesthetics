@@ -93,7 +93,15 @@ public sealed class PendingOrder
                 ActivityTypeId = i.ActivityTypeId,
                 MemberCreditAccountId = i.MemberCreditAccountId,
                 MemberTypeId = i.MemberTypeId,
-                MembershipCredit = i.MembershipCredit
+                MembershipCredit = i.MembershipCredit,
+                MemberCreditAllocations = i.MemberCreditAllocations
+                    .Select(allocation => new MemberCreditAllocation
+                    {
+                        MemberCreditAccountId = allocation.MemberCreditAccountId,
+                        MemberTypeId = allocation.MemberTypeId,
+                        Amount = allocation.Amount
+                    })
+                    .ToList()
             }).ToList(),
             Payments = Payments.Select(p => new TransactionPayment
             {
