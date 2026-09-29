@@ -13,6 +13,7 @@
 @inject AppFeedbackService Feedback
 @inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext PatientContext
 @inject Beauty_Aesthetics_WebPos.Components.Services.Customers.ICustomerService CustomerService
+@inject Beauty_Aesthetics_WebPos.Components.Services.AppointmentService AppointmentService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.IProductInventoryService ProductInventoryService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.IServiceItemService ServiceItemService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.IMemberCreditService MemberCreditService
@@ -504,8 +505,11 @@
 
 
                         <div class="billing-next-step">
-                            <button type="button" class="btn-proceed-payment" @onclick="GoToPayment">
-                                <span>Proceed to Payment</span>
+                            <button type="button"
+                                    class="btn-proceed-payment"
+                                    disabled="@IsAppointmentPaymentLocked"
+                                    @onclick="GoToPayment">
+                                <span>@(IsAppointmentPaymentLocked ? "Already Paid" : "Proceed to Payment")</span>
                                 <i class="bi bi-arrow-right"></i>
                             </button>
                         </div>
@@ -794,7 +798,7 @@
 
                                     <button type="button"
                                             class="payment-confirm-button"
-                                            disabled="@(_isProcessingPayment || BillingPayments.Count == 0 || BillingPaidAmount < TotalPayable)"
+                                            disabled="@(_isProcessingPayment || IsAppointmentPaymentLocked || BillingPayments.Count == 0 || BillingPaidAmount < TotalPayable)"
                                             @onclick="OnConfirmPaymentClicked">
                                         <span>
                                             <small>Confirm payment</small>
@@ -1224,9 +1228,11 @@
                     <i class="bi bi-x-circle"></i>
                     <span>Cancel</span>
                 </button>
-                <button class="btn-modal-confirm" @onclick="ConfirmPaymentAsync">
+                <button class="btn-modal-confirm"
+                        disabled="@(_isProcessingPayment || IsAppointmentPaymentLocked)"
+                        @onclick="ConfirmPaymentAsync">
                     <i class="bi bi-check-circle-fill"></i>
-                    <span>Complete Payment</span>
+                    <span>@(IsAppointmentPaymentLocked ? "Already Paid" : "Complete Payment")</span>
                 </button>
             </div>
         </div>
@@ -1679,6 +1685,9 @@
     [SupplyParameterFromQuery(Name = "customerId")]
     public string? CustomerId { get; set; }
 
+    [SupplyParameterFromQuery(Name = "appointmentId")]
+    public string? AppointmentId { get; set; }
+
     private string? BillingErrorMessage => new[]
     {
         AmountReceivedError,
@@ -1686,7 +1695,8 @@
         _paymentValidationError,
         _paymentMethodsError,
         _postPaymentEmailError,
-        _discountError
+        _discountError,
+        _appointmentBillingError
     }.FirstOrDefault(message => !string.IsNullOrWhiteSpace(message));
 
     private void DismissBillingError()
@@ -1697,6 +1707,7 @@
         _paymentMethodsError = null;
         _postPaymentEmailError = string.Empty;
         _discountError = string.Empty;
+        _appointmentBillingError = null;
     }
 
     private string PatientName { get; set; } = "-";
@@ -1704,6 +1715,14 @@
     private string PatientPhone { get; set; } = "-";
     private string _billingCustomerId = string.Empty;
     private string? _loadedBillingCustomerKey;
+    private Appointment? _billingAppointment;
+    private bool _appointmentSaleExists;
+    private bool _paymentCommitted;
+    private string? _appointmentBillingError;
+    private bool IsAppointmentPaymentLocked =>
+        _paymentCommitted ||
+        _appointmentSaleExists ||
+        IsAppointmentPaid(_billingAppointment);
 
     private bool _isPatientInfoCollapsed = false;
     private bool _isPatientDrawerOpen = false;
@@ -2685,6 +2704,15 @@
 
     private void GoToPayment()
     {
+        if (IsAppointmentPaymentLocked)
+        {
+            Feedback.Info(
+                "This appointment has already been paid. Another payment cannot be created.",
+                "Appointment paid",
+                3200);
+            return;
+        }
+
         _billingStep = "payment";
         _isPaymentMethodDropdownOpen = false;
         _isCollectorDropdownOpen = false;
@@ -2712,7 +2740,141 @@
         var discountLoadTask = LoadDiscountRulesAsync();
 
         await LoadBillingPatientAsync(force: true);
+        await LoadBillingAppointmentAsync();
         await Task.WhenAll(catalogLoadTask, staffLoadTask, discountLoadTask);
+    }
+
+    private async Task LoadBillingAppointmentAsync()
+    {
+        _appointmentBillingError = null;
+
+        if (string.IsNullOrWhiteSpace(AppointmentId))
+        {
+            return;
+        }
+
+        var appointmentId = AppointmentId.Trim();
+        var loadResult = await AppointmentService.GetAppointmentByIdAsync(appointmentId);
+        if (!loadResult.Success || loadResult.Value is null)
+        {
+            _appointmentBillingError =
+                loadResult.ErrorMessage ?? $"Unable to load appointment {appointmentId}.";
+            Feedback.Warning(_appointmentBillingError, "Appointment status unavailable");
+            return;
+        }
+
+        _billingAppointment = loadResult.Value;
+
+        if (!string.IsNullOrWhiteSpace(_billingCustomerId) &&
+            !string.IsNullOrWhiteSpace(_billingAppointment.CustomerId) &&
+            !string.Equals(
+                _billingCustomerId,
+                _billingAppointment.CustomerId,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            _appointmentBillingError =
+                "The billing customer does not match the selected appointment customer.";
+            Feedback.Error(_appointmentBillingError, "Billing blocked");
+            _paymentCommitted = true;
+            return;
+        }
+
+        await CheckExistingAppointmentSaleAsync();
+
+        if (IsAppointmentPaymentLocked)
+        {
+            BillingStatusText = "Paid";
+            _billingStep = "summary";
+            BillingPayments.Clear();
+            SynchronizeBillingPaymentTotals();
+        }
+    }
+
+    private async Task CheckExistingAppointmentSaleAsync()
+    {
+        if (string.IsNullOrWhiteSpace(AppointmentId) || _billingAppointment is null)
+        {
+            return;
+        }
+
+        var branchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID)
+            ? _billingAppointment.BranchId
+            : AppState.SelectedBranchID!;
+
+        var appointmentDate = _billingAppointment.Start.Date;
+        var today = DateTime.Today;
+        var startDate = appointmentDate <= today ? appointmentDate.AddDays(-1) : today.AddDays(-1);
+        var endDate = appointmentDate >= today ? appointmentDate.AddDays(1) : today.AddDays(1);
+
+        var historyResult = await CashSalesService.LoadTransactionsAsync(
+            startDate,
+            endDate,
+            branchId ?? string.Empty,
+            resolvePaymentMethods: false);
+
+        if (!historyResult.Success || historyResult.Value is null)
+        {
+            return;
+        }
+
+        var existingSale = historyResult.Value.FirstOrDefault(transaction =>
+            !string.Equals(transaction.Status, "Cancelled", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(
+                transaction.ReferenceNumber?.Trim(),
+                AppointmentId.Trim(),
+                StringComparison.OrdinalIgnoreCase));
+
+        if (existingSale is null)
+        {
+            return;
+        }
+
+        _appointmentSaleExists = true;
+        _paymentCommitted = true;
+        _completedSaleDocumentId = existingSale.DocumentId;
+        _completedReceiptNumber = existingSale.InvoiceNumber;
+        BillingStatusText = "Paid";
+    }
+
+    private static bool IsAppointmentPaid(Appointment? appointment)
+    {
+        if (appointment is null)
+        {
+            return false;
+        }
+
+        return appointment.PaymentStatus > 0 ||
+               appointment.StatusName.Contains("paid", StringComparison.OrdinalIgnoreCase) ||
+               appointment.Label == 4;
+    }
+
+    private async Task<bool> MarkBillingAppointmentPaidAsync()
+    {
+        if (string.IsNullOrWhiteSpace(AppointmentId))
+        {
+            return true;
+        }
+
+        var appointmentId = AppointmentId.Trim();
+        var result = await AppointmentService.MarkAppointmentPaidAsync(appointmentId);
+        if (!result.Success || result.Value is null)
+        {
+            await Task.Delay(250);
+            result = await AppointmentService.MarkAppointmentPaidAsync(appointmentId);
+        }
+
+        if (!result.Success || result.Value is null)
+        {
+            _appointmentBillingError =
+                result.ErrorMessage ??
+                $"Sale was saved, but appointment {appointmentId} could not be marked paid.";
+            return false;
+        }
+
+        _billingAppointment = result.Value;
+        _appointmentSaleExists = true;
+        BillingStatusText = "Paid";
+        return true;
     }
 
     private async Task LoadDiscountRulesAsync()
@@ -3112,6 +3274,16 @@
     {
         _paymentValidationError = null;
 
+        if (IsAppointmentPaymentLocked)
+        {
+            _paymentValidationError = "This appointment has already been paid.";
+            Feedback.Info(
+                "This appointment has already been paid. Another payment cannot be created.",
+                "Appointment paid",
+                3200);
+            return;
+        }
+
         if (_isPaymentMethodsLoading)
         {
             _paymentValidationError = "Payment methods are still loading.";
@@ -3160,6 +3332,16 @@
 
     private async Task ConfirmPaymentAsync()
     {
+        if (IsAppointmentPaymentLocked)
+        {
+            Feedback.Info(
+                "This appointment has already been paid. Another payment cannot be created.",
+                "Appointment paid",
+                3200);
+            _showConfirmPaymentModal = false;
+            return;
+        }
+
         SynchronizeBillingPaymentTotals();
 
         if (AmountReceived is null || AmountReceived < TotalPayable)
@@ -3240,6 +3422,7 @@
             Date = DateTime.Now,
             CustomerName = PatientName,
             CustomerContact = PatientPhone == "-" ? string.Empty : PatientPhone,
+            ReferenceNumber = AppointmentId?.Trim() ?? string.Empty,
             Branch = AppState.CurrentBranch?.Name ?? branchId,
             Type = MemberCreditItems.Count > 0 && PrescriptionItems.Count == 0 && ServiceItems.Count == 0
                 ? "Member Credit"
@@ -3485,6 +3668,8 @@
     private string BuildBillingPaymentNotes()
     {
         var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(AppointmentId))
+            parts.Add($"Appointment {AppointmentId.Trim()}");
         if (BillDiscount > 0m) parts.Add($"Bill Discount RM {BillDiscount:N2}");
         if (!string.IsNullOrWhiteSpace(SelectedCollectorId)) parts.Add($"Collector {SelectedCollector} ({SelectedCollectorId})");
         return string.Join(" | ", parts);
