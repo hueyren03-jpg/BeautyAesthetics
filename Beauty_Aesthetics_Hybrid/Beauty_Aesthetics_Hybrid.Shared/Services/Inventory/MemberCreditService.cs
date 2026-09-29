@@ -67,7 +67,10 @@ public sealed class MemberCreditService : IMemberCreditService
                     !string.Equals(status, "Inactive", StringComparison.OrdinalIgnoreCase),
                     string.IsNullOrWhiteSpace(record.BranchID) ? [] : [record.BranchID],
                     new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
-                    allocations);
+                    allocations,
+                    SettlementRatio: Convert.ToDecimal(record.MemberCreditSettlementRatio) > 0m
+                        ? Convert.ToDecimal(record.MemberCreditSettlementRatio)
+                        : 1m);
             })
             .OrderBy(memberCredit => memberCredit.Name)
             .ToList();
@@ -177,7 +180,10 @@ public sealed class MemberCreditService : IMemberCreditService
                         group => group.Key,
                         group => group.First().GroupId?.Trim() ?? string.Empty,
                         StringComparer.OrdinalIgnoreCase),
-                allocations));
+                allocations,
+                SettlementRatio: Convert.ToDecimal(record.MemberCreditSettlementRatio) > 0m
+                    ? Convert.ToDecimal(record.MemberCreditSettlementRatio)
+                    : 1m));
     }
 
     public async Task<ApiCallResult<bool>> CreateMemberCreditAsync(
