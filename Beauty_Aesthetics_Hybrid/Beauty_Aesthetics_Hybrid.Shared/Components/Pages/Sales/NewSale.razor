@@ -28,7 +28,7 @@
 
 <main class="sale-page">
     @* ========================================= 1. MAIN HEADER ========================================= *@
-    <header class="sale-page-header @(stage is SaleStage.Payment or SaleStage.Complete ? "mobile-step-header" : null)">
+    <header class="sale-page-header @(stage == SaleStage.Cart ? "cart-stage-header" : null) @(stage is SaleStage.Payment or SaleStage.Complete ? "mobile-step-header" : null)">
         <div>
             @if (stage == SaleStage.PendingOrders)
             {
@@ -62,18 +62,7 @@
                     <h1>@(currentOrder.IsRedemptionMode ? "Select Redemption Items" : "Select Items")</h1>
                     <p>@(currentOrder.IsRedemptionMode ? "Member Credit Redemption" : "Sales") · @(string.IsNullOrWhiteSpace(currentOrder.CustomerName) ? "Customer" : currentOrder.CustomerName) (@currentOrder.OrderNumber)</p>
                 </div>
-                <button type="button"
-                        class="senang-mode-toggle"
-                        @onclick="ToggleRedemptionModeAsync"
-                        disabled="@string.IsNullOrWhiteSpace(currentOrder.AccountId)"
-                        title="@(currentOrder.IsRedemptionMode ? "Switch to Sales mode" : "Switch to Redemption mode")"
-                        aria-label="@(currentOrder.IsRedemptionMode ? "Switch to Sales mode" : "Switch to Redemption mode")">
-                    <span class="senang-toggle-pill @(currentOrder.IsRedemptionMode ? "redemption" : "sales")"
-                          aria-hidden="true">
-                        <span class="senang-toggle-circle"></span>
-                        <span class="senang-toggle-label">@(currentOrder.IsRedemptionMode ? "R" : "S")</span>
-                    </span>
-                </button>
+
             }
             else if (stage == SaleStage.Payment)
             {
@@ -95,6 +84,24 @@
                 </div>
             }
         </div>
+
+        @if (stage == SaleStage.Cart)
+        {
+            <div class="sale-mode-slot" aria-label="Sales mode selector">
+                <button type="button"
+                        class="senang-mode-toggle"
+                        @onclick="ToggleRedemptionModeAsync"
+                        disabled="@string.IsNullOrWhiteSpace(currentOrder.AccountId)"
+                        title="@(currentOrder.IsRedemptionMode ? "Switch to Sales mode" : "Switch to Redemption mode")"
+                        aria-label="@(currentOrder.IsRedemptionMode ? "Switch to Sales mode" : "Switch to Redemption mode")">
+                    <span class="senang-toggle-pill @(currentOrder.IsRedemptionMode ? "redemption" : "sales")"
+                          aria-hidden="true">
+                        <span class="senang-toggle-circle"></span>
+                        <span class="senang-toggle-label">@(currentOrder.IsRedemptionMode ? "R" : "S")</span>
+                    </span>
+                </button>
+            </div>
+        }
 
         <div class="sale-progress" aria-label="Sale progress">
             @if (stage == SaleStage.PendingOrders)
