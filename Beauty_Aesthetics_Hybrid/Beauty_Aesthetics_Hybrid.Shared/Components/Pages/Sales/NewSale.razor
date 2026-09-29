@@ -63,18 +63,15 @@
                     <p>@(currentOrder.IsRedemptionMode ? "Member Credit Redemption" : "Sales") · @(string.IsNullOrWhiteSpace(currentOrder.CustomerName) ? "Customer" : currentOrder.CustomerName) (@currentOrder.OrderNumber)</p>
                 </div>
                 <button type="button"
-                        class="sale-mode-control @(currentOrder.IsRedemptionMode ? "redemption" : "sales")"
+                        class="senang-mode-toggle"
                         @onclick="ToggleRedemptionModeAsync"
                         disabled="@string.IsNullOrWhiteSpace(currentOrder.AccountId)"
                         title="@(currentOrder.IsRedemptionMode ? "Switch to Sales mode" : "Switch to Redemption mode")"
                         aria-label="@(currentOrder.IsRedemptionMode ? "Switch to Sales mode" : "Switch to Redemption mode")">
-                    <span class="sale-mode-track" aria-hidden="true">
-                        <span class="sale-mode-knob"></span>
-                        <span class="sale-mode-letter">@(currentOrder.IsRedemptionMode ? "R" : "S")</span>
-                    </span>
-                    <span class="sale-mode-label">
-                        <small>Mode</small>
-                        <strong>@(currentOrder.IsRedemptionMode ? "Redemption" : "Sales")</strong>
+                    <span class="senang-toggle-pill @(currentOrder.IsRedemptionMode ? "redemption" : "sales")"
+                          aria-hidden="true">
+                        <span class="senang-toggle-circle"></span>
+                        <span class="senang-toggle-label">@(currentOrder.IsRedemptionMode ? "R" : "S")</span>
                     </span>
                 </button>
             }
@@ -1284,8 +1281,17 @@
         !string.IsNullOrWhiteSpace(savedSale?.DocumentId);
 
     private static readonly string[] KeypadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+    // Match Senang Retail DocumentTypeID 52 rules:
+    // Package (5), Member Credit / Top Up (7), and Deposit (11) are purchase-only.
+    // Normal Product (1) and Service (3) remain available for Member Credit redemption.
+    private static bool IsRedemptionRestrictedPurchaseType(int inventoryTypeId) =>
+        inventoryTypeId is 5 or 7 or 11;
+
+    private static bool IsRedeemableSalesCatalogItem(CatalogItem item) =>
+        !IsRedemptionRestrictedPurchaseType(item.InventoryTypeId);
+
     private IEnumerable<CatalogItem> AvailableCatalogItems => catalog
-        .Where(x => !currentOrder.IsRedemptionMode || (x.InventoryTypeId != 5 && x.InventoryTypeId != 7));
+        .Where(x => !currentOrder.IsRedemptionMode || IsRedeemableSalesCatalogItem(x));
 
     private IEnumerable<string> ItemTypes => AvailableCatalogItems
         .Select(x => x.Type)
@@ -1620,7 +1626,7 @@
             }
 
             var removedCount = currentOrder.Items.RemoveAll(item =>
-                item.InventoryTypeId == 5 || item.InventoryTypeId == 7);
+                IsRedemptionRestrictedPurchaseType(item.InventoryTypeId));
             currentOrder.IsRedemptionMode = true;
             currentOrder.Payments.Clear();
             ClearAllLineCreditSelections();
@@ -1629,7 +1635,7 @@
             if (removedCount > 0)
             {
                 Feedback.Info(
-                    $"{removedCount} Package/Member Credit purchase item(s) were removed because they cannot be purchased in Redemption Mode.",
+                    $"{removedCount} non-redeemable purchase item(s) were removed. Senang Redemption Mode allows normal Product and Service items, but not Package, Member Credit/Top Up, or Deposit purchases.",
                     "Redemption mode");
             }
         }
@@ -2039,9 +2045,11 @@
 
     private async Task OpenItemEditor(CatalogItem item)
     {
-        if (currentOrder.IsRedemptionMode && (item.InventoryTypeId == 5 || item.InventoryTypeId == 7))
+        if (currentOrder.IsRedemptionMode && IsRedemptionRestrictedPurchaseType(item.InventoryTypeId))
         {
-            Feedback.Warning("Package and Member Credit purchase items are not available in Redemption Mode.", "Redemption mode");
+            Feedback.Warning(
+                "This purchase item is not available in Redemption Mode. Use Product or Service items for Member Credit redemption.",
+                "Redemption mode");
             return;
         }
 
