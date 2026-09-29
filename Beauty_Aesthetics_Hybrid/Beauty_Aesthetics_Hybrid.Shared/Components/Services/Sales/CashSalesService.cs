@@ -661,7 +661,14 @@ public sealed class CashSalesService : ICashSalesService
             Name = First(Text(line, "ItemName"), Text(line, "Description"), "Item")!,
             Description = Text(line, "Description"),
             Remarks = Text(line, "RefCompanyName"),
-            Category = inventoryType == 3 ? "Service" : "Product",
+            Category = inventoryType switch
+            {
+                3 => "Service",
+                5 => "Package",
+                7 => "Member Credit",
+                _ => "Product"
+            },
+            InventoryTypeId = inventoryType,
             Quantity = (int)Math.Max(1, quantity),
             UnitPrice = unitPrice,
             TotalPrice = total != 0 ? total : quantity * unitPrice,
@@ -732,7 +739,9 @@ public sealed class CashSalesService : ICashSalesService
             line["TaxPercentage"] = item.TaxPercentage;
             line["TaxAmount"] = lineTax;
             line["ConvertedTaxAmount"] = lineTax;
-            line["InventoryTypeID"] = InventoryTypeFor(item.Category);
+            line["InventoryTypeID"] = item.InventoryTypeId > 0
+                ? item.InventoryTypeId
+                : InventoryTypeFor(item.Category);
             line["UnitOfMeasureID"] = item.UnitOfMeasureId;
             line["TaxCodeID"] = item.TaxCodeId;
             line["IsTaxInclusive"] = item.IsTaxInclusive;
@@ -830,8 +839,10 @@ public sealed class CashSalesService : ICashSalesService
     private static int InventoryTypeFor(string? category)
     {
         if (category?.Contains("Service", StringComparison.OrdinalIgnoreCase) == true) return 3;
-        if (category?.Contains("Package", StringComparison.OrdinalIgnoreCase) == true) return 4;
-        if (category?.Contains("Voucher", StringComparison.OrdinalIgnoreCase) == true) return 5;
+        if (category?.Contains("Package", StringComparison.OrdinalIgnoreCase) == true) return 5;
+        if (category?.Contains("Member Credit", StringComparison.OrdinalIgnoreCase) == true ||
+            category?.Contains("TopUp", StringComparison.OrdinalIgnoreCase) == true ||
+            category?.Contains("Top Up", StringComparison.OrdinalIgnoreCase) == true) return 7;
         return 1;
     }
 
