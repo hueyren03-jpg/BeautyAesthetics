@@ -86,6 +86,14 @@ namespace Beauty_Aesthetics_WebPos.Components.Models
         public string MemberCreditAccountId { get; set; } = "";
         public string MemberTypeId { get; set; } = "";
         public string MembershipCredit { get; set; } = "";
+        public List<MemberCreditAllocation> MemberCreditAllocations { get; set; } = new();
+    }
+
+    public sealed class MemberCreditAllocation
+    {
+        public string MemberCreditAccountId { get; set; } = "";
+        public string MemberTypeId { get; set; } = "";
+        public decimal Amount { get; set; }
     }
 
     /// <summary>
