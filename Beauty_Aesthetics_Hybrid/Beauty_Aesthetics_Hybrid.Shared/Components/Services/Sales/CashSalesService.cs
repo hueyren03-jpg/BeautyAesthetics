@@ -451,6 +451,10 @@ public sealed class CashSalesService : ICashSalesService
 
         document["lstARAPOutstanding_MemberCredit"] = memberCreditBuild.RootCredits;
 
+        var singleCreditVerification = await CaptureSingleMemberCreditRedemptionAsync(
+            transaction,
+            cancellationToken);
+
         var createResult = await cashSalesAC.CreateRecordAsync(document, cancellationToken);
         if (!createResult.Success)
         {
@@ -464,6 +468,11 @@ public sealed class CashSalesService : ICashSalesService
         await VerifyMemberCreditGrantPersistenceAsync(
             transaction,
             memberCreditBuild.RootCredits,
+            cancellationToken);
+
+        await VerifySingleMemberCreditRedemptionAsync(
+            transaction,
+            singleCreditVerification,
             cancellationToken);
 
         return ApiCallResult<Transaction>.Ok(createResult.StatusCode, transaction);
@@ -1035,6 +1044,164 @@ public sealed class CashSalesService : ICashSalesService
             Console.WriteLine(
                 $"[Member Credit Verify] Sale {transaction.DocumentId}: ARAPOutstandingID={persisted.ARAPOutstandingID} | Item={persisted.LineItemID} | MemberType={persisted.MemberTypeID} | Balance={persisted.NetBalanceAfterUtilised:N2}");
         }
+    }
+
+    private async Task<(string AccountId, decimal Amount, decimal? BeforeBalance)?> CaptureSingleMemberCreditRedemptionAsync(
+        Transaction transaction,
+        CancellationToken cancellationToken)
+    {
+        if (transaction.DocumentTypeId != 52 || string.IsNullOrWhiteSpace(transaction.AccountId))
+        {
+            return null;
+        }
+
+        var allocations = transaction.Items
+            .Where(item => item.ActivityTypeId == 6)
+            .SelectMany(EffectiveMemberCreditAllocations)
+            .Where(allocation =>
+                !string.IsNullOrWhiteSpace(allocation.MemberCreditAccountId) &&
+                allocation.Amount > 0m)
+            .ToList();
+
+        // Step 26 is intentionally limited to the single-credit checkpoint.
+        // Multi-credit FIFO verification is handled by the next stage.
+        if (allocations.Count != 1)
+        {
+            return null;
+        }
+
+        var allocation = allocations[0];
+        decimal? beforeBalance = null;
+
+        var beforeResult = await customerService.GetRedeemableCreditsAsync(
+            transaction.AccountId,
+            DateTime.Now,
+            cancellationToken);
+
+        if (beforeResult.Success && beforeResult.Value is not null)
+        {
+            var sourceCredit = beforeResult.Value.FirstOrDefault(credit =>
+                string.Equals(
+                    credit.ARAPOutstandingID,
+                    allocation.MemberCreditAccountId,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (sourceCredit is not null)
+            {
+                beforeBalance = sourceCredit.NetBalanceAfterUtilised;
+            }
+            else
+            {
+                Console.WriteLine(
+                    $"[Member Credit Single Verify] BEFORE WARNING | Account={allocation.MemberCreditAccountId} was not returned by GetRedeemableCredits.");
+            }
+        }
+        else
+        {
+            Console.WriteLine(
+                $"[Member Credit Single Verify] BEFORE WARNING | Unable to load redeemable credits for Customer={transaction.AccountId}: {beforeResult.ErrorMessage}");
+        }
+
+        Console.WriteLine(
+            $"[Member Credit Single Verify] BEFORE | Account={allocation.MemberCreditAccountId} | Redeem={allocation.Amount:N2} | Balance={(beforeBalance.HasValue ? beforeBalance.Value.ToString("N2") : "unknown")}");
+
+        return (
+            allocation.MemberCreditAccountId,
+            allocation.Amount,
+            beforeBalance);
+    }
+
+    private async Task VerifySingleMemberCreditRedemptionAsync(
+        Transaction transaction,
+        (string AccountId, decimal Amount, decimal? BeforeBalance)? verification,
+        CancellationToken cancellationToken)
+    {
+        if (verification is null)
+        {
+            return;
+        }
+
+        var expected = verification.Value;
+
+        if (string.IsNullOrWhiteSpace(transaction.DocumentId))
+        {
+            Console.WriteLine(
+                $"[Member Credit Single Verify] FAIL | Account={expected.AccountId} | Created redemption has no DocumentID, so the saved receipt cannot be verified.");
+            return;
+        }
+
+        var receiptResult = await cashSalesAC.LoadReceiptLinesAsync(
+            transaction.DocumentId,
+            cancellationToken);
+
+        if (!receiptResult.Success || receiptResult.Value is null)
+        {
+            Console.WriteLine(
+                $"[Member Credit Single Verify] RECEIPT FAIL | Document={transaction.DocumentId} | Unable to reload receipt lines: {receiptResult.ErrorMessage}");
+        }
+        else
+        {
+            var memberCreditReceipts = receiptResult.Value
+                .Where(line => line.POSPaymentTypeID == -10)
+                .ToList();
+
+            var matchingReceipts = memberCreditReceipts
+                .Where(line =>
+                    !string.IsNullOrWhiteSpace(line.POSReceiptLineID) &&
+                    string.Equals(
+                        line.SourceDocumentLineID,
+                        expected.AccountId,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    Math.Abs(line.POSReceiptLineAmount - expected.Amount) < 0.01m)
+                .ToList();
+
+            var receiptPassed =
+                memberCreditReceipts.Count == 1 &&
+                matchingReceipts.Count == 1;
+
+            Console.WriteLine(
+                $"[Member Credit Single Verify] RECEIPT {(receiptPassed ? "PASS" : "FAIL")} | Document={transaction.DocumentId} | ExpectedAccount={expected.AccountId} | ExpectedAmount={expected.Amount:N2} | SavedMinus10Lines={memberCreditReceipts.Count} | MatchingLines={matchingReceipts.Count}");
+
+            if (matchingReceipts.Count == 1)
+            {
+                var saved = matchingReceipts[0];
+                Console.WriteLine(
+                    $"[Member Credit Single Verify] RECEIPT SAVED | POSReceiptLineID={saved.POSReceiptLineID} | SourceDocumentLineID={saved.SourceDocumentLineID} | Amount={saved.POSReceiptLineAmount:N2} | POSPaymentTypeID={saved.POSPaymentTypeID}");
+            }
+        }
+
+        var afterResult = await customerService.GetRedeemableCreditsAsync(
+            transaction.AccountId,
+            DateTime.Now,
+            cancellationToken);
+
+        if (!afterResult.Success || afterResult.Value is null)
+        {
+            Console.WriteLine(
+                $"[Member Credit Single Verify] BALANCE WARNING | Account={expected.AccountId} | Unable to reload redeemable credits: {afterResult.ErrorMessage}");
+            return;
+        }
+
+        var afterCredit = afterResult.Value.FirstOrDefault(credit =>
+            string.Equals(
+                credit.ARAPOutstandingID,
+                expected.AccountId,
+                StringComparison.OrdinalIgnoreCase));
+
+        var afterBalance = afterCredit?.NetBalanceAfterUtilised ?? 0m;
+
+        if (!expected.BeforeBalance.HasValue)
+        {
+            Console.WriteLine(
+                $"[Member Credit Single Verify] BALANCE UNVERIFIED | Account={expected.AccountId} | After={afterBalance:N2} | Before balance was unavailable.");
+            return;
+        }
+
+        var expectedAfter = Math.Max(0m, expected.BeforeBalance.Value - expected.Amount);
+        var balancePassed = Math.Abs(afterBalance - expectedAfter) < 0.01m;
+
+        Console.WriteLine(
+            $"[Member Credit Single Verify] BALANCE {(balancePassed ? "PASS" : "FAIL")} | Account={expected.AccountId} | Before={expected.BeforeBalance.Value:N2} | Redeemed={expected.Amount:N2} | ExpectedAfter={expectedAfter:N2} | ActualAfter={afterBalance:N2}");
     }
 
     private static JsonArray BuildReceiptLines(Transaction transaction)
