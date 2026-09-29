@@ -8,6 +8,10 @@ public interface IMemberCreditService
     Task<ApiCallResult<IReadOnlyList<MembershipViewModel.MemberCredit>>> LoadMemberCreditsAsync(
         CancellationToken cancellationToken = default);
 
+    Task<ApiCallResult<MembershipViewModel.MemberCredit>> LoadMemberCreditAsync(
+        string masterAccountId,
+        CancellationToken cancellationToken = default);
+
     Task<ApiCallResult<bool>> CreateMemberCreditAsync(
         MembershipViewModel.MemberCredit memberCredit,
         string branchId = "hq",
