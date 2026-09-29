@@ -817,28 +817,6 @@ public sealed class CashSalesService : ICashSalesService
                 rootCredits);
         }
 
-        var customerResult = await customerService.LoadCustomerAsync(
-            transaction.AccountId,
-            cancellationToken);
-
-        if (!customerResult.Success || customerResult.Value is null)
-        {
-            return (
-                false,
-                customerResult.ErrorMessage ??
-                "Unable to load the selected customer before granting Member Credit.",
-                rootCredits);
-        }
-
-        var customerMemberTypeId = customerResult.Value.MembershipTypeId?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(customerMemberTypeId))
-        {
-            return (
-                false,
-                $"Customer '{customerResult.Value.FirstName}' has no MembershipTypeID, so the Member Credit amount cannot be determined.",
-                rootCredits);
-        }
-
         foreach (var entry in memberCreditIndexes)
         {
             var item = entry.Item;
@@ -899,20 +877,6 @@ public sealed class CashSalesService : ICashSalesService
                     rootCredits);
             }
 
-            var allocation = allocations.FirstOrDefault(candidate =>
-                string.Equals(
-                    candidate.MemberTypeId.Trim(),
-                    customerMemberTypeId,
-                    StringComparison.OrdinalIgnoreCase));
-
-            if (allocation is null)
-            {
-                return (
-                    false,
-                    $"Member Credit '{creditSetup.Name}' has no configured credit amount for customer membership type '{customerMemberTypeId}'.",
-                    rootCredits);
-            }
-
             var lineCredits = new JsonArray();
             var quantity = Math.Max(1, item.Quantity);
             var settlementRatio = creditSetup.SettlementRatio > 0m
@@ -922,45 +886,48 @@ public sealed class CashSalesService : ICashSalesService
                 ? transaction.Date.Date.AddDays(creditSetup.ValidityDays)
                 : new DateTime(2049, 12, 31);
 
-            var totalCredit = allocation.CreditAmount * quantity;
-            var credit = new JsonObject
+            foreach (var allocation in allocations)
             {
-                ["ARAPOutstandingID"] = string.Empty,
-                ["AccountID"] = transaction.AccountId,
-                ["FinancialDate"] = transaction.Date,
-                ["DueDate"] = dueDate,
-                ["DocumentID"] = Text(header, "DocumentID"),
-                ["DisplayCode"] = Text(header, "DisplayCode"),
-                ["DocumentTypeID"] = Integer(header, "DocumentTypeID") == 0
-                    ? 5
-                    : Integer(header, "DocumentTypeID"),
-                ["DocumentTypeName"] = First(Text(header, "FriendlyDocumentName"), "CashSales"),
-                ["DocumentLineID"] = Text(line, "DocumentLineID"),
-                ["ItemDescription"] = quantity == 1
-                    ? First(item.Description, item.Name, creditSetup.Name)
-                    : $"{First(item.Description, item.Name, creditSetup.Name)}(x {quantity})",
-                ["CurrencyID"] = First(Text(header, "TransactionCurrencyID"), "MYR"),
-                ["CurrencyName"] = First(Text(header, "TransactionCurrencyName"), "MYR"),
-                ["ExchangeRate"] = Number(header, "ExchangeRate") == 0m
-                    ? 1m
-                    : Number(header, "ExchangeRate"),
-                ["InterOutletRatio"] = settlementRatio,
-                ["InterOutletAmount"] = totalCredit * settlementRatio,
-                ["MGMTier"] = string.Empty,
-                ["TotalAmount"] = totalCredit,
-                ["BranchID"] = transaction.BranchId,
-                ["GroupID"] = transaction.GroupId,
-                ["LineItemID"] = item.InventoryId,
-                ["MemberTypeID"] = customerMemberTypeId,
-                ["SaveAction"] = 1,
-                ["IsDirty"] = true
-            };
+                var totalCredit = allocation.CreditAmount * quantity;
+                var credit = new JsonObject
+                {
+                    ["ARAPOutstandingID"] = string.Empty,
+                    ["AccountID"] = transaction.AccountId,
+                    ["FinancialDate"] = transaction.Date,
+                    ["DueDate"] = dueDate,
+                    ["DocumentID"] = Text(header, "DocumentID"),
+                    ["DisplayCode"] = Text(header, "DisplayCode"),
+                    ["DocumentTypeID"] = Integer(header, "DocumentTypeID") == 0
+                        ? 5
+                        : Integer(header, "DocumentTypeID"),
+                    ["DocumentTypeName"] = First(Text(header, "FriendlyDocumentName"), "CashSales"),
+                    ["DocumentLineID"] = Text(line, "DocumentLineID"),
+                    ["ItemDescription"] = quantity == 1
+                        ? First(item.Description, item.Name, creditSetup.Name)
+                        : $"{First(item.Description, item.Name, creditSetup.Name)}(x {quantity})",
+                    ["CurrencyID"] = First(Text(header, "TransactionCurrencyID"), "MYR"),
+                    ["CurrencyName"] = First(Text(header, "TransactionCurrencyName"), "MYR"),
+                    ["ExchangeRate"] = Number(header, "ExchangeRate") == 0m
+                        ? 1m
+                        : Number(header, "ExchangeRate"),
+                    ["InterOutletRatio"] = settlementRatio,
+                    ["InterOutletAmount"] = totalCredit * settlementRatio,
+                    ["MGMTier"] = string.Empty,
+                    ["TotalAmount"] = totalCredit,
+                    ["BranchID"] = transaction.BranchId,
+                    ["GroupID"] = transaction.GroupId,
+                    ["LineItemID"] = item.InventoryId,
+                    ["MemberTypeID"] = allocation.MemberTypeId.Trim(),
+                    ["SaveAction"] = 1,
+                    ["IsDirty"] = true
+                };
 
-            lineCredits.Add(credit);
-            rootCredits.Add(credit.DeepClone());
+                lineCredits.Add(credit);
+                rootCredits.Add(credit.DeepClone());
 
-            Console.WriteLine(
-                $"[Member Credit Grant] Customer={transaction.AccountId} | MemberType={customerMemberTypeId} | Item={creditSetup.Name} | Amount={totalCredit:N2} | Qty={quantity}");
+                Console.WriteLine(
+                    $"[Member Credit Grant] Customer={transaction.AccountId} | MemberType={allocation.MemberTypeId} | Item={creditSetup.Name} | Amount={totalCredit:N2} | Qty={quantity}");
+            }
 
             line["lstARAPOutstanding_MemberCredit"] = lineCredits;
         }
