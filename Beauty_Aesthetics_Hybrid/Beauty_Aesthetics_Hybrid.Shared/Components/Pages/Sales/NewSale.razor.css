@@ -91,6 +91,133 @@ button, input, select, textarea { font: inherit; }
     box-shadow: none;
 }
 
+.sale-title-copy {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+}
+
+.sale-title-copy h1,
+.sale-title-copy p {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Sales / Redemption mode switch - follows Senang's compact top-bar toggle pattern. */
+.sale-mode-control {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    margin-left: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    flex: 0 0 auto;
+    color: #334155;
+    cursor: pointer;
+    user-select: none;
+}
+
+.sale-mode-track {
+    width: 74px;
+    height: 36px;
+    border-radius: 999px;
+    position: relative;
+    display: block;
+    flex: 0 0 74px;
+    transition: background-color .25s ease, border-color .25s ease, box-shadow .25s ease;
+}
+
+.sale-mode-control.sales .sale-mode-track {
+    background: #edf6ff;
+    border: 1.5px solid #0866c7;
+}
+
+.sale-mode-control.redemption .sale-mode-track {
+    background: #eaf8ef;
+    border: 1.5px solid #27824a;
+}
+
+.sale-mode-knob {
+    position: absolute;
+    top: 4px;
+    left: 5px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #0866c7;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, .18);
+    transition: transform .25s cubic-bezier(.4, 0, .2, 1), background-color .25s ease;
+}
+
+.sale-mode-control.redemption .sale-mode-knob {
+    transform: translateX(36px);
+    background: #27824a;
+}
+
+.sale-mode-letter {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 11px;
+    line-height: 1;
+    font-weight: 800;
+}
+
+.sale-mode-control.sales .sale-mode-letter {
+    right: 15px;
+    color: #0866c7;
+}
+
+.sale-mode-control.redemption .sale-mode-letter {
+    left: 15px;
+    color: #27824a;
+}
+
+.sale-mode-label {
+    display: grid;
+    gap: 0;
+    min-width: 72px;
+    text-align: left;
+}
+
+.sale-mode-label small {
+    color: #94a3b8;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1.1;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+}
+
+.sale-mode-label strong {
+    color: #334155;
+    font-size: 12px;
+    font-weight: 750;
+    line-height: 1.25;
+}
+
+.sale-mode-control:hover:not(:disabled) .sale-mode-track {
+    box-shadow: 0 0 0 3px rgba(8, 102, 199, .10);
+}
+
+.sale-mode-control.redemption:hover:not(:disabled) .sale-mode-track {
+    box-shadow: 0 0 0 3px rgba(39, 130, 74, .10);
+}
+
+.sale-mode-control:focus-visible {
+    outline: 3px solid rgba(8, 102, 199, .18);
+    outline-offset: 4px;
+    border-radius: 999px;
+}
+
+.sale-mode-control:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+}
+
 .sale-progress { display: flex; align-items: center; gap: 10px; }
 .sale-progress span {
     display: flex; align-items: center; justify-content: center; gap: 7px;
@@ -825,11 +952,13 @@ textarea:focus {
 }
 
 .customer-strip {
-    display: flex;
+    display: grid;
+    grid-template-columns: 46px minmax(210px, .8fr) minmax(430px, 1.55fr) auto;
     align-items: center;
     gap: 14px;
-    padding: 14px 20px;
+    padding: 14px 18px;
     background: #fff;
+    overflow: hidden;
 }
 .customer-avatar {
     display: grid;
@@ -843,7 +972,13 @@ textarea:focus {
     flex-shrink: 0;
     box-shadow: 0 2px 6px rgba(7, 102, 199, 0.15);
 }
-.customer-copy { min-width: 0; display: grid; gap: 2px; flex: 1; }
+.customer-copy {
+    min-width: 0;
+    max-width: 100%;
+    display: grid;
+    gap: 2px;
+    overflow: hidden;
+}
 .customer-order-tag {
     display: flex;
     align-items: center;
@@ -857,11 +992,12 @@ textarea:focus {
 .customer-copy small { color: #64748b; font-size: 12px; }
 
 .customer-balance-summary {
+    min-width: 0;
+    width: 100%;
     display: grid;
-    grid-template-columns: repeat(4, minmax(92px, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 7px;
-    margin-left: auto;
-    min-width: min(500px, 46vw);
+    margin-left: 0;
 }
 
 .customer-balance-item {
@@ -921,8 +1057,10 @@ textarea:focus {
 }
 
 .customer-strip-actions {
+    min-width: 0;
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 8px;
 }
 .change-customer-btn {
@@ -1866,6 +2004,22 @@ textarea:focus {
 /* --------------------------------------------------------------------------
    1. TABLET BREAKPOINT (max-width: 1024px)
    -------------------------------------------------------------------------- */
+@media (max-width: 1280px) {
+    .customer-strip {
+        grid-template-columns: 46px minmax(200px, 1fr) auto;
+    }
+
+    .customer-balance-summary {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
+
+    .customer-strip-actions {
+        grid-column: 3;
+        grid-row: 1;
+    }
+}
+
 @media (max-width: 1024px) {
     .sale-page {
         padding: 16px;
@@ -1878,6 +2032,21 @@ textarea:focus {
     }
     .sale-page-header h1 {
         font-size: 20px;
+    }
+    .sale-mode-label {
+        display: none;
+    }
+    .sale-mode-track {
+        width: 70px;
+        flex-basis: 70px;
+        height: 34px;
+    }
+    .sale-mode-knob {
+        width: 24px;
+        height: 24px;
+    }
+    .sale-mode-control.redemption .sale-mode-knob {
+        transform: translateX(35px);
     }
     .sale-progress {
         gap: 6px;
@@ -2287,22 +2456,23 @@ textarea:focus {
 
     /* Stage 3: Catalog & Items on Mobile */
     .customer-strip {
-        flex-wrap: wrap;
-    }
-    .customer-balance-summary {
-        order: 3;
-        width: 100%;
-        min-width: 0;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        margin-left: 50px;
-    }
-    .customer-strip-actions {
-        margin-left: auto;
-    }
-    .customer-strip {
+        grid-template-columns: 40px minmax(0, 1fr) auto;
         padding: 10px 14px;
         gap: 10px;
         border-radius: 10px;
+        overflow: visible;
+    }
+    .customer-balance-summary {
+        grid-column: 1 / -1;
+        width: 100%;
+        min-width: 0;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        margin-left: 0;
+    }
+    .customer-strip-actions {
+        grid-column: 3;
+        grid-row: 1;
+        margin-left: 0;
     }
     .customer-avatar {
         width: 40px;
