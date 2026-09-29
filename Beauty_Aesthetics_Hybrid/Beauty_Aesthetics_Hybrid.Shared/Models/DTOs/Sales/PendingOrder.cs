@@ -9,6 +9,7 @@ public sealed class PendingOrder
     public string OrderNumber { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
+    public bool IsHeld { get; set; }
 
     public string AccountId { get; set; } = string.Empty;
     public string CustomerName { get; set; } = string.Empty;
@@ -57,6 +58,7 @@ public sealed class PendingOrder
             OrderNumber = OrderNumber,
             CreatedAt = CreatedAt,
             UpdatedAt = DateTime.Now,
+            IsHeld = IsHeld,
             AccountId = AccountId,
             CustomerName = CustomerName,
             CustomerContact = CustomerContact,
