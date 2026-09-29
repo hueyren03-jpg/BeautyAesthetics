@@ -175,6 +175,33 @@ public sealed class CustomerService : ICustomerService
                 .ToList());
     }
 
+    public async Task<CustomerOperationResult<IReadOnlyList<CreditRedemptionHistoryDTO>>> GetCreditRedemptionHistoryAsync(
+        string arapOutstandingId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(arapOutstandingId))
+        {
+            return CustomerOperationResult<IReadOnlyList<CreditRedemptionHistoryDTO>>.Fail(
+                "Member Credit account ID is required.");
+        }
+
+        var result = await customerAC.GetCreditRedemptionHistoryAsync(
+            arapOutstandingId.Trim(),
+            cancellationToken);
+
+        if (!result.Success || result.Value is null)
+        {
+            return CustomerOperationResult<IReadOnlyList<CreditRedemptionHistoryDTO>>.Fail(
+                ToCustomerError(result.ErrorMessage));
+        }
+
+        return CustomerOperationResult<IReadOnlyList<CreditRedemptionHistoryDTO>>.Ok(
+            result.Value
+                .OrderByDescending(history => history.FinancialDate)
+                .ThenBy(history => history.DisplayCode)
+                .ToList());
+    }
+
     public async Task<CustomerOperationResult<Customer>> CreateCustomerAsync(
         Customer customer,
         CancellationToken cancellationToken = default)
