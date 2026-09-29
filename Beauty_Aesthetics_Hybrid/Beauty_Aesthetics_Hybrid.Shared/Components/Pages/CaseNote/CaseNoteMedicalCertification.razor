@@ -6,6 +6,8 @@
 @inject IJSRuntime JS
 @inject AppFeedbackService Feedback
 @inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext PatientContext
+@inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.IMedicalCertificateService MedicalCertificateService
+@inject Beauty_Aesthetics_WebPos.Components.Services.Branches.IBranchSessionService BranchSession
 
 <PageTitle>Medical Certificate</PageTitle>
 
@@ -32,6 +34,15 @@
             @onclick='() => ViewModel.SetTab("time-off")'>
             <i class="bi bi-clock-history"></i>
             <span>Time-Off Slip</span>
+        </button>
+
+        <button type="button" class="mc-history-trigger" @onclick="OpenHistoryModal" title="Medical certificate history">
+            <i class="bi bi-clock-history"></i>
+            <span>History</span>
+            @if (_certificateHistory.Count > 0)
+            {
+                <span class="mc-history-count">@_certificateHistory.Count</span>
+            }
         </button>
 
         <a href="@(PatientContext.WithCustomer("/case-notes"))" class="btn-close">
@@ -397,6 +408,86 @@
     </div>
 </div>
 
+<!-- Medical Certificate History Modal -->
+@if (_showHistoryModal)
+{
+    <div class="modal-overlay" @onclick="CloseHistoryModal">
+        <div class="modal-container mc-history-modal" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h2 class="modal-title">
+                    <i class="bi bi-clock-history"></i>
+                    Medical Certificate History
+                </h2>
+                <button class="btn-close-modal" @onclick="CloseHistoryModal">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+
+            <div class="modal-body mc-history-body">
+                @if (_isHistoryLoading)
+                {
+                    <div class="mc-history-empty">
+                        <span class="spinner-border" aria-hidden="true"></span>
+                        <strong>Loading certificate history...</strong>
+                    </div>
+                }
+                else if (!string.IsNullOrWhiteSpace(_historyError))
+                {
+                    <div class="mc-history-empty is-error">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <strong>Unable to load history</strong>
+                        <span>@_historyError</span>
+                        <button type="button" class="btn-secondary" @onclick="LoadCertificateHistoryAsync">Retry</button>
+                    </div>
+                }
+                else if (_certificateHistory.Count == 0)
+                {
+                    <div class="mc-history-empty">
+                        <i class="bi bi-file-earmark-medical"></i>
+                        <strong>No medical certificates yet</strong>
+                        <span>Issued certificates for this patient will appear here.</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="mc-history-list">
+                        @foreach (var certificate in _certificateHistory)
+                        {
+                            <article class="mc-history-card">
+                                <div class="mc-history-card-icon">
+                                    <i class="bi @(certificate.CertificateType == "time-off" ? "bi-clock-history" : "bi-calendar2-check")"></i>
+                                </div>
+                                <div class="mc-history-card-copy">
+                                    <div class="mc-history-card-top">
+                                        <strong>@certificate.CertificateNumber</strong>
+                                        <span>@CertificateTypeLabel(certificate.CertificateType)</span>
+                                    </div>
+                                    <small>@certificate.IssuedAt.ToString("dd MMM yyyy, hh:mm tt")</small>
+                                    <p>@certificate.Reason</p>
+                                    <div class="mc-history-meta">
+                                        <span><i class="bi bi-person-badge"></i> @certificate.DoctorName</span>
+                                        <span><i class="bi bi-calendar-range"></i> @certificate.DurationText</span>
+                                    </div>
+                                </div>
+                                <div class="mc-history-card-actions">
+                                    <button type="button" class="mc-history-action" @onclick="() => OpenSavedCertificate(certificate)">
+                                        <i class="bi bi-eye"></i>
+                                        <span>Open</span>
+                                    </button>
+                                    <button type="button" class="mc-history-action danger" @onclick="() => DeleteCertificateAsync(certificate)">
+                                        <i class="bi bi-trash3"></i>
+                                        <span>Delete</span>
+                                    </button>
+                                </div>
+                            </article>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
 <!-- Preview Modal -->
 @if (_showPreviewModal)
 {
@@ -430,19 +521,14 @@
                                 @bind:event="oninput" />
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Registration Number</label>
-                            <div class="auto-generated-field">
-                                <input 
-                                    type="text" 
-                                    class="form-input" 
-                                    value="@_doctorRegNumber"
-                                    readonly />
-                                <span class="auto-badge">
-                                    <i class="bi bi-stars"></i>
-                                    Auto
-                                </span>
-                            </div>
-                            <small class="form-hint">Auto-generated registration number</small>
+                            <label class="form-label">Registration Number <span class="required">*</span></label>
+                            <input
+                                type="text"
+                                class="form-input"
+                                placeholder="Enter practitioner registration number"
+                                @bind="_doctorRegNumber"
+                                @bind:event="oninput" />
+                            <small class="form-hint">Use the practitioner's actual registration number.</small>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Digital Signature <span class="required">*</span></label>
@@ -560,12 +646,20 @@
                     <i class="bi bi-x-circle"></i>
                     Cancel
                 </button>
-                <button 
-                    class="btn-primary" 
+                <button
+                    class="btn-primary"
                     @onclick="PrintCertificate"
-                    disabled="@(!CanPrintCertificate())">
-                    <i class="bi bi-printer-fill"></i>
-                    Print / Save as PDF
+                    disabled="@(!CanPrintCertificate() || _isSavingCertificate)">
+                    @if (_isSavingCertificate)
+                    {
+                        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                        <span>Saving...</span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-printer-fill"></i>
+                        <span>@(string.IsNullOrWhiteSpace(_previewRecordId) ? "Save & Print / PDF" : "Update & Print / PDF")</span>
+                    }
                 </button>
             </div>
         </div>
@@ -712,10 +806,18 @@
     
     // Preview Modal State
     private bool _showPreviewModal = false;
+    private bool _showHistoryModal = false;
+    private bool _isHistoryLoading = false;
+    private bool _isSavingCertificate = false;
+    private string? _historyError;
+    private string _customerId = "";
+    private string _previewRecordId = "";
     private string _certificateType = ""; // "day-off" or "time-off"
     private string _doctorName = "";
     private string _doctorRegNumber = "";
     private string _signatureDataUrl = "";
+    private DateTime _previewIssuedAt = DateTime.Now;
+    private List<Beauty_Aesthetics_WebPos.Models.DTOs.MedicalCertificateRecordDTO> _certificateHistory = new();
     
     // Preview Data
     private string _previewCertNumber = "";
@@ -808,13 +910,17 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await BranchSession.InitializeAsync();
+
         var customerResult = await PatientContext.LoadAsync(CustomerId);
         if (customerResult.Success && customerResult.Value is not null)
         {
+            _customerId = customerResult.Value.SystemID?.Trim() ?? CustomerId?.Trim() ?? string.Empty;
             ViewModel.PatientName = Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext.GetDisplayName(customerResult.Value);
         }
         else
         {
+            _customerId = CustomerId?.Trim() ?? string.Empty;
             Feedback.Error(customerResult.ErrorMessage ?? "Unable to load the appointment patient.", "Patient not loaded");
         }
 
@@ -839,10 +945,11 @@
             }
         };
 
-        // Load custom reasons
         try
         {
-            await LoadCustomReasons();
+            await Task.WhenAll(
+                LoadCustomReasons(),
+                LoadCertificateHistoryAsync());
         }
         finally
         {
@@ -994,20 +1101,19 @@
         _tempSignatureDataUrl = await JS.InvokeAsync<string>("getSignatureDataUrl");
     }
 
-    private string GenerateDoctorRegNumber()
+    private static string GenerateCertificateNumber(string certificateType)
     {
-        var random = new Random();
-        var prefix = "MC";
-        var number = random.Next(10000, 99999);
-        var suffix = (char)random.Next('A', 'Z' + 1);
-        return $"{prefix}{number}{suffix}";
+        var prefix = certificateType == "time-off" ? "TC" : "DC";
+        return $"{prefix}-{DateTime.Now:yyyyMMdd-HHmmssfff}";
     }
 
     private bool CanPrintCertificate()
     {
-        return !string.IsNullOrWhiteSpace(_doctorName) && 
+        return !string.IsNullOrWhiteSpace(_doctorName) &&
+               !string.IsNullOrWhiteSpace(_doctorRegNumber) &&
                !string.IsNullOrWhiteSpace(ViewModel.PatientName) &&
-               !string.IsNullOrWhiteSpace(_signatureDataUrl);
+               !string.IsNullOrWhiteSpace(_signatureDataUrl) &&
+               !string.IsNullOrWhiteSpace(_customerId);
     }
 
     private class BoundingClientRect
@@ -1030,10 +1136,10 @@
             return;
         }
 
-        // Generate certificate number and registration number
-        _previewCertNumber = $"DC-{DateTime.Now:yyyyMMdd}-{new Random().Next(1000, 9999)}";
-        _doctorRegNumber = GenerateDoctorRegNumber();
-        _previewDateIssued = DateTime.Now.ToString("MMMM dd, yyyy");
+        _previewRecordId = string.Empty;
+        _previewIssuedAt = DateTime.Now;
+        _previewCertNumber = GenerateCertificateNumber("day-off");
+        _previewDateIssued = _previewIssuedAt.ToString("MMMM dd, yyyy");
         _previewBodyText = "was examined and found to be unfit for work/school.";
         _previewPeriod = $"{ViewModel.DayOffStartDate:MMM dd, yyyy} to {ViewModel.DayOffEndDate:MMM dd, yyyy}";
         _previewDuration = $"{ViewModel.DurationDays} {(ViewModel.DurationDays == 1 ? "Day" : "Days")}{(ViewModel.IncludeHalfDay ? " + 0.5 Day" : "")}";
@@ -1057,10 +1163,10 @@
             return;
         }
 
-        // Generate certificate number and registration number
-        _previewCertNumber = $"TC-{DateTime.Now:yyyyMMdd}-{new Random().Next(1000, 9999)}";
-        _doctorRegNumber = GenerateDoctorRegNumber();
-        _previewDateIssued = DateTime.Now.ToString("MMMM dd, yyyy");
+        _previewRecordId = string.Empty;
+        _previewIssuedAt = DateTime.Now;
+        _previewCertNumber = GenerateCertificateNumber("time-off");
+        _previewDateIssued = _previewIssuedAt.ToString("MMMM dd, yyyy");
         _previewBodyText = "was examined and requires time off from work/school during the following period.";
         _previewPeriod = $"{ViewModel.TimeOffStartDate:MMM dd, yyyy} from {FormatTime(ViewModel.TimeOffStartTime)} to {FormatTime(ViewModel.TimeOffEndTime)}";
         _previewDuration = $"{ViewModel.DurationHours} {(ViewModel.DurationHours == 1 ? "Hour" : "Hours")}";
@@ -1078,50 +1184,220 @@
     {
         if (!CanPrintCertificate())
         {
-            Feedback.Warning("Doctor name, patient name and signature are required before printing.", "Certificate not printed");
+            Feedback.Warning(
+                "Doctor name, registration number, patient and signature are required before issuing the certificate.",
+                "Certificate not issued");
             return;
         }
 
-        // Update print template via JavaScript
-        await JS.InvokeVoidAsync("populateMCTemplate", 
-            _previewCertNumber, 
-            ViewModel.PatientName, 
-            _previewDateIssued, 
-            _previewBodyText, 
-            _previewPeriod, 
-            _previewDuration, 
-            _previewReason,
-            _doctorName,
-            _doctorRegNumber,
-            _signatureDataUrl);
-
-        // Close modal
-        _showPreviewModal = false;
-
-        // Trigger print dialog
-        await JS.InvokeVoidAsync("printMedicalCertificate");
-
-        // Show success message
-        ViewModel.StatusMessage = $"✓ Medical Certificate {_previewCertNumber} prepared for printing!";
-        ViewModel.IsSuccess = true;
-        Feedback.Success(ViewModel.StatusMessage, "Certificate ready");
-        
-        // Reset form
-        if (_certificateType == "day-off")
+        _isSavingCertificate = true;
+        try
         {
-            ViewModel.ResetDayOff();
+            var record = BuildCurrentCertificateRecord();
+            var branch = BranchSession.CurrentBranch;
+            var saveResult = await MedicalCertificateService.SaveAsync(
+                record,
+                branch?.Id ?? string.Empty,
+                branch?.GroupId ?? string.Empty);
+
+            if (!saveResult.Success || saveResult.Value is null)
+            {
+                Feedback.Error(
+                    saveResult.ErrorMessage ?? "Unable to save the medical certificate.",
+                    "Certificate not issued");
+                return;
+            }
+
+            var saved = saveResult.Value;
+            _previewRecordId = saved.RecordId;
+
+            var existingIndex = _certificateHistory.FindIndex(item =>
+                item.RecordId.Equals(saved.RecordId, StringComparison.OrdinalIgnoreCase));
+            if (existingIndex >= 0)
+                _certificateHistory[existingIndex] = saved;
+            else
+                _certificateHistory.Insert(0, saved);
+
+            await PopulateAndPrintCertificateAsync(saved);
+            _showPreviewModal = false;
+
+            ViewModel.StatusMessage = $"✓ Medical Certificate {saved.CertificateNumber} saved and prepared for printing!";
+            ViewModel.IsSuccess = true;
+            Feedback.Success(ViewModel.StatusMessage, "Certificate issued");
+
+            ResetFormPreservingPatient();
+            _previewRecordId = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            Feedback.Error($"Unable to issue medical certificate: {ex.Message}", "Certificate not issued");
+        }
+        finally
+        {
+            _isSavingCertificate = false;
+        }
+    }
+
+    private Beauty_Aesthetics_WebPos.Models.DTOs.MedicalCertificateRecordDTO BuildCurrentCertificateRecord()
+    {
+        var isTimeOff = _certificateType == "time-off";
+        return new Beauty_Aesthetics_WebPos.Models.DTOs.MedicalCertificateRecordDTO
+        {
+            RecordId = _previewRecordId,
+            CertificateNumber = _previewCertNumber,
+            CustomerId = _customerId,
+            PatientName = ViewModel.PatientName,
+            CertificateType = _certificateType,
+            IssuedAt = _previewIssuedAt,
+            StartDate = isTimeOff ? ViewModel.TimeOffStartDate : ViewModel.DayOffStartDate,
+            EndDate = isTimeOff ? ViewModel.TimeOffEndDate : ViewModel.DayOffEndDate,
+            StartTime = isTimeOff ? ViewModel.TimeOffStartTime.ToString("HH:mm") : string.Empty,
+            EndTime = isTimeOff ? ViewModel.TimeOffEndTime.ToString("HH:mm") : string.Empty,
+            IncludeHalfDay = !isTimeOff && ViewModel.IncludeHalfDay,
+            DurationText = _previewDuration,
+            Reason = _previewReason,
+            BodyText = _previewBodyText,
+            PeriodText = _previewPeriod,
+            DoctorName = _doctorName.Trim(),
+            DoctorRegistrationNumber = _doctorRegNumber.Trim(),
+            SignatureDataUrl = _signatureDataUrl,
+            Status = "Issued"
+        };
+    }
+
+    private async Task PopulateAndPrintCertificateAsync(Beauty_Aesthetics_WebPos.Models.DTOs.MedicalCertificateRecordDTO record)
+    {
+        await JS.InvokeVoidAsync("populateMCTemplate",
+            record.CertificateNumber,
+            record.PatientName,
+            record.IssuedAt.ToString("MMMM dd, yyyy"),
+            record.BodyText,
+            record.PeriodText,
+            record.DurationText,
+            record.Reason,
+            record.DoctorName,
+            record.DoctorRegistrationNumber,
+            record.SignatureDataUrl);
+
+        await JS.InvokeVoidAsync("printMedicalCertificate");
+    }
+
+    private void ResetFormPreservingPatient()
+    {
+        var patientName = ViewModel.PatientName;
+        if (_certificateType == "day-off") ViewModel.ResetDayOff();
+        else ViewModel.ResetTimeOff();
+        ViewModel.PatientName = patientName;
+    }
+
+    private async Task LoadCertificateHistoryAsync()
+    {
+        _historyError = null;
+        if (string.IsNullOrWhiteSpace(_customerId))
+        {
+            _certificateHistory.Clear();
+            return;
+        }
+
+        _isHistoryLoading = true;
+        try
+        {
+            var result = await MedicalCertificateService.LoadByCustomerAsync(_customerId);
+            if (result.Success && result.Value is not null)
+            {
+                _certificateHistory = result.Value.OrderByDescending(item => item.IssuedAt).ToList();
+            }
+            else
+            {
+                _certificateHistory.Clear();
+                _historyError = result.ErrorMessage ?? "Unable to load medical certificate history.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _certificateHistory.Clear();
+            _historyError = ex.Message;
+        }
+        finally
+        {
+            _isHistoryLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OpenHistoryModal()
+    {
+        _showHistoryModal = true;
+        await LoadCertificateHistoryAsync();
+    }
+
+    private void CloseHistoryModal() => _showHistoryModal = false;
+
+    private void OpenSavedCertificate(Beauty_Aesthetics_WebPos.Models.DTOs.MedicalCertificateRecordDTO record)
+    {
+        _showHistoryModal = false;
+        _previewRecordId = record.RecordId;
+        _certificateType = record.CertificateType;
+        _previewIssuedAt = record.IssuedAt;
+        _previewCertNumber = record.CertificateNumber;
+        _previewDateIssued = record.IssuedAt.ToString("MMMM dd, yyyy");
+        _previewBodyText = record.BodyText;
+        _previewPeriod = record.PeriodText;
+        _previewDuration = record.DurationText;
+        _previewReason = record.Reason;
+        _doctorName = record.DoctorName;
+        _doctorRegNumber = record.DoctorRegistrationNumber;
+        _signatureDataUrl = record.SignatureDataUrl;
+        ViewModel.PatientName = record.PatientName;
+
+        if (record.CertificateType == "time-off")
+        {
+            ViewModel.SetTab("time-off");
+            ViewModel.TimeOffStartDate = record.StartDate;
+            if (TimeOnly.TryParse(record.StartTime, out var startTime)) ViewModel.TimeOffStartTime = startTime;
+            if (TimeOnly.TryParse(record.EndTime, out var endTime)) ViewModel.TimeOffEndTime = endTime;
+            ViewModel.TimeOffReason = record.Reason;
         }
         else
         {
-            ViewModel.ResetTimeOff();
+            ViewModel.SetTab("day-off");
+            ViewModel.DayOffStartDate = record.StartDate;
+            ViewModel.DayOffEndDate = record.EndDate;
+            ViewModel.IncludeHalfDay = record.IncludeHalfDay;
+            ViewModel.DayOffReason = record.Reason;
         }
-        
-        // Clear doctor details for next certificate
-        _doctorName = "";
-        _doctorRegNumber = "";
-        _signatureDataUrl = "";
-        await ClearSignature();
+
+        _showPreviewModal = true;
     }
+
+    private async Task DeleteCertificateAsync(Beauty_Aesthetics_WebPos.Models.DTOs.MedicalCertificateRecordDTO record)
+    {
+        var confirmed = await JS.InvokeAsync<bool>(
+            "confirm",
+            $"Delete medical certificate {record.CertificateNumber}? This cannot be undone.");
+        if (!confirmed) return;
+
+        var result = await MedicalCertificateService.DeleteAsync(record.RecordId);
+        if (!result.Success)
+        {
+            Feedback.Error(result.ErrorMessage ?? "Unable to delete the medical certificate.", "Delete failed");
+            return;
+        }
+
+        _certificateHistory.RemoveAll(item =>
+            item.RecordId.Equals(record.RecordId, StringComparison.OrdinalIgnoreCase));
+
+        if (_previewRecordId.Equals(record.RecordId, StringComparison.OrdinalIgnoreCase))
+        {
+            _showPreviewModal = false;
+            _previewRecordId = string.Empty;
+        }
+
+        Feedback.Success($"Medical certificate {record.CertificateNumber} deleted.", "Certificate deleted");
+    }
+
+    private static string CertificateTypeLabel(string? type) =>
+        string.Equals(type, "time-off", StringComparison.OrdinalIgnoreCase) ? "Time-Off" : "Day-Off";
 
     private async Task PrintDayOffMC()
     {
