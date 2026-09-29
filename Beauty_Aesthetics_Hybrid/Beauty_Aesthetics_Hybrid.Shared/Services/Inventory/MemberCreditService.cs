@@ -26,9 +26,10 @@ public sealed class MemberCreditService : IMemberCreditService
     }
 
     public async Task<ApiCallResult<IReadOnlyList<MembershipViewModel.MemberCredit>>> LoadMemberCreditsAsync(
+        string? branchId = null,
         CancellationToken cancellationToken = default)
     {
-        var result = await serviceInventoryAC.LoadProxyAsync(null, cancellationToken);
+        var result = await serviceInventoryAC.LoadProxyAsync(branchId, cancellationToken);
         if (!result.Success || result.Value is null)
         {
             return ApiCallResult<IReadOnlyList<MembershipViewModel.MemberCredit>>.Failure(
