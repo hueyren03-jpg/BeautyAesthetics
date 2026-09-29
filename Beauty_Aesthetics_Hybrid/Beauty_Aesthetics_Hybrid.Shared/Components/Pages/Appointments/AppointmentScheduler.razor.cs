@@ -2829,6 +2829,23 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
         {
             PrepareAppointmentReferences(editingAppointment);
 
+            var paidStatus = appointmentStatuses.FirstOrDefault(status =>
+                status.Name.Contains("paid", StringComparison.OrdinalIgnoreCase));
+            var isPaid =
+                editingAppointment.PaymentStatus > 0 ||
+                editingAppointment.StatusName.Contains("paid", StringComparison.OrdinalIgnoreCase) ||
+                (paidStatus is not null && editingAppointment.Label == paidStatus.Value) ||
+                (paidStatus is null && editingAppointment.Label == 4);
+
+            if (isPaid)
+            {
+                Feedback.Info(
+                    "This appointment has already been paid. Payment cannot be created again.",
+                    "Appointment paid",
+                    3200);
+                return;
+            }
+
             var customer = customerOptions.FirstOrDefault(item =>
                 !string.IsNullOrWhiteSpace(editingAppointment.CustomerId) &&
                 string.Equals(
@@ -2845,9 +2862,9 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                         StringComparison.OrdinalIgnoreCase) &&
                     (string.IsNullOrWhiteSpace(editingAppointment.Phone) ||
                      string.Equals(
-                         item.ContactNumber1,
-                         editingAppointment.Phone,
-                         StringComparison.OrdinalIgnoreCase)));
+                        item.ContactNumber1,
+                        editingAppointment.Phone,
+                        StringComparison.OrdinalIgnoreCase)));
             }
 
             if (customer is not null)
@@ -2867,10 +2884,19 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                 return;
             }
 
+            if (string.IsNullOrWhiteSpace(editingAppointment.AppointmentId))
+            {
+                Feedback.Warning(
+                    "Save the appointment before creating a bill.",
+                    "Appointment not saved");
+                return;
+            }
+
             CloseModal();
 
             NavigationManager.NavigateTo(
-                $"/billing?customerId={Uri.EscapeDataString(editingAppointment.CustomerId)}");
+                $"/billing?customerId={Uri.EscapeDataString(editingAppointment.CustomerId)}" +
+                $"&appointmentId={Uri.EscapeDataString(editingAppointment.AppointmentId)}");
         }
 
         private void NavigateToCaseNotes()
