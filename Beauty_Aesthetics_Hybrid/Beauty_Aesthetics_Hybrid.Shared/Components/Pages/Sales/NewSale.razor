@@ -59,8 +59,8 @@
                 </button>
                 <span class="sale-page-icon"><i class="bi bi-bag-plus"></i></span>
                 <div>
-                    <h1>Select Items</h1>
-                    <p>Build the cart for @(string.IsNullOrWhiteSpace(currentOrder.CustomerName) ? "Customer" : currentOrder.CustomerName) (@currentOrder.OrderNumber)</p>
+                    <h1>@(currentOrder.IsRedemptionMode ? "Select Redemption Items" : "Select Items")</h1>
+                    <p>@(currentOrder.IsRedemptionMode ? "Member Credit Redemption" : "Sales") · @(string.IsNullOrWhiteSpace(currentOrder.CustomerName) ? "Customer" : currentOrder.CustomerName) (@currentOrder.OrderNumber)</p>
                 </div>
             }
             else if (stage == SaleStage.Payment)
@@ -422,6 +422,13 @@
                     </div>
 
                     <div class="customer-strip-actions">
+                        <button type="button"
+                                class="change-customer-btn"
+                                @onclick="ToggleRedemptionModeAsync"
+                                title="@(currentOrder.IsRedemptionMode ? "Switch back to normal Sales" : "Switch to Member Credit Redemption")">
+                            <i class="bi @(currentOrder.IsRedemptionMode ? "bi-bag-check" : "bi-arrow-repeat")"></i>
+                            <span>@(currentOrder.IsRedemptionMode ? "Sales Mode" : "Redemption Mode")</span>
+                        </button>
                         @if (!string.IsNullOrWhiteSpace(selectedCustomerBalanceError))
                         {
                             <span class="customer-balance-warning" title="@selectedCustomerBalanceError">
@@ -551,6 +558,19 @@
                                     {
                                         <small class="discount-badge">- MYR @item.Discount.ToString("N2") disc.</small>
                                     }
+                                    @if (currentOrder.IsRedemptionMode)
+                                    {
+                                        @if (!string.IsNullOrWhiteSpace(item.MemberCreditAccountId))
+                                        {
+                                            <small class="discount-badge">
+                                                Member Credit · @item.MemberTypeId · @item.MemberCreditAccountId
+                                            </small>
+                                        }
+                                        else
+                                        {
+                                            <small>Not assigned to Member Credit</small>
+                                        }
+                                    }
                                 </div>
                                 <div class="cart-item-qty-stepper">
                                     <button type="button" class="qty-btn" @onclick="() => ChangeCartItemQuantity(item, -1)" title="Decrease">
@@ -563,6 +583,14 @@
                                 </div>
                                 <b>MYR @item.TotalPrice.ToString("N2")</b>
                                 <div class="cart-item-actions">
+                                    @if (currentOrder.IsRedemptionMode)
+                                    {
+                                        <button type="button"
+                                                title="Select Member Credit account"
+                                                @onclick="() => OpenLineCreditSelectorAsync(item)">
+                                            <i class="bi bi-wallet2"></i>
+                                        </button>
+                                    }
                                     <button type="button" title="Edit item discount/price" @onclick="() => EditCartItem(item)">
                                         <i class="bi bi-pencil"></i>
                                     </button>
@@ -583,6 +611,11 @@
                         <div><span>Tax</span><strong>MYR @currentOrder.Tax.ToString("N2")</strong></div>
                     }
                     <div class="cart-total"><span>Total</span><strong>MYR @currentOrder.Total.ToString("N2")</strong></div>
+                    @if (currentOrder.IsRedemptionMode && RedeemedCreditAmount > 0m)
+                    {
+                        <div><span>Member Credit</span><strong>- MYR @RedeemedCreditAmount.ToString("N2")</strong></div>
+                        <div><span>Balance to Pay</span><strong>MYR @AmountDueAfterCredit.ToString("N2")</strong></div>
+                    }
 
                     <div class="cart-footer-buttons">
                         <button type="button" class="secondary-action hold-cart-btn" @onclick="HoldCurrentOrder">
@@ -714,6 +747,10 @@
                     <div><span>Subtotal</span><strong>MYR @currentOrder.Subtotal.ToString("N2")</strong></div>
                     <div><span>Discount</span><strong>- MYR @currentOrder.Discount.ToString("N2")</strong></div>
                     <div class="grand-total"><span>Total Payable</span><strong>MYR @currentOrder.Total.ToString("N2")</strong></div>
+                    @if (currentOrder.IsRedemptionMode && RedeemedCreditAmount > 0m)
+                    {
+                        <div><span>Member Credit</span><strong>- MYR @RedeemedCreditAmount.ToString("N2")</strong></div>
+                    }
                     <div><span>Amount Received</span><strong>MYR @PaidAmount.ToString("N2")</strong></div>
                     <div class="remaining @(Remaining > 0 ? "due" : "covered")">
                         <span>Remaining</span>
@@ -724,7 +761,7 @@
 
                 <button type="button"
                         class="primary-action"
-                        disabled="@(isSaving || currentOrder.Payments.Count == 0 || Remaining > 0)"
+                        disabled="@(isSaving || Remaining > 0 || (!currentOrder.IsRedemptionMode && currentOrder.Payments.Count == 0))"
                         @onclick="SaveSale">
                     @if (isSaving)
                     {
@@ -908,9 +945,106 @@
         <footer>
             <span class="credit-dialog-note">
                 <i class="bi bi-info-circle"></i>
-                Credit selection and redemption are added in the next step.
+                In Redemption Mode, use the wallet button on a cart line to assign one of these accounts.
             </span>
             <button type="button" class="secondary-action" @onclick="CloseRedeemableCredits">Close</button>
+        </footer>
+    </section>
+}
+
+@if (showLineCreditSelector && creditTargetItem is not null)
+{
+    <div class="dialog-backdrop" @onclick="CloseLineCreditSelector"></div>
+    <section class="credit-accounts-dialog" role="dialog" aria-modal="true" aria-label="Select Member Credit account">
+        <header>
+            <div>
+                <span class="credit-dialog-icon"><i class="bi bi-wallet2"></i></span>
+                <div>
+                    <h2>Select Member Credit</h2>
+                    <p>@creditTargetItem.Name · line total RM @creditTargetItem.TotalPrice.ToString("N2")</p>
+                </div>
+            </div>
+            <button type="button" class="icon-button" title="Close" @onclick="CloseLineCreditSelector">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </header>
+
+        @if (isRedeemableCreditsLoading)
+        {
+            <div class="credit-dialog-state">
+                <span class="spinner-border spinner-border-sm"></span>
+                <span>Loading redeemable credit accounts...</span>
+            </div>
+        }
+        else if (!string.IsNullOrWhiteSpace(redeemableCreditsError))
+        {
+            <div class="credit-dialog-state credit-dialog-error">
+                <i class="bi bi-exclamation-circle"></i>
+                <span>@redeemableCreditsError</span>
+                <button type="button" class="secondary-action" @onclick="ReloadRedeemableCredits">Retry</button>
+            </div>
+        }
+        else if (redeemableCredits.Count == 0)
+        {
+            <div class="credit-dialog-state">
+                <i class="bi bi-wallet"></i>
+                <strong>No redeemable Member Credit</strong>
+            </div>
+        }
+        else
+        {
+            <div class="credit-account-table-wrap">
+                <table class="credit-account-table">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>Credit Account</th>
+                            <th>Member Type</th>
+                            <th>Expiry</th>
+                            <th class="amount-cell">Available</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var credit in redeemableCredits)
+                        {
+                            var available = CreditAvailableForLine(credit, creditTargetItem);
+                            var insufficient = available < creditTargetItem.TotalPrice;
+                            <tr>
+                                <td>
+                                    <input type="radio"
+                                           name="member-credit-account"
+                                           value="@credit.ARAPOutstandingID"
+                                           checked="@(string.Equals(selectedLineCreditAccountId, credit.ARAPOutstandingID, StringComparison.OrdinalIgnoreCase))"
+                                           disabled="@insufficient"
+                                           @onchange="() => SelectLineCreditAccount(credit)" />
+                                </td>
+                                <td>
+                                    <strong>@credit.ARAPOutstandingID</strong>
+                                    <small>@(string.IsNullOrWhiteSpace(credit.ItemDescription) ? "" : credit.ItemDescription)</small>
+                                </td>
+                                <td>@(string.IsNullOrWhiteSpace(credit.MemberTypeID) ? "—" : credit.MemberTypeID)</td>
+                                <td>@FormatCreditDate(credit.DueDate)</td>
+                                <td class="amount-cell">
+                                    RM @available.ToString("N2")
+                                    @if (insufficient)
+                                    {
+                                        <small>Insufficient</small>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <footer>
+            <button type="button" class="secondary-action" @onclick="ClearLineCreditSelection">
+                Remove Credit
+            </button>
+            <button type="button" class="primary-action" @onclick="ApplyLineCreditSelection">
+                Apply Member Credit
+            </button>
         </footer>
     </section>
 }
@@ -1092,6 +1226,9 @@
     private bool isRedeemableCreditsLoading;
     private string? redeemableCreditsError;
     private bool showRedeemableCredits;
+    private bool showLineCreditSelector;
+    private TransactionItem? creditTargetItem;
+    private string selectedLineCreditAccountId = string.Empty;
     private bool isSelectedCustomerBalanceLoading;
     private string? selectedCustomerBalanceError;
     private int selectedCustomerBalanceRequestVersion;
@@ -1109,12 +1246,18 @@
     private string calculatorDigits = string.Empty;
 
     private decimal PaidAmount => currentOrder.Payments.Sum(payment => payment.Amount);
-    private decimal Remaining => Math.Max(0, currentOrder.Total - PaidAmount);
-    private decimal Change => Math.Max(0, PaidAmount - currentOrder.Total);
+    private decimal RedeemedCreditAmount => currentOrder.IsRedemptionMode
+        ? currentOrder.Items
+            .Where(item => item.ActivityTypeId == 6 && !string.IsNullOrWhiteSpace(item.MemberCreditAccountId))
+            .Sum(item => item.TotalPrice)
+        : 0m;
+    private decimal AmountDueAfterCredit => Math.Max(0m, currentOrder.Total - RedeemedCreditAmount);
+    private decimal Remaining => Math.Max(0, AmountDueAfterCredit - PaidAmount);
+    private decimal Change => Math.Max(0, PaidAmount - AmountDueAfterCredit);
     private decimal PaidExcludingCalculatorMethod => calculatorMethod is null
         ? PaidAmount
         : currentOrder.Payments.Where(payment => payment.PaymentTypeId != calculatorMethod.POSPaymentTypeID).Sum(payment => payment.Amount);
-    private decimal CalculatorRemaining => Math.Max(0, currentOrder.Total - PaidExcludingCalculatorMethod);
+    private decimal CalculatorRemaining => Math.Max(0, AmountDueAfterCredit - PaidExcludingCalculatorMethod);
     private CashDiscountRuleDTO? SelectedDraftDiscountRule =>
         discountRules.FirstOrDefault(rule =>
             rule.Id.Equals(draftCashDiscountId, StringComparison.OrdinalIgnoreCase));
@@ -1136,6 +1279,7 @@
     private IEnumerable<string> ItemTypes => catalog.Select(x => x.Type).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x);
 
     private IEnumerable<CatalogItem> FilteredItems => catalog
+        .Where(x => !currentOrder.IsRedemptionMode || (x.InventoryTypeId != 5 && x.InventoryTypeId != 7))
         .Where(x => string.IsNullOrWhiteSpace(selectedType) || x.Type.Equals(selectedType, StringComparison.OrdinalIgnoreCase))
         .Where(x => string.IsNullOrWhiteSpace(searchText) || x.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase) || x.Sku.Contains(searchText, StringComparison.OrdinalIgnoreCase));
 
@@ -1452,6 +1596,194 @@
         }
     }
 
+    private async Task ToggleRedemptionModeAsync()
+    {
+        if (!currentOrder.IsRedemptionMode)
+        {
+            if (string.IsNullOrWhiteSpace(currentOrder.AccountId))
+            {
+                Feedback.Warning("Select a customer before switching to Redemption Mode.", "Customer required");
+                return;
+            }
+
+            var removedCount = currentOrder.Items.RemoveAll(item =>
+                item.InventoryTypeId == 5 || item.InventoryTypeId == 7);
+            currentOrder.IsRedemptionMode = true;
+            currentOrder.Payments.Clear();
+            ClearAllLineCreditSelections();
+            await ReloadRedeemableCredits();
+
+            if (removedCount > 0)
+            {
+                Feedback.Info(
+                    $"{removedCount} Package/Member Credit purchase item(s) were removed because they cannot be purchased in Redemption Mode.",
+                    "Redemption mode");
+            }
+        }
+        else
+        {
+            currentOrder.IsRedemptionMode = false;
+            currentOrder.Payments.Clear();
+            ClearAllLineCreditSelections();
+        }
+
+        selectedType = string.Empty;
+        PendingOrderService.SaveOrUpdate(currentOrder);
+    }
+
+    private async Task OpenLineCreditSelectorAsync(TransactionItem item)
+    {
+        if (!currentOrder.IsRedemptionMode)
+        {
+            Feedback.Warning("Switch to Redemption Mode before assigning Member Credit.", "Redemption mode");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(currentOrder.AccountId))
+        {
+            Feedback.Warning("Select a customer before redeeming Member Credit.", "Customer required");
+            return;
+        }
+
+        if (redeemableCredits.Count == 0)
+        {
+            await ReloadRedeemableCredits();
+        }
+
+        creditTargetItem = item;
+        selectedLineCreditAccountId = item.MemberCreditAccountId;
+        showLineCreditSelector = true;
+    }
+
+    private void CloseLineCreditSelector()
+    {
+        showLineCreditSelector = false;
+        creditTargetItem = null;
+        selectedLineCreditAccountId = string.Empty;
+    }
+
+    private void SelectLineCreditAccount(RedeemableCreditDTO credit)
+    {
+        selectedLineCreditAccountId = credit.ARAPOutstandingID ?? string.Empty;
+    }
+
+    private decimal CreditAvailableForLine(RedeemableCreditDTO credit, TransactionItem target)
+    {
+        var accountId = credit.ARAPOutstandingID ?? string.Empty;
+        var allocatedElsewhere = currentOrder.Items
+            .Where(item =>
+                !ReferenceEquals(item, target) &&
+                item.ActivityTypeId == 6 &&
+                string.Equals(item.MemberCreditAccountId, accountId, StringComparison.OrdinalIgnoreCase))
+            .Sum(item => item.TotalPrice);
+
+        return Math.Max(0m, credit.NetBalanceAfterUtilised - allocatedElsewhere);
+    }
+
+    private void ApplyLineCreditSelection()
+    {
+        if (creditTargetItem is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(selectedLineCreditAccountId))
+        {
+            ClearCreditFromLine(creditTargetItem);
+            PendingOrderService.SaveOrUpdate(currentOrder);
+            CloseLineCreditSelector();
+            return;
+        }
+
+        var credit = redeemableCredits.FirstOrDefault(item =>
+            string.Equals(
+                item.ARAPOutstandingID,
+                selectedLineCreditAccountId,
+                StringComparison.OrdinalIgnoreCase));
+
+        if (credit is null)
+        {
+            Feedback.Warning("The selected Member Credit account is no longer available.", "Credit unavailable");
+            return;
+        }
+
+        var available = CreditAvailableForLine(credit, creditTargetItem);
+        if (available < creditTargetItem.TotalPrice)
+        {
+            Feedback.Warning(
+                $"Credit {credit.ARAPOutstandingID} has RM {available:N2} available, but this line requires RM {creditTargetItem.TotalPrice:N2}.",
+                "Insufficient Member Credit");
+            return;
+        }
+
+        creditTargetItem.MemberCreditAccountId = credit.ARAPOutstandingID ?? string.Empty;
+        creditTargetItem.MemberTypeId = credit.MemberTypeID ?? string.Empty;
+        creditTargetItem.MembershipCredit = string.Empty;
+        creditTargetItem.ActivityTypeId = 6;
+        currentOrder.Payments.Clear();
+
+        PendingOrderService.SaveOrUpdate(currentOrder);
+        Feedback.Success(
+            $"{creditTargetItem.Name} assigned to {creditTargetItem.MemberCreditAccountId}.",
+            "Member Credit applied",
+            2200);
+        CloseLineCreditSelector();
+    }
+
+    private void ClearLineCreditSelection()
+    {
+        if (creditTargetItem is not null)
+        {
+            ClearCreditFromLine(creditTargetItem);
+            currentOrder.Payments.Clear();
+            PendingOrderService.SaveOrUpdate(currentOrder);
+        }
+
+        CloseLineCreditSelector();
+    }
+
+    private static void ClearCreditFromLine(TransactionItem item)
+    {
+        item.MemberCreditAccountId = string.Empty;
+        item.MemberTypeId = string.Empty;
+        item.MembershipCredit = string.Empty;
+        item.ActivityTypeId = 1;
+    }
+
+    private void ClearAllLineCreditSelections()
+    {
+        foreach (var item in currentOrder.Items)
+        {
+            ClearCreditFromLine(item);
+        }
+    }
+
+    private void ValidateAssignedCreditAfterLineChange(TransactionItem item)
+    {
+        if (!currentOrder.IsRedemptionMode || string.IsNullOrWhiteSpace(item.MemberCreditAccountId))
+        {
+            return;
+        }
+
+        var credit = redeemableCredits.FirstOrDefault(candidate =>
+            string.Equals(
+                candidate.ARAPOutstandingID,
+                item.MemberCreditAccountId,
+                StringComparison.OrdinalIgnoreCase));
+
+        if (credit is not null && CreditAvailableForLine(credit, item) >= item.TotalPrice)
+        {
+            return;
+        }
+
+        var oldAccount = item.MemberCreditAccountId;
+        ClearCreditFromLine(item);
+        currentOrder.Payments.Clear();
+        Feedback.Warning(
+            $"Member Credit {oldAccount} was removed because the updated line amount exceeds its available balance.",
+            "Credit selection removed");
+    }
+
     private void OpenRedeemableCredits()
     {
         if (string.IsNullOrWhiteSpace(currentOrder.AccountId))
@@ -1556,6 +1888,8 @@
 
         if (isChangingCustomerForExistingOrder)
         {
+            ClearAllLineCreditSelections();
+            currentOrder.Payments.Clear();
             currentOrder.AccountId = customer.SystemID ?? string.Empty;
             currentOrder.CustomerName = CustomerName(customer);
             currentOrder.CustomerContact = customer.ContactNumber1 ?? string.Empty;
@@ -1574,6 +1908,12 @@
 
     private void SelectWalkInCustomer()
     {
+        if (currentOrder.IsRedemptionMode)
+        {
+            Feedback.Warning("Redemption Mode requires a selected customer.", "Customer required");
+            return;
+        }
+
         if (isChangingCustomerForExistingOrder &&
             currentOrder.Items.Any(item => item.InventoryTypeId == 7))
         {
@@ -1686,6 +2026,12 @@
 
     private async Task OpenItemEditor(CatalogItem item)
     {
+        if (currentOrder.IsRedemptionMode && (item.InventoryTypeId == 5 || item.InventoryTypeId == 7))
+        {
+            Feedback.Warning("Package and Member Credit purchase items are not available in Redemption Mode.", "Redemption mode");
+            return;
+        }
+
         if (item.InventoryTypeId == 7 && string.IsNullOrWhiteSpace(currentOrder.AccountId))
         {
             Feedback.Warning(
@@ -1898,6 +2244,7 @@
 
         item.Discount = Math.Clamp(item.Discount, 0m, gross);
         RecalculateItemTaxAndTotal(item);
+        ValidateAssignedCreditAfterLineChange(item);
         PendingOrderService.SaveOrUpdate(currentOrder);
     }
 
@@ -1997,6 +2344,30 @@
             return;
         }
 
+        if (currentOrder.IsRedemptionMode)
+        {
+            if (string.IsNullOrWhiteSpace(currentOrder.AccountId))
+            {
+                Feedback.Warning("Select a customer before redeeming Member Credit.", "Customer required");
+                return;
+            }
+
+            if (!currentOrder.Items.Any(item =>
+                    item.ActivityTypeId == 6 &&
+                    !string.IsNullOrWhiteSpace(item.MemberCreditAccountId)))
+            {
+                Feedback.Warning("Assign a Member Credit account to at least one cart line.", "Credit not assigned");
+                return;
+            }
+
+            if (Remaining <= 0m)
+            {
+                paymentTypes.Clear();
+                stage = SaleStage.Payment;
+                return;
+            }
+        }
+
         var branch = BranchSession.CurrentBranch;
         var branchId = string.IsNullOrWhiteSpace(currentOrder.BranchId)
             ? branch?.Id ?? "HQ"
@@ -2094,6 +2465,7 @@
         {
             var saleTransaction = new Transaction
             {
+                DocumentTypeId = currentOrder.IsRedemptionMode ? 52 : 5,
                 AccountId = currentOrder.AccountId,
                 CustomerName = currentOrder.CustomerName,
                 CustomerContact = currentOrder.CustomerContact,
@@ -2122,7 +2494,11 @@
                     TaxCodeId = i.TaxCodeId,
                     TaxPercentage = i.TaxPercentage,
                     TaxAmount = i.TaxAmount,
-                    IsTaxInclusive = i.IsTaxInclusive
+                    IsTaxInclusive = i.IsTaxInclusive,
+                    ActivityTypeId = i.ActivityTypeId,
+                    MemberCreditAccountId = i.MemberCreditAccountId,
+                    MemberTypeId = i.MemberTypeId,
+                    MembershipCredit = i.MembershipCredit
                 }).ToList(),
                 Payments = currentOrder.Payments.Select(p => new TransactionPayment
                 {
@@ -2192,8 +2568,10 @@
             stage = SaleStage.Complete;
             Feedback.Resolve(
                 feedbackId,
-                $"Sale {savedSale.InvoiceNumber} completed successfully.",
-                "Sale completed");
+                currentOrder.IsRedemptionMode
+                    ? $"Redemption {savedSale.InvoiceNumber} completed successfully."
+                    : $"Sale {savedSale.InvoiceNumber} completed successfully.",
+                currentOrder.IsRedemptionMode ? "Redemption completed" : "Sale completed");
         }
         finally
         {
