@@ -572,7 +572,17 @@
                                     }
                                     @if (currentOrder.IsRedemptionMode)
                                     {
-                                        @if (!string.IsNullOrWhiteSpace(item.MemberCreditAccountId))
+                                        @if (item.MemberCreditAllocations.Count > 1)
+                                        {
+                                            <small class="discount-badge">
+                                                Member Credit · @item.MemberCreditAllocations.Count accounts · RM @item.MemberCreditAllocations.Sum(x => x.Amount).ToString("N2")
+                                            </small>
+                                            @foreach (var allocation in item.MemberCreditAllocations)
+                                            {
+                                                <small>@allocation.MemberCreditAccountId · RM @allocation.Amount.ToString("N2")</small>
+                                            }
+                                        }
+                                        else if (!string.IsNullOrWhiteSpace(item.MemberCreditAccountId))
                                         {
                                             <small class="discount-badge">
                                                 Member Credit · @item.MemberTypeId · @item.MemberCreditAccountId
@@ -933,6 +943,7 @@
                             <th>Expiry</th>
                             <th class="amount-cell">Original</th>
                             <th class="amount-cell">Balance</th>
+                            <th>History</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -947,11 +958,79 @@
                                 <td>@FormatCreditDate(credit.DueDate)</td>
                                 <td class="amount-cell">RM @credit.TotalAmount.ToString("N2")</td>
                                 <td class="amount-cell credit-balance-value">RM @credit.NetBalanceAfterUtilised.ToString("N2")</td>
+                                <td>
+                                    <button type="button"
+                                            class="secondary-action credit-history-button"
+                                            @onclick="() => LoadCreditRedemptionHistoryAsync(credit)">
+                                        History
+                                    </button>
+                                </td>
                             </tr>
                         }
                     </tbody>
                 </table>
             </div>
+
+            @if (!string.IsNullOrWhiteSpace(selectedHistoryCreditId))
+            {
+                <section class="credit-redemption-history">
+                    <div class="credit-history-heading">
+                        <div>
+                            <strong>Redemption History</strong>
+                            <span>@selectedHistoryCreditId</span>
+                        </div>
+                    </div>
+
+                    @if (isCreditHistoryLoading)
+                    {
+                        <div class="credit-dialog-state">
+                            <span class="spinner-border spinner-border-sm"></span>
+                            <span>Loading redemption history...</span>
+                        </div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(creditHistoryError))
+                    {
+                        <div class="credit-dialog-state credit-dialog-error">
+                            <i class="bi bi-exclamation-circle"></i>
+                            <span>@creditHistoryError</span>
+                        </div>
+                    }
+                    else if (creditRedemptionHistory.Count == 0)
+                    {
+                        <div class="credit-dialog-state">
+                            <span>No redemption history found for this Member Credit account.</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="credit-account-table-wrap">
+                            <table class="credit-account-table">
+                                <thead>
+                                    <tr>
+                                        <th>Member Credit</th>
+                                        <th>Redeem Date</th>
+                                        <th>Document</th>
+                                        <th class="amount-cell">Redeem Amount</th>
+                                        <th>Branch</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var history in creditRedemptionHistory)
+                                    {
+                                        <tr>
+                                            <td>@history.SourceARAPOutstandingID</td>
+                                            <td>@FormatCreditDate(history.FinancialDate)</td>
+                                            <td>@history.DisplayCode</td>
+                                            <td class="amount-cell">RM @Math.Abs(history.TotalAmount).ToString("N2")</td>
+                                            <td>@history.BranchID</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </section>
+            }
         }
 
         <footer>
@@ -1005,6 +1084,23 @@
         }
         else
         {
+            <div class="credit-allocation-summary">
+                <div>
+                    <span>Redemption amount</span>
+                    <strong>RM @creditTargetItem.TotalPrice.ToString("N2")</strong>
+                </div>
+                <div>
+                    <span>Credit allocated</span>
+                    <strong>RM @DraftLineCreditAllocated.ToString("N2")</strong>
+                </div>
+                <div>
+                    <span>Remaining</span>
+                    <strong class="@(DraftLineCreditRemaining > 0m ? "credit-remaining" : "credit-covered")">
+                        RM @DraftLineCreditRemaining.ToString("N2")
+                    </strong>
+                </div>
+            </div>
+
             <div class="credit-account-table-wrap">
                 <table class="credit-account-table">
                     <thead>
@@ -1014,21 +1110,21 @@
                             <th>Member Type</th>
                             <th>Expiry</th>
                             <th class="amount-cell">Available</th>
+                            <th class="amount-cell">Use</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var credit in redeemableCredits)
                         {
+                            var accountId = credit.ARAPOutstandingID ?? string.Empty;
                             var available = CreditAvailableForLine(credit, creditTargetItem);
-                            var insufficient = available < creditTargetItem.TotalPrice;
-                            <tr>
+                            var selected = draftLineCreditAllocations.ContainsKey(accountId);
+                            <tr class="@(selected ? "credit-allocation-selected" : string.Empty)">
                                 <td>
-                                    <input type="radio"
-                                           name="member-credit-account"
-                                           value="@credit.ARAPOutstandingID"
-                                           checked="@(string.Equals(selectedLineCreditAccountId, credit.ARAPOutstandingID, StringComparison.OrdinalIgnoreCase))"
-                                           disabled="@insufficient"
-                                           @onchange="() => SelectLineCreditAccount(credit)" />
+                                    <input type="checkbox"
+                                           checked="@selected"
+                                           disabled="@(!selected && (available <= 0m || DraftLineCreditRemaining <= 0m))"
+                                           @onchange="(ChangeEventArgs e) => ToggleLineCreditAllocation(credit, e.Value is bool isChecked && isChecked)" />
                                 </td>
                                 <td>
                                     <strong>@credit.ARAPOutstandingID</strong>
@@ -1036,12 +1132,16 @@
                                 </td>
                                 <td>@(string.IsNullOrWhiteSpace(credit.MemberTypeID) ? "—" : credit.MemberTypeID)</td>
                                 <td>@FormatCreditDate(credit.DueDate)</td>
+                                <td class="amount-cell">RM @available.ToString("N2")</td>
                                 <td class="amount-cell">
-                                    RM @available.ToString("N2")
-                                    @if (insufficient)
-                                    {
-                                        <small>Insufficient</small>
-                                    }
+                                    <input type="number"
+                                           class="credit-allocation-input"
+                                           min="0"
+                                           step="0.01"
+                                           max="@available.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)"
+                                           disabled="@(!selected)"
+                                           value="@DraftCreditAllocationAmount(credit).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)"
+                                           @onchange="(ChangeEventArgs e) => UpdateLineCreditAllocationAmount(credit, e.Value?.ToString())" />
                                 </td>
                             </tr>
                         }
@@ -1054,7 +1154,10 @@
             <button type="button" class="secondary-action" @onclick="ClearLineCreditSelection">
                 Remove Credit
             </button>
-            <button type="button" class="primary-action" @onclick="ApplyLineCreditSelection">
+            <button type="button"
+                    class="primary-action"
+                    disabled="@(draftLineCreditAllocations.Count == 0 || DraftLineCreditRemaining > 0m || DraftLineCreditAllocated > creditTargetItem.TotalPrice)"
+                    @onclick="ApplyLineCreditSelection">
                 Apply Member Credit
             </button>
         </footer>
@@ -1240,7 +1343,12 @@
     private bool showRedeemableCredits;
     private bool showLineCreditSelector;
     private TransactionItem? creditTargetItem;
-    private string selectedLineCreditAccountId = string.Empty;
+    private readonly Dictionary<string, decimal> draftLineCreditAllocations =
+        new(StringComparer.OrdinalIgnoreCase);
+    private List<CreditRedemptionHistoryDTO> creditRedemptionHistory = new();
+    private bool isCreditHistoryLoading;
+    private string? creditHistoryError;
+    private string selectedHistoryCreditId = string.Empty;
     private bool isSelectedCustomerBalanceLoading;
     private string? selectedCustomerBalanceError;
     private int selectedCustomerBalanceRequestVersion;
@@ -1260,9 +1368,14 @@
     private decimal PaidAmount => currentOrder.Payments.Sum(payment => payment.Amount);
     private decimal RedeemedCreditAmount => currentOrder.IsRedemptionMode
         ? currentOrder.Items
-            .Where(item => item.ActivityTypeId == 6 && !string.IsNullOrWhiteSpace(item.MemberCreditAccountId))
-            .Sum(item => item.TotalPrice)
+            .Where(item => item.ActivityTypeId == 6)
+            .Sum(RedeemedAmountForItem)
         : 0m;
+
+    private decimal DraftLineCreditAllocated => draftLineCreditAllocations.Values.Sum();
+    private decimal DraftLineCreditRemaining => creditTargetItem is null
+        ? 0m
+        : Math.Max(0m, creditTargetItem.TotalPrice - DraftLineCreditAllocated);
     private decimal AmountDueAfterCredit => Math.Max(0m, currentOrder.Total - RedeemedCreditAmount);
     private decimal Remaining => Math.Max(0, AmountDueAfterCredit - PaidAmount);
     private decimal Change => Math.Max(0, PaidAmount - AmountDueAfterCredit);
@@ -1535,6 +1648,10 @@
         redeemableCreditsError = null;
         isRedeemableCreditsLoading = false;
         showRedeemableCredits = false;
+        creditRedemptionHistory.Clear();
+        selectedHistoryCreditId = string.Empty;
+        creditHistoryError = null;
+        isCreditHistoryLoading = false;
         selectedCustomerBalanceError = null;
         isSelectedCustomerBalanceLoading = false;
     }
@@ -1691,7 +1808,23 @@
         }
 
         creditTargetItem = item;
-        selectedLineCreditAccountId = item.MemberCreditAccountId;
+        draftLineCreditAllocations.Clear();
+
+        if (item.MemberCreditAllocations.Count > 0)
+        {
+            foreach (var allocation in item.MemberCreditAllocations)
+            {
+                if (!string.IsNullOrWhiteSpace(allocation.MemberCreditAccountId) && allocation.Amount > 0m)
+                {
+                    draftLineCreditAllocations[allocation.MemberCreditAccountId] = allocation.Amount;
+                }
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(item.MemberCreditAccountId))
+        {
+            draftLineCreditAllocations[item.MemberCreditAccountId] = item.TotalPrice;
+        }
+
         showLineCreditSelector = true;
     }
 
@@ -1699,25 +1832,105 @@
     {
         showLineCreditSelector = false;
         creditTargetItem = null;
-        selectedLineCreditAccountId = string.Empty;
+        draftLineCreditAllocations.Clear();
     }
 
-    private void SelectLineCreditAccount(RedeemableCreditDTO credit)
+    private decimal AllocatedFromAccountOnItem(TransactionItem item, string accountId)
     {
-        selectedLineCreditAccountId = credit.ARAPOutstandingID ?? string.Empty;
+        if (item.MemberCreditAllocations.Count > 0)
+        {
+            return item.MemberCreditAllocations
+                .Where(allocation =>
+                    string.Equals(
+                        allocation.MemberCreditAccountId,
+                        accountId,
+                        StringComparison.OrdinalIgnoreCase))
+                .Sum(allocation => allocation.Amount);
+        }
+
+        return string.Equals(
+                item.MemberCreditAccountId,
+                accountId,
+                StringComparison.OrdinalIgnoreCase)
+            ? item.TotalPrice
+            : 0m;
     }
 
     private decimal CreditAvailableForLine(RedeemableCreditDTO credit, TransactionItem target)
     {
         var accountId = credit.ARAPOutstandingID ?? string.Empty;
         var allocatedElsewhere = currentOrder.Items
-            .Where(item =>
-                !ReferenceEquals(item, target) &&
-                item.ActivityTypeId == 6 &&
-                string.Equals(item.MemberCreditAccountId, accountId, StringComparison.OrdinalIgnoreCase))
-            .Sum(item => item.TotalPrice);
+            .Where(item => !ReferenceEquals(item, target) && item.ActivityTypeId == 6)
+            .Sum(item => AllocatedFromAccountOnItem(item, accountId));
 
         return Math.Max(0m, credit.NetBalanceAfterUtilised - allocatedElsewhere);
+    }
+
+    private decimal DraftCreditAllocationAmount(RedeemableCreditDTO credit)
+    {
+        var accountId = credit.ARAPOutstandingID ?? string.Empty;
+        return draftLineCreditAllocations.TryGetValue(accountId, out var amount)
+            ? amount
+            : 0m;
+    }
+
+    private void ToggleLineCreditAllocation(RedeemableCreditDTO credit, bool selected)
+    {
+        if (creditTargetItem is null || string.IsNullOrWhiteSpace(credit.ARAPOutstandingID))
+        {
+            return;
+        }
+
+        var accountId = credit.ARAPOutstandingID;
+        if (!selected)
+        {
+            draftLineCreditAllocations.Remove(accountId);
+            return;
+        }
+
+        var available = CreditAvailableForLine(credit, creditTargetItem);
+        var remaining = Math.Max(0m, creditTargetItem.TotalPrice - DraftLineCreditAllocated);
+        var amount = Math.Min(available, remaining);
+
+        if (amount > 0m)
+        {
+            draftLineCreditAllocations[accountId] = Math.Round(amount, 2, MidpointRounding.AwayFromZero);
+        }
+    }
+
+    private void UpdateLineCreditAllocationAmount(RedeemableCreditDTO credit, string? rawValue)
+    {
+        if (creditTargetItem is null || string.IsNullOrWhiteSpace(credit.ARAPOutstandingID))
+        {
+            return;
+        }
+
+        var accountId = credit.ARAPOutstandingID;
+        if (!draftLineCreditAllocations.ContainsKey(accountId))
+        {
+            return;
+        }
+
+        if (!decimal.TryParse(
+                rawValue,
+                System.Globalization.NumberStyles.Number,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var amount))
+        {
+            amount = 0m;
+        }
+
+        var available = CreditAvailableForLine(credit, creditTargetItem);
+        var otherAllocated = draftLineCreditAllocations
+            .Where(pair => !string.Equals(pair.Key, accountId, StringComparison.OrdinalIgnoreCase))
+            .Sum(pair => pair.Value);
+        var lineRemainingForAccount = Math.Max(0m, creditTargetItem.TotalPrice - otherAllocated);
+        var maximum = Math.Min(available, lineRemainingForAccount);
+
+        draftLineCreditAllocations[accountId] = Math.Round(
+            Math.Clamp(amount, 0m, maximum),
+            2,
+            MidpointRounding.AwayFromZero);
     }
 
     private void ApplyLineCreditSelection()
@@ -1727,7 +1940,7 @@
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(selectedLineCreditAccountId))
+        if (draftLineCreditAllocations.Count == 0)
         {
             ClearCreditFromLine(creditTargetItem);
             PendingOrderService.SaveOrUpdate(currentOrder);
@@ -1735,38 +1948,83 @@
             return;
         }
 
-        var credit = redeemableCredits.FirstOrDefault(item =>
-            string.Equals(
-                item.ARAPOutstandingID,
-                selectedLineCreditAccountId,
-                StringComparison.OrdinalIgnoreCase));
-
-        if (credit is null)
+        var allocations = new List<MemberCreditAllocation>();
+        foreach (var pair in draftLineCreditAllocations)
         {
-            Feedback.Warning("The selected Member Credit account is no longer available.", "Credit unavailable");
-            return;
+            var credit = redeemableCredits.FirstOrDefault(item =>
+                string.Equals(item.ARAPOutstandingID, pair.Key, StringComparison.OrdinalIgnoreCase));
+
+            if (credit is null || !credit.IsRedeemable || credit.NetBalanceAfterUtilised <= 0m)
+            {
+                Feedback.Warning($"Member Credit {pair.Key} is no longer redeemable.", "Credit unavailable");
+                return;
+            }
+
+            if (pair.Value <= 0m)
+            {
+                Feedback.Warning($"Enter an amount greater than RM 0.00 for {pair.Key}.", "Invalid allocation");
+                return;
+            }
+
+            var available = CreditAvailableForLine(credit, creditTargetItem);
+            if (pair.Value > available)
+            {
+                Feedback.Warning(
+                    $"Credit {pair.Key} has only RM {available:N2} available.",
+                    "Allocation exceeds balance");
+                return;
+            }
+
+            allocations.Add(new MemberCreditAllocation
+            {
+                MemberCreditAccountId = pair.Key,
+                MemberTypeId = credit.MemberTypeID ?? string.Empty,
+                Amount = Math.Round(pair.Value, 2, MidpointRounding.AwayFromZero)
+            });
         }
 
-        var available = CreditAvailableForLine(credit, creditTargetItem);
-        if (available < creditTargetItem.TotalPrice)
+        var allocatedTotal = allocations.Sum(allocation => allocation.Amount);
+        if (allocatedTotal > creditTargetItem.TotalPrice)
         {
             Feedback.Warning(
-                $"Credit {credit.ARAPOutstandingID} has RM {available:N2} available, but this line requires RM {creditTargetItem.TotalPrice:N2}.",
-                "Insufficient Member Credit");
+                $"Allocated Member Credit RM {allocatedTotal:N2} exceeds the line amount RM {creditTargetItem.TotalPrice:N2}.",
+                "Too much credit allocated");
             return;
         }
 
-        creditTargetItem.MemberCreditAccountId = credit.ARAPOutstandingID ?? string.Empty;
-        creditTargetItem.MemberTypeId = credit.MemberTypeID ?? string.Empty;
-        creditTargetItem.MembershipCredit = string.Empty;
-        creditTargetItem.ActivityTypeId = 6;
-        currentOrder.Payments.Clear();
+        if (Math.Abs(allocatedTotal - creditTargetItem.TotalPrice) > 0.009m)
+        {
+            Feedback.Warning(
+                $"Allocate the full RM {creditTargetItem.TotalPrice:N2} line amount before applying Member Credit.",
+                "Credit allocation incomplete");
+            return;
+        }
 
+        creditTargetItem.MemberCreditAllocations = allocations;
+        creditTargetItem.ActivityTypeId = 6;
+        creditTargetItem.MemberTypeId = allocations.First().MemberTypeId;
+
+        if (allocations.Count == 1)
+        {
+            creditTargetItem.MemberCreditAccountId = allocations[0].MemberCreditAccountId;
+            creditTargetItem.MembershipCredit = string.Empty;
+        }
+        else
+        {
+            creditTargetItem.MemberCreditAccountId = string.Empty;
+            creditTargetItem.MembershipCredit = SerializeLineCreditAllocations(allocations);
+        }
+
+        currentOrder.Payments.Clear();
         PendingOrderService.SaveOrUpdate(currentOrder);
+
         Feedback.Success(
-            $"{creditTargetItem.Name} assigned to {creditTargetItem.MemberCreditAccountId}.",
+            allocations.Count == 1
+                ? $"{creditTargetItem.Name} assigned to {allocations[0].MemberCreditAccountId}."
+                : $"{creditTargetItem.Name} assigned across {allocations.Count} Member Credit accounts.",
             "Member Credit updated",
             2200);
+
         CloseLineCreditSelector();
     }
 
@@ -1787,6 +2045,7 @@
         item.MemberCreditAccountId = string.Empty;
         item.MemberTypeId = string.Empty;
         item.MembershipCredit = string.Empty;
+        item.MemberCreditAllocations.Clear();
         item.ActivityTypeId = 1;
     }
 
@@ -1800,27 +2059,45 @@
 
     private void ValidateAssignedCreditAfterLineChange(TransactionItem item)
     {
-        if (!currentOrder.IsRedemptionMode || string.IsNullOrWhiteSpace(item.MemberCreditAccountId))
+        if (!currentOrder.IsRedemptionMode || item.ActivityTypeId != 6)
         {
             return;
         }
 
-        var credit = redeemableCredits.FirstOrDefault(candidate =>
-            string.Equals(
-                candidate.ARAPOutstandingID,
-                item.MemberCreditAccountId,
-                StringComparison.OrdinalIgnoreCase));
+        var allocations = EffectiveLineCreditAllocations(item);
+        var valid = allocations.Count > 0 &&
+                    Math.Abs(allocations.Sum(x => x.Amount) - item.TotalPrice) <= 0.009m;
 
-        if (credit is not null && CreditAvailableForLine(credit, item) >= item.TotalPrice)
+        if (valid)
+        {
+            foreach (var allocation in allocations)
+            {
+                var credit = redeemableCredits.FirstOrDefault(candidate =>
+                    string.Equals(
+                        candidate.ARAPOutstandingID,
+                        allocation.MemberCreditAccountId,
+                        StringComparison.OrdinalIgnoreCase));
+
+                if (credit is null ||
+                    !credit.IsRedeemable ||
+                    allocation.Amount <= 0m ||
+                    CreditAvailableForLine(credit, item) < allocation.Amount)
+                {
+                    valid = false;
+                    break;
+                }
+            }
+        }
+
+        if (valid)
         {
             return;
         }
 
-        var oldAccount = item.MemberCreditAccountId;
         ClearCreditFromLine(item);
         currentOrder.Payments.Clear();
         Feedback.Warning(
-            $"Member Credit {oldAccount} was removed because the updated line amount exceeds its available balance.",
+            "Member Credit allocation was removed because the updated line amount or account balance no longer matches the allocation.",
             "Credit selection removed");
     }
 
@@ -1835,7 +2112,47 @@
         showRedeemableCredits = true;
     }
 
-    private void CloseRedeemableCredits() => showRedeemableCredits = false;
+    private async Task LoadCreditRedemptionHistoryAsync(RedeemableCreditDTO credit)
+    {
+        var accountId = credit.ARAPOutstandingID?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(accountId))
+        {
+            return;
+        }
+
+        selectedHistoryCreditId = accountId;
+        creditRedemptionHistory.Clear();
+        creditHistoryError = null;
+        isCreditHistoryLoading = true;
+
+        try
+        {
+            var result = await CustomerService.GetCreditRedemptionHistoryAsync(accountId);
+            if (!result.Success || result.Value is null)
+            {
+                creditHistoryError = result.ErrorMessage ?? "Unable to load redemption history.";
+                return;
+            }
+
+            creditRedemptionHistory = result.Value.ToList();
+        }
+        catch (Exception ex)
+        {
+            creditHistoryError = $"Unable to load redemption history: {ex.Message}";
+        }
+        finally
+        {
+            isCreditHistoryLoading = false;
+        }
+    }
+
+    private void CloseRedeemableCredits()
+    {
+        showRedeemableCredits = false;
+        selectedHistoryCreditId = string.Empty;
+        creditRedemptionHistory.Clear();
+        creditHistoryError = null;
+    }
 
     private async Task ReloadRedeemableCredits()
     {
@@ -1883,6 +2200,50 @@
             await InvokeAsync(StateHasChanged);
         }
     }
+
+    private static decimal RedeemedAmountForItem(TransactionItem item) =>
+        EffectiveLineCreditAllocations(item).Sum(allocation => allocation.Amount);
+
+    private static List<MemberCreditAllocation> EffectiveLineCreditAllocations(TransactionItem item)
+    {
+        if (item.MemberCreditAllocations.Count > 0)
+        {
+            return item.MemberCreditAllocations
+                .Where(allocation =>
+                    !string.IsNullOrWhiteSpace(allocation.MemberCreditAccountId) &&
+                    allocation.Amount > 0m)
+                .GroupBy(allocation => allocation.MemberCreditAccountId, StringComparer.OrdinalIgnoreCase)
+                .Select(group => new MemberCreditAllocation
+                {
+                    MemberCreditAccountId = group.Key,
+                    MemberTypeId = group.Select(x => x.MemberTypeId)
+                        .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty,
+                    Amount = group.Sum(x => x.Amount)
+                })
+                .ToList();
+        }
+
+        if (string.IsNullOrWhiteSpace(item.MemberCreditAccountId))
+        {
+            return new List<MemberCreditAllocation>();
+        }
+
+        return new List<MemberCreditAllocation>
+        {
+            new()
+            {
+                MemberCreditAccountId = item.MemberCreditAccountId,
+                MemberTypeId = item.MemberTypeId,
+                Amount = item.TotalPrice
+            }
+        };
+    }
+
+    private static string SerializeLineCreditAllocations(IEnumerable<MemberCreditAllocation> allocations) =>
+        string.Join(
+            "|",
+            allocations.Select(allocation =>
+                $"{allocation.MemberCreditAccountId},{allocation.Amount:F2}"));
 
     private static string FormatCreditDate(DateTime value) =>
         value.Year <= 1900 ? "—" : value.ToString("dd/MM/yyyy");
@@ -2398,7 +2759,7 @@
 
             if (!currentOrder.Items.Any(item =>
                     item.ActivityTypeId == 6 &&
-                    !string.IsNullOrWhiteSpace(item.MemberCreditAccountId)))
+                    EffectiveLineCreditAllocations(item).Count > 0))
             {
                 Feedback.Warning("Assign a Member Credit account to at least one cart line.", "Credit not assigned");
                 return;
@@ -2542,7 +2903,15 @@
                     ActivityTypeId = i.ActivityTypeId,
                     MemberCreditAccountId = i.MemberCreditAccountId,
                     MemberTypeId = i.MemberTypeId,
-                    MembershipCredit = i.MembershipCredit
+                    MembershipCredit = i.MembershipCredit,
+                    MemberCreditAllocations = i.MemberCreditAllocations
+                        .Select(allocation => new MemberCreditAllocation
+                        {
+                            MemberCreditAccountId = allocation.MemberCreditAccountId,
+                            MemberTypeId = allocation.MemberTypeId,
+                            Amount = allocation.Amount
+                        })
+                        .ToList()
                 }).ToList(),
                 Payments = currentOrder.Payments.Select(p => new TransactionPayment
                 {
