@@ -6,6 +6,7 @@ using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.Models;
 using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.Components.Services.Files;
+using Beauty_Aesthetics_WebPos.Components.Services.Inventory;
 using Beauty_Aesthetics_WebPos.Components.Services.Tax;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 
@@ -18,19 +19,22 @@ public sealed class CashSalesService : ICashSalesService
     private readonly WebDashboardAC dashboardAC;
     private readonly AppFeedbackService feedback;
     private readonly IFileDownloadService fileDownloadService;
+    private readonly IMemberCreditService memberCreditService;
 
     public CashSalesService(
         CashSalesAC cashSalesAC,
         BranchAC branchAC,
         WebDashboardAC dashboardAC,
         AppFeedbackService feedback,
-        IFileDownloadService fileDownloadService)
+        IFileDownloadService fileDownloadService,
+        IMemberCreditService memberCreditService)
     {
         this.cashSalesAC = cashSalesAC;
         this.branchAC = branchAC;
         this.dashboardAC = dashboardAC;
         this.feedback = feedback;
         this.fileDownloadService = fileDownloadService;
+        this.memberCreditService = memberCreditService;
     }
 
     public async Task<ApiCallResult<IReadOnlyList<Transaction>>> LoadTransactionsAsync(
@@ -424,8 +428,24 @@ public sealed class CashSalesService : ICashSalesService
         var header = document["objDoc_CashSales"] as JsonObject ?? new JsonObject();
         ApplyHeader(header, transaction, true);
         document["objDoc_CashSales"] = header;
-        document["lstDocumentLine"] = BuildDocumentLines(document, transaction);
+        var documentLines = BuildDocumentLines(document, transaction);
+        document["lstDocumentLine"] = documentLines;
         document["lstReceiptLines"] = BuildReceiptLines(transaction);
+
+        var memberCreditBuild = await BuildMemberCreditGrantCollectionsAsync(
+            transaction,
+            documentLines,
+            header,
+            cancellationToken);
+
+        if (!memberCreditBuild.Success)
+        {
+            return ApiCallResult<Transaction>.Failure(
+                HttpStatusCode.BadRequest,
+                memberCreditBuild.ErrorMessage);
+        }
+
+        document["lstARAPOutstanding_MemberCredit"] = memberCreditBuild.RootCredits;
 
         var createResult = await cashSalesAC.CreateRecordAsync(document, cancellationToken);
         if (!createResult.Success)
@@ -717,11 +737,13 @@ public sealed class CashSalesService : ICashSalesService
                 out var lineTax);
             var lineTotal = Math.Round(beforeTax + lineTax, 2, MidpointRounding.AwayFromZero);
             var line = template is null ? new JsonObject() : (JsonObject)template.DeepClone();
-            line["DocumentLineID"] = string.Empty;
+            var currentLineOrder = lineOrder++;
+            line["DocumentLineID"] = currentLineOrder.ToString("D2");
             line["DocumentID"] = string.Empty;
             line["InventoryID"] = item.InventoryId;
             line["LineItemID"] = item.InventoryId;
-            line["LineOrder"] = lineOrder++;
+            line["LineItemDisplayCode"] = item.Sku;
+            line["LineOrder"] = currentLineOrder;
             line["Description"] = First(item.Description, item.Name, $"{transaction.Type} Item");
             line["ItemName"] = First(item.Name, item.Description, $"{transaction.Type} Item");
             line["Quantity"] = quantity;
@@ -746,6 +768,10 @@ public sealed class CashSalesService : ICashSalesService
             line["TaxCodeID"] = item.TaxCodeId;
             line["IsTaxInclusive"] = item.IsTaxInclusive;
             line["BranchID"] = transaction.BranchId;
+            line["EditBranchID"] = transaction.BranchId;
+            line["GroupID"] = transaction.GroupId;
+            line["CurrencyID"] = string.IsNullOrWhiteSpace(transaction.CurrencyName) ? "MYR" : transaction.CurrencyName;
+            line["ExchangeRate"] = 1m;
             line["FinancialDate"] = transaction.Date;
             line["SaveAction"] = 1;
             line["IsDirty"] = true;
@@ -753,6 +779,151 @@ public sealed class CashSalesService : ICashSalesService
         }
 
         return lines;
+    }
+
+    private async Task<(bool Success, string ErrorMessage, JsonArray RootCredits)> BuildMemberCreditGrantCollectionsAsync(
+        Transaction transaction,
+        JsonArray documentLines,
+        JsonObject header,
+        CancellationToken cancellationToken)
+    {
+        var rootCredits = new JsonArray();
+        var memberCreditIndexes = transaction.Items
+            .Select((item, index) => new { Item = item, Index = index })
+            .Where(entry =>
+                entry.Item.InventoryTypeId == 7 ||
+                string.Equals(entry.Item.Category, "Member Credit", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (memberCreditIndexes.Count == 0)
+        {
+            return (true, string.Empty, rootCredits);
+        }
+
+        if (string.IsNullOrWhiteSpace(transaction.AccountId))
+        {
+            return (
+                false,
+                "A customer is required before purchasing Member Credit.",
+                rootCredits);
+        }
+
+        foreach (var entry in memberCreditIndexes)
+        {
+            var item = entry.Item;
+            if (string.IsNullOrWhiteSpace(item.InventoryId))
+            {
+                return (
+                    false,
+                    $"Member Credit '{item.Name}' has no inventory ID.",
+                    rootCredits);
+            }
+
+            var fullResult = await memberCreditService.LoadMemberCreditAsync(
+                item.InventoryId,
+                cancellationToken);
+
+            if (!fullResult.Success || fullResult.Value is null)
+            {
+                return (
+                    false,
+                    fullResult.ErrorMessage ??
+                    $"Unable to load the Member Credit configuration for '{item.Name}'.",
+                    rootCredits);
+            }
+
+            var creditSetup = fullResult.Value;
+            if (!creditSetup.IsActive ||
+                string.Equals(creditSetup.Status, "Inactive", StringComparison.OrdinalIgnoreCase))
+            {
+                return (
+                    false,
+                    $"Member Credit '{creditSetup.Name}' is inactive and cannot be purchased.",
+                    rootCredits);
+            }
+
+            var allocations = (creditSetup.MembershipCredits ??
+                               Array.Empty<Beauty_Aesthetics_WebPos.Components.ViewModels.MembershipViewModel.MemberCreditAllocation>())
+                .Where(allocation =>
+                    !string.IsNullOrWhiteSpace(allocation.MemberTypeId) &&
+                    allocation.CreditAmount > 0m)
+                .GroupBy(allocation => allocation.MemberTypeId.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.Last())
+                .ToList();
+
+            if (allocations.Count == 0)
+            {
+                return (
+                    false,
+                    $"Member Credit '{creditSetup.Name}' has no configured membership credit amount.",
+                    rootCredits);
+            }
+
+            if (entry.Index >= documentLines.Count ||
+                documentLines[entry.Index] is not JsonObject line)
+            {
+                return (
+                    false,
+                    $"Unable to match Member Credit '{creditSetup.Name}' to its sale line.",
+                    rootCredits);
+            }
+
+            var lineCredits = new JsonArray();
+            var quantity = Math.Max(1, item.Quantity);
+            var settlementRatio = creditSetup.SettlementRatio > 0m
+                ? creditSetup.SettlementRatio
+                : 1m;
+            var dueDate = creditSetup.ValidityDays > 0
+                ? transaction.Date.Date.AddDays(creditSetup.ValidityDays)
+                : new DateTime(2049, 12, 31);
+
+            foreach (var allocation in allocations)
+            {
+                var totalCredit = allocation.CreditAmount * quantity;
+                var credit = new JsonObject
+                {
+                    ["ARAPOutstandingID"] = string.Empty,
+                    ["AccountID"] = transaction.AccountId,
+                    ["FinancialDate"] = transaction.Date,
+                    ["DueDate"] = dueDate,
+                    ["DocumentID"] = Text(header, "DocumentID"),
+                    ["DisplayCode"] = Text(header, "DisplayCode"),
+                    ["DocumentTypeID"] = Integer(header, "DocumentTypeID") == 0
+                        ? 5
+                        : Integer(header, "DocumentTypeID"),
+                    ["DocumentTypeName"] = First(Text(header, "FriendlyDocumentName"), "CashSales"),
+                    ["DocumentLineID"] = Text(line, "DocumentLineID"),
+                    ["ItemDescription"] = quantity == 1
+                        ? First(item.Description, item.Name, creditSetup.Name)
+                        : $"{First(item.Description, item.Name, creditSetup.Name)}(x {quantity})",
+                    ["CurrencyID"] = First(Text(header, "TransactionCurrencyID"), "MYR"),
+                    ["CurrencyName"] = First(Text(header, "TransactionCurrencyName"), "MYR"),
+                    ["ExchangeRate"] = Number(header, "ExchangeRate") == 0m
+                        ? 1m
+                        : Number(header, "ExchangeRate"),
+                    ["InterOutletRatio"] = settlementRatio,
+                    ["InterOutletAmount"] = totalCredit * settlementRatio,
+                    ["MGMTier"] = string.Empty,
+                    ["TotalAmount"] = totalCredit,
+                    ["BranchID"] = transaction.BranchId,
+                    ["GroupID"] = transaction.GroupId,
+                    ["LineItemID"] = item.InventoryId,
+                    ["MemberTypeID"] = allocation.MemberTypeId.Trim(),
+                    ["SaveAction"] = 1,
+                    ["IsDirty"] = true
+                };
+
+                lineCredits.Add(credit);
+                rootCredits.Add(credit.DeepClone());
+
+                Console.WriteLine(
+                    $"[Member Credit Grant] {creditSetup.Name} | MemberType={allocation.MemberTypeId} | Amount={totalCredit:N2} | Qty={quantity}");
+            }
+
+            line["lstARAPOutstanding_MemberCredit"] = lineCredits;
+        }
+
+        return (true, string.Empty, rootCredits);
     }
 
     private static JsonArray BuildReceiptLines(Transaction transaction)
