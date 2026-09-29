@@ -37,29 +37,36 @@ public sealed class MemberCreditService : IMemberCreditService
         }
 
         var memberCredits = result.Value
-            .Where(record =>
-                record.InventoryTypeID == MemberCreditInventoryTypeId &&
-                !string.Equals(record.AccountStatus, "Inactive", StringComparison.OrdinalIgnoreCase))
-            .Select(record => new MembershipViewModel.MemberCredit(
-                FirstNonEmpty(record.AccountName, record.SalesDescription) ?? string.Empty,
-                FirstNonEmpty(record.DisplayCode, record.MasterAccountID) ?? string.Empty,
-                Convert.ToDecimal(record.MemberMainAccountCredit),
-                record.SalesPrice,
-                record.MasterAccountID,
-                FirstNonEmpty(record.AccountStatus, "Active") ?? "Active",
-                record.BranchID ?? string.Empty,
-                FirstNonEmpty(record.InventoryTypeName, MemberCreditInventoryTypeName) ?? MemberCreditInventoryTypeName,
-                record.SalesDescription ?? string.Empty,
-                record.ValidityDays,
-                Convert.ToDecimal(record.MemberCreditSettlementRatio),
-                record.AvailableDateFrom,
-                record.AvailableDateTo,
-                record.AvailableTimeFrom,
-                record.AvailableTimeTo,
-                record.eInvoiceClassificationCode ?? string.Empty,
-                FirstNonEmpty(
-                    GetInventoryString(record, "TriggeredMemberTypeID"),
-                    ParseFirstMemberTypeId(GetInventoryString(record, "MembershipCredit"))) ?? string.Empty))
+            .Where(record => record.InventoryTypeID == MemberCreditInventoryTypeId)
+            .Select(record =>
+            {
+                var allocations = ParseMembershipCredits(GetInventoryString(record, "MembershipCredit"));
+                var legacyCredit = Convert.ToDecimal(record.MemberMainAccountCredit);
+                var status = FirstNonEmpty(record.AccountStatus, "Active") ?? "Active";
+                return new MembershipViewModel.MemberCredit(
+                    FirstNonEmpty(record.AccountName, record.SalesDescription) ?? string.Empty,
+                    FirstNonEmpty(record.DisplayCode, record.MasterAccountID) ?? string.Empty,
+                    allocations.FirstOrDefault()?.CreditAmount ?? Math.Max(0m, legacyCredit),
+                    record.SalesPrice,
+                    record.MasterAccountID,
+                    status,
+                    record.BranchID ?? string.Empty,
+                    FirstNonEmpty(record.InventoryTypeName, MemberCreditInventoryTypeName) ?? MemberCreditInventoryTypeName,
+                    record.SalesDescription ?? string.Empty,
+                    record.ValidityDays,
+                    record.AvailableDateFrom,
+                    record.AvailableDateTo,
+                    record.AvailableTimeFrom,
+                    record.AvailableTimeTo,
+                    record.eInvoiceClassificationCode ?? string.Empty,
+                    GetInventoryString(record, "ItemGroupID") ?? string.Empty,
+                    record.ItemGroupName ?? string.Empty,
+                    record.TaxCodeID ?? string.Empty,
+                    record.IsTaxInclusive,
+                    !string.Equals(status, "Inactive", StringComparison.OrdinalIgnoreCase),
+                    string.IsNullOrWhiteSpace(record.BranchID) ? [] : [record.BranchID],
+                    allocations);
+            })
             .OrderBy(memberCredit => memberCredit.Name)
             .ToList();
 
@@ -105,16 +112,19 @@ public sealed class MemberCreditService : IMemberCreditService
                 !string.Equals(item.SaveAction, "Deleted", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        var primaryCredit = configuredCredits.FirstOrDefault();
-        var memberTypeId = FirstNonEmpty(
-            primaryCredit?.MemberTypeId,
-            fullInventory?.TriggeredMemberTypeId,
-            GetInventoryString(record, "TriggeredMemberTypeID"),
-            ParseFirstMemberTypeId(GetInventoryString(record, "MembershipCredit"))) ?? string.Empty;
+        var allocations = configuredCredits
+            .Select(item => new MembershipViewModel.MemberCreditAllocation(
+                item.MemberTypeId.Trim(),
+                Math.Max(0m, item.MemberCredit)))
+            .ToList();
 
-        var creditValue = primaryCredit is not null
-            ? Math.Max(0m, primaryCredit.MemberCredit)
-            : Math.Max(
+        if (allocations.Count == 0)
+        {
+            allocations = ParseMembershipCredits(GetInventoryString(record, "MembershipCredit")).ToList();
+        }
+
+        var creditValue = allocations.FirstOrDefault()?.CreditAmount
+            ?? Math.Max(
                 0m,
                 fullInventory?.MemberMainAccountCredit
                     ?? Convert.ToDecimal(record.MemberMainAccountCredit));
@@ -138,13 +148,25 @@ public sealed class MemberCreditService : IMemberCreditService
                 FirstNonEmpty(record.InventoryTypeName, MemberCreditInventoryTypeName) ?? MemberCreditInventoryTypeName,
                 FirstNonEmpty(fullInventory?.SalesDescription, record.SalesDescription) ?? string.Empty,
                 expiryDays,
-                Convert.ToDecimal(record.MemberCreditSettlementRatio),
                 record.AvailableDateFrom,
                 record.AvailableDateTo,
                 record.AvailableTimeFrom,
                 record.AvailableTimeTo,
                 record.eInvoiceClassificationCode ?? string.Empty,
-                memberTypeId));
+                GetInventoryString(record, "ItemGroupID") ?? string.Empty,
+                FirstNonEmpty(fullInventory?.ItemGroupName, record.ItemGroupName) ?? string.Empty,
+                FirstNonEmpty(fullInventory?.TaxCodeId, record.TaxCodeID) ?? string.Empty,
+                fullInventory?.IsTaxInclusive ?? record.IsTaxInclusive,
+                !string.Equals(
+                    FirstNonEmpty(fullInventory?.AccountStatus, record.AccountStatus, "Active"),
+                    "Inactive",
+                    StringComparison.OrdinalIgnoreCase),
+                (full.Branches ?? [])
+                    .Where(branch => branch.IsEnabled && !string.IsNullOrWhiteSpace(branch.BranchId))
+                    .Select(branch => branch.BranchId!.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
+                allocations));
     }
 
     public async Task<ApiCallResult<bool>> CreateMemberCreditAsync(
@@ -159,7 +181,8 @@ public sealed class MemberCreditService : IMemberCreditService
             normalizedBranchId,
             memberCredit,
             isUpdate: false,
-            existingCredits: null);
+            existingCredits: null,
+            existingBranches: null);
         var result = ToSaveResult(
             await serviceInventoryAC.CreateFullAsync(request, cancellationToken),
             "Unable to create member credit.");
@@ -214,7 +237,8 @@ public sealed class MemberCreditService : IMemberCreditService
             normalizedBranchId,
             memberCredit,
             isUpdate: true,
-            existingCredits);
+            existingCredits,
+            fullLoadResult.Value.Branches);
         var result = ToSaveResult(
             await serviceInventoryAC.UpdateFullAsync(request, cancellationToken),
             "Unable to update member credit.");
@@ -290,25 +314,31 @@ public sealed class MemberCreditService : IMemberCreditService
         record.AccountName = memberCredit.Name.Trim();
         record.SalesDescription = memberCredit.Name.Trim();
         record.DisplayCode = memberCredit.Code.Trim();
-        record.MemberMainAccountCredit = Math.Max(0, memberCredit.CreditValue);
+        var allocations = NormalizeMembershipCredits(memberCredit.MembershipCredits);
+        var primaryCredit = allocations.FirstOrDefault();
+
+        record.MemberMainAccountCredit = primaryCredit?.CreditAmount ?? 0m;
         record.SalesPrice = Math.Max(0, memberCredit.Price);
         record.ValidityDays = Math.Max(0, memberCredit.ValidityDays);
-        record.MemberCreditSettlementRatio = memberCredit.SettlementRatio > 0m
-            ? memberCredit.SettlementRatio
-            : 1m;
+        record.MemberCreditSettlementRatio = 1m;
+        record.ItemGroupID = string.IsNullOrWhiteSpace(memberCredit.ItemGroupId) ? null : memberCredit.ItemGroupId.Trim();
+        record.ItemGroupName = memberCredit.ItemGroupName?.Trim() ?? string.Empty;
+        record.TaxCodeID = string.IsNullOrWhiteSpace(memberCredit.TaxCode) ? null : memberCredit.TaxCode.Trim();
+        record.IsTaxInclusive = memberCredit.IsTaxInclusive;
 
-        var memberTypeId = memberCredit.MemberTypeId?.Trim() ?? string.Empty;
         SetInventoryProperty(record, "MemberExpiryDays", Math.Max(0, memberCredit.ValidityDays));
-        SetInventoryProperty(record, "TriggeredMemberTypeID", memberTypeId);
-        SetInventoryProperty(
-            record,
-            "MembershipCredit",
-            string.IsNullOrWhiteSpace(memberTypeId)
-                ? string.Empty
-                : $"{memberTypeId},{Math.Max(0m, memberCredit.CreditValue):0.00}");
+        SetInventoryProperty(record, "TriggeredMemberTypeID", primaryCredit?.MemberTypeId ?? string.Empty);
+        SetInventoryProperty(record, "MembershipCredit", BuildMembershipCreditString(allocations));
 
-        record.BranchID = branchId;
-        record.AccountStatus = string.IsNullOrWhiteSpace(record.AccountStatus) ? "Active" : record.AccountStatus;
+        var visibleBranches = (memberCredit.VisibleBranchIds ?? [])
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        record.BranchID = visibleBranches.FirstOrDefault() ?? branchId;
+        record.AccountStatus = memberCredit.IsActive ? "Active" : "Inactive";
+        SetInventoryProperty(record, "strStatus", record.AccountStatus);
         record.IsSold = true;
     }
 
@@ -317,63 +347,104 @@ public sealed class MemberCreditService : IMemberCreditService
         string branchId,
         MembershipViewModel.MemberCredit memberCredit,
         bool isUpdate,
-        IReadOnlyCollection<InventoryMembershipCreditDTO>? existingCredits)
+        IReadOnlyCollection<InventoryMembershipCreditDTO>? existingCredits,
+        IReadOnlyCollection<InventoryPackageBranchLoadDTO>? existingBranches)
     {
-        var memberTypeId = memberCredit.MemberTypeId?.Trim() ?? string.Empty;
+        var desiredCredits = NormalizeMembershipCredits(memberCredit.MembershipCredits);
         var credits = new List<InventoryMembershipCreditDTO>();
+
+        foreach (var desired in desiredCredits)
+        {
+            var existed = (existingCredits ?? []).Any(existing =>
+                string.Equals(existing.MemberTypeId, desired.MemberTypeId, StringComparison.OrdinalIgnoreCase));
+
+            credits.Add(new InventoryMembershipCreditDTO
+            {
+                MemberTypeId = desired.MemberTypeId,
+                MemberCredit = desired.CreditAmount,
+                SaveAction = isUpdate && existed ? "Changed" : "Added",
+                IsDirty = true
+            });
+        }
 
         if (isUpdate)
         {
             foreach (var existing in existingCredits ?? [])
             {
-                if (string.IsNullOrWhiteSpace(existing.MemberTypeId))
+                if (string.IsNullOrWhiteSpace(existing.MemberTypeId) ||
+                    desiredCredits.Any(desired =>
+                        string.Equals(desired.MemberTypeId, existing.MemberTypeId, StringComparison.OrdinalIgnoreCase)))
                 {
                     continue;
                 }
 
-                if (!string.Equals(existing.MemberTypeId, memberTypeId, StringComparison.OrdinalIgnoreCase))
+                credits.Add(new InventoryMembershipCreditDTO
                 {
-                    credits.Add(new InventoryMembershipCreditDTO
-                    {
-                        MemberTypeId = existing.MemberTypeId.Trim(),
-                        MemberCredit = Math.Max(0m, existing.MemberCredit),
-                        SaveAction = "Deleted",
-                        IsDirty = true
-                    });
-                }
+                    MemberTypeId = existing.MemberTypeId.Trim(),
+                    MemberCredit = Math.Max(0m, existing.MemberCredit),
+                    SaveAction = "Deleted",
+                    IsDirty = true
+                });
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(memberTypeId))
-        {
-            var existed = (existingCredits ?? []).Any(existing =>
-                string.Equals(existing.MemberTypeId, memberTypeId, StringComparison.OrdinalIgnoreCase));
+        var selectedBranchIds = (memberCredit.VisibleBranchIds ?? [])
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-            credits.Add(new InventoryMembershipCreditDTO
+        if (selectedBranchIds.Count == 0)
+        {
+            selectedBranchIds.Add(branchId);
+        }
+
+        var branches = new List<InventoryBranchDTO>();
+        foreach (var selectedBranchId in selectedBranchIds)
+        {
+            var existing = (existingBranches ?? []).FirstOrDefault(branch =>
+                string.Equals(branch.BranchId, selectedBranchId, StringComparison.OrdinalIgnoreCase));
+
+            branches.Add(new InventoryBranchDTO
             {
-                MemberTypeId = memberTypeId,
-                MemberCredit = Math.Max(0m, memberCredit.CreditValue),
-                SaveAction = isUpdate && existed ? "Changed" : "Added",
+                MasterAccountId = record.MasterAccountID,
+                BranchId = selectedBranchId,
+                BranchPrice = Math.Max(0m, memberCredit.Price),
+                IsEnabled = true,
+                GroupId = string.IsNullOrWhiteSpace(existing?.GroupId) ? selectedBranchId : existing!.GroupId,
+                SaveAction = isUpdate && existing is not null ? "Changed" : "Added",
                 IsDirty = true
             });
+        }
+
+        if (isUpdate)
+        {
+            foreach (var existing in existingBranches ?? [])
+            {
+                if (string.IsNullOrWhiteSpace(existing.BranchId) ||
+                    selectedBranchIds.Contains(existing.BranchId, StringComparer.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                branches.Add(new InventoryBranchDTO
+                {
+                    MasterAccountId = record.MasterAccountID,
+                    BranchId = existing.BranchId!,
+                    BranchPrice = existing.BranchPrice,
+                    IsEnabled = false,
+                    GroupId = existing.GroupId,
+                    SaveAction = "Deleted",
+                    IsDirty = true
+                });
+            }
         }
 
         return new InventoryPackageRequestDTO
         {
             ObjInventory = record,
             MembershipCredits = credits,
-            Branches =
-            [
-                new InventoryBranchDTO
-                {
-                    MasterAccountId = record.MasterAccountID,
-                    BranchId = branchId,
-                    BranchPrice = Math.Max(0m, memberCredit.Price),
-                    IsEnabled = true,
-                    SaveAction = isUpdate ? "Changed" : "Added",
-                    IsDirty = true
-                }
-            ]
+            Branches = branches
         };
     }
 
@@ -393,25 +464,56 @@ public sealed class MemberCreditService : IMemberCreditService
             : ApiCallResult<bool>.Failure(result.StatusCode, result.ErrorMessage ?? fallbackMessage);
     }
 
-    private static string? ParseFirstMemberTypeId(string? membershipCredit)
+    private static IReadOnlyList<MembershipViewModel.MemberCreditAllocation> NormalizeMembershipCredits(
+        IReadOnlyList<MembershipViewModel.MemberCreditAllocation>? credits)
+    {
+        return (credits ?? [])
+            .Where(credit => !string.IsNullOrWhiteSpace(credit.MemberTypeId))
+            .GroupBy(credit => credit.MemberTypeId.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(group => new MembershipViewModel.MemberCreditAllocation(
+                group.Key,
+                Math.Max(0m, group.Last().CreditAmount)))
+            .ToList();
+    }
+
+    private static IReadOnlyList<MembershipViewModel.MemberCreditAllocation> ParseMembershipCredits(
+        string? membershipCredit)
     {
         if (string.IsNullOrWhiteSpace(membershipCredit))
         {
-            return null;
+            return [];
         }
 
-        var firstRow = membershipCredit
-            .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .FirstOrDefault();
-
-        if (string.IsNullOrWhiteSpace(firstRow))
+        var credits = new List<MembershipViewModel.MemberCreditAllocation>();
+        foreach (var row in membershipCredit.Split(
+                     '|',
+                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            return null;
+            var columns = row.Split(',', StringSplitOptions.TrimEntries);
+            if (columns.Length < 2 ||
+                string.IsNullOrWhiteSpace(columns[0]) ||
+                !decimal.TryParse(
+                    columns[1],
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var amount))
+            {
+                continue;
+            }
+
+            credits.Add(new MembershipViewModel.MemberCreditAllocation(columns[0], Math.Max(0m, amount)));
         }
 
-        return firstRow
-            .Split(',', StringSplitOptions.TrimEntries)
-            .FirstOrDefault();
+        return credits;
+    }
+
+    private static string BuildMembershipCreditString(
+        IReadOnlyList<MembershipViewModel.MemberCreditAllocation> credits)
+    {
+        return string.Join(
+            "|",
+            credits.Select(credit =>
+                $"{credit.MemberTypeId},{credit.CreditAmount.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}"));
     }
 
     private static string? GetInventoryString(object record, string propertyName)
