@@ -631,6 +631,7 @@ public sealed class CashSalesService : ICashSalesService
         var transaction = new Transaction
         {
             DocumentId = Text(header, "DocumentID"),
+            DocumentTypeId = Integer(header, "DocumentTypeID") == 0 ? 5 : Integer(header, "DocumentTypeID"),
             AccountId = Text(header, "AccountID"),
             BranchId = Text(header, "BranchID"),
             InvoiceNumber = First(Text(header, "DisplayCode"), Text(header, "DocumentID"), "-")!,
@@ -708,7 +709,11 @@ public sealed class CashSalesService : ICashSalesService
             TaxPercentage = Number(line, "TaxPercentage"),
             TaxAmount = Number(line, "TaxAmount"),
             UnitOfMeasureId = Text(line, "UnitOfMeasureID"),
-            IsTaxInclusive = Bool(line, "IsTaxInclusive")
+            IsTaxInclusive = Bool(line, "IsTaxInclusive"),
+            ActivityTypeId = Integer(line, "ActivityTypeID") == 0 ? 1 : Integer(line, "ActivityTypeID"),
+            MemberCreditAccountId = Text(line, "MemberCreditAccountID"),
+            MemberTypeId = Text(line, "MemberTypeID"),
+            MembershipCredit = Text(line, "MembershipCredit")
         };
     }
 
@@ -776,6 +781,10 @@ public sealed class CashSalesService : ICashSalesService
             line["UnitOfMeasureID"] = item.UnitOfMeasureId;
             line["TaxCodeID"] = item.TaxCodeId;
             line["IsTaxInclusive"] = item.IsTaxInclusive;
+            line["ActivityTypeID"] = item.ActivityTypeId <= 0 ? 1 : item.ActivityTypeId;
+            line["MemberCreditAccountID"] = item.MemberCreditAccountId;
+            line["MemberTypeID"] = item.MemberTypeId;
+            line["MembershipCredit"] = item.MembershipCredit;
             line["BranchID"] = transaction.BranchId;
             line["EditBranchID"] = transaction.BranchId;
             line["GroupID"] = transaction.GroupId;
@@ -797,6 +806,13 @@ public sealed class CashSalesService : ICashSalesService
         CancellationToken cancellationToken)
     {
         var rootCredits = new JsonArray();
+
+        // Redemption consumes existing Member Credit; it must never grant new credit.
+        if (transaction.DocumentTypeId == 52)
+        {
+            return (true, string.Empty, rootCredits);
+        }
+
         var memberCreditIndexes = transaction.Items
             .Select((item, index) => new { Item = item, Index = index })
             .Where(entry =>
@@ -1006,14 +1022,19 @@ public sealed class CashSalesService : ICashSalesService
                 : new List<TransactionPayment>();
 
         var lines = new JsonArray();
-        if (payments.Count == 0)
-            return lines;
-
         var totalTendered = payments.Sum(payment => payment.Amount);
-        var changeDue = Math.Max(0m, totalTendered - transaction.Amount);
+        var redeemedAmount = transaction.DocumentTypeId == 52
+            ? transaction.Items
+                .Where(item =>
+                    item.ActivityTypeId == 6 &&
+                    !string.IsNullOrWhiteSpace(item.MemberCreditAccountId))
+                .Sum(item => item.TotalPrice)
+            : 0m;
+        var cashDue = Math.Max(0m, transaction.Amount - redeemedAmount);
+        var changeDue = Math.Max(0m, totalTendered - cashDue);
         var changePayment = payments.LastOrDefault(payment =>
                                 payment.PaymentMethod.Contains("cash", StringComparison.OrdinalIgnoreCase))
-                            ?? payments.Last();
+                            ?? payments.LastOrDefault();
 
         foreach (var payment in payments.Where(payment => payment.PaymentTypeId != 0 && payment.Amount > 0))
         {
@@ -1039,6 +1060,39 @@ public sealed class CashSalesService : ICashSalesService
                 ["SaveAction"] = 1,
                 ["IsDirty"] = true
             });
+        }
+
+        if (transaction.DocumentTypeId == 52)
+        {
+            foreach (var item in transaction.Items.Where(item =>
+                         item.ActivityTypeId == 6 &&
+                         !string.IsNullOrWhiteSpace(item.MemberCreditAccountId)))
+            {
+                lines.Add(new JsonObject
+                {
+                    ["POSReceiptLineID"] = string.Empty,
+                    ["DocumentID"] = string.Empty,
+                    ["AccountID"] = transaction.AccountId,
+                    ["AccountTypeID"] = 3,
+                    ["Reference"] = $"{item.MemberTypeId} - ({item.MemberCreditAccountId})",
+                    ["Description"] = "Member Credit",
+                    ["POSPaymentTypeID"] = -10,
+                    ["POSReceiptLineAmount"] = item.TotalPrice,
+                    ["POSReceiptChangeAmount"] = 0m,
+                    ["SourceDocumentLineID"] = item.MemberCreditAccountId,
+                    ["InventoryID"] = item.InventoryId,
+                    ["FinancialAccountID"] = string.Empty,
+                    ["BankName"] = string.Empty,
+                    ["BranchID"] = transaction.BranchId,
+                    ["GroupID"] = transaction.GroupId,
+                    ["FinancialDate"] = transaction.Date,
+                    ["ExchangeRate"] = 1m,
+                    ["CurrencyID"] = "MYR",
+                    ["CurrencyName"] = "MYR",
+                    ["SaveAction"] = 1,
+                    ["IsDirty"] = true
+                });
+            }
         }
 
         return lines;
@@ -1083,8 +1137,9 @@ public sealed class CashSalesService : ICashSalesService
     private static void ApplyHeader(JsonObject header, Transaction transaction, bool isNew)
     {
         var now = DateTime.Now;
-        header["DocumentTypeID"] = 5;
-        header["FriendlyDocumentName"] = "CashSales";
+        var documentTypeId = transaction.DocumentTypeId == 52 ? 52 : 5;
+        header["DocumentTypeID"] = documentTypeId;
+        header["FriendlyDocumentName"] = documentTypeId == 52 ? "Redemption" : "CashSales";
         header["BranchID"] = transaction.BranchId;
         header["EditBranchID"] = transaction.BranchId;
         header["GroupID"] = transaction.GroupId;
