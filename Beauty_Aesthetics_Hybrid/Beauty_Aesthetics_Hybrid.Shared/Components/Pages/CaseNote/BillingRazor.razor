@@ -1904,11 +1904,9 @@
 
     private IEnumerable<MembershipViewModel.MemberCredit> FilteredMemberCreditCatalog => MemberCreditCatalog
         .Where(credit =>
-            credit.IsActive &&
-            !string.Equals(credit.Status, "Inactive", StringComparison.OrdinalIgnoreCase) &&
-            (string.IsNullOrWhiteSpace(_memberCreditSearchQuery) ||
-             credit.Name.Contains(_memberCreditSearchQuery, StringComparison.OrdinalIgnoreCase) ||
-             credit.Code.Contains(_memberCreditSearchQuery, StringComparison.OrdinalIgnoreCase)));
+            string.IsNullOrWhiteSpace(_memberCreditSearchQuery) ||
+            credit.Name.Contains(_memberCreditSearchQuery, StringComparison.OrdinalIgnoreCase) ||
+            credit.Code.Contains(_memberCreditSearchQuery, StringComparison.OrdinalIgnoreCase));
 
     private async Task LoadBillingCatalogsAsync()
     {
@@ -2009,7 +2007,7 @@
         try
         {
             var branchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID) ? "HQ" : AppState.SelectedBranchID!;
-            var result = await MemberCreditService.LoadMemberCreditsAsync();
+            var result = await MemberCreditService.LoadMemberCreditsAsync(branchId);
             if (!result.Success || result.Value is null)
             {
                 MemberCreditCatalog = new List<MembershipViewModel.MemberCredit>();
@@ -2017,27 +2015,10 @@
                 return;
             }
 
-            var fullRecords = await Task.WhenAll(result.Value
-                .Where(item => item.IsActive && !string.IsNullOrWhiteSpace(item.MasterAccountId))
-                .Select(async summary =>
-                {
-                    var full = await MemberCreditService.LoadMemberCreditAsync(summary.MasterAccountId!);
-                    if (!full.Success)
-                    {
-                        Console.WriteLine(
-                            $"[Billing Member Credit] Falling back to summary for {summary.MasterAccountId}: {full.ErrorMessage}");
-                    }
-
-                    return full.Success && full.Value is not null
-                        ? full.Value
-                        : summary;
-                }));
-
-            MemberCreditCatalog = fullRecords
-                .Where(item =>
-                    item.IsActive &&
-                    !string.Equals(item.Status, "Inactive", StringComparison.OrdinalIgnoreCase) &&
-                    IsMemberCreditVisibleAtBranch(item, branchId))
+            // Match Senang Retail checkout: the branch-scoped Inventory/LoadProxy response
+            // is the purchase catalog. Do not full-load/filter every Top Up before display.
+            MemberCreditCatalog = result.Value
+                .Where(item => !string.IsNullOrWhiteSpace(item.MasterAccountId))
                 .OrderBy(item => item.Name)
                 .ToList();
         }
@@ -2110,16 +2091,8 @@
                     $"[Billing Member Credit] Falling back to catalog summary for {creditId}: {detailResult.ErrorMessage}");
             }
 
-            var branchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID) ? "HQ" : AppState.SelectedBranchID!;
-
-            if (!detail.IsActive ||
-                string.Equals(detail.Status, "Inactive", StringComparison.OrdinalIgnoreCase) ||
-                !IsMemberCreditVisibleAtBranch(detail, branchId))
-            {
-                Feedback.Warning($"{detail.Name} is not available at this branch.", "Member Credit unavailable");
-                return;
-            }
-
+            // The catalog itself already came from Inventory/LoadProxy for the current branch.
+            // Like Senang, full-load only the selected Top Up for its complete configuration.
             var taxRate = await GstTaxRateService.GetRateForTaxCodeAsync(detail.TaxCode);
             var existing = MemberCreditItems.FirstOrDefault(item =>
                 string.Equals(item.SourceId, creditId, StringComparison.OrdinalIgnoreCase));
@@ -2162,33 +2135,6 @@
         MemberCreditItems.Remove(item);
         SynchronizeBillingPaymentTotals();
         Feedback.Info($"{item.Name} removed from billing.", "Member Credit removed", 1800);
-    }
-
-    private static bool IsMemberCreditVisibleAtBranch(
-        MembershipViewModel.MemberCredit credit,
-        string branchId)
-    {
-        var visibleBranches = (credit.VisibleBranchIds ?? Array.Empty<string>())
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Select(id => id.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        if (visibleBranches.Count > 0)
-        {
-            return visibleBranches.Contains(branchId, StringComparer.OrdinalIgnoreCase);
-        }
-
-        if (!string.IsNullOrWhiteSpace(credit.BranchId))
-        {
-            return string.Equals(
-                credit.BranchId.Trim(),
-                branchId,
-                StringComparison.OrdinalIgnoreCase);
-        }
-
-        // Legacy records without branch child rows should remain available.
-        return true;
     }
 
     private static string FormatMemberCreditRates(MembershipViewModel.MemberCredit credit)
