@@ -15,6 +15,7 @@
 @inject Beauty_Aesthetics_WebPos.Components.Services.Customers.ICustomerService CustomerService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.IProductInventoryService ProductInventoryService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.IServiceItemService ServiceItemService
+@inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.IMemberCreditService MemberCreditService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Employees.IEmployeeService EmployeeService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Sales.ICashSalesService CashSalesService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Sales.ICashDiscountService CashDiscountService
@@ -337,6 +338,75 @@
                                                     </button>
                                                 </td>
                                                 <td>RM @service.LineTotal.ToString("N2")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="billing-section">
+                            <div class="section-header">
+                                <h3>Member Credit</h3>
+                                <div class="header-actions" style="display:flex; gap:8px;">
+                                    <button type="button"
+                                            class="btn-add-prescription btn-add-service"
+                                            @onclick="OpenMemberCreditPickerModal">
+                                        <i class="bi bi-plus-lg"></i>
+                                        <span>Member Credit</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="table-wrapper">
+                                <table class="billing-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Member Credit</th>
+                                            <th>Qty</th>
+                                            <th>Unit Price</th>
+                                            <th>Discount</th>
+                                            <th>Total</th>
+                                            <th style="width:52px;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @if (MemberCreditItems.Count == 0)
+                                        {
+                                            <tr class="empty-row"><td colspan="6">No member credit added.</td></tr>
+                                        }
+                                        @foreach (var credit in MemberCreditItems)
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <span>@credit.Name</span>
+                                                    @if (!string.IsNullOrWhiteSpace(credit.Sku))
+                                                    {
+                                                        <small class="billing-line-code">@credit.Sku</small>
+                                                    }
+                                                </td>
+                                                <td>@credit.Quantity</td>
+                                                <td>RM @credit.UnitPrice.ToString("N2")</td>
+                                                <td>
+                                                    <button class="btn-discount-cell" @onclick="() => OpenDiscountModal(credit)">
+                                                        @if (credit.Discount > 0m)
+                                                        {
+                                                            <span class="discount-active">-RM @credit.Discount.ToString("N2")</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="discount-empty">Add Discount</span>
+                                                        }
+                                                    </button>
+                                                </td>
+                                                <td>RM @credit.LineTotal.ToString("N2")</td>
+                                                <td>
+                                                    <button type="button"
+                                                            class="btn-delete-mode"
+                                                            title="Remove Member Credit"
+                                                            @onclick="() => RemoveMemberCreditItem(credit)">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </td>
                                             </tr>
                                         }
                                     </tbody>
@@ -1489,6 +1559,85 @@
     </div>
 }
 
+@if (_showMemberCreditPickerModal)
+{
+    <div class="modal-overlay" @onclick="CloseMemberCreditPickerModal">
+        <div class="modal-container billing-service-modal" @onclick:stopPropagation="true">
+            <div class="modal-header modal-header-info">
+                <i class="bi bi-wallet2"></i>
+                <h3>Select Member Credit</h3>
+            </div>
+            <div class="modal-body">
+                <div class="service-search-bar">
+                    <i class="bi bi-search"></i>
+                    <input type="text"
+                           class="service-search-input"
+                           placeholder="Search member credit..."
+                           value="@_memberCreditSearchQuery"
+                           @oninput="UpdateMemberCreditSearch" />
+                </div>
+
+                <div class="service-catalog-list">
+                    @if (_isMemberCreditCatalogLoading)
+                    {
+                        <div class="catalog-state"><span class="spinner-border spinner-border-sm"></span> Loading member credit...</div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(_memberCreditCatalogError))
+                    {
+                        <div class="catalog-state catalog-state-error">
+                            <span>@_memberCreditCatalogError</span>
+                            <button type="button" @onclick="LoadMemberCreditCatalogAsync">Retry</button>
+                        </div>
+                    }
+                    else if (!FilteredMemberCreditCatalog.Any())
+                    {
+                        <div class="catalog-state">No active member credit is available for this branch.</div>
+                    }
+                    else
+                    {
+                        @foreach (var credit in FilteredMemberCreditCatalog)
+                        {
+                            <div class="service-catalog-row @(_loadingMemberCreditId == credit.MasterAccountId ? "loading" : string.Empty)"
+                                 @onclick="() => AddMemberCreditFromCatalogAsync(credit)">
+                                <div class="service-icon">
+                                    <i class="bi bi-wallet2"></i>
+                                </div>
+                                <div class="service-info">
+                                    <h4>@credit.Name</h4>
+                                    <div class="service-meta">
+                                        <span>@credit.Code</span>
+                                        <span class="dot">•</span>
+                                        <span>@FormatMemberCreditRates(credit)</span>
+                                    </div>
+                                </div>
+                                <div class="service-price">RM @credit.Price.ToString("N2")</div>
+                                <button type="button"
+                                        class="btn-add-service-item"
+                                        aria-label="Add @credit.Name"
+                                        disabled="@(_loadingMemberCreditId == credit.MasterAccountId)"
+                                        @onclick:stopPropagation="true"
+                                        @onclick="() => AddMemberCreditFromCatalogAsync(credit)">
+                                    @if (_loadingMemberCreditId == credit.MasterAccountId)
+                                    {
+                                        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-plus-lg"></i>
+                                    }
+                                </button>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" @onclick="CloseMemberCreditPickerModal">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (_showDeleteConfirmModal)
 {
     <div class="modal-overlay" @onclick="CancelDeleteConfirm">
@@ -1596,6 +1745,7 @@
 
     private List<BillingItem> PrescriptionItems { get; set; } = new();
     private List<BillingService> ServiceItems { get; set; } = new();
+    private List<BillingMemberCredit> MemberCreditItems { get; set; } = new();
 
     private decimal BillDiscount { get; set; } = 0m;
     private string BillDiscountCashDiscountId { get; set; } = string.Empty;
@@ -1604,13 +1754,15 @@
 
     private decimal LineDiscountTotal =>
         PrescriptionItems.Sum(i => Math.Clamp(i.Discount, 0m, i.UnitPrice * Math.Max(1, i.Quantity))) +
-        ServiceItems.Sum(s => Math.Clamp(s.Discount, 0m, s.UnitPrice * Math.Max(1, s.Quantity)));
+        ServiceItems.Sum(s => Math.Clamp(s.Discount, 0m, s.UnitPrice * Math.Max(1, s.Quantity))) +
+        MemberCreditItems.Sum(c => Math.Clamp(c.Discount, 0m, c.UnitPrice * Math.Max(1, c.Quantity)));
 
     private decimal DiscountTotal => LineDiscountTotal + BillDiscount;
 
     private decimal GrossSubtotal =>
         PrescriptionItems.Sum(i => i.UnitPrice * Math.Max(1, i.Quantity)) +
-        ServiceItems.Sum(s => s.UnitPrice * Math.Max(1, s.Quantity));
+        ServiceItems.Sum(s => s.UnitPrice * Math.Max(1, s.Quantity)) +
+        MemberCreditItems.Sum(c => c.UnitPrice * Math.Max(1, c.Quantity));
 
     private BillingTotals CurrentBillingTotals => CalculateBillingTotals();
     private decimal SubtotalBeforeTax => CurrentBillingTotals.SubtotalBeforeTax;
@@ -1680,7 +1832,7 @@
 
     // Discount Modal state
     private bool _showDiscountModal;
-    private object? _selectedDiscountItem; // BillingItem or BillingService
+    private object? _selectedDiscountItem; // BillingItem, BillingService, BillingMemberCredit, or bill total
     private string _discountValue = string.Empty;
     private bool _isPercentageDiscount; // true = %, false = RM
     private string? _discountError;
@@ -1719,11 +1871,17 @@
 
 
     private List<ServiceViewModel.ServiceItem> ServiceCatalog { get; set; } = new();
+    private List<MembershipViewModel.MemberCredit> MemberCreditCatalog { get; set; } = new();
     private bool _isProductCatalogLoading;
     private bool _isServiceCatalogLoading;
+    private bool _isMemberCreditCatalogLoading;
     private string? _loadingServiceId;
+    private string? _loadingMemberCreditId;
     private string? _productCatalogError;
     private string? _serviceCatalogError;
+    private string? _memberCreditCatalogError;
+    private bool _showMemberCreditPickerModal;
+    private string _memberCreditSearchQuery = string.Empty;
 
     private string _serviceSearchQuery = string.Empty;
     private string _selectedServiceCategory = "All";
@@ -1744,9 +1902,20 @@
                      s.ServiceName.Contains(_serviceSearchQuery, StringComparison.OrdinalIgnoreCase) ||
                      s.Sku.Contains(_serviceSearchQuery, StringComparison.OrdinalIgnoreCase)));
 
+    private IEnumerable<MembershipViewModel.MemberCredit> FilteredMemberCreditCatalog => MemberCreditCatalog
+        .Where(credit =>
+            credit.IsActive &&
+            !string.Equals(credit.Status, "Inactive", StringComparison.OrdinalIgnoreCase) &&
+            (string.IsNullOrWhiteSpace(_memberCreditSearchQuery) ||
+             credit.Name.Contains(_memberCreditSearchQuery, StringComparison.OrdinalIgnoreCase) ||
+             credit.Code.Contains(_memberCreditSearchQuery, StringComparison.OrdinalIgnoreCase)));
+
     private async Task LoadBillingCatalogsAsync()
     {
-        await Task.WhenAll(LoadProductCatalogAsync(), LoadServiceCatalogAsync());
+        await Task.WhenAll(
+            LoadProductCatalogAsync(),
+            LoadServiceCatalogAsync(),
+            LoadMemberCreditCatalogAsync());
     }
 
     private async Task LoadProductCatalogAsync()
@@ -1830,6 +1999,194 @@
         {
             _isServiceCatalogLoading = false;
         }
+    }
+
+    private async Task LoadMemberCreditCatalogAsync()
+    {
+        _isMemberCreditCatalogLoading = true;
+        _memberCreditCatalogError = null;
+
+        try
+        {
+            var branchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID) ? "HQ" : AppState.SelectedBranchID!;
+            var result = await MemberCreditService.LoadMemberCreditsAsync();
+            if (!result.Success || result.Value is null)
+            {
+                MemberCreditCatalog = new List<MembershipViewModel.MemberCredit>();
+                _memberCreditCatalogError = result.ErrorMessage ?? "Unable to load member credit.";
+                return;
+            }
+
+            var fullRecords = await Task.WhenAll(result.Value
+                .Where(item => item.IsActive && !string.IsNullOrWhiteSpace(item.MasterAccountId))
+                .Select(async summary =>
+                {
+                    var full = await MemberCreditService.LoadMemberCreditAsync(summary.MasterAccountId!);
+                    return full.Success ? full.Value : null;
+                }));
+
+            MemberCreditCatalog = fullRecords
+                .Where(item => item is not null)
+                .Select(item => item!)
+                .Where(item =>
+                {
+                    if (!item.IsActive || string.Equals(item.Status, "Inactive", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return false;
+                    }
+
+                    var visibleBranches = (item.VisibleBranchIds ?? Array.Empty<string>())
+                        .Where(id => !string.IsNullOrWhiteSpace(id))
+                        .Select(id => id.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
+                    return visibleBranches.Count > 0
+                        ? visibleBranches.Contains(branchId, StringComparer.OrdinalIgnoreCase)
+                        : string.Equals(item.BranchId, branchId, StringComparison.OrdinalIgnoreCase);
+                })
+                .OrderBy(item => item.Name)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Unable to load billing member credit catalog: {ex.Message}");
+            MemberCreditCatalog = new List<MembershipViewModel.MemberCredit>();
+            _memberCreditCatalogError = "Unable to load member credit.";
+        }
+        finally
+        {
+            _isMemberCreditCatalogLoading = false;
+        }
+    }
+
+    private async Task OpenMemberCreditPickerModal()
+    {
+        if (string.IsNullOrWhiteSpace(_billingCustomerId))
+        {
+            Feedback.Warning("Select a valid customer before adding Member Credit.", "Customer required");
+            return;
+        }
+
+        _memberCreditSearchQuery = string.Empty;
+        _showMemberCreditPickerModal = true;
+        if (MemberCreditCatalog.Count == 0 && !_isMemberCreditCatalogLoading)
+        {
+            await LoadMemberCreditCatalogAsync();
+        }
+    }
+
+    private void CloseMemberCreditPickerModal()
+    {
+        _showMemberCreditPickerModal = false;
+        _memberCreditSearchQuery = string.Empty;
+    }
+
+    private void UpdateMemberCreditSearch(ChangeEventArgs e)
+    {
+        _memberCreditSearchQuery = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private async Task AddMemberCreditFromCatalogAsync(MembershipViewModel.MemberCredit credit)
+    {
+        if (string.IsNullOrWhiteSpace(_billingCustomerId))
+        {
+            Feedback.Warning("Select a valid customer before adding Member Credit.", "Customer required");
+            return;
+        }
+
+        var creditId = credit.MasterAccountId?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(creditId) || !string.IsNullOrWhiteSpace(_loadingMemberCreditId))
+        {
+            return;
+        }
+
+        _loadingMemberCreditId = creditId;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var detailResult = await MemberCreditService.LoadMemberCreditAsync(creditId);
+            if (!detailResult.Success || detailResult.Value is null)
+            {
+                Feedback.Error(detailResult.ErrorMessage ?? "Unable to load the selected Member Credit.", "Member Credit not added");
+                return;
+            }
+
+            var detail = detailResult.Value;
+            var branchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID) ? "HQ" : AppState.SelectedBranchID!;
+            var visibleBranches = (detail.VisibleBranchIds ?? Array.Empty<string>())
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var visibleHere = visibleBranches.Count > 0
+                ? visibleBranches.Contains(branchId, StringComparer.OrdinalIgnoreCase)
+                : string.Equals(detail.BranchId, branchId, StringComparison.OrdinalIgnoreCase);
+
+            if (!detail.IsActive ||
+                string.Equals(detail.Status, "Inactive", StringComparison.OrdinalIgnoreCase) ||
+                !visibleHere)
+            {
+                Feedback.Warning($"{detail.Name} is not available at this branch.", "Member Credit unavailable");
+                return;
+            }
+
+            var taxRate = await GstTaxRateService.GetRateForTaxCodeAsync(detail.TaxCode);
+            var existing = MemberCreditItems.FirstOrDefault(item =>
+                string.Equals(item.SourceId, creditId, StringComparison.OrdinalIgnoreCase));
+
+            if (existing is not null)
+            {
+                var index = MemberCreditItems.IndexOf(existing);
+                MemberCreditItems[index] = existing with { Quantity = existing.Quantity + 1 };
+            }
+            else
+            {
+                MemberCreditItems.Add(new BillingMemberCredit(
+                    detail.Name,
+                    1,
+                    detail.Price,
+                    0m,
+                    creditId,
+                    detail.Code,
+                    detail.TaxCode,
+                    detail.IsTaxInclusive,
+                    taxRate));
+            }
+
+            _showMemberCreditPickerModal = false;
+            Feedback.Success($"{detail.Name} added to billing.", "Member Credit added", 2200);
+        }
+        catch (Exception ex)
+        {
+            Feedback.Error($"Unable to add Member Credit: {ex.Message}", "Member Credit not added");
+        }
+        finally
+        {
+            _loadingMemberCreditId = null;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void RemoveMemberCreditItem(BillingMemberCredit item)
+    {
+        MemberCreditItems.Remove(item);
+        SynchronizeBillingPaymentTotals();
+        Feedback.Info($"{item.Name} removed from billing.", "Member Credit removed", 1800);
+    }
+
+    private static string FormatMemberCreditRates(MembershipViewModel.MemberCredit credit)
+    {
+        var rates = (credit.MembershipCredits ?? Array.Empty<MembershipViewModel.MemberCreditAllocation>())
+            .Where(rate => !string.IsNullOrWhiteSpace(rate.MemberTypeId))
+            .Select(rate => $"{rate.MemberTypeId}: RM {rate.CreditAmount:N2}")
+            .ToList();
+
+        return rates.Count == 0
+            ? "No membership rate configured"
+            : string.Join(" · ", rates);
     }
 
     private string ResolveCatalogImage(string? recordId, string? imagePath, string? imageFileName) =>
@@ -2820,9 +3177,9 @@
             return;
         }
 
-        if (PrescriptionItems.Count == 0 && ServiceItems.Count == 0)
+        if (PrescriptionItems.Count == 0 && ServiceItems.Count == 0 && MemberCreditItems.Count == 0)
         {
-            _paymentValidationError = "Add at least one billing item or service before payment.";
+            _paymentValidationError = "Add at least one billing item, service, or Member Credit before payment.";
             Feedback.Warning(_paymentValidationError, "Billing is empty");
             return;
         }
@@ -2924,10 +3281,16 @@
             CustomerName = PatientName,
             CustomerContact = PatientPhone == "-" ? string.Empty : PatientPhone,
             Branch = AppState.CurrentBranch?.Name ?? branchId,
-            Type = PrescriptionItems.Count > 0 && ServiceItems.Count > 0
-                ? "Mixed"
-                : ServiceItems.Count > 0 ? "Service" : "Product",
-            ItemCount = PrescriptionItems.Sum(item => item.Quantity) + ServiceItems.Sum(item => item.Quantity),
+            Type = MemberCreditItems.Count > 0 && PrescriptionItems.Count == 0 && ServiceItems.Count == 0
+                ? "Member Credit"
+                : PrescriptionItems.Count > 0 && ServiceItems.Count == 0 && MemberCreditItems.Count == 0
+                    ? "Product"
+                    : ServiceItems.Count > 0 && PrescriptionItems.Count == 0 && MemberCreditItems.Count == 0
+                        ? "Service"
+                        : "Mixed",
+            ItemCount = PrescriptionItems.Sum(item => item.Quantity) +
+                        ServiceItems.Sum(item => item.Quantity) +
+                        MemberCreditItems.Sum(item => item.Quantity),
             Amount = TotalPayable,
             Subtotal = SubtotalBeforeTax,
             Tax = TaxAmount,
@@ -2979,6 +3342,26 @@
             DiscountMemo = item.DiscountMemo,
             TotalPrice = item.LineTotal,
             UnitOfMeasureId = item.UnitOfMeasureId,
+            TaxCodeId = item.TaxCode,
+            TaxPercentage = item.TaxRate,
+            IsTaxInclusive = item.IsTaxInclusive
+        }));
+
+        items.AddRange(MemberCreditItems.Select(item => new TransactionItem
+        {
+            InventoryId = item.SourceId,
+            Name = item.Name,
+            Sku = item.Sku,
+            Description = item.Name,
+            Category = "Member Credit",
+            InventoryTypeId = 7,
+            Quantity = item.Quantity,
+            UnitPrice = item.UnitPrice,
+            Discount = item.Discount,
+            CashDiscountId = item.CashDiscountId,
+            DiscountMemo = item.DiscountMemo,
+            TotalPrice = item.LineTotal,
+            UnitOfMeasureId = "UNIT",
             TaxCodeId = item.TaxCode,
             TaxPercentage = item.TaxRate,
             IsTaxInclusive = item.IsTaxInclusive
@@ -3058,6 +3441,13 @@
             item.IsTaxInclusive)));
 
         lines.AddRange(ServiceItems.Select(item => new BillingTaxLine(
+            item.UnitPrice,
+            Math.Max(1, item.Quantity),
+            Math.Clamp(item.Discount, 0m, item.UnitPrice * Math.Max(1, item.Quantity)),
+            item.TaxRate,
+            item.IsTaxInclusive)));
+
+        lines.AddRange(MemberCreditItems.Select(item => new BillingTaxLine(
             item.UnitPrice,
             Math.Max(1, item.Quantity),
             Math.Clamp(item.Discount, 0m, item.UnitPrice * Math.Max(1, item.Quantity)),
@@ -3649,6 +4039,10 @@
                 _discountValue = billingService.Discount > 0m ? billingService.Discount.ToString("0.00") : string.Empty;
                 _selectedDiscountRuleId = billingService.CashDiscountId;
                 break;
+            case BillingMemberCredit memberCredit:
+                _discountValue = memberCredit.Discount > 0m ? memberCredit.Discount.ToString("0.00") : string.Empty;
+                _selectedDiscountRuleId = memberCredit.CashDiscountId;
+                break;
             default:
                 if (ReferenceEquals(item, BillDiscountToken))
                 {
@@ -3938,8 +4332,12 @@
         {
             BillingItem item => Math.Max(0m, item.UnitPrice * item.Quantity),
             BillingService service => Math.Max(0m, service.UnitPrice * service.Quantity),
+            BillingMemberCredit credit => Math.Max(0m, credit.UnitPrice * credit.Quantity),
             _ when ReferenceEquals(_selectedDiscountItem, BillDiscountToken) =>
-                Math.Max(0m, PrescriptionItems.Sum(item => item.LineTotal) + ServiceItems.Sum(item => item.LineTotal)),
+                Math.Max(0m,
+                    PrescriptionItems.Sum(item => item.LineTotal) +
+                    ServiceItems.Sum(item => item.LineTotal) +
+                    MemberCreditItems.Sum(item => item.LineTotal)),
             _ => 0m
         };
     }
@@ -4051,6 +4449,20 @@
                 }
                 break;
             }
+            case BillingMemberCredit memberCredit:
+            {
+                var index = MemberCreditItems.IndexOf(memberCredit);
+                if (index >= 0)
+                {
+                    MemberCreditItems[index] = memberCredit with
+                    {
+                        Discount = newDiscount,
+                        CashDiscountId = cashDiscountId,
+                        DiscountMemo = discountMemo
+                    };
+                }
+                break;
+            }
             default:
                 if (ReferenceEquals(_selectedDiscountItem, BillDiscountToken))
                 {
@@ -4095,6 +4507,22 @@
         string Category = "",
         string Duration = "",
         string UnitOfMeasureId = "",
+        string TaxCode = "",
+        bool IsTaxInclusive = false,
+        decimal TaxRate = 0m,
+        string CashDiscountId = "",
+        string DiscountMemo = "")
+    {
+        public decimal LineTotal => Math.Max(0m, UnitPrice * Quantity - Discount);
+    }
+
+    private record BillingMemberCredit(
+        string Name,
+        int Quantity,
+        decimal UnitPrice,
+        decimal Discount,
+        string SourceId,
+        string Sku = "",
         string TaxCode = "",
         bool IsTaxInclusive = false,
         decimal TaxRate = 0m,
