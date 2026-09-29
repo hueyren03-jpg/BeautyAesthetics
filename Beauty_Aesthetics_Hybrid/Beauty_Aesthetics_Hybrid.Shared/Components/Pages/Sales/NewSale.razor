@@ -1436,12 +1436,22 @@
     private async Task ResumeOrder(PendingOrder order)
     {
         currentOrder = order.Clone();
+        currentOrder.IsHeld = true;
         stage = SaleStage.Cart;
         await LoadSelectedCustomerBalancesAsync(currentOrder.AccountId);
     }
 
     private void HoldCurrentOrder()
     {
+        if (!currentOrder.Items.Any())
+        {
+            Feedback.Warning(
+                "Add at least one item before holding this order.",
+                "Nothing to hold");
+            return;
+        }
+
+        currentOrder.IsHeld = true;
         PendingOrderService.SaveOrUpdate(currentOrder);
         RefreshPendingOrders();
         stage = SaleStage.PendingOrders;
@@ -1452,9 +1462,11 @@
     {
         if (currentOrder.Items.Any())
         {
+            currentOrder.IsHeld = true;
             PendingOrderService.SaveOrUpdate(currentOrder);
             RefreshPendingOrders();
         }
+
         stage = SaleStage.PendingOrders;
     }
 
@@ -1962,8 +1974,34 @@
             if (string.IsNullOrWhiteSpace(savedSale.CustomerName)) savedSale.CustomerName = currentOrder.CustomerName;
             if (savedSale.Amount <= 0) savedSale.Amount = currentOrder.Total;
 
-            // Remove completed order from pending orders list
-            PendingOrderService.Delete(currentOrder.Id);
+            // A successfully paid order must never remain in Pending Orders.
+            // Clear held state first so any late cart/payment persistence call cannot re-add it.
+            var completedOrderId = currentOrder.Id;
+            var completedOrderNumber = currentOrder.OrderNumber;
+            currentOrder.IsHeld = false;
+
+            var completedPendingCopies = PendingOrderService.GetAll()
+                .Where(order =>
+                    string.Equals(order.Id, completedOrderId, StringComparison.OrdinalIgnoreCase) ||
+                    (!string.IsNullOrWhiteSpace(completedOrderNumber) &&
+                     string.Equals(order.OrderNumber, completedOrderNumber, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+            foreach (var pendingCopy in completedPendingCopies)
+            {
+                PendingOrderService.Delete(pendingCopy.Id);
+            }
+
+            // Defensive fallback for a stale/legacy entry where only the order number matches.
+            if (completedPendingCopies.Count == 0)
+            {
+                PendingOrderService.Delete(completedOrderId);
+                if (!string.IsNullOrWhiteSpace(completedOrderNumber))
+                {
+                    PendingOrderService.Delete(completedOrderNumber);
+                }
+            }
+
             RefreshPendingOrders();
 
             stage = SaleStage.Complete;
