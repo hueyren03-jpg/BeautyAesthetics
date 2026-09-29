@@ -72,6 +72,16 @@ public sealed class RedeemableCreditDTO
     public bool IsRedeemable { get; set; }
 }
 
+public sealed class CreditRedemptionHistoryDTO
+{
+    public string ARAPOutstandingID { get; set; } = string.Empty;
+    public DateTime FinancialDate { get; set; }
+    public string DisplayCode { get; set; } = string.Empty;
+    public string SourceARAPOutstandingID { get; set; } = string.Empty;
+    public decimal TotalAmount { get; set; }
+    public string BranchID { get; set; } = string.Empty;
+}
+
 public sealed class MemberOtherBalanceSummaryRequestDTO
 {
     [JsonPropertyName("id")]
