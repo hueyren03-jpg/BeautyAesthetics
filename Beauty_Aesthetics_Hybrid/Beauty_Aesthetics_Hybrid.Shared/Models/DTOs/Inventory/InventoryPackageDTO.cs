@@ -148,6 +148,7 @@ public sealed class InventoryProductSkuDTO
     public string Barcode { get; set; } = string.Empty;
 
     [JsonPropertyName("saveAction")]
+    [JsonConverter(typeof(FlexibleStringJsonConverter))]
     public string SaveAction { get; set; } = "Added";
 
     [JsonPropertyName("isDirty")]
@@ -163,6 +164,7 @@ public sealed class InventoryMembershipCreditDTO
     public decimal MemberCredit { get; set; }
 
     [JsonPropertyName("saveAction")]
+    [JsonConverter(typeof(FlexibleStringJsonConverter))]
     public string SaveAction { get; set; } = "Added";
 
     [JsonPropertyName("isDirty")]
@@ -266,4 +268,34 @@ public sealed class InventorySaveResultDTO
 
     [JsonPropertyName("SuccessMessage")]
     public string? SuccessMessage { get; set; }
+}
+
+
+public sealed class FlexibleStringJsonConverter : JsonConverter<string>
+{
+    public override string Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        return reader.TokenType switch
+        {
+            JsonTokenType.String => reader.GetString() ?? string.Empty,
+            JsonTokenType.Number => reader.TryGetInt64(out var integer)
+                ? integer.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : reader.GetDecimal().ToString(System.Globalization.CultureInfo.InvariantCulture),
+            JsonTokenType.True => bool.TrueString,
+            JsonTokenType.False => bool.FalseString,
+            JsonTokenType.Null => string.Empty,
+            _ => ReadRawValue(ref reader)
+        };
+    }
+
+    public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options)
+    {
+        writer.WriteStringValue(value ?? string.Empty);
+    }
+
+    private static string ReadRawValue(ref Utf8JsonReader reader)
+    {
+        using var document = JsonDocument.ParseValue(ref reader);
+        return document.RootElement.ToString();
+    }
 }
