@@ -18,6 +18,7 @@
 @inject Beauty_Aesthetics_WebPos.Components.Services.Employees.IEmployeeService EmployeeService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Sales.ICashSalesService CashSalesService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Sales.ICashDiscountService CashDiscountService
+@inject Beauty_Aesthetics_WebPos.Components.Services.Tax.IGstTaxRateService GstTaxRateService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Files.IFileDownloadService FileDownloadService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Printing.IPrinterSelectionService PrinterSelectionService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Printing.IReceiptPrinterService ReceiptPrinterService
@@ -378,17 +379,16 @@
                             </div>
                             <div class="summary-list">
                                 <div class="summary-row">
-                                    <span>Subtotal</span>
-                                    <span>RM @Subtotal.ToString("N2")</span>
+                                    <span>Subtotal before discount</span>
+                                    <span>RM @GrossSubtotal.ToString("N2")</span>
                                 </div>
-                                <div class="summary-row">
-                                    <span>Discounts / Vouchers</span>
-                                    <span>-RM @DiscountTotal.ToString("N2")</span>
-                                </div>
-                                <div class="summary-row">
-                                    <span>Tax</span>
-                                    <span>RM @TaxAmount.ToString("N2")</span>
-                                </div>
+                                @if (LineDiscountTotal > 0m)
+                                {
+                                    <div class="summary-row">
+                                        <span>Item Discounts</span>
+                                        <span>-RM @LineDiscountTotal.ToString("N2")</span>
+                                    </div>
+                                }
                                 <div class="summary-row">
                                     <span>Bill Discount</span>
                                     <button class="btn-summary-discount" @onclick="() => OpenDiscountModal(BillDiscountToken)">
@@ -406,6 +406,24 @@
                                         }
                                     </button>
                                 </div>
+                                <div class="summary-row">
+                                    <span>Subtotal before tax</span>
+                                    <span>RM @SubtotalBeforeTax.ToString("N2")</span>
+                                </div>
+                                @if (TaxAmount > 0m)
+                                {
+                                    <div class="summary-row">
+                                        <span>Tax</span>
+                                        <span>RM @TaxAmount.ToString("N2")</span>
+                                    </div>
+                                }
+                                @if (RoundingAmount != 0m)
+                                {
+                                    <div class="summary-row">
+                                        <span>Rounding</span>
+                                        <span>@($"{(RoundingAmount >= 0m ? "+" : "-")}RM {Math.Abs(RoundingAmount):N2}")</span>
+                                    </div>
+                                }
                                 <div class="summary-divider"></div>
                                 <div class="summary-row total-row">
                                     <span>Total Payable</span>
@@ -648,10 +666,24 @@
                                     </div>
 
                                     <div class="payment-review-breakdown">
-                                        <div><span>Subtotal</span><strong>RM @Subtotal.ToString("N2")</strong></div>
-                                        <div><span>Discounts</span><strong>-RM @DiscountTotal.ToString("N2")</strong></div>
-                                        <div><span>MC Coverage</span><strong>-RM @McCoverage.ToString("N2")</strong></div>
-                                        <div><span>Tax</span><strong>RM @TaxAmount.ToString("N2")</strong></div>
+                                        <div><span>Subtotal before discount</span><strong>RM @GrossSubtotal.ToString("N2")</strong></div>
+                                        @if (LineDiscountTotal > 0m)
+                                        {
+                                            <div><span>Item Discounts</span><strong>-RM @LineDiscountTotal.ToString("N2")</strong></div>
+                                        }
+                                        @if (BillDiscount > 0m)
+                                        {
+                                            <div><span>Bill Discount</span><strong>-RM @BillDiscount.ToString("N2")</strong></div>
+                                        }
+                                        <div><span>Subtotal before tax</span><strong>RM @SubtotalBeforeTax.ToString("N2")</strong></div>
+                                        @if (TaxAmount > 0m)
+                                        {
+                                            <div><span>Tax</span><strong>RM @TaxAmount.ToString("N2")</strong></div>
+                                        }
+                                        @if (RoundingAmount != 0m)
+                                        {
+                                            <div><span>Rounding</span><strong>@($"{(RoundingAmount >= 0m ? "+" : "-")}RM {Math.Abs(RoundingAmount):N2}")</strong></div>
+                                        }
                                     </div>
 
                                     <div class="payment-review-divider"></div>
@@ -1565,28 +1597,26 @@
     private List<BillingItem> PrescriptionItems { get; set; } = new();
     private List<BillingService> ServiceItems { get; set; } = new();
 
-    // MC / insurance and summary values
-    private decimal McCoverage { get; set; } = 150.00m;   // e.g. MC pays RM150
     private decimal BillDiscount { get; set; } = 0m;
     private string BillDiscountCashDiscountId { get; set; } = string.Empty;
     private string BillDiscountMemo { get; set; } = string.Empty;
     private readonly object BillDiscountToken = new();
 
-    private decimal DiscountTotal =>
-        PrescriptionItems.Sum(i => i.Discount) +
-        ServiceItems.Sum(s => s.Discount) +
-        BillDiscount;
+    private decimal LineDiscountTotal =>
+        PrescriptionItems.Sum(i => Math.Clamp(i.Discount, 0m, i.UnitPrice * Math.Max(1, i.Quantity))) +
+        ServiceItems.Sum(s => Math.Clamp(s.Discount, 0m, s.UnitPrice * Math.Max(1, s.Quantity)));
 
-    private decimal Subtotal =>
-        PrescriptionItems.Sum(i => i.LineTotal + i.Discount) +
-        ServiceItems.Sum(s => s.LineTotal + s.Discount);
+    private decimal DiscountTotal => LineDiscountTotal + BillDiscount;
 
-    private decimal TaxRate { get; set; } = 0.06m; // 6% SST/GST example
-    private decimal TaxAmount => Math.Round(Math.Max(0m, Subtotal - McCoverage - DiscountTotal) * TaxRate, 2);
+    private decimal GrossSubtotal =>
+        PrescriptionItems.Sum(i => i.UnitPrice * Math.Max(1, i.Quantity)) +
+        ServiceItems.Sum(s => s.UnitPrice * Math.Max(1, s.Quantity));
 
-    private decimal TotalPayable =>
-        Math.Max(0m, Subtotal - McCoverage - DiscountTotal + TaxAmount);
-
+    private BillingTotals CurrentBillingTotals => CalculateBillingTotals();
+    private decimal SubtotalBeforeTax => CurrentBillingTotals.SubtotalBeforeTax;
+    private decimal TaxAmount => CurrentBillingTotals.TaxAmount;
+    private decimal RoundingAmount => CurrentBillingTotals.RoundingAmount;
+    private decimal TotalPayable => CurrentBillingTotals.TotalAfterTax;
     private decimal TotalAmount => TotalPayable;
     private decimal OutstandingAmount => Math.Max(0m, TotalPayable - (AmountReceived ?? 0m));
 
@@ -1750,7 +1780,9 @@
                     product.StockQuantity,
                     product.IsActive,
                     product.ImagePath,
-                    product.ImageFileName))
+                    product.ImageFileName,
+                    product.TaxCode,
+                    product.IsTaxInclusive))
                 .ToList();
 
             PrescriptionViewModel.ReplaceDrugs(products);
@@ -1858,6 +1890,7 @@
             }
 
             var detail = detailResult.Value;
+            var taxRate = await GstTaxRateService.GetRateForTaxCodeAsync(detail.TaxCode);
             if (!detail.IsActive ||
                 string.Equals(detail.Status, "Inactive", StringComparison.OrdinalIgnoreCase))
             {
@@ -1895,7 +1928,8 @@
                     detail.DurationSpend,
                     detail.UnitOfMeasureId,
                     detail.TaxCode,
-                    detail.IsTaxInclusive));
+                    detail.IsTaxInclusive,
+                    taxRate));
             }
 
             _showServicePickerModal = false;
@@ -2141,7 +2175,7 @@
         Feedback.Info($"Editing {item.Name}.", "Edit prescription item", 2000);
     }
 
-    private void AddSinglePrescriptionDrug()
+    private async Task AddSinglePrescriptionDrug()
     {
         var drug = PrescriptionViewModel.SelectedDrugToAdd;
         var requestedQuantity = PrescriptionViewModel.NewDrugQuantity;
@@ -2177,6 +2211,7 @@
         // 2. Add or Update
         if (drug != null)
         {
+             var taxRate = await GstTaxRateService.GetRateForTaxCodeAsync(drug.TaxCode);
              var newItem = new BillingItem(
                   drug.Name,
                   (int)requestedQuantity,
@@ -2189,6 +2224,9 @@
                   drug.InventoryId,
                   drug.DrugCode,
                   drug.StockQuantity,
+                  drug.TaxCode,
+                  drug.IsTaxInclusive,
+                  taxRate,
                   _editingPrescriptionItem?.CashDiscountId ?? string.Empty,
                   _editingPrescriptionItem?.DiscountMemo ?? string.Empty
               );
@@ -2253,10 +2291,11 @@
         Feedback.Info($"{drug.Drug.Name} removed from the prescription.", "Drug removed", 1800);
     }
 
-    private void AppendPrescriptionToBilling(CaseNotePrescriptionViewModel.Prescription prescription)
+    private async Task AppendPrescriptionToBilling(CaseNotePrescriptionViewModel.Prescription prescription)
     {
         foreach (var drug in prescription.Drugs)
         {
+            var taxRate = await GstTaxRateService.GetRateForTaxCodeAsync(drug.Drug.TaxCode);
             var qty = (int)Math.Max(1, Math.Round(drug.Quantity));
             var existing = PrescriptionItems.FirstOrDefault(item =>
                 (!string.IsNullOrWhiteSpace(drug.Drug.InventoryId) && string.Equals(item.SourceId, drug.Drug.InventoryId, StringComparison.OrdinalIgnoreCase)) ||
@@ -2280,17 +2319,20 @@
                     drug.Notes,
                     drug.Drug.InventoryId,
                     drug.Drug.DrugCode,
-                    drug.Drug.StockQuantity));
+                    drug.Drug.StockQuantity,
+                    drug.Drug.TaxCode,
+                    drug.Drug.IsTaxInclusive,
+                    taxRate));
             }
         }
     }
 
-    private void SubmitPrescriptionToState(string prescriptionNumber)
+    private async Task SubmitPrescriptionToState(string prescriptionNumber)
     {
         var saved = PrescriptionViewModel.Prescriptions.LastOrDefault(p => p.PrescriptionNumber == prescriptionNumber);
         if (saved != null)
         {
-            AppendPrescriptionToBilling(saved);
+            await AppendPrescriptionToBilling(saved);
         }
     }
 
@@ -2314,7 +2356,7 @@
             return;
         }
 
-        SubmitPrescriptionToState(prescriptionNumber);
+        await SubmitPrescriptionToState(prescriptionNumber);
         _prescriptionStatusMessage = $"Prescription {prescriptionNumber} saved.";
         _prescriptionStatusIsSuccess = true;
         Feedback.Success(_prescriptionStatusMessage, "Prescription saved");
@@ -2887,9 +2929,10 @@
                 : ServiceItems.Count > 0 ? "Service" : "Product",
             ItemCount = PrescriptionItems.Sum(item => item.Quantity) + ServiceItems.Sum(item => item.Quantity),
             Amount = TotalPayable,
-            Subtotal = Math.Max(0m, Subtotal - DiscountTotal - McCoverage),
+            Subtotal = SubtotalBeforeTax,
             Tax = TaxAmount,
             Discount = DiscountTotal,
+            RoundingAmount = RoundingAmount,
             PaymentTypeId = BillingPayments.FirstOrDefault()?.PaymentTypeId ?? 0,
             PaymentMethod = PaymentMethodDisplay,
             Status = "Paid",
@@ -2917,7 +2960,10 @@
             Discount = item.Discount,
             CashDiscountId = item.CashDiscountId,
             DiscountMemo = item.DiscountMemo,
-            TotalPrice = item.LineTotal
+            TotalPrice = item.LineTotal,
+            TaxCodeId = item.TaxCode,
+            TaxPercentage = item.TaxRate,
+            IsTaxInclusive = item.IsTaxInclusive
         }));
 
         items.AddRange(ServiceItems.Select(item => new TransactionItem
@@ -2934,6 +2980,7 @@
             TotalPrice = item.LineTotal,
             UnitOfMeasureId = item.UnitOfMeasureId,
             TaxCodeId = item.TaxCode,
+            TaxPercentage = item.TaxRate,
             IsTaxInclusive = item.IsTaxInclusive
         }));
 
@@ -2999,6 +3046,79 @@
         }
     }
 
+    private BillingTotals CalculateBillingTotals()
+    {
+        var lines = new List<BillingTaxLine>();
+
+        lines.AddRange(PrescriptionItems.Select(item => new BillingTaxLine(
+            item.UnitPrice,
+            Math.Max(1, item.Quantity),
+            Math.Clamp(item.Discount, 0m, item.UnitPrice * Math.Max(1, item.Quantity)),
+            item.TaxRate,
+            item.IsTaxInclusive)));
+
+        lines.AddRange(ServiceItems.Select(item => new BillingTaxLine(
+            item.UnitPrice,
+            Math.Max(1, item.Quantity),
+            Math.Clamp(item.Discount, 0m, item.UnitPrice * Math.Max(1, item.Quantity)),
+            item.TaxRate,
+            item.IsTaxInclusive)));
+
+        if (lines.Count == 0)
+        {
+            return new BillingTotals(0m, 0m, 0m, 0m);
+        }
+
+        var netBeforeBillDiscount = lines
+            .Select(line => Math.Max(0m, line.UnitPrice * line.Quantity - line.Discount))
+            .ToArray();
+        var remainingBase = netBeforeBillDiscount.Sum();
+        var remainingBillDiscount = Math.Min(Math.Max(0m, BillDiscount), remainingBase);
+
+        decimal subtotalBeforeTax = 0m;
+        decimal totalTax = 0m;
+
+        for (var index = 0; index < lines.Count; index++)
+        {
+            var line = lines[index];
+            var lineBase = netBeforeBillDiscount[index];
+            var billAllocation = index == lines.Count - 1 || remainingBase <= 0m
+                ? remainingBillDiscount
+                : Math.Round(
+                    remainingBillDiscount * lineBase / remainingBase,
+                    2,
+                    MidpointRounding.AwayFromZero);
+
+            billAllocation = Math.Clamp(billAllocation, 0m, lineBase);
+            var combinedDiscount = Math.Clamp(
+                line.Discount + billAllocation,
+                0m,
+                line.UnitPrice * line.Quantity);
+
+            Beauty_Aesthetics_WebPos.Components.Services.Tax.OrderLineTaxCalculator.ComputeLineAmounts(
+                line.UnitPrice,
+                line.Quantity,
+                combinedDiscount,
+                line.TaxRate,
+                line.IsTaxInclusive,
+                out var beforeTax,
+                out var tax);
+
+            subtotalBeforeTax += beforeTax;
+            totalTax += tax;
+            remainingBillDiscount -= billAllocation;
+            remainingBase -= lineBase;
+        }
+
+        subtotalBeforeTax = Math.Round(subtotalBeforeTax, 2, MidpointRounding.AwayFromZero);
+        totalTax = Math.Round(totalTax, 2, MidpointRounding.AwayFromZero);
+        var beforeRounding = subtotalBeforeTax + totalTax;
+        var roundedTotal = Math.Round(beforeRounding * 20m, MidpointRounding.AwayFromZero) / 20m;
+        var rounding = Math.Round(roundedTotal - beforeRounding, 2, MidpointRounding.AwayFromZero);
+
+        return new BillingTotals(subtotalBeforeTax, totalTax, rounding, roundedTotal);
+    }
+
     private List<TransactionPayment> BuildBillingTransactionPayments() =>
         BillingPayments
             .Where(payment => payment.PaymentTypeId != 0 && payment.Amount > 0m)
@@ -3015,7 +3135,6 @@
     private string BuildBillingPaymentNotes()
     {
         var parts = new List<string>();
-        if (McCoverage > 0m) parts.Add($"MC Coverage RM {McCoverage:N2}");
         if (BillDiscount > 0m) parts.Add($"Bill Discount RM {BillDiscount:N2}");
         if (!string.IsNullOrWhiteSpace(SelectedCollectorId)) parts.Add($"Collector {SelectedCollector} ({SelectedCollectorId})");
         return string.Join(" | ", parts);
@@ -3958,6 +4077,7 @@
     private record BillingItem(string Name, int Quantity, decimal UnitPrice, decimal Discount, 
         string? Frequency = null, string? Duration = null, string? Reason = null, string? Notes = null,
         string SourceId = "", string Sku = "", decimal? AvailableStock = null,
+        string TaxCode = "", bool IsTaxInclusive = false, decimal TaxRate = 0m,
         string CashDiscountId = "", string DiscountMemo = "")
     {
         public decimal LineTotal => Math.Max(0m, UnitPrice * Quantity - Discount);
@@ -3977,11 +4097,24 @@
         string UnitOfMeasureId = "",
         string TaxCode = "",
         bool IsTaxInclusive = false,
+        decimal TaxRate = 0m,
         string CashDiscountId = "",
         string DiscountMemo = "")
     {
         public decimal LineTotal => Math.Max(0m, UnitPrice * Quantity - Discount);
     }
 
+    private sealed record BillingTaxLine(
+        decimal UnitPrice,
+        decimal Quantity,
+        decimal Discount,
+        decimal TaxRate,
+        bool IsTaxInclusive);
+
+    private sealed record BillingTotals(
+        decimal SubtotalBeforeTax,
+        decimal TaxAmount,
+        decimal RoundingAmount,
+        decimal TotalAfterTax);
 }
 

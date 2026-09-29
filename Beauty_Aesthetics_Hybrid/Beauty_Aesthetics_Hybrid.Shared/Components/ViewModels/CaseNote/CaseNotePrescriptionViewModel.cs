@@ -34,7 +34,9 @@ public class CaseNotePrescriptionViewModel : INotifyPropertyChanged
         decimal? StockQuantity = null,
         bool IsActive = true,
         string ImagePath = "",
-        string ImageFileName = "");
+        string ImageFileName = "",
+        string TaxCode = "",
+        bool IsTaxInclusive = false);
     public record SelectedDrug(int Id, Drug Drug, decimal Quantity, string Frequency, string Duration, string Reason, string Notes);
     public record Prescription(int Id, string PrescriptionNumber, DateTime Date, string Type, List<SelectedDrug> Drugs, string Status);
 

@@ -6,6 +6,7 @@ using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.Models;
 using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.Components.Services.Files;
+using Beauty_Aesthetics_WebPos.Components.Services.Tax;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.Sales;
@@ -699,7 +700,15 @@ public sealed class CashSalesService : ICashSalesService
             var quantity = Math.Max(1, item.Quantity);
             var gross = quantity * item.UnitPrice;
             var discount = Math.Clamp(item.Discount, 0, gross);
-            var lineTotal = Math.Max(0, gross - discount);
+            OrderLineTaxCalculator.ComputeLineAmounts(
+                item.UnitPrice,
+                quantity,
+                discount,
+                item.TaxPercentage,
+                item.IsTaxInclusive,
+                out var beforeTax,
+                out var lineTax);
+            var lineTotal = Math.Round(beforeTax + lineTax, 2, MidpointRounding.AwayFromZero);
             var line = template is null ? new JsonObject() : (JsonObject)template.DeepClone();
             line["DocumentLineID"] = string.Empty;
             line["DocumentID"] = string.Empty;
@@ -714,8 +723,15 @@ public sealed class CashSalesService : ICashSalesService
             line["CashDiscountID"] = item.CashDiscountId;
             line["Memo"] = item.DiscountMemo;
             line["SubTotal"] = lineTotal;
+            line["SubTotalBeforeGST"] = beforeTax;
+            line["ConvertedSubTotalBeforeGST"] = beforeTax;
             line["Amount"] = lineTotal;
-            line["TaxAmount"] = 0;
+            line["ConvertedAmount"] = lineTotal;
+            line["TaxableAmount"] = beforeTax;
+            line["ConvertedTaxableAmount"] = beforeTax;
+            line["TaxPercentage"] = item.TaxPercentage;
+            line["TaxAmount"] = lineTax;
+            line["ConvertedTaxAmount"] = lineTax;
             line["InventoryTypeID"] = InventoryTypeFor(item.Category);
             line["UnitOfMeasureID"] = item.UnitOfMeasureId;
             line["TaxCodeID"] = item.TaxCodeId;
@@ -834,13 +850,13 @@ public sealed class CashSalesService : ICashSalesService
         header["TotalBeforeTax"] = transaction.Subtotal;
         header["TaxableAmount"] = transaction.Subtotal;
         header["TaxAmount"] = transaction.Tax;
-        header["RoundingAmount"] = 0;
+        header["RoundingAmount"] = transaction.RoundingAmount;
         header["TotalAfterTax"] = transaction.Amount;
         header["ExchangeRate"] = 1;
         header["LocalTotalBeforeTax"] = transaction.Subtotal;
         header["LocalTaxableAmount"] = transaction.Subtotal;
         header["LocalTaxAmount"] = transaction.Tax;
-        header["LocalRoundingAmount"] = 0;
+        header["LocalRoundingAmount"] = transaction.RoundingAmount;
         header["LocalTotalAfterTax"] = transaction.Amount;
         header["TransactionCurrencyID"] = "MYR";
         header["LocalCurrencyID"] = "MYR";

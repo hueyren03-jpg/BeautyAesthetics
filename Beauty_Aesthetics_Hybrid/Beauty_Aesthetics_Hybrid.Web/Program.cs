@@ -14,6 +14,7 @@ using Beauty_Aesthetics_WebPos.Components.Services.Branches;
 using Beauty_Aesthetics_WebPos.Components.Services.MembershipTypes;
 using Beauty_Aesthetics_WebPos.Components.Services.PointConversions;
 using Beauty_Aesthetics_WebPos.Components.Services.Sales;
+using Beauty_Aesthetics_WebPos.Components.Services.Tax;
 using Beauty_Aesthetics_WebPos.Components.Services.Files;
 using Beauty_Aesthetics_WebPos.Components.Services.Printing;
 using Beauty_Aesthetics_WebPos.Components.Services.WhatsApp;
@@ -62,8 +63,10 @@ builder.Services.AddSingleton(sp => new HttpClient
 builder.Services.AddScoped<AuthAC>();
             builder.Services.AddScoped<CashSalesAC>();
             builder.Services.AddScoped<CashDiscountAC>();
+            builder.Services.AddScoped<GSTTaxCodeAC>();
             builder.Services.AddScoped<ICashSalesService, CashSalesService>();
             builder.Services.AddScoped<ICashDiscountService, CashDiscountService>();
+            builder.Services.AddScoped<IGstTaxRateService, GstTaxRateService>();
 builder.Services.AddScoped<IFileDownloadService, WebFileDownloadService>();
 builder.Services.AddScoped<IPrinterSelectionService, WebPrinterSelectionService>();
 builder.Services.AddScoped<IReceiptPrinterService, WebReceiptPrinterService>();
