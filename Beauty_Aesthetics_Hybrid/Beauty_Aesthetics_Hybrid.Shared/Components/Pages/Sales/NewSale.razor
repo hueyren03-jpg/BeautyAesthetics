@@ -381,7 +381,46 @@
                         <strong>@currentOrder.CustomerName</strong>
                         <small>@(string.IsNullOrWhiteSpace(currentOrder.CustomerContact) ? "No contact" : currentOrder.CustomerContact) | @currentOrder.MembershipType</small>
                     </div>
+
+                    <div class="customer-balance-summary" aria-label="Selected customer balances">
+                        <div class="customer-balance-item">
+                            <span class="customer-balance-icon"><i class="bi bi-cash-stack"></i></span>
+                            <span class="customer-balance-copy">
+                                <small>Outstanding</small>
+                                <strong>@FormatOutstandingBalance()</strong>
+                            </span>
+                        </div>
+                        <div class="customer-balance-item">
+                            <span class="customer-balance-icon"><i class="bi bi-stars"></i></span>
+                            <span class="customer-balance-copy">
+                                <small>Point</small>
+                                <strong>@FormatPointBalance()</strong>
+                            </span>
+                        </div>
+                        <div class="customer-balance-item">
+                            <span class="customer-balance-icon"><i class="bi bi-box2-heart"></i></span>
+                            <span class="customer-balance-copy">
+                                <small>Package</small>
+                                <strong>@FormatPackageBalance()</strong>
+                            </span>
+                        </div>
+                        <div class="customer-balance-item">
+                            <span class="customer-balance-icon"><i class="bi bi-credit-card-2-front"></i></span>
+                            <span class="customer-balance-copy">
+                                <small>Credit</small>
+                                <strong>@FormatCreditBalance()</strong>
+                            </span>
+                        </div>
+                    </div>
+
                     <div class="customer-strip-actions">
+                        @if (!string.IsNullOrWhiteSpace(selectedCustomerBalanceError))
+                        {
+                            <span class="customer-balance-warning" title="@selectedCustomerBalanceError">
+                                <i class="bi bi-exclamation-circle"></i>
+                                <span>Balance unavailable</span>
+                            </span>
+                        }
                         <button type="button" class="change-customer-btn" @onclick="OpenChangeCustomerSelection" title="Change customer for this order">
                             <i class="bi bi-person-gear"></i>
                             <span>Change Customer</span>
@@ -944,6 +983,14 @@
     private int customerSearchRequestVersion;
     private CancellationTokenSource? customerSearchCts;
 
+    private decimal? selectedCustomerOutstandingBalance;
+    private decimal? selectedCustomerPointBalance;
+    private decimal? selectedCustomerPackageBalance;
+    private decimal? selectedCustomerCreditBalance;
+    private bool isSelectedCustomerBalanceLoading;
+    private string? selectedCustomerBalanceError;
+    private int selectedCustomerBalanceRequestVersion;
+
     private CatalogItem? editingCatalogItem;
     private TransactionItem? editingCartItem;
     private int draftQuantity = 1;
@@ -1096,6 +1143,121 @@
             .ToList();
     }
 
+    private string FormatOutstandingBalance() =>
+        isSelectedCustomerBalanceLoading
+            ? "Loading..."
+            : selectedCustomerOutstandingBalance.HasValue
+                ? $"RM {selectedCustomerOutstandingBalance.Value:N2}"
+                : "—";
+
+    private string FormatPointBalance() =>
+        isSelectedCustomerBalanceLoading
+            ? "Loading..."
+            : selectedCustomerPointBalance.HasValue
+                ? $"{selectedCustomerPointBalance.Value:N0} pts"
+                : "—";
+
+    private string FormatPackageBalance() =>
+        isSelectedCustomerBalanceLoading
+            ? "Loading..."
+            : selectedCustomerPackageBalance.HasValue
+                ? selectedCustomerPackageBalance.Value.ToString("0.##")
+                : "—";
+
+    private string FormatCreditBalance() =>
+        isSelectedCustomerBalanceLoading
+            ? "Loading..."
+            : selectedCustomerCreditBalance.HasValue
+                ? $"RM {selectedCustomerCreditBalance.Value:N2}"
+                : "—";
+
+    private void ResetSelectedCustomerBalances()
+    {
+        selectedCustomerOutstandingBalance = null;
+        selectedCustomerPointBalance = null;
+        selectedCustomerPackageBalance = null;
+        selectedCustomerCreditBalance = null;
+        selectedCustomerBalanceError = null;
+        isSelectedCustomerBalanceLoading = false;
+    }
+
+    private async Task LoadSelectedCustomerBalancesAsync(string? customerId)
+    {
+        var requestVersion = ++selectedCustomerBalanceRequestVersion;
+        ResetSelectedCustomerBalances();
+
+        if (string.IsNullOrWhiteSpace(customerId))
+        {
+            return;
+        }
+
+        isSelectedCustomerBalanceLoading = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var memberBalanceTask = CustomerService.GetBalanceSummaryAsync(customerId);
+            var otherBalanceTask = CustomerService.GetOtherBalanceSummaryAsync(customerId, DateTime.UtcNow);
+
+            await Task.WhenAll(memberBalanceTask, otherBalanceTask);
+
+            if (requestVersion != selectedCustomerBalanceRequestVersion)
+            {
+                return;
+            }
+
+            var memberBalance = await memberBalanceTask;
+            var otherBalance = await otherBalanceTask;
+
+            if (memberBalance.Success && memberBalance.Value is not null)
+            {
+                selectedCustomerPointBalance = memberBalance.Value.PointBalance;
+                selectedCustomerPackageBalance = memberBalance.Value.PackageBalance;
+                selectedCustomerCreditBalance = memberBalance.Value.CreditBalance;
+            }
+
+            if (otherBalance.Success && otherBalance.Value is not null)
+            {
+                selectedCustomerOutstandingBalance = otherBalance.Value.Outstanding;
+            }
+
+            if (!memberBalance.Success && !otherBalance.Success)
+            {
+                selectedCustomerBalanceError =
+                    memberBalance.ErrorMessage ??
+                    otherBalance.ErrorMessage ??
+                    "Customer balances are unavailable.";
+            }
+            else if (!memberBalance.Success)
+            {
+                selectedCustomerBalanceError =
+                    memberBalance.ErrorMessage ??
+                    "Point, package and credit balances are unavailable.";
+            }
+            else if (!otherBalance.Success)
+            {
+                selectedCustomerBalanceError =
+                    otherBalance.ErrorMessage ??
+                    "Outstanding balance is unavailable.";
+            }
+        }
+        catch (Exception ex)
+        {
+            if (requestVersion == selectedCustomerBalanceRequestVersion)
+            {
+                selectedCustomerBalanceError = $"Unable to load customer balances: {ex.Message}";
+            }
+        }
+        finally
+        {
+            if (requestVersion == selectedCustomerBalanceRequestVersion)
+            {
+                isSelectedCustomerBalanceLoading = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
     // ========================================= STAGE TRANSITIONS & ACTIONS =========================================
 
     private void StartNewOrderCustomerSelection()
@@ -1129,7 +1291,7 @@
         }
     }
 
-    private void SelectCustomer(Customer customer)
+    private async Task SelectCustomer(Customer customer)
     {
         var branch = BranchSession.CurrentBranch;
         var branchId = branch?.Id ?? "HQ";
@@ -1150,6 +1312,7 @@
         }
 
         stage = SaleStage.Cart;
+        await LoadSelectedCustomerBalancesAsync(currentOrder.AccountId);
     }
 
     private void SelectWalkInCustomer()
@@ -1172,10 +1335,12 @@
             currentOrder = PendingOrderService.Create(null, branchId, branchName);
         }
 
+        selectedCustomerBalanceRequestVersion++;
+        ResetSelectedCustomerBalances();
         stage = SaleStage.Cart;
     }
 
-    private void HandleCustomerCreatedFromComponent(Customer customer)
+    private async Task HandleCustomerCreatedFromComponent(Customer customer)
     {
         if (customer is not null)
         {
@@ -1183,14 +1348,15 @@
             defaultCustomers.Insert(0, customer);
             isAddingNewCustomer = false;
             Feedback.Success($"Customer {CustomerName(customer)} created successfully!", "Customer created");
-            SelectCustomer(customer);
+            await SelectCustomer(customer);
         }
     }
 
-    private void ResumeOrder(PendingOrder order)
+    private async Task ResumeOrder(PendingOrder order)
     {
         currentOrder = order.Clone();
         stage = SaleStage.Cart;
+        await LoadSelectedCustomerBalancesAsync(currentOrder.AccountId);
     }
 
     private void HoldCurrentOrder()
