@@ -128,18 +128,28 @@ public sealed class CashSalesReceiptLineDTO
 {
     public string? POSReceiptLineID { get; set; }
     public string? DocumentID { get; set; }
-    public string? AccountID { get; set; }
-    public string? Reference { get; set; }
-    public string? Description { get; set; }
-    public decimal POSReceiptLineAmount { get; set; }
-    public decimal POSReceiptChangeAmount { get; set; }
     public string? FinancialAccountID { get; set; }
+    public string? BankName { get; set; }
+    public decimal POSReceiptLineAmount { get; set; }
+    public string? AccountID { get; set; }
     public int AccountTypeID { get; set; }
+    public string? Description { get; set; }
+    public string? Reference { get; set; }
+    public string? PackageID { get; set; }
+    public string? SourceDocumentLineID { get; set; }
+    public decimal QuantityRedeemed { get; set; }
+    public decimal SourceUnitPrice { get; set; }
+    public decimal SourceUnitActualValue { get; set; }
+    public string? InventoryID { get; set; }
+    public string? CurrencyID { get; set; }
+    public string? CurrencyName { get; set; }
+    public string? GroupID { get; set; }
+    public decimal ExchangeRate { get; set; }
+    public decimal AmountInForeignCurrency { get; set; }
     public int POSPaymentTypeID { get; set; }
     public string? POSPaymentTypeName { get; set; }
+    public decimal POSReceiptChangeAmount { get; set; }
     public string? BranchID { get; set; }
-    public string? CurrencyID { get; set; }
-    public decimal ExchangeRate { get; set; }
     public DateTime FinancialDate { get; set; }
     public decimal PointDeduction { get; set; }
     public int SaveAction { get; set; } = 1;
