@@ -126,13 +126,17 @@
                             <div class="wallet-footer">@BalanceFooter(CustomerPackageBalance, "Package balance")</div>
                         </div>
 
-                        <div class="wallet-card credit-balance">
+                        <div class="wallet-card credit-balance"
+                             role="button"
+                             tabindex="0"
+                             title="View redeemable Member Credit accounts"
+                             @onclick="OpenRedeemableCredits">
                             <div class="wallet-card-header">
                                 <i class="bi bi-credit-card-2-front"></i>
                                 <span>Credit</span>
                             </div>
                             <div class="wallet-amount">@FormatNumericBalance(CustomerCreditBalance)</div>
-                            <div class="wallet-footer">@BalanceFooter(CustomerCreditBalance, "Credit balance")</div>
+                            <div class="wallet-footer">@BalanceFooter(CustomerCreditBalance, "View individual credit accounts")</div>
                         </div>
                     </div>
                 </div>
@@ -714,13 +718,17 @@
                                                 </span>
                                             </div>
 
-                                            <div class="payment-balance-card balance-display-card">
+                                            <button type="button"
+                                                    class="payment-balance-card balance-display-card"
+                                                    title="View redeemable Member Credit accounts"
+                                                    @onclick="OpenRedeemableCredits">
                                                 <span class="payment-balance-card__icon"><i class="bi bi-credit-card-2-front"></i></span>
                                                 <span class="payment-balance-card__copy">
                                                     <strong>Credit</strong>
                                                     <small>@FormatNumericBalance(CustomerCreditBalance)</small>
                                                 </span>
-                                            </div>
+                                                <i class="bi bi-chevron-right"></i>
+                                            </button>
                                         </div>
                                     </section>
                                 </div>
@@ -1644,6 +1652,86 @@
     </div>
 }
 
+@if (_showRedeemableCredits)
+{
+    <div class="modal-overlay" @onclick="CloseRedeemableCredits">
+        <div class="modal-container billing-service-modal" @onclick:stopPropagation="true">
+            <div class="modal-header modal-header-info">
+                <i class="bi bi-wallet2"></i>
+                <h3>Member Credit Accounts</h3>
+            </div>
+            <div class="modal-body">
+                @if (_isRedeemableCreditsLoading)
+                {
+                    <div class="catalog-state">
+                        <span class="spinner-border spinner-border-sm"></span>
+                        <span>Loading redeemable credit accounts...</span>
+                    </div>
+                }
+                else if (!string.IsNullOrWhiteSpace(_redeemableCreditsError))
+                {
+                    <div class="catalog-state catalog-state-error">
+                        <span>@_redeemableCreditsError</span>
+                        <button type="button" @onclick="ReloadRedeemableCreditsAsync">Retry</button>
+                    </div>
+                }
+                else if (_redeemableCredits.Count == 0)
+                {
+                    <div class="catalog-state">
+                        <i class="bi bi-wallet"></i>
+                        <strong>No redeemable Member Credit</strong>
+                        <span>This customer has no available Member Credit account for the current date.</span>
+                    </div>
+                }
+                else
+                {
+                    <div style="display:flex;justify-content:space-between;gap:16px;margin-bottom:12px;">
+                        <span><strong>@_redeemableCredits.Count</strong> account@(_redeemableCredits.Count == 1 ? "" : "s")</span>
+                        <span>Total available: <strong>RM @_redeemableCredits.Sum(x => x.NetBalanceAfterUtilised).ToString("N2")</strong></span>
+                    </div>
+                    <div class="table-wrapper">
+                        <table class="billing-table">
+                            <thead>
+                                <tr>
+                                    <th>Credit Account</th>
+                                    <th>Purchase Date</th>
+                                    <th>Document</th>
+                                    <th>Member Type</th>
+                                    <th>Credit</th>
+                                    <th>Expiry</th>
+                                    <th>Original</th>
+                                    <th>Balance</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var credit in _redeemableCredits)
+                                {
+                                    <tr>
+                                        <td><strong>@credit.ARAPOutstandingID</strong></td>
+                                        <td>@FormatRedeemableCreditDate(credit.FinancialDate)</td>
+                                        <td>@(string.IsNullOrWhiteSpace(credit.DisplayCode) ? "—" : credit.DisplayCode)</td>
+                                        <td>@(string.IsNullOrWhiteSpace(credit.MemberTypeID) ? "—" : credit.MemberTypeID)</td>
+                                        <td>@(string.IsNullOrWhiteSpace(credit.ItemDescription) ? "—" : credit.ItemDescription)</td>
+                                        <td>@FormatRedeemableCreditDate(credit.DueDate)</td>
+                                        <td>RM @credit.TotalAmount.ToString("N2")</td>
+                                        <td><strong>RM @credit.NetBalanceAfterUtilised.ToString("N2")</strong></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <span style="margin-right:auto;color:#64748b;font-size:0.875rem;">
+                    Individual accounts are loaded from GetRedeemableCredits and ordered by expiry.
+                </span>
+                <button class="btn-modal-cancel" @onclick="CloseRedeemableCredits">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (_showDeleteConfirmModal)
 {
     <div class="modal-overlay" @onclick="CancelDeleteConfirm">
@@ -1741,6 +1829,10 @@
     private decimal? CustomerPackageBalance { get; set; }
     private decimal? CustomerCreditBalance { get; set; }
     private bool _isCustomerBalanceLoading;
+    private List<RedeemableCreditDTO> _redeemableCredits = new();
+    private bool _isRedeemableCreditsLoading;
+    private string? _redeemableCreditsError;
+    private bool _showRedeemableCredits;
 
     private string FormatMoneyBalance(decimal? value) =>
         _isCustomerBalanceLoading ? "Loading..." : value.HasValue ? $"RM {value.Value:N2}" : "—";
@@ -3134,6 +3226,8 @@
         CustomerPointBalance = null;
         CustomerPackageBalance = null;
         CustomerCreditBalance = null;
+        _redeemableCredits.Clear();
+        _redeemableCreditsError = null;
 
         if (string.IsNullOrWhiteSpace(customerId))
         {
@@ -3147,11 +3241,15 @@
             var otherBalanceTask = CustomerService.GetOtherBalanceSummaryAsync(
                 customerId,
                 DateTime.UtcNow);
+            var redeemableCreditTask = CustomerService.GetRedeemableCreditsAsync(
+                customerId,
+                DateTime.Today);
 
-            await Task.WhenAll(memberBalanceTask, otherBalanceTask);
+            await Task.WhenAll(memberBalanceTask, otherBalanceTask, redeemableCreditTask);
 
             var memberBalance = await memberBalanceTask;
             var otherBalance = await otherBalanceTask;
+            var redeemableCredit = await redeemableCreditTask;
 
             if (memberBalance.Success && memberBalance.Value is not null)
             {
@@ -3163,6 +3261,19 @@
             if (otherBalance.Success && otherBalance.Value is not null)
             {
                 CustomerOutstandingBalance = otherBalance.Value.Outstanding;
+            }
+
+            if (redeemableCredit.Success && redeemableCredit.Value is not null)
+            {
+                _redeemableCredits = NormalizeRedeemableCredits(redeemableCredit.Value);
+                _redeemableCreditsError = null;
+            }
+            else
+            {
+                _redeemableCredits.Clear();
+                _redeemableCreditsError =
+                    redeemableCredit.ErrorMessage ??
+                    "Redeemable Member Credit accounts are unavailable.";
             }
 
             if (!memberBalance.Success && !otherBalance.Success)
@@ -3190,6 +3301,90 @@
         {
             _isCustomerBalanceLoading = false;
         }
+    }
+
+    private async Task OpenRedeemableCredits()
+    {
+        if (string.IsNullOrWhiteSpace(_billingCustomerId))
+        {
+            Feedback.Warning(
+                "Select a valid customer before viewing Member Credit accounts.",
+                "Customer required");
+            return;
+        }
+
+        _showRedeemableCredits = true;
+
+        if (_redeemableCredits.Count == 0 && !_isRedeemableCreditsLoading)
+        {
+            await ReloadRedeemableCreditsAsync();
+        }
+    }
+
+    private void CloseRedeemableCredits()
+    {
+        _showRedeemableCredits = false;
+    }
+
+    private async Task ReloadRedeemableCreditsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_billingCustomerId))
+        {
+            return;
+        }
+
+        _isRedeemableCreditsLoading = true;
+        _redeemableCreditsError = null;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var result = await CustomerService.GetRedeemableCreditsAsync(
+                _billingCustomerId,
+                DateTime.Today);
+
+            if (!result.Success || result.Value is null)
+            {
+                _redeemableCredits.Clear();
+                _redeemableCreditsError =
+                    result.ErrorMessage ??
+                    "Unable to load redeemable Member Credit accounts.";
+                return;
+            }
+
+            _redeemableCredits = NormalizeRedeemableCredits(result.Value);
+        }
+        catch (Exception ex)
+        {
+            _redeemableCredits.Clear();
+            _redeemableCreditsError =
+                $"Unable to load redeemable Member Credit accounts: {ex.Message}";
+        }
+        finally
+        {
+            _isRedeemableCreditsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private static List<RedeemableCreditDTO> NormalizeRedeemableCredits(
+        IEnumerable<RedeemableCreditDTO> credits)
+    {
+        return credits
+            .Where(credit =>
+                credit.IsRedeemable &&
+                !string.IsNullOrWhiteSpace(credit.ARAPOutstandingID) &&
+                credit.NetBalanceAfterUtilised > 0m)
+            .OrderBy(credit => credit.DueDate)
+            .ThenBy(credit => credit.ARAPOutstandingID)
+            .ToList();
+    }
+
+    private static string FormatRedeemableCreditDate(DateTime value)
+    {
+        return value <= DateTime.MinValue.AddDays(1)
+            ? "—"
+            : value.ToString("dd/MM/yyyy");
     }
 
     private void TogglePatientInfo()
