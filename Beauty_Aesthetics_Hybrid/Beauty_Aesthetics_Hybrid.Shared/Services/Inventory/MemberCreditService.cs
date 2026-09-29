@@ -56,13 +56,95 @@ public sealed class MemberCreditService : IMemberCreditService
                 record.AvailableDateTo,
                 record.AvailableTimeFrom,
                 record.AvailableTimeTo,
-                record.eInvoiceClassificationCode ?? string.Empty))
+                record.eInvoiceClassificationCode ?? string.Empty,
+                FirstNonEmpty(
+                    GetInventoryString(record, "TriggeredMemberTypeID"),
+                    ParseFirstMemberTypeId(GetInventoryString(record, "MembershipCredit"))) ?? string.Empty))
             .OrderBy(memberCredit => memberCredit.Name)
             .ToList();
 
         return ApiCallResult<IReadOnlyList<MembershipViewModel.MemberCredit>>.Ok(
             result.StatusCode,
             memberCredits);
+    }
+
+    public async Task<ApiCallResult<MembershipViewModel.MemberCredit>> LoadMemberCreditAsync(
+        string masterAccountId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(masterAccountId))
+        {
+            return ApiCallResult<MembershipViewModel.MemberCredit>.Failure(
+                HttpStatusCode.BadRequest,
+                "The selected member credit has no record ID.");
+        }
+
+        var baseResult = await serviceInventoryAC.LoadRecordAsync(masterAccountId.Trim(), cancellationToken);
+        if (!baseResult.Success || baseResult.Value is null)
+        {
+            return ApiCallResult<MembershipViewModel.MemberCredit>.Failure(
+                baseResult.StatusCode,
+                baseResult.ErrorMessage ?? "Unable to load the member credit record.");
+        }
+
+        var fullResult = await serviceInventoryAC.LoadFullAsync(masterAccountId.Trim(), cancellationToken);
+        if (!fullResult.Success || fullResult.Value is null)
+        {
+            return ApiCallResult<MembershipViewModel.MemberCredit>.Failure(
+                fullResult.StatusCode,
+                fullResult.ErrorMessage ?? "Unable to load the full member credit configuration.");
+        }
+
+        var record = baseResult.Value;
+        var full = fullResult.Value;
+        var fullInventory = full.ObjInventory;
+
+        var configuredCredits = (full.MembershipCredits ?? fullInventory?.MembershipCredits ?? [])
+            .Where(item =>
+                !string.IsNullOrWhiteSpace(item.MemberTypeId) &&
+                !string.Equals(item.SaveAction, "Deleted", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var primaryCredit = configuredCredits.FirstOrDefault();
+        var memberTypeId = FirstNonEmpty(
+            primaryCredit?.MemberTypeId,
+            fullInventory?.TriggeredMemberTypeId,
+            GetInventoryString(record, "TriggeredMemberTypeID"),
+            ParseFirstMemberTypeId(GetInventoryString(record, "MembershipCredit"))) ?? string.Empty;
+
+        var creditValue = primaryCredit is not null
+            ? Math.Max(0m, primaryCredit.MemberCredit)
+            : Math.Max(
+                0m,
+                fullInventory?.MemberMainAccountCredit
+                    ?? Convert.ToDecimal(record.MemberMainAccountCredit));
+
+        var expiryDays = fullInventory is not null && fullInventory.MemberExpiryDays > 0
+            ? fullInventory.MemberExpiryDays
+            : fullInventory is not null
+                ? Math.Max(0, fullInventory.ValidityDays)
+                : Math.Max(0, record.ValidityDays);
+
+        return ApiCallResult<MembershipViewModel.MemberCredit>.Ok(
+            baseResult.StatusCode,
+            new MembershipViewModel.MemberCredit(
+                FirstNonEmpty(fullInventory?.AccountName, record.AccountName, record.SalesDescription) ?? string.Empty,
+                FirstNonEmpty(fullInventory?.DisplayCode, record.DisplayCode, record.MasterAccountID) ?? string.Empty,
+                creditValue,
+                fullInventory?.SalesPrice ?? record.SalesPrice,
+                record.MasterAccountID,
+                FirstNonEmpty(fullInventory?.AccountStatus, record.AccountStatus, "Active") ?? "Active",
+                FirstNonEmpty(fullInventory?.BranchId, record.BranchID) ?? string.Empty,
+                FirstNonEmpty(record.InventoryTypeName, MemberCreditInventoryTypeName) ?? MemberCreditInventoryTypeName,
+                FirstNonEmpty(fullInventory?.SalesDescription, record.SalesDescription) ?? string.Empty,
+                expiryDays,
+                Convert.ToDecimal(record.MemberCreditSettlementRatio),
+                record.AvailableDateFrom,
+                record.AvailableDateTo,
+                record.AvailableTimeFrom,
+                record.AvailableTimeTo,
+                record.eInvoiceClassificationCode ?? string.Empty,
+                memberTypeId));
     }
 
     public async Task<ApiCallResult<bool>> CreateMemberCreditAsync(
@@ -72,7 +154,12 @@ public sealed class MemberCreditService : IMemberCreditService
     {
         var normalizedBranchId = NormalizeBranchId(branchId);
         var record = CreateMemberCreditRecord(memberCredit, normalizedBranchId);
-        var request = CreatePackageRequest(record, normalizedBranchId, memberCredit.Price);
+        var request = CreatePackageRequest(
+            record,
+            normalizedBranchId,
+            memberCredit,
+            isUpdate: false,
+            existingCredits: null);
         var result = ToSaveResult(
             await serviceInventoryAC.CreateFullAsync(request, cancellationToken),
             "Unable to create member credit.");
@@ -105,12 +192,29 @@ public sealed class MemberCreditService : IMemberCreditService
                 loadResult.ErrorMessage ?? "Unable to load the member credit before updating it.");
         }
 
+        var fullLoadResult = await serviceInventoryAC.LoadFullAsync(memberCredit.MasterAccountId, cancellationToken);
+        if (!fullLoadResult.Success || fullLoadResult.Value is null)
+        {
+            return ApiCallResult<bool>.Failure(
+                fullLoadResult.StatusCode,
+                fullLoadResult.ErrorMessage ?? "Unable to load the full member credit before updating it.");
+        }
+
         var normalizedBranchId = NormalizeBranchId(branchId);
         ApplyMemberCreditValues(loadResult.Value, memberCredit, normalizedBranchId);
         loadResult.Value.SaveAction = EntityState.Changed;
         loadResult.Value.IsDirty = true;
 
-        var request = CreatePackageRequest(loadResult.Value, normalizedBranchId, memberCredit.Price);
+        var existingCredits = fullLoadResult.Value.MembershipCredits
+            ?? fullLoadResult.Value.ObjInventory?.MembershipCredits
+            ?? [];
+
+        var request = CreatePackageRequest(
+            loadResult.Value,
+            normalizedBranchId,
+            memberCredit,
+            isUpdate: true,
+            existingCredits);
         var result = ToSaveResult(
             await serviceInventoryAC.UpdateFullAsync(request, cancellationToken),
             "Unable to update member credit.");
@@ -161,7 +265,7 @@ public sealed class MemberCreditService : IMemberCreditService
             AvailableTimeTo = new TimeSpan(23, 59, 59),
             QuantityFactor = 1,
             UnitOfMeasureID = "UNIT",
-            ValidityDays = 8888,
+            ValidityDays = 0,
             MemberCreditSettlementRatio = 1,
             KitchenCopies = 1,
             UOMBase = 1,
@@ -188,6 +292,21 @@ public sealed class MemberCreditService : IMemberCreditService
         record.DisplayCode = memberCredit.Code.Trim();
         record.MemberMainAccountCredit = Math.Max(0, memberCredit.CreditValue);
         record.SalesPrice = Math.Max(0, memberCredit.Price);
+        record.ValidityDays = Math.Max(0, memberCredit.ValidityDays);
+        record.MemberCreditSettlementRatio = memberCredit.SettlementRatio > 0m
+            ? memberCredit.SettlementRatio
+            : 1m;
+
+        var memberTypeId = memberCredit.MemberTypeId?.Trim() ?? string.Empty;
+        SetInventoryProperty(record, "MemberExpiryDays", Math.Max(0, memberCredit.ValidityDays));
+        SetInventoryProperty(record, "TriggeredMemberTypeID", memberTypeId);
+        SetInventoryProperty(
+            record,
+            "MembershipCredit",
+            string.IsNullOrWhiteSpace(memberTypeId)
+                ? string.Empty
+                : $"{memberTypeId},{Math.Max(0m, memberCredit.CreditValue):0.00}");
+
         record.BranchID = branchId;
         record.AccountStatus = string.IsNullOrWhiteSpace(record.AccountStatus) ? "Active" : record.AccountStatus;
         record.IsSold = true;
@@ -196,20 +315,62 @@ public sealed class MemberCreditService : IMemberCreditService
     private static InventoryPackageRequestDTO CreatePackageRequest(
         InventoryDM record,
         string branchId,
-        decimal price)
+        MembershipViewModel.MemberCredit memberCredit,
+        bool isUpdate,
+        IReadOnlyCollection<InventoryMembershipCreditDTO>? existingCredits)
     {
+        var memberTypeId = memberCredit.MemberTypeId?.Trim() ?? string.Empty;
+        var credits = new List<InventoryMembershipCreditDTO>();
+
+        if (isUpdate)
+        {
+            foreach (var existing in existingCredits ?? [])
+            {
+                if (string.IsNullOrWhiteSpace(existing.MemberTypeId))
+                {
+                    continue;
+                }
+
+                if (!string.Equals(existing.MemberTypeId, memberTypeId, StringComparison.OrdinalIgnoreCase))
+                {
+                    credits.Add(new InventoryMembershipCreditDTO
+                    {
+                        MemberTypeId = existing.MemberTypeId.Trim(),
+                        MemberCredit = Math.Max(0m, existing.MemberCredit),
+                        SaveAction = "Deleted",
+                        IsDirty = true
+                    });
+                }
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(memberTypeId))
+        {
+            var existed = (existingCredits ?? []).Any(existing =>
+                string.Equals(existing.MemberTypeId, memberTypeId, StringComparison.OrdinalIgnoreCase));
+
+            credits.Add(new InventoryMembershipCreditDTO
+            {
+                MemberTypeId = memberTypeId,
+                MemberCredit = Math.Max(0m, memberCredit.CreditValue),
+                SaveAction = isUpdate && existed ? "Changed" : "Added",
+                IsDirty = true
+            });
+        }
+
         return new InventoryPackageRequestDTO
         {
             ObjInventory = record,
+            MembershipCredits = credits,
             Branches =
             [
                 new InventoryBranchDTO
                 {
                     MasterAccountId = record.MasterAccountID,
                     BranchId = branchId,
-                    BranchPrice = price,
+                    BranchPrice = Math.Max(0m, memberCredit.Price),
                     IsEnabled = true,
-                    SaveAction = "Added",
+                    SaveAction = isUpdate ? "Changed" : "Added",
                     IsDirty = true
                 }
             ]
@@ -230,6 +391,54 @@ public sealed class MemberCreditService : IMemberCreditService
         return result.Success
             ? ApiCallResult<bool>.Ok(result.StatusCode, true)
             : ApiCallResult<bool>.Failure(result.StatusCode, result.ErrorMessage ?? fallbackMessage);
+    }
+
+    private static string? ParseFirstMemberTypeId(string? membershipCredit)
+    {
+        if (string.IsNullOrWhiteSpace(membershipCredit))
+        {
+            return null;
+        }
+
+        var firstRow = membershipCredit
+            .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(firstRow))
+        {
+            return null;
+        }
+
+        return firstRow
+            .Split(',', StringSplitOptions.TrimEntries)
+            .FirstOrDefault();
+    }
+
+    private static string? GetInventoryString(object record, string propertyName)
+    {
+        var value = record.GetType().GetProperty(propertyName)?.GetValue(record);
+        return value?.ToString();
+    }
+
+    private static void SetInventoryProperty(InventoryDM record, string propertyName, object? value)
+    {
+        var property = record.GetType().GetProperty(propertyName);
+        if (property is null || !property.CanWrite)
+        {
+            return;
+        }
+
+        if (value is null)
+        {
+            property.SetValue(record, null);
+            return;
+        }
+
+        var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        var converted = targetType.IsInstanceOfType(value)
+            ? value
+            : Convert.ChangeType(value, targetType);
+        property.SetValue(record, converted);
     }
 
     private static string? FirstNonEmpty(params string?[] values)
