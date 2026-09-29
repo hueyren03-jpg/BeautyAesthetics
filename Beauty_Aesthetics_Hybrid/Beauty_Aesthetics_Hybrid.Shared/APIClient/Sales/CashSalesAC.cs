@@ -35,8 +35,17 @@ public sealed class CashSalesAC
     public Task<ApiCallResult<List<CashSalesProxyDTO>>> GetAppSalesListAsync(
         CashSalesLoadRequestDTO request,
         CancellationToken cancellationToken = default) =>
-        SendAsync<List<CashSalesProxyDTO>>(HttpMethod.Post, "/api/Doc_CashSales/GetAppSalesList", request,
-            "Cash sales history response was invalid.", cancellationToken);
+        SendAsync<List<CashSalesProxyDTO>>(
+            HttpMethod.Post,
+            "/api/Doc_CashSales/GetAppSalesList",
+            new CashSalesHistoryRequestDTO
+            {
+                Branches = request.Id,
+                StartDate = request.StartDate,
+                EndDate = request.EndDate
+            },
+            "Cash sales history response was invalid.",
+            cancellationToken);
 
     public Task<ApiCallResult<JsonObject>> LoadRecordAsync(
         string documentId,
