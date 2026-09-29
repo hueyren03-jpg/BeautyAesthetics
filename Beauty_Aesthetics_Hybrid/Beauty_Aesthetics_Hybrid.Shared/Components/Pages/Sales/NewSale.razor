@@ -58,10 +58,25 @@
                     <i class="bi bi-arrow-left"></i>
                 </button>
                 <span class="sale-page-icon"><i class="bi bi-bag-plus"></i></span>
-                <div>
+                <div class="sale-title-copy">
                     <h1>@(currentOrder.IsRedemptionMode ? "Select Redemption Items" : "Select Items")</h1>
                     <p>@(currentOrder.IsRedemptionMode ? "Member Credit Redemption" : "Sales") · @(string.IsNullOrWhiteSpace(currentOrder.CustomerName) ? "Customer" : currentOrder.CustomerName) (@currentOrder.OrderNumber)</p>
                 </div>
+                <button type="button"
+                        class="sale-mode-control @(currentOrder.IsRedemptionMode ? "redemption" : "sales")"
+                        @onclick="ToggleRedemptionModeAsync"
+                        disabled="@string.IsNullOrWhiteSpace(currentOrder.AccountId)"
+                        title="@(currentOrder.IsRedemptionMode ? "Switch to Sales mode" : "Switch to Redemption mode")"
+                        aria-label="@(currentOrder.IsRedemptionMode ? "Switch to Sales mode" : "Switch to Redemption mode")">
+                    <span class="sale-mode-track" aria-hidden="true">
+                        <span class="sale-mode-knob"></span>
+                        <span class="sale-mode-letter">@(currentOrder.IsRedemptionMode ? "R" : "S")</span>
+                    </span>
+                    <span class="sale-mode-label">
+                        <small>Mode</small>
+                        <strong>@(currentOrder.IsRedemptionMode ? "Redemption" : "Sales")</strong>
+                    </span>
+                </button>
             }
             else if (stage == SaleStage.Payment)
             {
@@ -422,13 +437,6 @@
                     </div>
 
                     <div class="customer-strip-actions">
-                        <button type="button"
-                                class="change-customer-btn"
-                                @onclick="ToggleRedemptionModeAsync"
-                                title="@(currentOrder.IsRedemptionMode ? "Switch back to normal Sales" : "Switch to Member Credit Redemption")">
-                            <i class="bi @(currentOrder.IsRedemptionMode ? "bi-bag-check" : "bi-arrow-repeat")"></i>
-                            <span>@(currentOrder.IsRedemptionMode ? "Sales Mode" : "Redemption Mode")</span>
-                        </button>
                         @if (!string.IsNullOrWhiteSpace(selectedCustomerBalanceError))
                         {
                             <span class="customer-balance-warning" title="@selectedCustomerBalanceError">
