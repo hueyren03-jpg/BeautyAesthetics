@@ -53,12 +53,18 @@ public sealed class PendingOrder
                 Description = i.Description,
                 ImageUrl = i.ImageUrl,
                 Category = i.Category,
+                InventoryTypeId = i.InventoryTypeId,
                 Quantity = i.Quantity,
                 UnitPrice = i.UnitPrice,
                 Discount = i.Discount,
                 CashDiscountId = i.CashDiscountId,
                 DiscountMemo = i.DiscountMemo,
-                TotalPrice = i.TotalPrice
+                TotalPrice = i.TotalPrice,
+                UnitOfMeasureId = i.UnitOfMeasureId,
+                TaxCodeId = i.TaxCodeId,
+                TaxPercentage = i.TaxPercentage,
+                TaxAmount = i.TaxAmount,
+                IsTaxInclusive = i.IsTaxInclusive
             }).ToList(),
             Payments = Payments.Select(p => new TransactionPayment
             {
