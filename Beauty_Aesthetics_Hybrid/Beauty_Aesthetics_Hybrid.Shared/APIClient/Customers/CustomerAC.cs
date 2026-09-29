@@ -152,6 +152,21 @@ public sealed class CustomerAC
             cancellationToken);
     }
 
+    public async Task<ApiCallResult<List<CreditRedemptionHistoryDTO>>> GetCreditRedemptionHistoryAsync(
+        string arapOutstandingId,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = CreatePostRequest(
+            "/api/ARAPOutstanding_MemberCredit/GetRedemptionHistory",
+            new CustomerLookupDTO { Id = arapOutstandingId });
+
+        using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+        return await ReadApiResponseAsync<List<CreditRedemptionHistoryDTO>>(
+            response,
+            "Member Credit redemption history response was invalid.",
+            cancellationToken);
+    }
+
     public async Task<ApiCallResult<CustomerCreateResultDTO>> CreateRecordAsync(
         CustomerDM customer,
         CancellationToken cancellationToken = default)
