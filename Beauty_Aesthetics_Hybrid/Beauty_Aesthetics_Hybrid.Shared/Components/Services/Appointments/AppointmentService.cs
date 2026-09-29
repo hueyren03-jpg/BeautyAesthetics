@@ -50,6 +50,98 @@ public sealed class AppointmentService
         return ExpandResultForRange(MapListResult(result), startDate, endDate);
     }
 
+    public async Task<ApiCallResult<Appointment>> GetAppointmentByIdAsync(
+        string appointmentId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(appointmentId))
+        {
+            return ApiCallResult<Appointment>.Failure(
+                HttpStatusCode.BadRequest,
+                "The appointment ID is required.");
+        }
+
+        var normalizedId = appointmentId.Trim();
+
+        if (records.TryGetValue(normalizedId, out var cached))
+        {
+            return ApiCallResult<Appointment>.Ok(
+                HttpStatusCode.OK,
+                ToAppointment(cached));
+        }
+
+        var result = await appointmentAC.GetAllAppointmentsAsync(cancellationToken);
+        if (!result.Success || result.Value is null)
+        {
+            return ApiCallResult<Appointment>.Failure(
+                result.StatusCode,
+                result.ErrorMessage ?? "Unable to load the appointment.");
+        }
+
+        var record = result.Value.FirstOrDefault(item =>
+            string.Equals(
+                item.AppointmentID,
+                normalizedId,
+                StringComparison.OrdinalIgnoreCase));
+
+        if (record is null)
+        {
+            return ApiCallResult<Appointment>.Failure(
+                HttpStatusCode.NotFound,
+                $"Appointment {normalizedId} was not found.");
+        }
+
+        Cache(record);
+        return ApiCallResult<Appointment>.Ok(
+            result.StatusCode,
+            ToAppointment(record));
+    }
+
+    public async Task<ApiCallResult<Appointment>> MarkAppointmentPaidAsync(
+        string appointmentId,
+        CancellationToken cancellationToken = default)
+    {
+        var loadResult = await GetAppointmentByIdAsync(appointmentId, cancellationToken);
+        if (!loadResult.Success || loadResult.Value is null)
+        {
+            return ApiCallResult<Appointment>.Failure(
+                loadResult.StatusCode,
+                loadResult.ErrorMessage ?? "Unable to load the appointment before marking it paid.");
+        }
+
+        var appointment = loadResult.Value;
+        var alreadyPaid =
+            appointment.PaymentStatus > 0 ||
+            appointment.StatusName.Contains("paid", StringComparison.OrdinalIgnoreCase) ||
+            Statuses.Any(status =>
+                status.Name.Contains("paid", StringComparison.OrdinalIgnoreCase) &&
+                status.Value == appointment.Label);
+
+        if (alreadyPaid)
+        {
+            return ApiCallResult<Appointment>.Ok(loadResult.StatusCode, appointment);
+        }
+
+        if (Statuses.Count == 0)
+        {
+            await LoadStatusesAsync(cancellationToken);
+        }
+
+        var paidStatus = Statuses.FirstOrDefault(status =>
+            status.Name.Contains("paid", StringComparison.OrdinalIgnoreCase));
+
+        appointment.Label = paidStatus?.Value ?? 4;
+        appointment.StatusName = paidStatus?.Name ?? "Paid";
+
+        // PaymentStatus is a separate appointment payment flag from Label.
+        // The API model uses an integer; a positive value represents paid/completed payment.
+        appointment.PaymentStatus = appointment.PaymentStatus > 0
+            ? appointment.PaymentStatus
+            : 1;
+
+        return await UpdateAppointmentAsync(appointment, cancellationToken);
+    }
+
     public async Task<ApiCallResult<IReadOnlyList<Appointment>>> GetAppointmentsByEmployeeAsync(string employeeId, DateTime startDate, DateTime endDate, CancellationToken cancellationToken = default)
     {
         var result = await appointmentAC.GetByEmployeeAsync(new AppointmentEmployeeRequestDTO { EmployeeId = employeeId, StartDate = startDate, EndDate = endDate }, cancellationToken);
