@@ -5,7 +5,7 @@ namespace Beauty_Aesthetics_WebPos.Models.DTOs;
 
 public sealed class CashSalesLoadRequestDTO
 {
-    [JsonPropertyName("strID")]
+    [JsonPropertyName("strBranches")]
     public string Id { get; set; } = string.Empty;
 
     [JsonPropertyName("startDate")]
