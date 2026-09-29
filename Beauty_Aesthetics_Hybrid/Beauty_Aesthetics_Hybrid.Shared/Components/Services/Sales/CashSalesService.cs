@@ -792,6 +792,18 @@ public sealed class CashSalesService : ICashSalesService
             line["MembershipCredit"] = item.MemberCreditAllocations.Count > 1
                 ? SerializeMemberCreditAllocations(item.MemberCreditAllocations)
                 : item.MembershipCredit;
+
+            var usedCredits = new JsonArray();
+            foreach (var allocation in EffectiveMemberCreditAllocations(item))
+            {
+                usedCredits.Add(new JsonObject
+                {
+                    ["MemberCreditAccountID"] = allocation.MemberCreditAccountId,
+                    ["MemberCredit"] = allocation.Amount
+                });
+            }
+            line["lstMembershipCredit"] = usedCredits;
+
             line["BranchID"] = transaction.BranchId;
             line["EditBranchID"] = transaction.BranchId;
             line["GroupID"] = transaction.GroupId;
@@ -1193,7 +1205,7 @@ public sealed class CashSalesService : ICashSalesService
                     !string.IsNullOrWhiteSpace(allocation.MemberCreditAccountId) &&
                     allocation.Amount > 0m)
                 .Select(allocation =>
-                    $"{allocation.MemberCreditAccountId.Trim()},{allocation.Amount:F2}"));
+                    $"{allocation.MemberCreditAccountId.Trim()},{allocation.Amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}"));
 
     private static List<MemberCreditAllocation> ParseMemberCreditAllocations(
         string? serialized,
