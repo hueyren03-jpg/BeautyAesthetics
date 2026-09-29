@@ -111,6 +111,8 @@ public sealed class MemberCreditService : IMemberCreditService
             .Where(item =>
                 !string.IsNullOrWhiteSpace(item.MemberTypeId) &&
                 !string.Equals(item.SaveAction, "Deleted", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(item => item.MemberTypeId.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.Last())
             .ToList();
 
         var allocations = configuredCredits
@@ -236,9 +238,13 @@ public sealed class MemberCreditService : IMemberCreditService
         loadResult.Value.SaveAction = EntityState.Changed;
         loadResult.Value.IsDirty = true;
 
-        var existingCredits = fullLoadResult.Value.MembershipCredits
+        var existingCredits = (fullLoadResult.Value.MembershipCredits
             ?? fullLoadResult.Value.ObjInventory?.MembershipCredits
-            ?? [];
+            ?? [])
+            .Where(item => !string.IsNullOrWhiteSpace(item.MemberTypeId))
+            .GroupBy(item => item.MemberTypeId.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.Last())
+            .ToList();
 
         var request = CreatePackageRequest(
             loadResult.Value,
