@@ -5,6 +5,7 @@
 @using Beauty_Aesthetics_WebPos.Components.Services.Branches
 @using Beauty_Aesthetics_WebPos.Components.Services.Inventory
 @using Beauty_Aesthetics_WebPos.Components.Services.Sales
+@using Beauty_Aesthetics_WebPos.Components.Services.Tax
 @using Beauty_Aesthetics_WebPos.Components.ViewModels
 @using Beauty_Aesthetics_WebPos.Models.DTOs
 @inject ICashSalesService CashSalesService
@@ -16,6 +17,8 @@
 @inject ProductImageService ProductImageService
 @inject IServiceItemService ServiceItemService
 @inject IPackageService PackageService
+@inject IMemberCreditService MemberCreditService
+@inject IGstTaxRateService GstTaxRateService
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JS
 @inject AppFeedbackService Feedback
@@ -538,7 +541,7 @@
                                 <img src="@ItemImage(item.Category, item.ImageUrl)" alt="" />
                                 <div class="cart-item-info">
                                     <strong>@item.Name</strong>
-                                    <span>@item.Category | MYR @item.UnitPrice.ToString("N2") each</span>
+                                    <span>@item.Category@(string.IsNullOrWhiteSpace(item.Sku) ? string.Empty : $" · {item.Sku}") | MYR @item.UnitPrice.ToString("N2") each</span>
                                     @if (item.Discount > 0)
                                     {
                                         <small class="discount-badge">- MYR @item.Discount.ToString("N2") disc.</small>
@@ -570,6 +573,10 @@
                 <footer>
                     <div><span>Subtotal</span><strong>MYR @currentOrder.Subtotal.ToString("N2")</strong></div>
                     <div><span>Discount</span><strong>- MYR @currentOrder.Discount.ToString("N2")</strong></div>
+                    @if (currentOrder.Tax > 0m)
+                    {
+                        <div><span>Tax</span><strong>MYR @currentOrder.Tax.ToString("N2")</strong></div>
+                    }
                     <div class="cart-total"><span>Total</span><strong>MYR @currentOrder.Total.ToString("N2")</strong></div>
 
                     <div class="cart-footer-buttons">
@@ -1085,14 +1092,16 @@
         var customerTask = CustomerService.SearchCustomersAsync(string.Empty);
         var productTask = ProductInventoryService.LoadProductsAsync(branchId);
         var serviceTask = ServiceItemService.LoadServiceItemsAsync(branchId);
+        var memberCreditTask = MemberCreditService.LoadMemberCreditsAsync();
 
-        await Task.WhenAll(paymentTask, discountTask, customerTask, productTask, serviceTask);
+        await Task.WhenAll(paymentTask, discountTask, customerTask, productTask, serviceTask, memberCreditTask);
 
         var paymentResult = await paymentTask;
         var discountResult = await discountTask;
         var customerResult = await customerTask;
         var productResult = await productTask;
         var serviceResult = await serviceTask;
+        var memberCreditResult = await memberCreditTask;
 
         if (paymentResult.Success && paymentResult.Value is not null)
             paymentTypes = paymentResult.Value.ToList();
@@ -1131,8 +1140,25 @@
             {
                 catalog.AddRange(packageResult.Value
                     .Where(x => !string.IsNullOrWhiteSpace(x.MasterAccountId) && !string.Equals(x.Status, "Inactive", StringComparison.OrdinalIgnoreCase))
-                    .Select(x => new CatalogItem(x.MasterAccountId, x.Name, x.Sku, "Package", x.Price, ProductImageService.ResolveImageUrl(x.MasterAccountId, x.ImagePath, x.ImageFileName))));
+                    .Select(x => new CatalogItem(
+                        x.MasterAccountId,
+                        x.Name,
+                        x.Sku,
+                        "Package",
+                        x.Price,
+                        ProductImageService.ResolveImageUrl(x.MasterAccountId, x.ImagePath, x.ImageFileName),
+                        InventoryTypeId: 5,
+                        TaxCodeId: x.TaxCode,
+                        IsTaxInclusive: x.IsTaxInclusive)));
             }
+        }
+
+        if (memberCreditResult.Success && memberCreditResult.Value is not null)
+        {
+            var memberCreditCatalog = await LoadMemberCreditCatalogAsync(
+                memberCreditResult.Value,
+                branchId);
+            catalog.AddRange(memberCreditCatalog);
         }
 
         catalog = catalog
@@ -1141,6 +1167,91 @@
             .OrderBy(x => x.Type)
             .ThenBy(x => x.Name)
             .ToList();
+    }
+
+    private async Task<IReadOnlyList<CatalogItem>> LoadMemberCreditCatalogAsync(
+        IReadOnlyList<MembershipViewModel.MemberCredit> summaries,
+        string branchId)
+    {
+        var candidates = summaries
+            .Where(item =>
+                item.IsActive &&
+                !string.IsNullOrWhiteSpace(item.MasterAccountId))
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            return Array.Empty<CatalogItem>();
+        }
+
+        var tasks = candidates.Select(async summary =>
+        {
+            var fullResult = await MemberCreditService.LoadMemberCreditAsync(summary.MasterAccountId!);
+            if (!fullResult.Success || fullResult.Value is null)
+            {
+                return null;
+            }
+
+            var credit = fullResult.Value;
+            if (!credit.IsActive ||
+                string.Equals(credit.Status, "Inactive", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            var visibleBranches = (credit.VisibleBranchIds ?? Array.Empty<string>())
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var visibleHere = visibleBranches.Count > 0
+                ? visibleBranches.Contains(branchId, StringComparer.OrdinalIgnoreCase)
+                : string.Equals(credit.BranchId, branchId, StringComparison.OrdinalIgnoreCase);
+
+            if (!visibleHere)
+            {
+                return null;
+            }
+
+            var taxRate = await GstTaxRateService.GetRateForTaxCodeAsync(credit.TaxCode);
+
+            return new CatalogItem(
+                credit.MasterAccountId!,
+                credit.Name,
+                credit.Code,
+                "Member Credit",
+                credit.Price,
+                string.Empty,
+                InventoryTypeId: 7,
+                TaxCodeId: credit.TaxCode,
+                IsTaxInclusive: credit.IsTaxInclusive,
+                TaxPercentage: taxRate);
+        });
+
+        var loaded = await Task.WhenAll(tasks);
+        return loaded
+            .Where(item => item is not null)
+            .Select(item => item!)
+            .OrderBy(item => item.Name)
+            .ToList();
+    }
+
+    private static void RecalculateItemTaxAndTotal(TransactionItem item)
+    {
+        OrderLineTaxCalculator.ComputeLineAmounts(
+            item.UnitPrice,
+            Math.Max(1, item.Quantity),
+            item.Discount,
+            item.TaxPercentage,
+            item.IsTaxInclusive,
+            out var beforeTax,
+            out var taxAmount);
+
+        item.TaxAmount = taxAmount;
+        item.TotalPrice = Math.Max(
+            0m,
+            Math.Round(beforeTax + taxAmount, 2, MidpointRounding.AwayFromZero));
     }
 
     private string FormatOutstandingBalance() =>
@@ -1408,6 +1519,14 @@
 
     private void OpenItemEditor(CatalogItem item)
     {
+        if (item.InventoryTypeId == 7 && string.IsNullOrWhiteSpace(currentOrder.AccountId))
+        {
+            Feedback.Warning(
+                "Select a customer before adding member credit.",
+                "Customer required");
+            return;
+        }
+
         editingCatalogItem = item;
         editingCartItem = null;
         draftQuantity = 1;
@@ -1420,7 +1539,17 @@
     {
         editingCartItem = item;
         editingCatalogItem = catalog.FirstOrDefault(x => x.Id == item.InventoryId) ??
-            new CatalogItem(item.InventoryId, item.Name, string.Empty, item.Category, item.UnitPrice, ItemImage(item.Category, item.ImageUrl));
+            new CatalogItem(
+                item.InventoryId,
+                item.Name,
+                item.Sku,
+                item.Category,
+                item.UnitPrice,
+                ItemImage(item.Category, item.ImageUrl),
+                item.InventoryTypeId,
+                item.TaxCodeId,
+                item.IsTaxInclusive,
+                item.TaxPercentage);
         draftQuantity = item.Quantity;
         draftDiscount = item.Discount;
         draftCashDiscountId = item.CashDiscountId;
@@ -1485,6 +1614,15 @@
     private void ConfirmItem()
     {
         if (editingCatalogItem is null) return;
+
+        if (editingCatalogItem.InventoryTypeId == 7 && string.IsNullOrWhiteSpace(currentOrder.AccountId))
+        {
+            Feedback.Warning(
+                "Select a customer before adding member credit.",
+                "Customer required");
+            return;
+        }
+
         var quantity = Math.Max(1, draftQuantity);
         var discount = ResolveDraftDiscount(out var discountError);
         if (!string.IsNullOrWhiteSpace(discountError))
@@ -1510,19 +1648,27 @@
             }
             else
             {
-                currentOrder.Items.Add(new TransactionItem
+                var newItem = new TransactionItem
                 {
                     InventoryId = editingCatalogItem.Id,
                     Name = editingCatalogItem.Name,
+                    Sku = editingCatalogItem.Sku,
+                    Description = editingCatalogItem.Name,
                     Category = editingCatalogItem.Type,
+                    InventoryTypeId = editingCatalogItem.InventoryTypeId,
                     ImageUrl = editingCatalogItem.ImageUrl,
                     Quantity = quantity,
                     UnitPrice = editingCatalogItem.Price,
                     Discount = discount,
                     CashDiscountId = draftCashDiscountId,
                     DiscountMemo = draftDiscountMemo,
-                    TotalPrice = editingCatalogItem.Price * quantity - discount
-                });
+                    UnitOfMeasureId = "UNIT",
+                    TaxCodeId = editingCatalogItem.TaxCodeId,
+                    TaxPercentage = editingCatalogItem.TaxPercentage,
+                    IsTaxInclusive = editingCatalogItem.IsTaxInclusive
+                };
+                RecalculateItemTaxAndTotal(newItem);
+                currentOrder.Items.Add(newItem);
             }
         }
         else
@@ -1531,7 +1677,7 @@
             editingCartItem.Discount = discount;
             editingCartItem.CashDiscountId = draftCashDiscountId;
             editingCartItem.DiscountMemo = draftDiscountMemo;
-            editingCartItem.TotalPrice = editingCartItem.UnitPrice * quantity - discount;
+            RecalculateItemTaxAndTotal(editingCartItem);
         }
 
         PendingOrderService.SaveOrUpdate(currentOrder);
@@ -1560,7 +1706,7 @@
         }
 
         item.Discount = Math.Clamp(item.Discount, 0m, gross);
-        item.TotalPrice = Math.Max(0, gross - item.Discount);
+        RecalculateItemTaxAndTotal(item);
         PendingOrderService.SaveOrUpdate(currentOrder);
     }
 
@@ -1761,14 +1907,22 @@
                 {
                     InventoryId = i.InventoryId,
                     Name = i.Name,
+                    Sku = i.Sku,
+                    Description = i.Description,
                     Category = i.Category,
+                    InventoryTypeId = i.InventoryTypeId,
                     ImageUrl = i.ImageUrl,
                     Quantity = i.Quantity,
                     UnitPrice = i.UnitPrice,
                     Discount = i.Discount,
                     CashDiscountId = i.CashDiscountId,
                     DiscountMemo = i.DiscountMemo,
-                    TotalPrice = i.TotalPrice
+                    TotalPrice = i.TotalPrice,
+                    UnitOfMeasureId = i.UnitOfMeasureId,
+                    TaxCodeId = i.TaxCodeId,
+                    TaxPercentage = i.TaxPercentage,
+                    TaxAmount = i.TaxAmount,
+                    IsTaxInclusive = i.IsTaxInclusive
                 }).ToList(),
                 Payments = currentOrder.Payments.Select(p => new TransactionPayment
                 {
@@ -1776,9 +1930,9 @@
                     PaymentMethod = p.PaymentMethod,
                     Amount = p.Amount
                 }).ToList(),
-                Subtotal = Math.Max(0m, currentOrder.Subtotal - currentOrder.Discount),
+                Subtotal = currentOrder.SubtotalBeforeTax,
                 Discount = currentOrder.Discount,
-                Tax = 0,
+                Tax = currentOrder.Tax,
                 Amount = currentOrder.Total,
                 ItemCount = currentOrder.ItemCount,
                 Type = currentOrder.Items.Select(x => x.Category).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 1
@@ -1982,5 +2136,15 @@
         customerSearchCts?.Dispose();
     }
 
-    private sealed record CatalogItem(string Id, string Name, string Sku, string Type, decimal Price, string ImageUrl);
+    private sealed record CatalogItem(
+        string Id,
+        string Name,
+        string Sku,
+        string Type,
+        decimal Price,
+        string ImageUrl,
+        int InventoryTypeId = 0,
+        string TaxCodeId = "",
+        bool IsTaxInclusive = false,
+        decimal TaxPercentage = 0m);
 }
