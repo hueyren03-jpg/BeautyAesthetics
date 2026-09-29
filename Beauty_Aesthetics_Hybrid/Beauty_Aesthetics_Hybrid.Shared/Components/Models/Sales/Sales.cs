@@ -65,7 +65,8 @@ namespace Beauty_Aesthetics_WebPos.Components.Models
         public string Description { get; set; } = "";
         public string Remarks { get; set; } = "";
         public string ImageUrl { get; set; } = "";
-        public string Category { get; set; } = ""; // Service or Product
+        public string Category { get; set; } = ""; // Service, Product, Package, Member Credit
+        public int InventoryTypeId { get; set; }
         public int Quantity { get; set; }
         public decimal UnitPrice { get; set; }
         public decimal TotalPrice { get; set; }
