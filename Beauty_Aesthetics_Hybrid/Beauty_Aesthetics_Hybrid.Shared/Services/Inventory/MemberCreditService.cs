@@ -166,6 +166,13 @@ public sealed class MemberCreditService : IMemberCreditService
                     .Select(branch => branch.BranchId!.Trim())
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToList(),
+                (full.Branches ?? [])
+                    .Where(branch => branch.IsEnabled && !string.IsNullOrWhiteSpace(branch.BranchId))
+                    .GroupBy(branch => branch.BranchId!.Trim(), StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => group.First().GroupId?.Trim() ?? string.Empty,
+                        StringComparer.OrdinalIgnoreCase),
                 allocations));
     }
 
@@ -411,7 +418,12 @@ public sealed class MemberCreditService : IMemberCreditService
                 BranchId = selectedBranchId,
                 BranchPrice = Math.Max(0m, memberCredit.Price),
                 IsEnabled = true,
-                GroupId = string.IsNullOrWhiteSpace(existing?.GroupId) ? selectedBranchId : existing!.GroupId,
+                GroupId =
+                    memberCredit.VisibleBranchGroupIds is not null &&
+                    memberCredit.VisibleBranchGroupIds.TryGetValue(selectedBranchId, out var configuredGroupId) &&
+                    !string.IsNullOrWhiteSpace(configuredGroupId)
+                        ? configuredGroupId.Trim()
+                        : existing?.GroupId,
                 SaveAction = isUpdate && existing is not null ? "Changed" : "Added",
                 IsDirty = true
             });
