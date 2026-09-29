@@ -1101,6 +1101,20 @@
                 </div>
             </div>
 
+            <div class="credit-auto-allocation-bar">
+                <div>
+                    <strong>Automatic allocation</strong>
+                    <span>Uses credit by earliest expiry, then Credit Account ID. You can edit the amounts afterward.</span>
+                </div>
+                <button type="button"
+                        class="credit-auto-allocate-button"
+                        disabled="@(creditTargetItem.TotalPrice <= 0m || !HasFifoCreditAvailable)"
+                        @onclick="AutoAllocateLineCredit">
+                    <i class="bi bi-lightning-charge-fill"></i>
+                    Auto Allocate
+                </button>
+            </div>
+
             <div class="credit-account-table-wrap">
                 <table class="credit-account-table">
                     <thead>
@@ -1376,6 +1390,13 @@
     private decimal DraftLineCreditRemaining => creditTargetItem is null
         ? 0m
         : Math.Max(0m, creditTargetItem.TotalPrice - DraftLineCreditAllocated);
+    private bool HasFifoCreditAvailable => creditTargetItem is not null &&
+        redeemableCredits.Any(credit =>
+            credit.IsRedeemable &&
+            !string.IsNullOrWhiteSpace(credit.ARAPOutstandingID) &&
+            credit.NetBalanceAfterUtilised > 0m &&
+            (credit.DueDate.Year <= 1900 || credit.DueDate.Date >= DateTime.Today) &&
+            CreditAvailableForLine(credit, creditTargetItem) > 0m);
     private decimal AmountDueAfterCredit => Math.Max(0m, currentOrder.Total - RedeemedCreditAmount);
     private decimal Remaining => Math.Max(0, AmountDueAfterCredit - PaidAmount);
     private decimal Change => Math.Max(0, PaidAmount - AmountDueAfterCredit);
@@ -1897,6 +1918,77 @@
         {
             draftLineCreditAllocations[accountId] = Math.Round(amount, 2, MidpointRounding.AwayFromZero);
         }
+    }
+
+    private void AutoAllocateLineCredit()
+    {
+        if (creditTargetItem is null)
+        {
+            return;
+        }
+
+        draftLineCreditAllocations.Clear();
+
+        var remaining = Math.Max(0m, creditTargetItem.TotalPrice);
+        var seenAccountIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var credit in redeemableCredits
+                     .Where(credit =>
+                         credit.IsRedeemable &&
+                         !string.IsNullOrWhiteSpace(credit.ARAPOutstandingID) &&
+                         credit.NetBalanceAfterUtilised > 0m &&
+                         (credit.DueDate.Year <= 1900 || credit.DueDate.Date >= DateTime.Today))
+                     .OrderBy(credit => credit.DueDate)
+                     .ThenBy(credit => credit.ARAPOutstandingID, StringComparer.OrdinalIgnoreCase))
+        {
+            if (remaining <= 0m)
+            {
+                break;
+            }
+
+            var accountId = credit.ARAPOutstandingID!.Trim();
+            if (!seenAccountIds.Add(accountId))
+            {
+                continue;
+            }
+
+            var available = CreditAvailableForLine(credit, creditTargetItem);
+            if (available <= 0m)
+            {
+                continue;
+            }
+
+            var amountToUse = Math.Min(available, remaining);
+            amountToUse = Math.Round(amountToUse, 2, MidpointRounding.AwayFromZero);
+            if (amountToUse <= 0m)
+            {
+                continue;
+            }
+
+            draftLineCreditAllocations[accountId] = amountToUse;
+            remaining = Math.Max(0m, remaining - amountToUse);
+        }
+
+        if (draftLineCreditAllocations.Count == 0)
+        {
+            Feedback.Warning(
+                "No usable Member Credit is available for this redemption line.",
+                "Auto allocation unavailable");
+            return;
+        }
+
+        if (remaining > 0.009m)
+        {
+            Feedback.Warning(
+                $"Available Member Credit is short by RM {remaining:N2}. The usable credit has been allocated; adjust it manually or reduce the redemption amount.",
+                "Insufficient Member Credit");
+            return;
+        }
+
+        Feedback.Success(
+            $"FIFO allocation prepared across {draftLineCreditAllocations.Count} credit account{(draftLineCreditAllocations.Count == 1 ? string.Empty : "s")}. Review the amounts, then apply Member Credit.",
+            "Credit auto allocated",
+            2400);
     }
 
     private void UpdateLineCreditAllocationAmount(RedeemableCreditDTO credit, string? rawValue)
