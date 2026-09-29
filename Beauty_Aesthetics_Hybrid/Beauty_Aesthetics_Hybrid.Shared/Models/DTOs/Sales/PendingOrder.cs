@@ -10,6 +10,7 @@ public sealed class PendingOrder
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
     public bool IsHeld { get; set; }
+    public bool IsRedemptionMode { get; set; }
 
     public string AccountId { get; set; } = string.Empty;
     public string CustomerName { get; set; } = string.Empty;
@@ -59,6 +60,7 @@ public sealed class PendingOrder
             CreatedAt = CreatedAt,
             UpdatedAt = DateTime.Now,
             IsHeld = IsHeld,
+            IsRedemptionMode = IsRedemptionMode,
             AccountId = AccountId,
             CustomerName = CustomerName,
             CustomerContact = CustomerContact,
@@ -87,7 +89,11 @@ public sealed class PendingOrder
                 TaxCodeId = i.TaxCodeId,
                 TaxPercentage = i.TaxPercentage,
                 TaxAmount = i.TaxAmount,
-                IsTaxInclusive = i.IsTaxInclusive
+                IsTaxInclusive = i.IsTaxInclusive,
+                ActivityTypeId = i.ActivityTypeId,
+                MemberCreditAccountId = i.MemberCreditAccountId,
+                MemberTypeId = i.MemberTypeId,
+                MembershipCredit = i.MembershipCredit
             }).ToList(),
             Payments = Payments.Select(p => new TransactionPayment
             {
