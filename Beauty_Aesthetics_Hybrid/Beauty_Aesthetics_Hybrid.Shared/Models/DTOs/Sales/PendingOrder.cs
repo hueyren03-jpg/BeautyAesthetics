@@ -50,6 +50,7 @@ public sealed class PendingOrder
                 Id = i.Id,
                 InventoryId = i.InventoryId,
                 Name = i.Name,
+                Sku = i.Sku,
                 Description = i.Description,
                 ImageUrl = i.ImageUrl,
                 Category = i.Category,
