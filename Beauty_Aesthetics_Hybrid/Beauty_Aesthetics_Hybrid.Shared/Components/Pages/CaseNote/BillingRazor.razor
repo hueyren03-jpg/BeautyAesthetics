@@ -3374,6 +3374,12 @@
 
             _completedSaleDocumentId = result.Value.DocumentId;
             _completedReceiptNumber = result.Value.InvoiceNumber;
+
+            // The sale already exists at this point. Lock payment immediately so
+            // a failed appointment-status update can never trigger a second charge
+            // from the same Billing session.
+            _paymentCommitted = true;
+            _appointmentSaleExists = !string.IsNullOrWhiteSpace(AppointmentId);
             BillingStatusText = "Paid";
 
             AppState.LastSaleDocumentId = result.Value.DocumentId;
@@ -3385,9 +3391,24 @@
 
             _showConfirmPaymentModal = false;
 
+            var appointmentUpdated = await MarkBillingAppointmentPaidAsync();
+            if (!appointmentUpdated)
+            {
+                Feedback.Resolve(
+                    feedbackId,
+                    $"Sale {result.Value.InvoiceNumber} was saved, but the appointment status could not be updated automatically.",
+                    "Sale saved");
+                Feedback.Warning(
+                    _appointmentBillingError ??
+                    "The sale is saved and this bill is locked. Check the appointment status before leaving.",
+                    "Appointment status not updated",
+                    5000);
+                return;
+            }
+
             Feedback.Resolve(
                 feedbackId,
-                $"Sale {result.Value.InvoiceNumber} completed successfully.",
+                $"Sale {result.Value.InvoiceNumber} completed and the appointment was marked Paid.",
                 "Sale completed");
 
             NavigationManager.NavigateTo("/complete-sales");
