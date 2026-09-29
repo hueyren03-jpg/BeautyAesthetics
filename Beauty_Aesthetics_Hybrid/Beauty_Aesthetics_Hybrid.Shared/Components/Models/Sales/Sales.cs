@@ -7,6 +7,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Models
     {
         public int Id { get; set; }
         public string DocumentId { get; set; } = "";
+        public int DocumentTypeId { get; set; } = 5;
         public string AccountId { get; set; } = "";
         public string BranchId { get; set; } = "";
         public string GroupId { get; set; } = "";
@@ -79,6 +80,12 @@ namespace Beauty_Aesthetics_WebPos.Components.Models
         public decimal TaxPercentage { get; set; }
         public decimal TaxAmount { get; set; }
         public bool IsTaxInclusive { get; set; }
+
+        // Member Credit redemption (Senang single-account structure).
+        public int ActivityTypeId { get; set; } = 1;
+        public string MemberCreditAccountId { get; set; } = "";
+        public string MemberTypeId { get; set; } = "";
+        public string MembershipCredit { get; set; } = "";
     }
 
     /// <summary>
