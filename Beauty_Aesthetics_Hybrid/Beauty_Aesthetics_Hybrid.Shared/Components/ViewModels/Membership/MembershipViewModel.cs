@@ -116,7 +116,8 @@ public sealed class MembershipViewModel
         DateTime? AvailableDateTo = null,
         TimeSpan? AvailableTimeFrom = null,
         TimeSpan? AvailableTimeTo = null,
-        string EInvoiceClassificationCode = ""
+        string EInvoiceClassificationCode = "",
+        string MemberTypeId = ""
     );
 }
 
