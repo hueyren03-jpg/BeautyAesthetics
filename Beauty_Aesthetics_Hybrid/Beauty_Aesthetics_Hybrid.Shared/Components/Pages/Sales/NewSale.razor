@@ -1092,7 +1092,7 @@
         var customerTask = CustomerService.SearchCustomersAsync(string.Empty);
         var productTask = ProductInventoryService.LoadProductsAsync(branchId);
         var serviceTask = ServiceItemService.LoadServiceItemsAsync(branchId);
-        var memberCreditTask = MemberCreditService.LoadMemberCreditsAsync();
+        var memberCreditTask = MemberCreditService.LoadMemberCreditsAsync(branchId);
 
         await Task.WhenAll(paymentTask, discountTask, customerTask, productTask, serviceTask, memberCreditTask);
 
@@ -1174,42 +1174,12 @@
         string branchId)
     {
         var candidates = summaries
-            .Where(item =>
-                item.IsActive &&
-                !string.IsNullOrWhiteSpace(item.MasterAccountId))
+            .Where(item => !string.IsNullOrWhiteSpace(item.MasterAccountId))
             .ToList();
 
-        if (candidates.Count == 0)
+        var tasks = candidates.Select(async credit =>
         {
-            return Array.Empty<CatalogItem>();
-        }
-
-        var tasks = candidates.Select(async summary =>
-        {
-            var fullResult = await MemberCreditService.LoadMemberCreditAsync(summary.MasterAccountId!);
-            var credit = fullResult.Success && fullResult.Value is not null
-                ? fullResult.Value
-                : summary;
-
-            if (!fullResult.Success)
-            {
-                Console.WriteLine(
-                    $"[Member Credit Catalog] Falling back to summary for {summary.MasterAccountId}: {fullResult.ErrorMessage}");
-            }
-
-            if (!credit.IsActive ||
-                string.Equals(credit.Status, "Inactive", StringComparison.OrdinalIgnoreCase))
-            {
-                return null;
-            }
-
-            if (!IsMemberCreditVisibleAtBranch(credit, branchId))
-            {
-                return null;
-            }
-
             var taxRate = await GstTaxRateService.GetRateForTaxCodeAsync(credit.TaxCode);
-
             return new CatalogItem(
                 credit.MasterAccountId!,
                 credit.Name,
@@ -1223,40 +1193,9 @@
                 TaxPercentage: taxRate);
         });
 
-        var loaded = await Task.WhenAll(tasks);
-        return loaded
-            .Where(item => item is not null)
-            .Select(item => item!)
+        return (await Task.WhenAll(tasks))
             .OrderBy(item => item.Name)
             .ToList();
-    }
-
-    private static bool IsMemberCreditVisibleAtBranch(
-        MembershipViewModel.MemberCredit credit,
-        string branchId)
-    {
-        var visibleBranches = (credit.VisibleBranchIds ?? Array.Empty<string>())
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Select(id => id.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        if (visibleBranches.Count > 0)
-        {
-            return visibleBranches.Contains(branchId, StringComparer.OrdinalIgnoreCase);
-        }
-
-        if (!string.IsNullOrWhiteSpace(credit.BranchId))
-        {
-            return string.Equals(
-                credit.BranchId.Trim(),
-                branchId,
-                StringComparison.OrdinalIgnoreCase);
-        }
-
-        // Legacy Member Credit records created before branch visibility was stored
-        // should remain purchasable instead of disappearing from the catalog.
-        return true;
     }
 
     private static void RecalculateItemTaxAndTotal(TransactionItem item)
@@ -1548,7 +1487,7 @@
 
     // ========================================= ITEM & CART METHODS =========================================
 
-    private void OpenItemEditor(CatalogItem item)
+    private async Task OpenItemEditor(CatalogItem item)
     {
         if (item.InventoryTypeId == 7 && string.IsNullOrWhiteSpace(currentOrder.AccountId))
         {
@@ -1556,6 +1495,30 @@
                 "Select a customer before adding member credit.",
                 "Customer required");
             return;
+        }
+
+        if (item.InventoryTypeId == 7)
+        {
+            var fullResult = await MemberCreditService.LoadMemberCreditAsync(item.Id);
+            if (fullResult.Success && fullResult.Value is not null)
+            {
+                var credit = fullResult.Value;
+                var taxRate = await GstTaxRateService.GetRateForTaxCodeAsync(credit.TaxCode);
+                item = item with
+                {
+                    Name = credit.Name,
+                    Sku = credit.Code,
+                    Price = credit.Price,
+                    TaxCodeId = credit.TaxCode,
+                    IsTaxInclusive = credit.IsTaxInclusive,
+                    TaxPercentage = taxRate
+                };
+            }
+            else
+            {
+                Console.WriteLine(
+                    $"[Member Credit] Full record load failed for {item.Id}; continuing with branch proxy data. {fullResult.ErrorMessage}");
+            }
         }
 
         editingCatalogItem = item;
