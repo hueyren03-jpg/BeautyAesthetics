@@ -35,6 +35,43 @@ public sealed class CreditBalanceDetailDTO
     public bool IsRedeemable { get; set; }
 }
 
+public sealed class RedeemableCreditRequestDTO
+{
+    [JsonPropertyName("customerID")]
+    public string CustomerId { get; set; } = string.Empty;
+
+    [JsonPropertyName("purchaseCutOffDate")]
+    public DateTime PurchaseCutOffDate { get; set; }
+}
+
+public sealed class RedeemableCreditDTO
+{
+    public string? ARAPOutstandingID { get; set; }
+    public string? AccountID { get; set; }
+    public DateTime FinancialDate { get; set; }
+    public DateTime DueDate { get; set; }
+    public string? DocumentID { get; set; }
+    public string? DisplayCode { get; set; }
+    public int DocumentTypeID { get; set; }
+    public string? DocumentTypeName { get; set; }
+    public string? DocumentLineID { get; set; }
+    public string? ItemDescription { get; set; }
+    public string? CurrencyID { get; set; }
+    public string? CurrencyName { get; set; }
+    public decimal ExchangeRate { get; set; }
+    public decimal InterOutletRatio { get; set; }
+    public decimal InterOutletAmount { get; set; }
+    public decimal TotalAmount { get; set; }
+    public decimal BalanceCredit { get; set; }
+    public decimal AmountUtilised { get; set; }
+    public decimal NetBalanceAfterUtilised { get; set; }
+    public string? BranchID { get; set; }
+    public string? GroupID { get; set; }
+    public string? LineItemID { get; set; }
+    public string? MemberTypeID { get; set; }
+    public bool IsRedeemable { get; set; }
+}
+
 public sealed class MemberOtherBalanceSummaryRequestDTO
 {
     [JsonPropertyName("id")]

@@ -126,6 +126,32 @@ public sealed class CustomerAC
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
         return await ReadApiResponseAsync<List<CreditBalanceDetailDTO>>(response, "Credit balance response was invalid.", cancellationToken);
     }
+    public async Task<ApiCallResult<List<RedeemableCreditDTO>>> GetRedeemableCreditsAsync(
+        string customerId,
+        DateTime purchaseCutOffDate,
+        CancellationToken cancellationToken = default)
+    {
+        var payload = new RedeemableCreditRequestDTO
+        {
+            CustomerId = customerId,
+            PurchaseCutOffDate = purchaseCutOffDate
+        };
+
+        var requestJson = JsonSerializer.Serialize(payload, JsonOptions);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            "/api/Customer/GetRedeemableCredits")
+        {
+            Content = new StringContent(requestJson, Encoding.UTF8, "application/json")
+        };
+
+        using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+        return await ReadApiResponseAsync<List<RedeemableCreditDTO>>(
+            response,
+            "Redeemable member credit response was invalid.",
+            cancellationToken);
+    }
+
     public async Task<ApiCallResult<CustomerCreateResultDTO>> CreateRecordAsync(
         CustomerDM customer,
         CancellationToken cancellationToken = default)

@@ -26,6 +26,11 @@ public interface ICustomerService
         DateTime cutOffDate,
         CancellationToken cancellationToken = default);
 
+    Task<CustomerOperationResult<IReadOnlyList<RedeemableCreditDTO>>> GetRedeemableCreditsAsync(
+        string customerId,
+        DateTime purchaseCutOffDate,
+        CancellationToken cancellationToken = default);
+
     Task<CustomerOperationResult<Customer>> CreateCustomerAsync(
         Customer customer,
         CancellationToken cancellationToken = default);

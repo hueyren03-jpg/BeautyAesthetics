@@ -147,6 +147,34 @@ public sealed class CustomerService : ICustomerService
             result.Value.FirstOrDefault() ?? new MemberOtherBalanceSummaryDTO());
     }
 
+    public async Task<CustomerOperationResult<IReadOnlyList<RedeemableCreditDTO>>> GetRedeemableCreditsAsync(
+        string customerId,
+        DateTime purchaseCutOffDate,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(customerId))
+        {
+            return CustomerOperationResult<IReadOnlyList<RedeemableCreditDTO>>.Fail("Customer ID is required.");
+        }
+
+        var result = await customerAC.GetRedeemableCreditsAsync(
+            customerId,
+            purchaseCutOffDate,
+            cancellationToken);
+
+        if (!result.Success || result.Value is null)
+        {
+            return CustomerOperationResult<IReadOnlyList<RedeemableCreditDTO>>.Fail(
+                ToCustomerError(result.ErrorMessage));
+        }
+
+        return CustomerOperationResult<IReadOnlyList<RedeemableCreditDTO>>.Ok(
+            result.Value
+                .OrderBy(credit => credit.DueDate)
+                .ThenBy(credit => credit.ARAPOutstandingID)
+                .ToList());
+    }
+
     public async Task<CustomerOperationResult<Customer>> CreateCustomerAsync(
         Customer customer,
         CancellationToken cancellationToken = default)

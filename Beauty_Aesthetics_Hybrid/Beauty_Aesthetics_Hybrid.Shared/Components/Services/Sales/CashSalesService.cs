@@ -7,6 +7,7 @@ using Beauty_Aesthetics_WebPos.Components.Models;
 using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.Components.Services.Files;
 using Beauty_Aesthetics_WebPos.Components.Services.Inventory;
+using Beauty_Aesthetics_WebPos.Components.Services.Customers;
 using Beauty_Aesthetics_WebPos.Components.Services.Tax;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 
@@ -20,6 +21,7 @@ public sealed class CashSalesService : ICashSalesService
     private readonly AppFeedbackService feedback;
     private readonly IFileDownloadService fileDownloadService;
     private readonly IMemberCreditService memberCreditService;
+    private readonly ICustomerService customerService;
 
     public CashSalesService(
         CashSalesAC cashSalesAC,
@@ -27,7 +29,8 @@ public sealed class CashSalesService : ICashSalesService
         WebDashboardAC dashboardAC,
         AppFeedbackService feedback,
         IFileDownloadService fileDownloadService,
-        IMemberCreditService memberCreditService)
+        IMemberCreditService memberCreditService,
+        ICustomerService customerService)
     {
         this.cashSalesAC = cashSalesAC;
         this.branchAC = branchAC;
@@ -35,6 +38,7 @@ public sealed class CashSalesService : ICashSalesService
         this.feedback = feedback;
         this.fileDownloadService = fileDownloadService;
         this.memberCreditService = memberCreditService;
+        this.customerService = customerService;
     }
 
     public async Task<ApiCallResult<IReadOnlyList<Transaction>>> LoadTransactionsAsync(
@@ -457,6 +461,11 @@ public sealed class CashSalesService : ICashSalesService
         transaction.DocumentId = FindString(createResult.Value, "DocumentID", "Id") ?? transaction.DocumentId;
         transaction.InvoiceNumber = FindString(createResult.Value, "DisplayCode") ?? transaction.InvoiceNumber;
 
+        await VerifyMemberCreditGrantPersistenceAsync(
+            transaction,
+            memberCreditBuild.RootCredits,
+            cancellationToken);
+
         return ApiCallResult<Transaction>.Ok(createResult.StatusCode, transaction);
     }
 
@@ -808,6 +817,28 @@ public sealed class CashSalesService : ICashSalesService
                 rootCredits);
         }
 
+        var customerResult = await customerService.LoadCustomerAsync(
+            transaction.AccountId,
+            cancellationToken);
+
+        if (!customerResult.Success || customerResult.Value is null)
+        {
+            return (
+                false,
+                customerResult.ErrorMessage ??
+                "Unable to load the selected customer before granting Member Credit.",
+                rootCredits);
+        }
+
+        var customerMemberTypeId = customerResult.Value.MembershipTypeId?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(customerMemberTypeId))
+        {
+            return (
+                false,
+                $"Customer '{customerResult.Value.FirstName}' has no MembershipTypeID, so the Member Credit amount cannot be determined.",
+                rootCredits);
+        }
+
         foreach (var entry in memberCreditIndexes)
         {
             var item = entry.Item;
@@ -868,6 +899,20 @@ public sealed class CashSalesService : ICashSalesService
                     rootCredits);
             }
 
+            var allocation = allocations.FirstOrDefault(candidate =>
+                string.Equals(
+                    candidate.MemberTypeId.Trim(),
+                    customerMemberTypeId,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (allocation is null)
+            {
+                return (
+                    false,
+                    $"Member Credit '{creditSetup.Name}' has no configured credit amount for customer membership type '{customerMemberTypeId}'.",
+                    rootCredits);
+            }
+
             var lineCredits = new JsonArray();
             var quantity = Math.Max(1, item.Quantity);
             var settlementRatio = creditSetup.SettlementRatio > 0m
@@ -877,53 +922,104 @@ public sealed class CashSalesService : ICashSalesService
                 ? transaction.Date.Date.AddDays(creditSetup.ValidityDays)
                 : new DateTime(2049, 12, 31);
 
-            foreach (var allocation in allocations)
+            var totalCredit = allocation.CreditAmount * quantity;
+            var credit = new JsonObject
             {
-                var totalCredit = allocation.CreditAmount * quantity;
-                var credit = new JsonObject
-                {
-                    ["ARAPOutstandingID"] = string.Empty,
-                    ["AccountID"] = transaction.AccountId,
-                    ["FinancialDate"] = transaction.Date,
-                    ["DueDate"] = dueDate,
-                    ["DocumentID"] = Text(header, "DocumentID"),
-                    ["DisplayCode"] = Text(header, "DisplayCode"),
-                    ["DocumentTypeID"] = Integer(header, "DocumentTypeID") == 0
-                        ? 5
-                        : Integer(header, "DocumentTypeID"),
-                    ["DocumentTypeName"] = First(Text(header, "FriendlyDocumentName"), "CashSales"),
-                    ["DocumentLineID"] = Text(line, "DocumentLineID"),
-                    ["ItemDescription"] = quantity == 1
-                        ? First(item.Description, item.Name, creditSetup.Name)
-                        : $"{First(item.Description, item.Name, creditSetup.Name)}(x {quantity})",
-                    ["CurrencyID"] = First(Text(header, "TransactionCurrencyID"), "MYR"),
-                    ["CurrencyName"] = First(Text(header, "TransactionCurrencyName"), "MYR"),
-                    ["ExchangeRate"] = Number(header, "ExchangeRate") == 0m
-                        ? 1m
-                        : Number(header, "ExchangeRate"),
-                    ["InterOutletRatio"] = settlementRatio,
-                    ["InterOutletAmount"] = totalCredit * settlementRatio,
-                    ["MGMTier"] = string.Empty,
-                    ["TotalAmount"] = totalCredit,
-                    ["BranchID"] = transaction.BranchId,
-                    ["GroupID"] = transaction.GroupId,
-                    ["LineItemID"] = item.InventoryId,
-                    ["MemberTypeID"] = allocation.MemberTypeId.Trim(),
-                    ["SaveAction"] = 1,
-                    ["IsDirty"] = true
-                };
+                ["ARAPOutstandingID"] = string.Empty,
+                ["AccountID"] = transaction.AccountId,
+                ["FinancialDate"] = transaction.Date,
+                ["DueDate"] = dueDate,
+                ["DocumentID"] = Text(header, "DocumentID"),
+                ["DisplayCode"] = Text(header, "DisplayCode"),
+                ["DocumentTypeID"] = Integer(header, "DocumentTypeID") == 0
+                    ? 5
+                    : Integer(header, "DocumentTypeID"),
+                ["DocumentTypeName"] = First(Text(header, "FriendlyDocumentName"), "CashSales"),
+                ["DocumentLineID"] = Text(line, "DocumentLineID"),
+                ["ItemDescription"] = quantity == 1
+                    ? First(item.Description, item.Name, creditSetup.Name)
+                    : $"{First(item.Description, item.Name, creditSetup.Name)}(x {quantity})",
+                ["CurrencyID"] = First(Text(header, "TransactionCurrencyID"), "MYR"),
+                ["CurrencyName"] = First(Text(header, "TransactionCurrencyName"), "MYR"),
+                ["ExchangeRate"] = Number(header, "ExchangeRate") == 0m
+                    ? 1m
+                    : Number(header, "ExchangeRate"),
+                ["InterOutletRatio"] = settlementRatio,
+                ["InterOutletAmount"] = totalCredit * settlementRatio,
+                ["MGMTier"] = string.Empty,
+                ["TotalAmount"] = totalCredit,
+                ["BranchID"] = transaction.BranchId,
+                ["GroupID"] = transaction.GroupId,
+                ["LineItemID"] = item.InventoryId,
+                ["MemberTypeID"] = customerMemberTypeId,
+                ["SaveAction"] = 1,
+                ["IsDirty"] = true
+            };
 
-                lineCredits.Add(credit);
-                rootCredits.Add(credit.DeepClone());
+            lineCredits.Add(credit);
+            rootCredits.Add(credit.DeepClone());
 
-                Console.WriteLine(
-                    $"[Member Credit Grant] {creditSetup.Name} | MemberType={allocation.MemberTypeId} | Amount={totalCredit:N2} | Qty={quantity}");
-            }
+            Console.WriteLine(
+                $"[Member Credit Grant] Customer={transaction.AccountId} | MemberType={customerMemberTypeId} | Item={creditSetup.Name} | Amount={totalCredit:N2} | Qty={quantity}");
 
             line["lstARAPOutstanding_MemberCredit"] = lineCredits;
         }
 
         return (true, string.Empty, rootCredits);
+    }
+
+    private async Task VerifyMemberCreditGrantPersistenceAsync(
+        Transaction transaction,
+        JsonArray expectedCredits,
+        CancellationToken cancellationToken)
+    {
+        if (expectedCredits.Count == 0 || string.IsNullOrWhiteSpace(transaction.AccountId))
+        {
+            return;
+        }
+
+        var verifyResult = await customerService.GetRedeemableCreditsAsync(
+            transaction.AccountId,
+            DateTime.Now,
+            cancellationToken);
+
+        if (!verifyResult.Success || verifyResult.Value is null)
+        {
+            Console.WriteLine(
+                $"[Member Credit Verify] Sale {transaction.DocumentId}: GetRedeemableCredits failed: {verifyResult.ErrorMessage}");
+            return;
+        }
+
+        foreach (var node in expectedCredits)
+        {
+            if (node is not JsonObject expected)
+            {
+                continue;
+            }
+
+            var expectedLineItemId = Text(expected, "LineItemID");
+            var expectedMemberTypeId = Text(expected, "MemberTypeID");
+            var expectedAmount = Number(expected, "TotalAmount");
+
+            var persisted = verifyResult.Value.FirstOrDefault(credit =>
+                !string.IsNullOrWhiteSpace(credit.ARAPOutstandingID) &&
+                string.Equals(credit.LineItemID, expectedLineItemId, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(credit.MemberTypeID, expectedMemberTypeId, StringComparison.OrdinalIgnoreCase) &&
+                (string.IsNullOrWhiteSpace(credit.DocumentID) ||
+                 string.IsNullOrWhiteSpace(transaction.DocumentId) ||
+                 string.Equals(credit.DocumentID, transaction.DocumentId, StringComparison.OrdinalIgnoreCase)) &&
+                (expectedAmount <= 0m || Math.Abs(credit.TotalAmount - expectedAmount) < 0.01m));
+
+            if (persisted is null)
+            {
+                Console.WriteLine(
+                    $"[Member Credit Verify] Sale {transaction.DocumentId}: no redeemable ARAP record found for Item={expectedLineItemId}, MemberType={expectedMemberTypeId}, Amount={expectedAmount:N2}.");
+                continue;
+            }
+
+            Console.WriteLine(
+                $"[Member Credit Verify] Sale {transaction.DocumentId}: ARAPOutstandingID={persisted.ARAPOutstandingID} | Item={persisted.LineItemID} | MemberType={persisted.MemberTypeID} | Balance={persisted.NetBalanceAfterUtilised:N2}");
+        }
     }
 
     private static JsonArray BuildReceiptLines(Transaction transaction)
