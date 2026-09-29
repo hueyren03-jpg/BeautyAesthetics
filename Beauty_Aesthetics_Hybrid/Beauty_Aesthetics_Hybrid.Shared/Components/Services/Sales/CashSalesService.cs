@@ -538,15 +538,25 @@ public sealed class CashSalesService : ICashSalesService
             : new List<CashSalesReceiptLineDTO>();
         var payments = transaction.Payments.Count > 0
             ? transaction.Payments
-            : new List<TransactionPayment>
-            {
-                new() { PaymentTypeId = transaction.PaymentTypeId, PaymentMethod = transaction.PaymentMethod, Amount = transaction.Amount }
-            };
+                .Where(payment => payment.PaymentTypeId != -10)
+                .ToList()
+            : transaction.PaymentTypeId != 0 && transaction.PaymentTypeId != -10
+                ? new List<TransactionPayment>
+                {
+                    new() { PaymentTypeId = transaction.PaymentTypeId, PaymentMethod = transaction.PaymentMethod, Amount = transaction.Amount }
+                }
+                : new List<TransactionPayment>();
         var change = Math.Max(0, payments.Sum(payment => payment.Amount) - transaction.Amount);
         var changePayment = payments.LastOrDefault(payment =>
-            payment.PaymentMethod.Contains("cash", StringComparison.OrdinalIgnoreCase)) ?? payments.Last();
+            payment.PaymentMethod.Contains("cash", StringComparison.OrdinalIgnoreCase)) ?? payments.LastOrDefault();
 
-        var retainedReceiptIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Member Credit redemption receipts are backend accounting rows, not normal
+        // Cash/Card tender rows. A normal payment edit must not delete them.
+        var retainedReceiptIds = existing
+            .Where(line => line.POSPaymentTypeID == -10 &&
+                           !string.IsNullOrWhiteSpace(line.POSReceiptLineID))
+            .Select(line => line.POSReceiptLineID!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var matchedReceipts = new HashSet<CashSalesReceiptLineDTO>();
         foreach (var payment in payments.Where(payment => payment.PaymentTypeId != 0 && payment.Amount > 0))
         {
@@ -1031,7 +1041,9 @@ public sealed class CashSalesService : ICashSalesService
     {
         var payments = transaction.Payments.Count > 0
             ? transaction.Payments
-            : transaction.PaymentTypeId != 0
+                .Where(payment => payment.PaymentTypeId != -10)
+                .ToList()
+            : transaction.PaymentTypeId != 0 && transaction.PaymentTypeId != -10
                 ? new List<TransactionPayment>
                 {
                     new()
@@ -1044,6 +1056,9 @@ public sealed class CashSalesService : ICashSalesService
                 : new List<TransactionPayment>();
 
         var lines = new JsonArray();
+        var currency = string.IsNullOrWhiteSpace(transaction.CurrencyName)
+            ? "MYR"
+            : transaction.CurrencyName.Trim();
         var totalTendered = payments.Sum(payment => payment.Amount);
         var redeemedAmount = transaction.DocumentTypeId == 52
             ? transaction.Items
@@ -1075,8 +1090,8 @@ public sealed class CashSalesService : ICashSalesService
                 ["GroupID"] = transaction.GroupId,
                 ["FinancialDate"] = transaction.Date,
                 ["ExchangeRate"] = 1m,
-                ["CurrencyID"] = "MYR",
-                ["CurrencyName"] = "MYR",
+                ["CurrencyID"] = currency,
+                ["CurrencyName"] = currency,
                 ["SaveAction"] = 1,
                 ["IsDirty"] = true
             });
@@ -1092,29 +1107,37 @@ public sealed class CashSalesService : ICashSalesService
                     lines.Add(new JsonObject
                     {
                         ["POSReceiptLineID"] = string.Empty,
-                        ["DocumentID"] = string.Empty,
+                        ["DocumentID"] = transaction.DocumentId,
+                        ["FinancialAccountID"] = string.Empty,
+                        ["BankName"] = string.Empty,
+                        ["POSReceiptLineAmount"] = allocation.Amount,
                         ["AccountID"] = transaction.AccountId,
                         ["AccountTypeID"] = 3,
+                        ["Description"] = "Member Credit",
                         ["Reference"] = string.IsNullOrWhiteSpace(allocation.MemberTypeId)
                             ? allocation.MemberCreditAccountId
                             : $"{allocation.MemberTypeId} - ({allocation.MemberCreditAccountId})",
-                        ["Description"] = "Member Credit",
-                        ["POSPaymentTypeID"] = -10,
-                        ["POSReceiptLineAmount"] = allocation.Amount,
-                        ["POSReceiptChangeAmount"] = 0m,
+                        ["PackageID"] = string.Empty,
                         ["SourceDocumentLineID"] = allocation.MemberCreditAccountId,
+                        ["QuantityRedeemed"] = 0m,
+                        ["SourceUnitPrice"] = 0m,
+                        ["SourceUnitActualValue"] = 0m,
                         ["InventoryID"] = item.InventoryId,
-                        ["FinancialAccountID"] = string.Empty,
-                        ["BankName"] = string.Empty,
-                        ["BranchID"] = transaction.BranchId,
+                        ["CurrencyID"] = currency,
+                        ["CurrencyName"] = currency,
                         ["GroupID"] = transaction.GroupId,
-                        ["FinancialDate"] = transaction.Date,
                         ["ExchangeRate"] = 1m,
-                        ["CurrencyID"] = "MYR",
-                        ["CurrencyName"] = "MYR",
+                        ["AmountInForeignCurrency"] = 0m,
+                        ["POSPaymentTypeID"] = -10,
+                        ["POSReceiptChangeAmount"] = 0m,
+                        ["BranchID"] = transaction.BranchId,
+                        ["FinancialDate"] = transaction.Date,
                         ["SaveAction"] = 1,
                         ["IsDirty"] = true
                     });
+
+                    Console.WriteLine(
+                        $"[Member Credit Receipt] Account={allocation.MemberCreditAccountId} | Amount={allocation.Amount:N2} | Inventory={item.InventoryId} | POSPaymentTypeID=-10");
                 }
             }
         }
@@ -1128,7 +1151,9 @@ public sealed class CashSalesService : ICashSalesService
         IReadOnlyDictionary<int, string> paymentTypeNames)
     {
         transaction.Payments = receiptLines
-            .Where(line => line.POSPaymentTypeID != 0 && line.POSReceiptLineAmount > 0)
+            .Where(line => line.POSPaymentTypeID != 0 &&
+                           line.POSPaymentTypeID != -10 &&
+                           line.POSReceiptLineAmount > 0)
             .Select(receipt => new TransactionPayment
             {
                 ReceiptLineId = receipt.POSReceiptLineID ?? string.Empty,
