@@ -6,6 +6,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.Inventory;
 public interface IMemberCreditService
 {
     Task<ApiCallResult<IReadOnlyList<MembershipViewModel.MemberCredit>>> LoadMemberCreditsAsync(
+        string? branchId = null,
         CancellationToken cancellationToken = default);
 
     Task<ApiCallResult<MembershipViewModel.MemberCredit>> LoadMemberCreditAsync(
