@@ -1138,9 +1138,9 @@
                                            class="credit-allocation-input"
                                            min="0"
                                            step="0.01"
-                                           max="@available.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)"
+                                           max="@FormatCreditAmountInput(available)"
                                            disabled="@(!selected)"
-                                           value="@DraftCreditAllocationAmount(credit).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)"
+                                           value="@FormatCreditAmountInput(DraftCreditAllocationAmount(credit))"
                                            @onchange="(ChangeEventArgs e) => UpdateLineCreditAllocationAmount(credit, e.Value?.ToString())" />
                                 </td>
                             </tr>
@@ -2249,6 +2249,9 @@
             "|",
             allocations.Select(allocation =>
                 $"{allocation.MemberCreditAccountId},{allocation.Amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}"));
+
+    private static string FormatCreditAmountInput(decimal value) =>
+        value.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
 
     private static string FormatCreditDate(DateTime value) =>
         value.Year <= 1900 ? "—" : value.ToString("dd/MM/yyyy");
