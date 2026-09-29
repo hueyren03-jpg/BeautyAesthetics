@@ -1428,6 +1428,15 @@
 
     private void SelectWalkInCustomer()
     {
+        if (isChangingCustomerForExistingOrder &&
+            currentOrder.Items.Any(item => item.InventoryTypeId == 7))
+        {
+            Feedback.Warning(
+                "Member Credit items require a customer. Remove the Member Credit item before switching this order to Walk-in.",
+                "Customer required");
+            return;
+        }
+
         var branch = BranchSession.CurrentBranch;
         var branchId = branch?.Id ?? "HQ";
         var branchName = branch?.DisplayName ?? "HQ Outlet";
@@ -1794,6 +1803,15 @@
         if (!currentOrder.Items.Any())
         {
             Feedback.Warning("Please add at least one item before proceeding to payment.", "Cart is empty");
+            return;
+        }
+
+        if (currentOrder.Items.Any(item => item.InventoryTypeId == 7) &&
+            string.IsNullOrWhiteSpace(currentOrder.AccountId))
+        {
+            Feedback.Warning(
+                "Select a customer before purchasing Member Credit.",
+                "Customer required");
             return;
         }
 
