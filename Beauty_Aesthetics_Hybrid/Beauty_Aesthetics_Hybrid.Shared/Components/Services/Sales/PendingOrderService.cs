@@ -53,8 +53,8 @@ public sealed class PendingOrderService : IPendingOrderService
                 Payments = new List<TransactionPayment>()
             };
 
-            _orders.Add(order);
-            NotifyChanged();
+            // A new sale is only a draft at this point. It becomes a pending order
+            // only when the user explicitly holds it (IsHeld = true).
             return order.Clone();
         }
     }
@@ -65,24 +65,34 @@ public sealed class PendingOrderService : IPendingOrderService
 
         lock (_lock)
         {
-            var existingIndex = _orders.FindIndex(o => string.Equals(o.Id, order.Id, StringComparison.OrdinalIgnoreCase));
+            var existingIndex = _orders.FindIndex(o =>
+                string.Equals(o.Id, order.Id, StringComparison.OrdinalIgnoreCase));
             var cloned = order.Clone();
             cloned.UpdatedAt = DateTime.Now;
 
             if (existingIndex >= 0)
             {
+                // Existing entries are held orders. Preserve that state while editing/resuming.
+                cloned.IsHeld = true;
                 _orders[existingIndex] = cloned;
-            }
-            else
-            {
-                if (string.IsNullOrWhiteSpace(cloned.OrderNumber))
-                {
-                    cloned.OrderNumber = $"HOLD-{DateTime.Now:yyyyMMdd}-{_sequenceNumber:D3}";
-                    _sequenceNumber++;
-                }
-                _orders.Add(cloned);
+                NotifyChanged();
+                return;
             }
 
+            // Draft/new sales must not appear in Pending Orders merely because the cart,
+            // quantity, discount, or payment changed.
+            if (!cloned.IsHeld)
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(cloned.OrderNumber))
+            {
+                cloned.OrderNumber = $"HOLD-{DateTime.Now:yyyyMMdd}-{_sequenceNumber:D3}";
+                _sequenceNumber++;
+            }
+
+            _orders.Add(cloned);
             NotifyChanged();
         }
     }
@@ -93,7 +103,9 @@ public sealed class PendingOrderService : IPendingOrderService
 
         lock (_lock)
         {
-            var index = _orders.FindIndex(o => string.Equals(o.Id, id, StringComparison.OrdinalIgnoreCase));
+            var index = _orders.FindIndex(o =>
+                string.Equals(o.Id, id, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(o.OrderNumber, id, StringComparison.OrdinalIgnoreCase));
             if (index >= 0)
             {
                 _orders.RemoveAt(index);
