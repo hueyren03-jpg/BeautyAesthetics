@@ -522,6 +522,22 @@ public sealed class CashSalesService : ICashSalesService
         document["objDoc_CashSales"] = header;
         var documentLines = BuildDocumentLines(document, transaction);
         document["lstDocumentLine"] = documentLines;
+
+        var redemptionTaxValidation = ValidateAndApplyRedemptionTaxBasis(
+            transaction,
+            documentLines,
+            header);
+
+        if (!redemptionTaxValidation.Success)
+        {
+            Console.WriteLine(
+                $"[Member Credit Step 35] BLOCKED | Customer={transaction.AccountId} | {redemptionTaxValidation.ErrorMessage}");
+
+            return ApiCallResult<Transaction>.Failure(
+                HttpStatusCode.BadRequest,
+                redemptionTaxValidation.ErrorMessage);
+        }
+
         document["lstReceiptLines"] = BuildReceiptLines(transaction);
 
         var memberCreditBuild = await BuildMemberCreditGrantCollectionsAsync(
@@ -927,6 +943,193 @@ public sealed class CashSalesService : ICashSalesService
         };
     }
 
+    private static (bool Success, string ErrorMessage) ValidateAndApplyRedemptionTaxBasis(
+        Transaction transaction,
+        JsonArray documentLines,
+        JsonObject header)
+    {
+        if (transaction.DocumentTypeId != 52)
+        {
+            return (true, string.Empty);
+        }
+
+        if (documentLines.Count != transaction.Items.Count)
+        {
+            return (
+                false,
+                "Redemption tax validation failed because the generated document lines do not match the cart lines.");
+        }
+
+        decimal canonicalBeforeTax = 0m;
+        decimal canonicalTax = 0m;
+        decimal canonicalAfterTax = 0m;
+        var redemptionLineCount = 0;
+
+        for (var index = 0; index < transaction.Items.Count; index++)
+        {
+            var item = transaction.Items[index];
+            if (documentLines[index] is not JsonObject line)
+            {
+                return (
+                    false,
+                    $"Redemption tax validation failed for '{First(item.Name, item.InventoryId, "Item")}': generated line is missing.");
+            }
+
+            ComputeLineTaxBasis(
+                item,
+                out var expectedBeforeTax,
+                out var expectedTax,
+                out var expectedSubTotal);
+
+            var lineBeforeTax = Math.Round(
+                Number(line, "SubTotalBeforeGST"),
+                2,
+                MidpointRounding.AwayFromZero);
+            var lineTax = Math.Round(
+                Number(line, "TaxAmount"),
+                2,
+                MidpointRounding.AwayFromZero);
+            var lineSubTotal = Math.Round(
+                Number(line, "SubTotal"),
+                2,
+                MidpointRounding.AwayFromZero);
+            var lineTaxPercentage = Number(line, "TaxPercentage");
+            var lineIsTaxInclusive = Bool(line, "IsTaxInclusive");
+
+            if (Math.Abs(lineBeforeTax - expectedBeforeTax) >= 0.01m ||
+                Math.Abs(lineTax - expectedTax) >= 0.01m ||
+                Math.Abs(lineSubTotal - expectedSubTotal) >= 0.01m ||
+                Math.Abs((lineBeforeTax + lineTax) - lineSubTotal) >= 0.01m)
+            {
+                return (
+                    false,
+                    $"Redemption tax values for '{First(item.Name, item.InventoryId, "Item")}' are inconsistent. " +
+                    $"Expected BeforeGST RM {expectedBeforeTax:N2} + Tax RM {expectedTax:N2} = SubTotal RM {expectedSubTotal:N2}, " +
+                    $"but the generated line contains RM {lineBeforeTax:N2} + RM {lineTax:N2} = RM {lineSubTotal:N2}.");
+            }
+
+            if (Math.Abs(lineTaxPercentage - item.TaxPercentage) >= 0.0001m ||
+                lineIsTaxInclusive != item.IsTaxInclusive)
+            {
+                return (
+                    false,
+                    $"Redemption tax settings for '{First(item.Name, item.InventoryId, "Item")}' changed while building the request.");
+            }
+
+            canonicalBeforeTax += lineBeforeTax;
+            canonicalTax += lineTax;
+            canonicalAfterTax += lineSubTotal;
+
+            if (Integer(line, "ActivityTypeID") != 6)
+            {
+                continue;
+            }
+
+            redemptionLineCount++;
+            var allocated = Math.Round(
+                EffectiveMemberCreditAllocations(item).Sum(allocation => allocation.Amount),
+                2,
+                MidpointRounding.AwayFromZero);
+
+            // Senang's redemption workflow uses DocumentLine.SubTotal as the
+            // redeemable amount. SubTotalBeforeGST and TaxAmount remain separate
+            // accounting fields and must not become the credit allocation basis.
+            if (Math.Abs(allocated - lineSubTotal) >= 0.01m)
+            {
+                return (
+                    false,
+                    $"Member Credit for '{First(item.Name, item.InventoryId, "Item")}' must cover the final line SubTotal " +
+                    $"RM {lineSubTotal:N2} (BeforeGST RM {lineBeforeTax:N2} + Tax RM {lineTax:N2}). " +
+                    $"Currently allocated RM {allocated:N2}.");
+            }
+
+            Console.WriteLine(
+                $"[Member Credit Step 35] LINE PASS | Item={First(item.Name, item.InventoryId, "Item")} | " +
+                $"TaxInclusive={item.IsTaxInclusive} | TaxPercent={item.TaxPercentage:N4} | " +
+                $"BeforeGST={lineBeforeTax:N2} | Tax={lineTax:N2} | SubTotal={lineSubTotal:N2} | Credit={allocated:N2}");
+        }
+
+        canonicalBeforeTax = Math.Round(
+            canonicalBeforeTax,
+            2,
+            MidpointRounding.AwayFromZero);
+        canonicalTax = Math.Round(
+            canonicalTax,
+            2,
+            MidpointRounding.AwayFromZero);
+        canonicalAfterTax = Math.Round(
+            canonicalAfterTax,
+            2,
+            MidpointRounding.AwayFromZero);
+
+        // Keep the document header synchronized with the exact rounded line values
+        // that the backend receives. This preserves Beauty's existing tax engine
+        // while preventing header/line drift in redemption requests.
+        transaction.Subtotal = canonicalBeforeTax;
+        transaction.Tax = canonicalTax;
+        transaction.Amount = canonicalAfterTax;
+
+        header["TotalBeforeTax"] = canonicalBeforeTax;
+        header["TaxableAmount"] = canonicalBeforeTax;
+        header["TaxAmount"] = canonicalTax;
+        header["TotalAfterTax"] = canonicalAfterTax;
+        header["LocalTotalBeforeTax"] = canonicalBeforeTax;
+        header["LocalTaxableAmount"] = canonicalBeforeTax;
+        header["LocalTaxAmount"] = canonicalTax;
+        header["LocalTotalAfterTax"] = canonicalAfterTax;
+
+        Console.WriteLine(
+            $"[Member Credit Step 35] PASS | RedemptionLines={redemptionLineCount} | " +
+            $"TotalBeforeGST={canonicalBeforeTax:N2} | Tax={canonicalTax:N2} | TotalAfterTax={canonicalAfterTax:N2} | " +
+            $"CreditBasis=DocumentLine.SubTotal");
+
+        return (true, string.Empty);
+    }
+
+    private static decimal RedeemableLineSubTotal(TransactionItem item)
+    {
+        ComputeLineTaxBasis(
+            item,
+            out _,
+            out _,
+            out var subTotal);
+
+        return subTotal;
+    }
+
+    private static void ComputeLineTaxBasis(
+        TransactionItem item,
+        out decimal beforeTax,
+        out decimal tax,
+        out decimal subTotal)
+    {
+        var quantity = Math.Max(1, item.Quantity);
+        var gross = quantity * item.UnitPrice;
+        var discount = Math.Clamp(item.Discount, 0m, gross);
+
+        OrderLineTaxCalculator.ComputeLineAmounts(
+            item.UnitPrice,
+            quantity,
+            discount,
+            item.TaxPercentage,
+            item.IsTaxInclusive,
+            out var calculatedBeforeTax,
+            out var calculatedTax);
+
+        beforeTax = Math.Round(
+            Math.Max(0m, calculatedBeforeTax),
+            2,
+            MidpointRounding.AwayFromZero);
+        tax = Math.Round(
+            Math.Max(0m, calculatedTax),
+            2,
+            MidpointRounding.AwayFromZero);
+        subTotal = Math.Round(
+            beforeTax + tax,
+            2,
+            MidpointRounding.AwayFromZero);
+    }
+
     private static JsonArray BuildDocumentLines(JsonObject document, Transaction transaction)
     {
         var template = document["ServiceChargeLine"] as JsonObject;
@@ -950,16 +1153,12 @@ public sealed class CashSalesService : ICashSalesService
         {
             var quantity = Math.Max(1, item.Quantity);
             var gross = quantity * item.UnitPrice;
-            var discount = Math.Clamp(item.Discount, 0, gross);
-            OrderLineTaxCalculator.ComputeLineAmounts(
-                item.UnitPrice,
-                quantity,
-                discount,
-                item.TaxPercentage,
-                item.IsTaxInclusive,
+            var discount = Math.Clamp(item.Discount, 0m, gross);
+            ComputeLineTaxBasis(
+                item,
                 out var beforeTax,
-                out var lineTax);
-            var lineTotal = Math.Round(beforeTax + lineTax, 2, MidpointRounding.AwayFromZero);
+                out var lineTax,
+                out var lineTotal);
             var line = template is null ? new JsonObject() : (JsonObject)template.DeepClone();
             var currentLineOrder = lineOrder++;
             line["DocumentLineID"] = currentLineOrder.ToString("D2");
@@ -1892,10 +2091,7 @@ public sealed class CashSalesService : ICashSalesService
 
         foreach (var item in redemptionItems)
         {
-            var lineAmount = Math.Round(
-                Math.Max(0m, item.TotalPrice),
-                2,
-                MidpointRounding.AwayFromZero);
+            var lineAmount = RedeemableLineSubTotal(item);
 
             if (lineAmount <= 0m)
             {
@@ -2608,7 +2804,7 @@ public sealed class CashSalesService : ICashSalesService
 
         return string.IsNullOrWhiteSpace(item.MemberCreditAccountId)
             ? 0m
-            : Math.Max(0m, item.TotalPrice);
+            : RedeemableLineSubTotal(item);
     }
 
     private static IReadOnlyList<MemberCreditAllocation> EffectiveMemberCreditAllocations(TransactionItem item)
@@ -2642,7 +2838,7 @@ public sealed class CashSalesService : ICashSalesService
             {
                 MemberCreditAccountId = item.MemberCreditAccountId,
                 MemberTypeId = item.MemberTypeId,
-                Amount = Math.Max(0m, item.TotalPrice)
+                Amount = RedeemableLineSubTotal(item)
             }
         };
     }
