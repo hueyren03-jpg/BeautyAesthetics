@@ -7,6 +7,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.Sales;
 public interface ICashSalesService
 {
     Task<ApiCallResult<IReadOnlyList<Transaction>>> LoadTransactionsAsync(DateTime startDate, DateTime endDate, string branchId = "", bool resolvePaymentMethods = true, CancellationToken cancellationToken = default);
+    Task<ApiCallResult<IReadOnlyList<Transaction>>> LoadRedemptionsAsync(DateTime startDate, DateTime endDate, string branchId = "", CancellationToken cancellationToken = default);
     Task<ApiCallResult<SalesByTypeDTO>> LoadSalesByTypeAsync(DateTime startDate, DateTime endDate, string branchId, CancellationToken cancellationToken = default);
     Task<ApiCallResult<IReadOnlyList<SalesByCollectionDTO>>> LoadSalesByCollectionAsync(DateTime startDate, DateTime endDate, string branchId, CancellationToken cancellationToken = default);
     Task<ApiCallResult<Transaction>> LoadTransactionAsync(string documentId, CancellationToken cancellationToken = default);
