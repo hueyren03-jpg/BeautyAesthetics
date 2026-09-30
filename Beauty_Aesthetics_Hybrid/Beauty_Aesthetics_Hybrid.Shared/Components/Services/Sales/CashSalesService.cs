@@ -466,28 +466,24 @@ public sealed class CashSalesService : ICashSalesService
             return ApiCallResult<Transaction>.Failure(createResult.StatusCode, message);
         }
 
-        var createdDocumentId = FindString(createResult.Value, "DocumentID", "DocumentId", "Id", "ID");
-        var createdDisplayCode = FindString(createResult.Value, "DisplayCode", "displayCode");
+        if (createResult.Value is null)
+        {
+            return ApiCallResult<Transaction>.Failure(
+                createResult.StatusCode,
+                "The cash sale was created but the API did not return the created record.");
+        }
 
-        transaction.DocumentId = First(createdDocumentId, transaction.DocumentId) ?? string.Empty;
-        transaction.InvoiceNumber = First(createdDisplayCode, transaction.InvoiceNumber) ?? string.Empty;
+        transaction.DocumentId = createResult.Value.Id ?? string.Empty;
+        transaction.InvoiceNumber = createResult.Value.DisplayCode ?? string.Empty;
 
         Console.WriteLine(
-            $"[Cash Sales Create] Result={createResult.Value.GetRawText()} | DocumentID={transaction.DocumentId} | DisplayCode={transaction.InvoiceNumber}");
+            $"[Cash Sales Create] DocumentID={transaction.DocumentId} | DisplayCode={transaction.InvoiceNumber}");
 
-        if (string.IsNullOrWhiteSpace(transaction.DocumentId) &&
-            !string.IsNullOrWhiteSpace(transaction.InvoiceNumber))
+        if (string.IsNullOrWhiteSpace(transaction.DocumentId))
         {
-            var resolvedDocumentId = await ResolveCreatedDocumentIdByDisplayCodeAsync(
-                transaction,
-                cancellationToken);
-
-            if (!string.IsNullOrWhiteSpace(resolvedDocumentId))
-            {
-                transaction.DocumentId = resolvedDocumentId;
-                Console.WriteLine(
-                    $"[Cash Sales Create] Resolved DocumentID={transaction.DocumentId} from DisplayCode={transaction.InvoiceNumber}");
-            }
+            return ApiCallResult<Transaction>.Failure(
+                createResult.StatusCode,
+                "The cash sale API did not return Result.Id.");
         }
 
         await VerifyMemberCreditGrantPersistenceAsync(
@@ -868,79 +864,6 @@ public sealed class CashSalesService : ICashSalesService
         }
 
         return lines;
-    }
-
-    private async Task<string?> ResolveCreatedDocumentIdByDisplayCodeAsync(
-        Transaction transaction,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(transaction.InvoiceNumber))
-        {
-            return null;
-        }
-
-        var date = transaction.Date == default
-            ? DateTime.Today
-            : transaction.Date.Date;
-
-        var historyResult = await cashSalesAC.GetAppSalesListAsync(
-            new CashSalesLoadRequestDTO
-            {
-                Id = transaction.BranchId ?? string.Empty,
-                StartDate = date,
-                EndDate = date.AddDays(1).AddTicks(-1)
-            },
-            cancellationToken);
-
-        if (!historyResult.Success || historyResult.Value is null)
-        {
-            Console.WriteLine(
-                $"[Cash Sales Create] Unable to resolve DocumentID from DisplayCode={transaction.InvoiceNumber}: {historyResult.ErrorMessage}");
-            return null;
-        }
-
-        var matches = historyResult.Value
-            .Where(item =>
-                !string.IsNullOrWhiteSpace(item.DocumentID) &&
-                string.Equals(
-                    item.DisplayCode,
-                    transaction.InvoiceNumber,
-                    StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        if (!string.IsNullOrWhiteSpace(transaction.AccountId))
-        {
-            var accountMatches = matches
-                .Where(item => string.Equals(
-                    item.AccountID,
-                    transaction.AccountId,
-                    StringComparison.OrdinalIgnoreCase))
-                .ToList();
-
-            if (accountMatches.Count > 0)
-            {
-                matches = accountMatches;
-            }
-        }
-
-        var amountMatches = matches
-            .Where(item => Math.Abs(item.TotalAfterTax - transaction.Amount) < 0.01m)
-            .ToList();
-
-        if (amountMatches.Count > 0)
-        {
-            matches = amountMatches;
-        }
-
-        var documentIds = matches
-            .Select(item => item.DocumentID)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        return documentIds.Count == 1
-            ? documentIds[0]
-            : null;
     }
 
     private async Task<(bool Success, string ErrorMessage, JsonArray RootCredits)> BuildMemberCreditGrantCollectionsAsync(
@@ -1951,98 +1874,6 @@ public sealed class CashSalesService : ICashSalesService
             if (!string.IsNullOrEmpty(match.Key) && match.Value.TryGetInt32(out var result)) return result;
         }
         return 0;
-    }
-
-    private static string? FindString(JsonElement value, params string[] names)
-    {
-        if (value.ValueKind == JsonValueKind.String)
-        {
-            var text = value.GetString();
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                return null;
-            }
-
-            // Some API responses wrap Result as a JSON string instead of an object.
-            var trimmed = text.Trim();
-            if ((trimmed.StartsWith("{", StringComparison.Ordinal) &&
-                 trimmed.EndsWith("}", StringComparison.Ordinal)) ||
-                (trimmed.StartsWith("[", StringComparison.Ordinal) &&
-                 trimmed.EndsWith("]", StringComparison.Ordinal)))
-            {
-                try
-                {
-                    using var nestedJson = JsonDocument.Parse(trimmed);
-                    var nestedValue = FindString(nestedJson.RootElement, names);
-                    if (!string.IsNullOrWhiteSpace(nestedValue))
-                    {
-                        return nestedValue;
-                    }
-                }
-                catch (JsonException)
-                {
-                    // It is an ordinary string value; fall through.
-                }
-            }
-
-            return text;
-        }
-
-        if (value.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in value.EnumerateArray())
-            {
-                var nested = FindString(item, names);
-                if (!string.IsNullOrWhiteSpace(nested))
-                {
-                    return nested;
-                }
-            }
-
-            return null;
-        }
-
-        if (value.ValueKind != JsonValueKind.Object)
-        {
-            return null;
-        }
-
-        foreach (var property in value.EnumerateObject())
-        {
-            if (names.Any(name =>
-                    string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)))
-            {
-                if (property.Value.ValueKind == JsonValueKind.String)
-                {
-                    return property.Value.GetString();
-                }
-
-                if (property.Value.ValueKind is JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False)
-                {
-                    return property.Value.ToString();
-                }
-
-                if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
-                {
-                    var matchedNested = FindString(property.Value, names);
-                    if (!string.IsNullOrWhiteSpace(matchedNested))
-                    {
-                        return matchedNested;
-                    }
-                }
-            }
-
-            if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
-            {
-                var nested = FindString(property.Value, names);
-                if (!string.IsNullOrWhiteSpace(nested))
-                {
-                    return nested;
-                }
-            }
-        }
-
-        return null;
     }
 
     private static string? First(params string?[] values) => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
