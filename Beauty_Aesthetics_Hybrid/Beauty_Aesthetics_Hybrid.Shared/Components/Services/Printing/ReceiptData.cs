@@ -3,6 +3,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.Printing;
 public sealed class ReceiptData
 {
     public string CompanyName { get; set; } = string.Empty;
+    public string LogoUrl { get; set; } = string.Empty;
     public string BranchName { get; set; } = string.Empty;
     public string Address { get; set; } = string.Empty;
     public string Address1 { get; set; } = string.Empty;
