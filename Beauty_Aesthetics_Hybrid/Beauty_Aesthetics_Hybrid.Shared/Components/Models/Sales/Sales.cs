@@ -29,6 +29,12 @@ namespace Beauty_Aesthetics_WebPos.Components.Models
         public string CurrencyName { get; set; } = "MYR";
         public string PaymentMethod { get; set; } = ""; // Cash, Card, Online Transfer, E-Wallet
         public List<TransactionPayment> Payments { get; set; } = new();
+
+        // Complete receipt-line collection used for printing/history presentation.
+        // This intentionally includes system-controlled rows such as Member Credit
+        // (POSPaymentTypeID = -10), while Payments remains the ordinary tender list.
+        public List<TransactionPayment> ReceiptPayments { get; set; } = new();
+
         public string Status { get; set; } = ""; // Paid, Pending, Cancelled, Voided
         public string ReferenceNumber { get; set; } = "";
         public string Notes { get; set; } = "";
@@ -48,6 +54,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Models
         public string ReceiptLineId { get; set; } = "";
         public int PaymentTypeId { get; set; }
         public string PaymentMethod { get; set; } = "";
+        public string SourceDocumentLineId { get; set; } = "";
         public decimal Amount { get; set; }
         public decimal ChangeAmount { get; set; }
         public string FinancialAccountId { get; set; } = "";
