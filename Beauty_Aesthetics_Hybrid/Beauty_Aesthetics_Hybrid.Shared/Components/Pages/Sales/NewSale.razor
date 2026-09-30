@@ -846,13 +846,9 @@
 
                 <section class="receipt-payment-breakdown">
                     <h3>Payment Breakdown</h3>
-                    @foreach (var payment in currentOrder.Payments)
+                    @foreach (var payment in ReceiptDisplayPayments)
                     {
-                        <div><span><i class="bi @PaymentIcon(payment.PaymentMethod)"></i> @payment.PaymentMethod</span><strong>MYR @payment.Amount.ToString("N2")</strong></div>
-                    }
-                    @if (currentOrder.Payments.Count == 0)
-                    {
-                        <div><span><i class="bi @PaymentIcon(savedSale.PaymentMethod)"></i> @savedSale.PaymentMethod</span><strong>MYR @savedSale.Amount.ToString("N2")</strong></div>
+                        <div><span><i class="bi @PaymentIcon(payment.PaymentMethod)"></i> @ReceiptPaymentLabel(payment)</span><strong>MYR @payment.Amount.ToString("N2")</strong></div>
                     }
                     <div><span>Amount Received</span><strong>MYR @PaidAmount.ToString("N2")</strong></div>
                     <div class="receipt-change"><span>Change Returned</span><strong>MYR @Change.ToString("N2")</strong></div>
@@ -867,6 +863,21 @@
                 </button>
                 <button type="button" class="print-receipt-action" @onclick="PrintReceipt">
                     <i class="bi bi-printer"></i> Print Receipt
+                </button>
+                <button type="button"
+                        class="secondary-action"
+                        @onclick="DownloadPdfReceipt"
+                        disabled="@isDownloadingReceipt">
+                    @if (isDownloadingReceipt)
+                    {
+                        <span class="spinner-border spinner-border-sm"></span>
+                        <span>Downloading...</span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-file-earmark-pdf"></i>
+                        <span>Download PDF Receipt</span>
+                    }
                 </button>
                 @if (CanRequestReview)
                 {
@@ -1344,6 +1355,7 @@
     private bool isCustomerSearchLoading;
     private bool isLoading = true;
     private bool isSaving;
+    private bool isDownloadingReceipt;
     private int customerSearchRequestVersion;
     private CancellationTokenSource? customerSearchCts;
 
@@ -1417,6 +1429,28 @@
     private DateTime ReceiptDate => savedSale?.Date is { Year: > 1 } value ? value : DateTime.Now;
     private string ReceiptCustomer => string.IsNullOrWhiteSpace(savedSale?.CustomerName) ? currentOrder.CustomerName : savedSale.CustomerName;
     private string ReceiptBranch => string.IsNullOrWhiteSpace(savedSale?.Branch) ? currentOrder.BranchName : savedSale.Branch;
+    private IReadOnlyList<TransactionPayment> ReceiptDisplayPayments =>
+        savedSale?.ReceiptPayments is { Count: > 0 } savedReceiptPayments
+            ? savedReceiptPayments
+            : currentOrder.Payments.Count > 0
+                ? currentOrder.Payments
+                : savedSale is not null && savedSale.Amount > 0
+                    ? new[]
+                    {
+                        new TransactionPayment
+                        {
+                            PaymentTypeId = savedSale.PaymentTypeId,
+                            PaymentMethod = savedSale.PaymentMethod,
+                            Amount = savedSale.Amount
+                        }
+                    }
+                    : Array.Empty<TransactionPayment>();
+
+    private static string ReceiptPaymentLabel(TransactionPayment payment) =>
+        payment.PaymentTypeId == -10 && !string.IsNullOrWhiteSpace(payment.SourceDocumentLineId)
+            ? $"Member Credit ({payment.SourceDocumentLineId})"
+            : payment.PaymentMethod;
+
     private bool CanRequestReview =>
         !string.IsNullOrWhiteSpace(savedSale?.AccountId) &&
         !string.IsNullOrWhiteSpace(savedSale?.DocumentId);
@@ -3048,6 +3082,25 @@
             if (string.IsNullOrWhiteSpace(savedSale.CustomerName)) savedSale.CustomerName = currentOrder.CustomerName;
             if (savedSale.Amount <= 0) savedSale.Amount = currentOrder.Total;
 
+            // Reload the completed document so the receipt screen uses the actual
+            // backend receipt rows, including Member Credit POSPaymentTypeID = -10.
+            if (!string.IsNullOrWhiteSpace(savedSale.DocumentId))
+            {
+                var completedResult = await CashSalesService.LoadTransactionAsync(savedSale.DocumentId);
+                if (completedResult.Success && completedResult.Value is not null)
+                {
+                    var completedSale = completedResult.Value;
+                    if (string.IsNullOrWhiteSpace(completedSale.CustomerName))
+                        completedSale.CustomerName = currentOrder.CustomerName;
+                    if (completedSale.Amount <= 0)
+                        completedSale.Amount = currentOrder.Total;
+                    if (string.IsNullOrWhiteSpace(completedSale.InvoiceNumber))
+                        completedSale.InvoiceNumber = savedSale.InvoiceNumber;
+
+                    savedSale = completedSale;
+                }
+            }
+
             // A successfully paid order must never remain in Pending Orders.
             // Clear held state first so any late cart/payment persistence call cannot re-add it.
             var completedOrderId = currentOrder.Id;
@@ -3106,12 +3159,8 @@
             </tr>
             """));
 
-        var receiptPayments = currentOrder.Payments.Count > 0
-            ? currentOrder.Payments
-            : [new TransactionPayment { PaymentMethod = savedSale.PaymentMethod, Amount = savedSale.Amount }];
-
-        var paymentRows = string.Join(string.Empty, receiptPayments.Select(payment => $"""
-            <div class="line"><span>{EncodeReceiptText(payment.PaymentMethod)}</span><strong>MYR {payment.Amount:N2}</strong></div>
+        var paymentRows = string.Join(string.Empty, ReceiptDisplayPayments.Select(payment => $"""
+            <div class="line"><span>{EncodeReceiptText(ReceiptPaymentLabel(payment))}</span><strong>MYR {payment.Amount:N2}</strong></div>
             """));
 
         var html = $$"""
@@ -3177,6 +3226,51 @@
 
         await JS.InvokeVoidAsync("printDocument", html, $"Receipt {ReceiptNumber}");
         Feedback.Success($"Receipt {ReceiptNumber} was sent to print.", "Receipt ready", 2800);
+    }
+
+    private async Task DownloadPdfReceipt()
+    {
+        if (savedSale is null || string.IsNullOrWhiteSpace(savedSale.DocumentId))
+        {
+            Feedback.Error("The completed sales DocumentID is missing.", "Receipt unavailable");
+            return;
+        }
+
+        if (isDownloadingReceipt)
+        {
+            return;
+        }
+
+        try
+        {
+            isDownloadingReceipt = true;
+            await InvokeAsync(StateHasChanged);
+
+            var downloaded = await CashSalesService.DownloadReceiptPdfAsync(savedSale.DocumentId);
+            if (!downloaded)
+            {
+                Feedback.Error(
+                    "The receipt PDF could not be generated or downloaded.",
+                    "Receipt download failed");
+                return;
+            }
+
+            Feedback.Success(
+                $"Receipt {ReceiptNumber} downloaded successfully.",
+                "Receipt downloaded",
+                2800);
+        }
+        catch (Exception ex)
+        {
+            Feedback.Error(
+                $"Unable to download the receipt PDF. {ex.Message}",
+                "Receipt download failed");
+        }
+        finally
+        {
+            isDownloadingReceipt = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private static string EncodeReceiptText(string? value) =>
