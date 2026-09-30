@@ -44,10 +44,10 @@ public sealed class CreateCashSalesResponseDTO
 
 public sealed class CashSalesThermalReceiptRequestDTO
 {
-    [JsonPropertyName("Id")]
+    [JsonPropertyName("id")]
     public string Id { get; set; } = string.Empty;
 
-    [JsonPropertyName("IntDocumentTypeID")]
+    [JsonPropertyName("intDocumentTypeID")]
     public int DocumentTypeId { get; set; }
 }
 

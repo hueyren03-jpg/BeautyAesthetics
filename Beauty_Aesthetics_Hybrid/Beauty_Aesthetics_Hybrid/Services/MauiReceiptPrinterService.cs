@@ -32,7 +32,9 @@ public sealed class MauiReceiptPrinterService : IReceiptPrinterService
                 return await iminService.PrintReceiptAsync(data);
             }
 
-            var receipt = BuildEscPosReceipt(data, printer.ReceiptMM == 80 ? 48 : 32);
+            var receipt = EscPosReceiptBuilder.BuildEscPosReceipt(
+                data,
+                printer.ReceiptMM == 80 ? 48 : 32);
 
             if (printer.IsWifiPrinter)
             {

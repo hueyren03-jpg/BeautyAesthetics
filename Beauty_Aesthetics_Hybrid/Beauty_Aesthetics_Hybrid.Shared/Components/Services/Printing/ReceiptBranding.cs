@@ -4,9 +4,7 @@ public static class ReceiptBranding
 {
     public const string AppTitle = "Beauty Aesthetics";
     public const string AppSubtitle = "Clinic Management";
-    public const string BrandMark = "BA";
+    public const string BrandMark = "EBI";
 
-    // Do not use the legacy EBI/Senang image in receipts.
-    // ReceiptHtmlBuilder renders the Beauty monogram directly.
-    public const string LogoUrl = "";
+    public const string LogoUrl = "_content/Beauty_Aesthetics_Hybrid.Shared/Images/EBI_Logo.png";
 }

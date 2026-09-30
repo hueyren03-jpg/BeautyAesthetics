@@ -100,7 +100,6 @@ public sealed class CashSalesAC
                     Id = documentId,
                     DocumentTypeId = documentTypeId
                 },
-                mediaType: JsonPatchMediaType,
                 options: JsonOptions)
         };
 

@@ -1,4 +1,5 @@
 @page "/billing"
+@using Beauty_Aesthetics_WebPos.APIClient
 @using Beauty_Aesthetics_WebPos.Components.Layout
 @layout EmptyLayout
 @using Microsoft.AspNetCore.Components
@@ -21,7 +22,7 @@
 @inject Beauty_Aesthetics_WebPos.Components.Services.Sales.ICashSalesService CashSalesService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Sales.ICashDiscountService CashDiscountService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Tax.IGstTaxRateService GstTaxRateService
-@inject Beauty_Aesthetics_WebPos.Components.Services.Files.IFileDownloadService FileDownloadService
+@inject BranchAC BranchAC
 @inject Beauty_Aesthetics_WebPos.Components.Services.Printing.IPrinterSelectionService PrinterSelectionService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Printing.IReceiptPrinterService ReceiptPrinterService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.ProductImageService ProductImageService
@@ -3965,8 +3966,11 @@
 
         try
         {
+            var completedDocumentTypeId =
+                AppState.LastCompletedTransaction?.DocumentTypeId == 52 ? 52 : 5;
             var saleResult = await CashSalesService.LoadTransactionAsync(
-                _completedSaleDocumentId);
+                _completedSaleDocumentId,
+                completedDocumentTypeId);
 
             if (!saleResult.Success || saleResult.Value is null)
             {
@@ -3977,7 +3981,7 @@
             }
 
             var transaction = saleResult.Value;
-            var receiptData = BuildPhysicalReceiptData(transaction);
+            var receiptData = await BuildPhysicalReceiptDataAsync(transaction);
 
             var printResult = await ReceiptPrinterService.PrintAsync(
                 printer,
@@ -4020,18 +4024,25 @@
         }
     }
 
-    private ReceiptData BuildPhysicalReceiptData(Transaction transaction)
+    private async Task<ReceiptData> BuildPhysicalReceiptDataAsync(Transaction transaction)
     {
-        var paidAmount = transaction.Payments.Count > 0
-            ? transaction.Payments.Sum(payment => payment.Amount)
-            : AmountReceived ?? transaction.Amount;
-
         // Match + New Sales and Senang: print every saved receipt line, including
         // Member Credit rows (POSPaymentTypeID = -10), while normal payment logic
         // continues to use transaction.Payments only.
         var receiptPayments = transaction.ReceiptPayments.Count > 0
             ? transaction.ReceiptPayments
             : transaction.Payments;
+
+        var paidAmount = receiptPayments.Count > 0
+            ? receiptPayments.Sum(payment => payment.Amount)
+            : AmountReceived ?? transaction.Amount;
+        var changeAmount = receiptPayments
+            .Where(payment => payment.ChangeAmount > 0m)
+            .Sum(payment => payment.ChangeAmount);
+        if (changeAmount <= 0m)
+        {
+            changeAmount = Math.Max(0m, paidAmount - transaction.Amount);
+        }
 
         var payments = receiptPayments.Count > 0
             ? receiptPayments
@@ -4054,11 +4065,60 @@
                 }
             };
 
+        var taxSummary = transaction.Items
+            .Where(item => !string.IsNullOrWhiteSpace(item.TaxCodeId))
+            .GroupBy(item => new { item.TaxCodeId, item.TaxPercentage })
+            .Select(group => new TaxSummaryLine
+            {
+                TaxCode = $"{group.Key.TaxCodeId} {group.Key.TaxPercentage * 100:0.#}%",
+                Amount = group.Sum(item => (item.UnitPrice * item.Quantity) - item.Discount),
+                Tax = group.Sum(item => item.TaxAmount)
+            })
+            .ToList();
+
+        Customer? fullCustomer = null;
+        if (!string.IsNullOrWhiteSpace(transaction.AccountId))
+        {
+            var customerResult = await CustomerService.LoadCustomerAsync(transaction.AccountId);
+            if (customerResult.Success)
+            {
+                fullCustomer = customerResult.Value;
+            }
+        }
+
+        var branchId = string.IsNullOrWhiteSpace(transaction.BranchId)
+            ? AppState.SelectedBranchID
+            : transaction.BranchId;
+        System.Text.Json.Nodes.JsonObject? branchRecord = null;
+        if (!string.IsNullOrWhiteSpace(branchId))
+        {
+            var branchResult = await BranchAC.LoadRecordAsync(branchId);
+            if (branchResult.Success)
+            {
+                branchRecord = branchResult.Value;
+            }
+        }
+
         return new ReceiptData
         {
             CompanyName = ReceiptBranding.AppTitle,
             LogoUrl = ReceiptBranding.LogoUrl,
             BranchName = AppState.CurrentBranch?.Name ?? transaction.Branch,
+            OutletName = FirstNonEmpty(
+                ReceiptRecordReader.Text(branchRecord, "OutletName"),
+                AppState.CurrentBranch?.Name,
+                transaction.Branch),
+            Address1 = ReceiptRecordReader.Text(branchRecord, "Address1"),
+            Address2 = ReceiptRecordReader.Text(branchRecord, "Address2"),
+            Address3 = ReceiptRecordReader.Text(branchRecord, "Address3"),
+            Phone = ReceiptRecordReader.Text(branchRecord, "Phone", "Contact"),
+            Email = ReceiptRecordReader.Text(branchRecord, "Email"),
+            CoRegistrationNo = ReceiptRecordReader.Text(
+                branchRecord,
+                "CoRegistrationNo",
+                "CompanyRegistrationNo",
+                "RegistrationNo"),
+            TIN = ReceiptRecordReader.Text(branchRecord, "TIN", "TaxIdentificationNumber"),
             ReceiptNo = string.IsNullOrWhiteSpace(transaction.InvoiceNumber)
                 ? _completedReceiptNumber
                 : transaction.InvoiceNumber,
@@ -4066,11 +4126,18 @@
             ReferenceNumber = transaction.ReferenceNumber,
             CustomerID = transaction.AccountId,
             CustomerName = transaction.CustomerName,
-            CustomerPhone = transaction.CustomerContact,
+            CustomerAddress1 = fullCustomer?.Address1 ?? string.Empty,
+            CustomerAddress2 = fullCustomer?.Address2 ?? string.Empty,
+            CustomerAddress3 = fullCustomer?.Address3 ?? string.Empty,
+            CustomerCity = fullCustomer?.City ?? string.Empty,
+            CustomerPostcode = fullCustomer?.Postcode ?? string.Empty,
+            CustomerState = fullCustomer?.State ?? string.Empty,
+            CustomerCountry = fullCustomer?.Country ?? string.Empty,
+            CustomerPhone = FirstNonEmpty(fullCustomer?.ContactNumber1, transaction.CustomerContact),
             CashierName = string.IsNullOrWhiteSpace(transaction.CreatedBy)
                 ? SelectedCollector
                 : transaction.CreatedBy,
-            CurrencyName = "MYR",
+            CurrencyName = FirstNonEmpty(transaction.CurrencyName, "MYR"),
             Items = transaction.Items.Select(item => new ReceiptLineItem
             {
                 Name = item.Name,
@@ -4082,11 +4149,14 @@
                     : item.Description
             }).ToList(),
             Payments = payments,
+            TaxSummary = taxSummary,
             Subtotal = transaction.Subtotal,
             TaxAmount = transaction.Tax,
+            TotalBeforeTax_ServiceCharge = transaction.ServiceChargeAmount,
+            RoundingAmount = transaction.RoundingAmount,
             GrandTotal = transaction.Amount,
             PaidAmount = paidAmount,
-            ChangeAmount = Math.Max(0m, paidAmount - transaction.Amount),
+            ChangeAmount = changeAmount,
             EInvoiceQrUrl = _eInvoiceUrl
         };
     }
@@ -4136,20 +4206,21 @@
                 return;
             }
 
-            var receiptData = BuildPhysicalReceiptData(transaction);
             var fileId = string.IsNullOrWhiteSpace(transaction.DocumentId)
                 ? _completedSaleDocumentId
                 : transaction.DocumentId;
-            var fileName = $"Beauty_Receipt_{fileId}.pdf";
-            var pdfBase64 = ReceiptPdfBuilder.BuildBase64(receiptData);
+            var downloaded = await CashSalesService.DownloadReceiptPdfAsync(fileId);
 
-            await FileDownloadService.DownloadBinaryFileAsync(
-                fileName,
-                pdfBase64,
-                "application/pdf");
+            if (!downloaded)
+            {
+                Feedback.Error(
+                    "The Senang thermal receipt could not be generated by the receipt API.",
+                    "Receipt download failed");
+                return;
+            }
 
             Feedback.Success(
-                $"Beauty Aesthetics receipt {_completedReceiptNumber} downloaded.",
+                $"Receipt {_completedReceiptNumber} downloaded in the Senang thermal format.",
                 "Receipt downloaded",
                 2400);
 
@@ -4830,6 +4901,9 @@
             Feedback.Info("Discount removed.", "Discount updated", 1800);
         }
     }
+
+    private static string FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
 
     private record BillingItem(string Name, int Quantity, decimal UnitPrice, decimal Discount, 
         string? Frequency = null, string? Duration = null, string? Reason = null, string? Notes = null,

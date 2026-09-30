@@ -79,18 +79,12 @@ public static class ReceiptHtmlBuilder
                     .receipt { width: 100%; max-width: 720px; margin: 0 auto; padding: 22px; background: #fff; }
                     .brand { text-align: center; padding-bottom: 16px; border-bottom: 2px solid #0759ad; }
                     .brand-mark {
-                        display: inline-flex;
-                        align-items: center;
-                        justify-content: center;
-                        width: 58px;
-                        height: 58px;
+                        display: block;
+                        width: 112px;
+                        height: 42px;
                         margin: 0 auto 9px;
-                        border-radius: 50%;
-                        background: #0866c7;
-                        color: #ffffff;
-                        font-size: 20px;
-                        font-weight: 800;
-                        letter-spacing: .04em;
+                        object-fit: cover;
+                        object-position: center;
                     }
                     .brand h1 { margin: 0; color: #064a94; font-size: 23px; line-height: 1.15; }
                     .brand p { margin: 4px 0 0; color: #64748b; }
@@ -120,7 +114,7 @@ public static class ReceiptHtmlBuilder
             <body>
                 <main class="receipt">
                     <header class="brand">
-                        <div class="brand-mark" aria-label="{{Encode(companyName)}} logo">{{Encode(ReceiptBranding.BrandMark)}}</div>
+                        <img class="brand-mark" src="{{Encode(ReceiptBranding.LogoUrl)}}" alt="EBI logo">
                         <h1>{{Encode(ReceiptBranding.AppTitle)}}</h1>
                         <p>{{Encode(ReceiptBranding.AppSubtitle)}}</p>
                         <div class="label">OFFICIAL RECEIPT</div>

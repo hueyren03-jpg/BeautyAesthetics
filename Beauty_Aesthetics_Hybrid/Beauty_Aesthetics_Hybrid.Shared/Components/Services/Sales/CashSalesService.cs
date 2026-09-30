@@ -8,8 +8,10 @@ using Beauty_Aesthetics_WebPos.Components.Services.Feedback;
 using Beauty_Aesthetics_WebPos.Components.Services.Files;
 using Beauty_Aesthetics_WebPos.Components.Services.Inventory;
 using Beauty_Aesthetics_WebPos.Components.Services.Customers;
+using Beauty_Aesthetics_WebPos.Components.Services.Printing;
 using Beauty_Aesthetics_WebPos.Components.Services.Tax;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
+using Microsoft.JSInterop;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.Sales;
 
@@ -22,6 +24,7 @@ public sealed class CashSalesService : ICashSalesService
     private readonly IFileDownloadService fileDownloadService;
     private readonly IMemberCreditService memberCreditService;
     private readonly ICustomerService customerService;
+    private readonly IJSRuntime jsRuntime;
 
     public CashSalesService(
         CashSalesAC cashSalesAC,
@@ -30,7 +33,8 @@ public sealed class CashSalesService : ICashSalesService
         AppFeedbackService feedback,
         IFileDownloadService fileDownloadService,
         IMemberCreditService memberCreditService,
-        ICustomerService customerService)
+        ICustomerService customerService,
+        IJSRuntime jsRuntime)
     {
         this.cashSalesAC = cashSalesAC;
         this.branchAC = branchAC;
@@ -39,6 +43,7 @@ public sealed class CashSalesService : ICashSalesService
         this.fileDownloadService = fileDownloadService;
         this.memberCreditService = memberCreditService;
         this.customerService = customerService;
+        this.jsRuntime = jsRuntime;
     }
 
     public async Task<ApiCallResult<IReadOnlyList<Transaction>>> LoadTransactionsAsync(
@@ -337,25 +342,14 @@ public sealed class CashSalesService : ICashSalesService
         }
 
         var resolvedDocumentTypeId = documentTypeId == 52 ? 52 : 5;
-        var savedDocumentId = documentId;
 
-        // Follow Senang: redemption uses document type 52 explicitly.
-        // Normal sales may still be inspected to detect a redemption-owned line.
+        // Match Senang Retail: normal receipts default to type 5 and become
+        // redemption statements only when a saved line is owned by type 52.
         if (resolvedDocumentTypeId != 52)
         {
             var loadResult = await cashSalesAC.LoadRecordAsync(documentId, cancellationToken);
             if (loadResult.Success && loadResult.Value is not null)
             {
-                var header = loadResult.Value["objDoc_CashSales"] as JsonObject;
-                if (header is not null)
-                {
-                    var headerDocumentId = TextIgnoreCase(header, "DocumentID");
-                    if (!string.IsNullOrWhiteSpace(headerDocumentId))
-                    {
-                        savedDocumentId = headerDocumentId;
-                    }
-                }
-
                 var lines = loadResult.Value["lstDocumentLine"] as JsonArray;
                 if (lines is not null && lines.OfType<JsonObject>().Any(line =>
                         IntegerIgnoreCase(line, "OwnerDocumentTypeID") == 52))
@@ -366,7 +360,7 @@ public sealed class CashSalesService : ICashSalesService
         }
 
         var receiptResult = await cashSalesAC.GetThermalReceiptPdfAsync(
-            savedDocumentId,
+            documentId,
             resolvedDocumentTypeId,
             cancellationToken);
 
@@ -402,10 +396,21 @@ public sealed class CashSalesService : ICashSalesService
                 return false;
             }
 
+            var brandedPdf = await jsRuntime.InvokeAsync<string>(
+                "receiptPdfBranding.replaceLogo",
+                cancellationToken,
+                result.Value,
+                ReceiptBranding.LogoUrl);
+
+            if (string.IsNullOrWhiteSpace(brandedPdf))
+            {
+                throw new InvalidOperationException("The EBI-branded receipt PDF was empty.");
+            }
+
             var fileName = $"Thermal_Receipt_{documentId}.pdf";
             await fileDownloadService.DownloadBinaryFileAsync(
                 fileName,
-                result.Value,
+                brandedPdf,
                 "application/pdf",
                 cancellationToken);
 

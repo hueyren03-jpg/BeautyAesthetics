@@ -134,14 +134,8 @@ public static class ReceiptPdfBuilder
 
     private static void DrawBrand(StringBuilder page, ref double y, bool continuation)
     {
-        var markSize = 44d;
-        var markX = (PageWidth - markSize) / 2d;
-
-        page.AppendLine("0.031 0.400 0.780 rg");
-        page.AppendLine($"{F(markX)} {F(y - markSize)} {F(markSize)} {F(markSize)} re f");
-        DrawCentered(page, y - 29, ReceiptBranding.BrandMark, 14, true, 1, 1, 1);
-
-        y -= 62;
+        DrawCentered(page, y - 14, ReceiptBranding.BrandMark, 11, true, 0.03, 0.29, 0.58);
+        y -= 34;
         DrawCentered(page, y, ReceiptBranding.AppTitle, 19, true, 0.03, 0.29, 0.58);
         y -= 16;
         DrawCentered(page, y, ReceiptBranding.AppSubtitle, 9, false, 0.40, 0.45, 0.52);
