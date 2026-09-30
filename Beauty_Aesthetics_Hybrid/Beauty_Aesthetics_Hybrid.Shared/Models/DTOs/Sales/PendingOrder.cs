@@ -108,7 +108,11 @@ public sealed class PendingOrder
                 ReceiptLineId = p.ReceiptLineId,
                 PaymentTypeId = p.PaymentTypeId,
                 PaymentMethod = p.PaymentMethod,
-                Amount = p.Amount
+                SourceDocumentLineId = p.SourceDocumentLineId,
+                Amount = p.Amount,
+                ChangeAmount = p.ChangeAmount,
+                FinancialAccountId = p.FinancialAccountId,
+                BankName = p.BankName
             }).ToList()
         };
     }
