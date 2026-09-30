@@ -27,6 +27,18 @@ public sealed class CashSalesHistoryRequestDTO
     public DateTime EndDate { get; set; }
 }
 
+public sealed class RedemptionLoadRequestDTO
+{
+    [JsonPropertyName("strID")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("startDate")]
+    public DateTime StartDate { get; set; }
+
+    [JsonPropertyName("endDate")]
+    public DateTime EndDate { get; set; }
+}
+
 public sealed class CashSalesLookupDTO
 {
     [JsonPropertyName("id")]
