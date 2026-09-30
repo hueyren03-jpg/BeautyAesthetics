@@ -33,6 +33,15 @@ public sealed class CashSalesLookupDTO
     public string Id { get; set; } = string.Empty;
 }
 
+public sealed class CreateCashSalesResponseDTO
+{
+    [JsonPropertyName("Id")]
+    public string? Id { get; set; }
+
+    [JsonPropertyName("DisplayCode")]
+    public string? DisplayCode { get; set; }
+}
+
 public sealed class CashSalesThermalReceiptRequestDTO
 {
     [JsonPropertyName("Id")]
