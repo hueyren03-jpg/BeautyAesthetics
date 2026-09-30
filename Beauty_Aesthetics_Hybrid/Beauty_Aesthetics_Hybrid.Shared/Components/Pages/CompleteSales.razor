@@ -374,10 +374,10 @@
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(AppState.LastSaleDocumentId))
+        if (salesRecord is null)
         {
             Feedback.Error(
-                "The completed sales DocumentID is missing.",
+                "The completed sales record is missing or could not be loaded.",
                 "Receipt unavailable");
             return;
         }
@@ -387,15 +387,31 @@
             isDownloading = true;
             await InvokeAsync(StateHasChanged);
 
-            var downloaded = await SalesService.DownloadReceiptPdfAsync(
-                AppState.LastSaleDocumentId);
+            var receiptData = await BuildBaseReceiptData();
+            var html = ReceiptHtmlBuilder.Build(receiptData);
+            var fileId = FirstNonEmpty(
+                salesRecord.DocumentId,
+                salesRecord.InvoiceNumber,
+                AppState.LastSaleDocumentId,
+                "Receipt");
+
+            var downloaded = await JS.InvokeAsync<bool>(
+                "downloadDocumentAsPDF",
+                html,
+                $"Beauty_Receipt_{fileId}.pdf");
 
             if (!downloaded)
             {
                 Feedback.Error(
-                    "The receipt PDF could not be generated or downloaded.",
+                    "The Beauty Aesthetics receipt PDF could not be generated.",
                     "Receipt download failed");
+                return;
             }
+
+            Feedback.Success(
+                "The Beauty Aesthetics receipt PDF was downloaded.",
+                "Receipt downloaded",
+                2600);
         }
         catch (Exception ex)
         {
@@ -470,9 +486,8 @@
 
         return new ReceiptData
         {
-            CompanyName = FirstNonEmpty(
-                GetBranchText("CompanyName", "AccountName", "Company"),
-                "Beauty Aesthetics"),
+            CompanyName = ReceiptBranding.AppTitle,
+            LogoUrl = ReceiptBranding.LogoUrl,
             BranchName = AppState.CurrentBranch?.Name ?? salesRecord.Branch,
             Address1 = GetBranchText("Address1"),
             Address2 = GetBranchText("Address2"),
