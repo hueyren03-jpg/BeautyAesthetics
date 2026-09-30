@@ -2207,7 +2207,10 @@
         }
     }
 
-    private void ValidateAssignedCreditAfterLineChange(TransactionItem item)
+    private void ReconcileAssignedCreditAfterLineChange(
+        TransactionItem item,
+        decimal previousLineTotal,
+        string changeSource)
     {
         if (!currentOrder.IsRedemptionMode || item.ActivityTypeId != 6)
         {
@@ -2215,40 +2218,171 @@
         }
 
         var allocations = EffectiveLineCreditAllocations(item);
-        var valid = allocations.Count > 0 &&
-                    Math.Abs(allocations.Sum(x => x.Amount) - item.TotalPrice) <= 0.009m;
-
-        if (valid)
+        if (allocations.Count == 0)
         {
-            foreach (var allocation in allocations)
-            {
-                var credit = redeemableCredits.FirstOrDefault(candidate =>
-                    string.Equals(
-                        candidate.ARAPOutstandingID,
-                        allocation.MemberCreditAccountId,
-                        StringComparison.OrdinalIgnoreCase));
-
-                if (credit is null ||
-                    !credit.IsRedeemable ||
-                    allocation.Amount <= 0m ||
-                    CreditAvailableForLine(credit, item) < allocation.Amount)
-                {
-                    valid = false;
-                    break;
-                }
-            }
-        }
-
-        if (valid)
-        {
+            ClearCreditFromLine(item);
             return;
         }
 
-        ClearCreditFromLine(item);
-        currentOrder.Payments.Clear();
-        Feedback.Warning(
-            "Member Credit allocation was removed because the updated line amount or account balance no longer matches the allocation.",
-            "Credit selection removed");
+        var newLineTotal = Math.Round(
+            Math.Max(0m, item.TotalPrice),
+            2,
+            MidpointRounding.AwayFromZero);
+        var previousTotal = Math.Round(
+            Math.Max(0m, previousLineTotal),
+            2,
+            MidpointRounding.AwayFromZero);
+        var allocatedTotal = Math.Round(
+            allocations.Sum(allocation => allocation.Amount),
+            2,
+            MidpointRounding.AwayFromZero);
+
+        if (newLineTotal <= 0m)
+        {
+            var released = allocatedTotal;
+            ClearCreditFromLine(item);
+            currentOrder.Payments.Clear();
+
+            Console.WriteLine(
+                $"[Member Credit Step 34] RELEASE | Item={item.InventoryId} | Change={changeSource} | " +
+                $"PreviousLine={previousTotal:N2} | NewLine=0.00 | Released={released:N2}");
+
+            Feedback.Info(
+                $"The line is now RM 0.00, so RM {released:N2} of local Member Credit allocation was released.",
+                "Member Credit adjusted",
+                2600);
+            return;
+        }
+
+        if (allocatedTotal - newLineTotal > 0.009m)
+        {
+            // Preserve the existing FIFO/account order and trim only the excess.
+            // Earlier allocations stay intact; the last-used account is reduced first.
+            var remainingNeeded = newLineTotal;
+            var adjusted = new List<MemberCreditAllocation>();
+
+            foreach (var allocation in allocations)
+            {
+                if (remainingNeeded <= 0m)
+                {
+                    break;
+                }
+
+                var amount = Math.Min(
+                    Math.Round(allocation.Amount, 2, MidpointRounding.AwayFromZero),
+                    remainingNeeded);
+                amount = Math.Round(amount, 2, MidpointRounding.AwayFromZero);
+
+                if (amount <= 0m)
+                {
+                    continue;
+                }
+
+                adjusted.Add(new MemberCreditAllocation
+                {
+                    MemberCreditAccountId = allocation.MemberCreditAccountId,
+                    MemberTypeId = allocation.MemberTypeId,
+                    Amount = amount
+                });
+
+                remainingNeeded = Math.Max(0m, remainingNeeded - amount);
+            }
+
+            ApplyCanonicalLineCreditAllocation(item, adjusted);
+            currentOrder.Payments.Clear();
+
+            var adjustedTotal = adjusted.Sum(allocation => allocation.Amount);
+            var released = Math.Max(0m, allocatedTotal - adjustedTotal);
+
+            Console.WriteLine(
+                $"[Member Credit Step 34] LOWER | Item={item.InventoryId} | Change={changeSource} | " +
+                $"PreviousLine={previousTotal:N2} | NewLine={newLineTotal:N2} | " +
+                $"BeforeCredit={allocatedTotal:N2} | AfterCredit={adjustedTotal:N2} | Released={released:N2}");
+
+            Feedback.Info(
+                $"The line amount decreased to RM {newLineTotal:N2}. Member Credit was reduced automatically by RM {released:N2}.",
+                "Member Credit recalculated",
+                2800);
+            return;
+        }
+
+        // Keep valid credit already assigned when the line becomes more expensive.
+        // The user can add another credit account in the selector. Because Senang's
+        // redemption request requires ActivityTypeID=6 lines to be fully covered,
+        // the incomplete line is blocked before payment until the gap is resolved
+        // or Member Credit is removed from this line.
+        ApplyCanonicalLineCreditAllocation(item, allocations);
+
+        if (newLineTotal - allocatedTotal > 0.009m)
+        {
+            currentOrder.Payments.Clear();
+            var extraNeeded = Math.Round(
+                newLineTotal - allocatedTotal,
+                2,
+                MidpointRounding.AwayFromZero);
+
+            Console.WriteLine(
+                $"[Member Credit Step 34] HIGHER | Item={item.InventoryId} | Change={changeSource} | " +
+                $"PreviousLine={previousTotal:N2} | NewLine={newLineTotal:N2} | " +
+                $"CreditKept={allocatedTotal:N2} | ExtraNeeded={extraNeeded:N2}");
+
+            Feedback.Warning(
+                $"The line amount increased to RM {newLineTotal:N2}. Existing Member Credit RM {allocatedTotal:N2} was kept. " +
+                $"Assign another RM {extraNeeded:N2} of Member Credit, or remove Member Credit from this line to use another payment source.",
+                "More credit required");
+            return;
+        }
+
+        Console.WriteLine(
+            $"[Member Credit Step 34] MATCH | Item={item.InventoryId} | Change={changeSource} | " +
+            $"Line={newLineTotal:N2} | Credit={allocatedTotal:N2}");
+    }
+
+    private static void ApplyCanonicalLineCreditAllocation(
+        TransactionItem item,
+        IReadOnlyList<MemberCreditAllocation> allocations)
+    {
+        var normalized = allocations
+            .Where(allocation =>
+                !string.IsNullOrWhiteSpace(allocation.MemberCreditAccountId) &&
+                allocation.Amount > 0m)
+            .GroupBy(
+                allocation => allocation.MemberCreditAccountId.Trim(),
+                StringComparer.OrdinalIgnoreCase)
+            .Select(group => new MemberCreditAllocation
+            {
+                MemberCreditAccountId = group.Key,
+                MemberTypeId = group
+                    .Select(allocation => allocation.MemberTypeId)
+                    .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
+                    ?? string.Empty,
+                Amount = Math.Round(
+                    group.Sum(allocation => allocation.Amount),
+                    2,
+                    MidpointRounding.AwayFromZero)
+            })
+            .ToList();
+
+        if (normalized.Count == 0)
+        {
+            ClearCreditFromLine(item);
+            return;
+        }
+
+        item.MemberCreditAllocations = normalized;
+        item.ActivityTypeId = 6;
+        item.MemberTypeId = normalized[0].MemberTypeId;
+
+        if (normalized.Count == 1)
+        {
+            item.MemberCreditAccountId = normalized[0].MemberCreditAccountId;
+            item.MembershipCredit = string.Empty;
+        }
+        else
+        {
+            item.MemberCreditAccountId = string.Empty;
+            item.MembershipCredit = SerializeLineCreditAllocations(normalized);
+        }
     }
 
     private void OpenRedeemableCredits()
@@ -3218,9 +3352,13 @@
 
             if (existing is not null)
             {
+                var previousLineTotal = existing.TotalPrice;
                 existing.Quantity += quantity;
                 RecalculateItemTaxAndTotal(existing);
-                ValidateAssignedCreditAfterLineChange(existing);
+                ReconcileAssignedCreditAfterLineChange(
+                    existing,
+                    previousLineTotal,
+                    "quantity");
             }
             else
             {
@@ -3249,12 +3387,29 @@
         }
         else
         {
+            var previousLineTotal = editingCartItem.TotalPrice;
+            var previousQuantity = editingCartItem.Quantity;
+            var previousDiscount = editingCartItem.Discount;
+            var previousUnitPrice = editingCartItem.UnitPrice;
+
             editingCartItem.Quantity = quantity;
             editingCartItem.Discount = discount;
             editingCartItem.CashDiscountId = draftCashDiscountId;
             editingCartItem.DiscountMemo = draftDiscountMemo;
             RecalculateItemTaxAndTotal(editingCartItem);
-            ValidateAssignedCreditAfterLineChange(editingCartItem);
+
+            var changeSource = previousUnitPrice != editingCartItem.UnitPrice
+                ? "price"
+                : previousQuantity != editingCartItem.Quantity
+                    ? "quantity"
+                    : previousDiscount != editingCartItem.Discount
+                        ? "discount"
+                        : "item";
+
+            ReconcileAssignedCreditAfterLineChange(
+                editingCartItem,
+                previousLineTotal,
+                changeSource);
         }
 
         PendingOrderService.SaveOrUpdate(currentOrder);
@@ -3269,6 +3424,7 @@
             RemoveItem(item);
             return;
         }
+        var previousLineTotal = item.TotalPrice;
         item.Quantity = newQty;
         var gross = item.Quantity * item.UnitPrice;
         if (!string.IsNullOrWhiteSpace(item.CashDiscountId))
@@ -3284,13 +3440,35 @@
 
         item.Discount = Math.Clamp(item.Discount, 0m, gross);
         RecalculateItemTaxAndTotal(item);
-        ValidateAssignedCreditAfterLineChange(item);
+        ReconcileAssignedCreditAfterLineChange(
+            item,
+            previousLineTotal,
+            "quantity");
         PendingOrderService.SaveOrUpdate(currentOrder);
     }
 
     private void RemoveItem(TransactionItem item)
     {
+        var releasedAllocations = EffectiveLineCreditAllocations(item);
+        var releasedAmount = releasedAllocations.Sum(allocation => allocation.Amount);
+
         currentOrder.Items.Remove(item);
+
+        if (releasedAmount > 0m)
+        {
+            currentOrder.Payments.Clear();
+
+            Console.WriteLine(
+                $"[Member Credit Step 34] DELETE | Item={item.InventoryId} | " +
+                $"ReleasedAccounts={releasedAllocations.Select(allocation => allocation.MemberCreditAccountId).Distinct(StringComparer.OrdinalIgnoreCase).Count()} | " +
+                $"Released={releasedAmount:N2}");
+
+            Feedback.Info(
+                $"Removed {item.Name}; RM {releasedAmount:N2} of its local Member Credit allocation was released.",
+                "Member Credit released",
+                2400);
+        }
+
         PendingOrderService.SaveOrUpdate(currentOrder);
     }
 
@@ -3299,9 +3477,21 @@
         if (!currentOrder.Items.Any()) return;
         if (!await JS.InvokeAsync<bool>("confirm", "Clear all items from this cart?")) return;
 
+        var releasedCredit = currentOrder.Items
+            .Where(item => item.ActivityTypeId == 6)
+            .SelectMany(EffectiveLineCreditAllocations)
+            .Sum(allocation => allocation.Amount);
+
         currentOrder.Items.Clear();
         currentOrder.Payments.Clear();
         PendingOrderService.SaveOrUpdate(currentOrder);
+
+        if (releasedCredit > 0m)
+        {
+            Console.WriteLine(
+                $"[Member Credit Step 34] CLEAR CART | Released={releasedCredit:N2}");
+        }
+
         Feedback.Info("All items were removed from the cart.", "Cart cleared", 2400);
     }
 
@@ -3406,6 +3596,43 @@
                     EffectiveLineCreditAllocations(item).Count > 0))
             {
                 Feedback.Warning("Assign a Member Credit account to at least one cart line.", "Credit not assigned");
+                return;
+            }
+
+            var incompleteCreditLine = currentOrder.Items
+                .Where(item => item.ActivityTypeId == 6)
+                .Select(item => new
+                {
+                    Item = item,
+                    Allocated = Math.Round(
+                        EffectiveLineCreditAllocations(item).Sum(allocation => allocation.Amount),
+                        2,
+                        MidpointRounding.AwayFromZero),
+                    Required = Math.Round(
+                        Math.Max(0m, item.TotalPrice),
+                        2,
+                        MidpointRounding.AwayFromZero)
+                })
+                .FirstOrDefault(value =>
+                    Math.Abs(value.Required - value.Allocated) > 0.009m);
+
+            if (incompleteCreditLine is not null)
+            {
+                var extraNeeded = Math.Max(
+                    0m,
+                    incompleteCreditLine.Required - incompleteCreditLine.Allocated);
+
+                Console.WriteLine(
+                    $"[Member Credit Step 34] BLOCKED | Item={incompleteCreditLine.Item.InventoryId} | " +
+                    $"Required={incompleteCreditLine.Required:N2} | Allocated={incompleteCreditLine.Allocated:N2} | " +
+                    $"ExtraNeeded={extraNeeded:N2}");
+
+                Feedback.Warning(
+                    extraNeeded > 0m
+                        ? $"{incompleteCreditLine.Item.Name} now needs another RM {extraNeeded:N2} of Member Credit. " +
+                          "Assign extra credit, or remove Member Credit from that line to use another payment source."
+                        : $"{incompleteCreditLine.Item.Name} has an invalid Member Credit allocation. Reassign its credit before continuing.",
+                    "Member Credit needs updating");
                 return;
             }
 
