@@ -53,11 +53,15 @@ public sealed class CashSalesAC
         SendAsync<JsonObject>(HttpMethod.Post, "/api/Doc_CashSales/LoadRecord",
             new CashSalesLookupDTO { Id = documentId }, "Cash sales record response was invalid.", cancellationToken);
 
-    public Task<ApiCallResult<JsonElement>> CreateRecordAsync(
+    public Task<ApiCallResult<CreateCashSalesResponseDTO>> CreateRecordAsync(
         JsonObject document,
         CancellationToken cancellationToken = default) =>
-        SendAsync<JsonElement>(HttpMethod.Post, "/api/Doc_CashSales/CreateRecord", document,
-            "Create cash sale response was invalid.", cancellationToken);
+        SendAsync<CreateCashSalesResponseDTO>(
+            HttpMethod.Post,
+            "/api/Doc_CashSales/CreateRecord",
+            document,
+            "Create cash sale response was invalid.",
+            cancellationToken);
 
     public Task<ApiCallResult<string>> RequestBillDownloadLinkAsync(
         CashSalesBillLinkRequestDTO request,
