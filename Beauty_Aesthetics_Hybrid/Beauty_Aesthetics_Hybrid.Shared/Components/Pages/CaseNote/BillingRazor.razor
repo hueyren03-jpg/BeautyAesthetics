@@ -3556,15 +3556,27 @@
         try
         {
             var transaction = BuildBillingTransaction();
+            var isMemberCreditRedemption =
+                transaction.DocumentTypeId == 52 ||
+                transaction.Items.Any(item => item.ActivityTypeId == 6);
+
             var result = await CashSalesService.CreateTransactionAsync(transaction);
 
             if (!result.Success || result.Value is null)
             {
+                if (isMemberCreditRedemption &&
+                    !string.IsNullOrWhiteSpace(_billingCustomerId))
+                {
+                    await LoadCustomerBalancesAsync(_billingCustomerId);
+                }
+
                 _paymentValidationError = result.ErrorMessage ?? "Unable to complete the sale.";
                 Feedback.Fail(
                     feedbackId,
                     _paymentValidationError,
-                    "Sale not completed");
+                    isMemberCreditRedemption
+                        ? "Redemption not completed"
+                        : "Sale not completed");
                 return;
             }
 
