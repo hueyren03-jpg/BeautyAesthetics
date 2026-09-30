@@ -524,6 +524,20 @@ public sealed class CashSalesService : ICashSalesService
                 preSaveCreditValidation.ErrorMessage);
         }
 
+        var finalRedemptionRequestValidation = ValidateFinalRedemptionRequest(
+            transaction,
+            document);
+
+        if (!finalRedemptionRequestValidation.Success)
+        {
+            Console.WriteLine(
+                $"[Member Credit Step 29] BLOCKED | Customer={transaction.AccountId} | {finalRedemptionRequestValidation.ErrorMessage}");
+
+            return ApiCallResult<Transaction>.Failure(
+                HttpStatusCode.BadRequest,
+                finalRedemptionRequestValidation.ErrorMessage);
+        }
+
         var createResult = await cashSalesAC.CreateRecordAsync(document, cancellationToken);
         if (!createResult.Success)
         {
@@ -1135,6 +1149,212 @@ public sealed class CashSalesService : ICashSalesService
             Console.WriteLine(
                 $"[Member Credit Verify] Sale {transaction.DocumentId}: ARAPOutstandingID={persisted.ARAPOutstandingID} | Item={persisted.LineItemID} | MemberType={persisted.MemberTypeID} | Balance={persisted.NetBalanceAfterUtilised:N2}");
         }
+    }
+
+    private static (bool Success, string ErrorMessage) ValidateFinalRedemptionRequest(
+        Transaction transaction,
+        JsonObject document)
+    {
+        if (transaction.DocumentTypeId != 52)
+        {
+            return (true, string.Empty);
+        }
+
+        var header = document["objDoc_CashSales"] as JsonObject;
+        if (header is null || Integer(header, "DocumentTypeID") != 52)
+        {
+            return (
+                false,
+                "Final redemption request is invalid: DocumentTypeID must be 52.");
+        }
+
+        if (string.IsNullOrWhiteSpace(Text(header, "AccountID")))
+        {
+            return (
+                false,
+                "Final redemption request is invalid: customer AccountID is missing.");
+        }
+
+        if (string.IsNullOrWhiteSpace(Text(header, "BranchID")))
+        {
+            return (
+                false,
+                "Final redemption request is invalid: BranchID is missing.");
+        }
+
+        if (string.IsNullOrWhiteSpace(Text(header, "GroupID")))
+        {
+            return (
+                false,
+                "Final redemption request is invalid: GroupID is missing. Refresh the branch and try again.");
+        }
+
+        var documentLines = document["lstDocumentLine"] as JsonArray ?? new JsonArray();
+        var redemptionLines = documentLines
+            .OfType<JsonObject>()
+            .Where(line => Integer(line, "ActivityTypeID") == 6)
+            .ToList();
+
+        var expectedRedemptionItems = transaction.Items
+            .Where(item => item.ActivityTypeId == 6)
+            .ToList();
+
+        if (redemptionLines.Count == 0 ||
+            redemptionLines.Count != expectedRedemptionItems.Count)
+        {
+            return (
+                false,
+                "Final redemption request is invalid: redemption document lines are missing or incomplete.");
+        }
+
+        foreach (var line in redemptionLines)
+        {
+            if (!line.ContainsKey("MemberCreditAccountID") ||
+                !line.ContainsKey("MemberTypeID") ||
+                !line.ContainsKey("MembershipCredit") ||
+                !line.ContainsKey("lstMembershipCredit"))
+            {
+                return (
+                    false,
+                    "Final redemption request is invalid: a redemption line is missing Member Credit fields.");
+            }
+
+            var singleAccountId = Text(line, "MemberCreditAccountID");
+            var serializedMultiple = Text(line, "MembershipCredit");
+            var multiple = line["lstMembershipCredit"] as JsonArray;
+
+            var hasSingle = !string.IsNullOrWhiteSpace(singleAccountId);
+            var hasMultiple =
+                !string.IsNullOrWhiteSpace(serializedMultiple) &&
+                multiple is not null &&
+                multiple.Count > 0;
+
+            if (hasSingle == hasMultiple)
+            {
+                return (
+                    false,
+                    "Final redemption request is invalid: each redemption line must contain either one MemberCreditAccountID or a multi-credit allocation collection.");
+            }
+        }
+
+        var receipts = document["lstReceiptLines"] as JsonArray ?? new JsonArray();
+        var creditReceipts = receipts
+            .OfType<JsonObject>()
+            .Where(receipt => Integer(receipt, "POSPaymentTypeID") == -10)
+            .ToList();
+
+        var expectedReceiptAmounts = expectedRedemptionItems
+            .SelectMany(item => EffectiveMemberCreditAllocations(item)
+                .Select(allocation => new
+                {
+                    AccountId = allocation.MemberCreditAccountId.Trim(),
+                    InventoryId = item.InventoryId?.Trim() ?? string.Empty,
+                    Amount = Math.Round(allocation.Amount, 2, MidpointRounding.AwayFromZero)
+                }))
+            .GroupBy(
+                item => $"{item.AccountId}\u001f{item.InventoryId}",
+                StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => Math.Round(group.Sum(item => item.Amount), 2, MidpointRounding.AwayFromZero),
+                StringComparer.OrdinalIgnoreCase);
+
+        if (creditReceipts.Count == 0)
+        {
+            return (
+                false,
+                "Final redemption request is invalid: POSPaymentTypeID = -10 receipt lines are missing.");
+        }
+
+        var requiredReceiptFields = new[]
+        {
+            "POSReceiptLineID",
+            "DocumentID",
+            "FinancialAccountID",
+            "BankName",
+            "POSReceiptLineAmount",
+            "AccountID",
+            "Description",
+            "Reference",
+            "PackageID",
+            "SourceDocumentLineID",
+            "QuantityRedeemed",
+            "SourceUnitPrice",
+            "SourceUnitActualValue",
+            "InventoryID",
+            "CurrencyID",
+            "CurrencyName",
+            "GroupID",
+            "ExchangeRate",
+            "AmountInForeignCurrency",
+            "POSPaymentTypeID",
+            "POSReceiptChangeAmount",
+            "BranchID"
+        };
+
+        foreach (var receipt in creditReceipts)
+        {
+            if (requiredReceiptFields.Any(field => !receipt.ContainsKey(field)))
+            {
+                return (
+                    false,
+                    "Final redemption request is invalid: a Member Credit receipt line is missing required Senang receipt fields.");
+            }
+
+            var accountId = Text(receipt, "SourceDocumentLineID").Trim();
+            var inventoryId = Text(receipt, "InventoryID").Trim();
+            var receiptLineId = Text(receipt, "POSReceiptLineID").Trim();
+            var description = Text(receipt, "Description");
+            var amount = Math.Round(
+                Number(receipt, "POSReceiptLineAmount"),
+                2,
+                MidpointRounding.AwayFromZero);
+
+            if (string.IsNullOrWhiteSpace(receiptLineId) ||
+                string.IsNullOrWhiteSpace(accountId) ||
+                amount <= 0m ||
+                !string.Equals(description, "Member Credit", StringComparison.OrdinalIgnoreCase) ||
+                string.IsNullOrWhiteSpace(Text(receipt, "BranchID")) ||
+                string.IsNullOrWhiteSpace(Text(receipt, "GroupID")))
+            {
+                return (
+                    false,
+                    $"Final redemption request is invalid for Member Credit {First(accountId, "unknown")}.");
+            }
+
+            var key = $"{accountId}\u001f{inventoryId}";
+            if (!expectedReceiptAmounts.TryGetValue(key, out var expectedAmount))
+            {
+                return (
+                    false,
+                    $"Final redemption request contains an unexpected Member Credit receipt for {accountId}.");
+            }
+
+            expectedReceiptAmounts[key] = Math.Round(
+                expectedAmount - amount,
+                2,
+                MidpointRounding.AwayFromZero);
+        }
+
+        var unmatched = expectedReceiptAmounts
+            .Where(pair => Math.Abs(pair.Value) > 0.009m)
+            .ToList();
+
+        if (unmatched.Count > 0)
+        {
+            var firstMismatch = unmatched[0];
+            var accountId = firstMismatch.Key.Split('\u001f')[0];
+
+            return (
+                false,
+                $"Final redemption request receipt amount does not match the allocated Member Credit for {accountId}.");
+        }
+
+        Console.WriteLine(
+            $"[Member Credit Step 29] PASS | DocumentTypeID=52 | " +
+            $"RedemptionLines={redemptionLines.Count} | CreditReceiptLines={creditReceipts.Count}");
+
+        return (true, string.Empty);
     }
 
     private async Task<(bool Success, HttpStatusCode StatusCode, string ErrorMessage)> ValidateMemberCreditRedemptionBeforeCreateAsync(
@@ -1767,7 +1987,7 @@ public sealed class CashSalesService : ICashSalesService
         {
             lines.Add(new JsonObject
             {
-                ["POSReceiptLineID"] = string.Empty,
+                ["POSReceiptLineID"] = (lines.Count + 1).ToString(),
                 ["DocumentID"] = string.Empty,
                 ["AccountID"] = transaction.AccountId,
                 ["AccountTypeID"] = 3,
@@ -1798,7 +2018,7 @@ public sealed class CashSalesService : ICashSalesService
                 {
                     lines.Add(new JsonObject
                     {
-                        ["POSReceiptLineID"] = string.Empty,
+                        ["POSReceiptLineID"] = (lines.Count + 1).ToString(),
                         ["DocumentID"] = transaction.DocumentId,
                         ["FinancialAccountID"] = string.Empty,
                         ["BankName"] = string.Empty,
