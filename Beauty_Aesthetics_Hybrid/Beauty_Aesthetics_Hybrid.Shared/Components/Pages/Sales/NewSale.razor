@@ -4,6 +4,7 @@
 @using Beauty_Aesthetics_WebPos.Components.Services.Customers
 @using Beauty_Aesthetics_WebPos.Components.Services.Branches
 @using Beauty_Aesthetics_WebPos.Components.Services.Inventory
+@using Beauty_Aesthetics_WebPos.Components.Services.Printing
 @using Beauty_Aesthetics_WebPos.Components.Services.Sales
 @using Beauty_Aesthetics_WebPos.Components.Services.Tax
 @using Beauty_Aesthetics_WebPos.Components.ViewModels
@@ -814,8 +815,10 @@
 
             <article class="receipt-paper" aria-label="Sale receipt">
                 <header class="receipt-brand">
-                    <span class="receipt-brand-mark"><i class="bi bi-flower1"></i></span>
-                    <div><strong>Beauty Aesthetics</strong><small>Clinic Management</small></div>
+                    <img class="receipt-brand-logo"
+                         src="@ReceiptBranding.LogoUrl"
+                         alt="@ReceiptBranding.AppTitle" />
+                    <div><strong>@ReceiptBranding.AppTitle</strong><small>@ReceiptBranding.AppSubtitle</small></div>
                     <b>OFFICIAL RECEIPT</b>
                 </header>
 
@@ -854,7 +857,7 @@
                     <div class="receipt-change"><span>Change Returned</span><strong>MYR @Change.ToString("N2")</strong></div>
                 </section>
 
-                <footer>Thank you for visiting Beauty Aesthetics.</footer>
+                <footer>Thank you for visiting @ReceiptBranding.AppTitle.</footer>
             </article>
 
             <div class="receipt-actions">
@@ -3159,94 +3162,62 @@
         }
     }
 
+    private ReceiptData BuildReceiptDataForOutput()
+    {
+        return new ReceiptData
+        {
+            CompanyName = ReceiptBranding.AppTitle,
+            LogoUrl = ReceiptBranding.LogoUrl,
+            BranchName = ReceiptBranch,
+            ReceiptNo = ReceiptNumber,
+            DateTimeOfSale = ReceiptDate,
+            ReferenceNumber = currentOrder.OrderNumber,
+            CustomerID = currentOrder.AccountId,
+            CustomerName = ReceiptCustomer,
+            CurrencyName = "MYR",
+            Items = currentOrder.Items.Select(item => new ReceiptLineItem
+            {
+                Name = item.Name,
+                Quantity = Math.Max(1, item.Quantity),
+                Discount = item.Discount,
+                LineTotal = item.TotalPrice,
+                Remarks = item.Category
+            }).ToList(),
+            Payments = ReceiptDisplayPayments
+                .Where(payment => payment.Amount > 0m)
+                .Select(payment => new ReceiptPaymentLine
+                {
+                    Method = ReceiptPaymentLabel(payment),
+                    Amount = payment.Amount
+                })
+                .ToList(),
+            Subtotal = currentOrder.Subtotal,
+            GrandTotal = currentOrder.Total,
+            PaidAmount = PaidAmount,
+            ChangeAmount = Change
+        };
+    }
+
     private async Task PrintReceipt()
     {
-        if (savedSale is null) return;
+        if (savedSale is null)
+        {
+            return;
+        }
 
-        var itemRows = string.Join(string.Empty, currentOrder.Items.Select(item => $"""
-            <tr>
-                <td><strong>{EncodeReceiptText(item.Name)}</strong><small>{EncodeReceiptText(item.Category)}</small></td>
-                <td class="number">{Math.Max(1, item.Quantity)}</td>
-                <td class="number">{item.UnitPrice:N2}</td>
-                <td class="number">{item.Discount:N2}</td>
-                <td class="number">{item.TotalPrice:N2}</td>
-            </tr>
-            """));
-
-        var paymentRows = string.Join(string.Empty, ReceiptDisplayPayments.Select(payment => $"""
-            <div class="line"><span>{EncodeReceiptText(ReceiptPaymentLabel(payment))}</span><strong>MYR {payment.Amount:N2}</strong></div>
-            """));
-
-        var html = $$"""
-            <!doctype html>
-            <html>
-            <head>
-                <meta charset="utf-8">
-                <title>Receipt {{EncodeReceiptText(ReceiptNumber)}}</title>
-                <style>
-                    * { box-sizing: border-box; }
-                    body { margin: 0; padding: 18px; color: #172033; font-family: Arial, sans-serif; font-size: 12px; }
-                    .receipt { width: 100%; max-width: 390px; margin: 0 auto; }
-                    .brand { text-align: center; padding-bottom: 14px; border-bottom: 2px solid #0759ad; }
-                    .brand h1 { margin: 0; color: #064a94; font-size: 22px; }
-                    .brand p { margin: 4px 0 0; color: #64748b; }
-                    .label { margin: 11px 0 0; color: #64748b; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
-                    .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; padding: 14px 0; }
-                    .meta span { display: block; color: #64748b; font-size: 10px; text-transform: uppercase; }
-                    .meta strong { display: block; margin-top: 2px; overflow-wrap: anywhere; }
-                    table { width: 100%; border-collapse: collapse; }
-                    th { padding: 8px 4px; border-block: 1px solid #cbd5e1; color: #475569; font-size: 10px; text-align: left; }
-                    td { padding: 9px 4px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
-                    td small { display: block; margin-top: 2px; color: #64748b; }
-                    .number { text-align: right; white-space: nowrap; }
-                    .totals { margin: 12px 0 0 auto; width: 74%; }
-                    .line { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; }
-                    .line.total { margin-top: 5px; padding-top: 9px; border-top: 2px solid #0759ad; color: #064a94; font-size: 15px; }
-                    .payments { margin-top: 14px; padding: 11px; border-radius: 6px; background: #eff6ff; }
-                    .change { color: #087552; }
-                    footer { margin-top: 18px; color: #64748b; text-align: center; font-size: 10px; }
-                    @media print { body { padding: 0; } }
-                </style>
-            </head>
-            <body>
-                <main class="receipt">
-                    <header class="brand"><h1>Beauty Aesthetics</h1><p>Clinic Management</p><div class="label">OFFICIAL RECEIPT</div></header>
-                    <section class="meta">
-                        <div><span>Receipt No.</span><strong>{{EncodeReceiptText(ReceiptNumber)}}</strong></div>
-                        <div><span>Date</span><strong>{{ReceiptDate:dd/MM/yyyy hh:mm tt}}</strong></div>
-                        <div><span>Customer</span><strong>{{EncodeReceiptText(ReceiptCustomer)}}</strong></div>
-                        <div><span>Branch</span><strong>{{EncodeReceiptText(ReceiptBranch)}}</strong></div>
-                    </section>
-                    <table>
-                        <thead><tr><th>Item</th><th class="number">Qty</th><th class="number">Price</th><th class="number">Disc.</th><th class="number">Total</th></tr></thead>
-                        <tbody>{{itemRows}}</tbody>
-                    </table>
-                    <section class="totals">
-                        <div class="line"><span>Subtotal</span><strong>MYR {{currentOrder.Subtotal:N2}}</strong></div>
-                        <div class="line"><span>Discount</span><strong>- MYR {{currentOrder.Discount:N2}}</strong></div>
-                        <div class="line total"><span>Total</span><strong>MYR {{currentOrder.Total:N2}}</strong></div>
-                    </section>
-                    <section class="payments">
-                        <div class="label">PAYMENT BREAKDOWN</div>
-                        {{paymentRows}}
-                        <div class="line"><span>Received</span><strong>MYR {{PaidAmount:N2}}</strong></div>
-                        <div class="line change"><span>Change</span><strong>MYR {{Change:N2}}</strong></div>
-                    </section>
-                    <footer>Thank you for visiting Beauty Aesthetics.</footer>
-                </main>
-            </body>
-            </html>
-            """;
-
+        var html = ReceiptHtmlBuilder.Build(BuildReceiptDataForOutput());
         await JS.InvokeVoidAsync("printDocument", html, $"Receipt {ReceiptNumber}");
-        Feedback.Success($"Receipt {ReceiptNumber} was sent to print.", "Receipt ready", 2800);
+        Feedback.Success(
+            $"Receipt {ReceiptNumber} was sent to print.",
+            "Receipt ready",
+            2800);
     }
 
     private async Task DownloadPdfReceipt()
     {
-        if (savedSale is null || string.IsNullOrWhiteSpace(savedSale.DocumentId))
+        if (savedSale is null)
         {
-            Feedback.Error("The completed sales DocumentID is missing.", "Receipt unavailable");
+            Feedback.Error("The completed sale is unavailable.", "Receipt unavailable");
             return;
         }
 
@@ -3260,19 +3231,27 @@
             isDownloadingReceipt = true;
             await InvokeAsync(StateHasChanged);
 
-            var downloaded = await CashSalesService.DownloadReceiptPdfAsync(
-                savedSale.DocumentId,
-                currentOrder.IsRedemptionMode ? 52 : 5);
+            var receiptData = BuildReceiptDataForOutput();
+            var html = ReceiptHtmlBuilder.Build(receiptData);
+            var fileId = string.IsNullOrWhiteSpace(savedSale.DocumentId)
+                ? ReceiptNumber
+                : savedSale.DocumentId;
+
+            var downloaded = await JS.InvokeAsync<bool>(
+                "downloadDocumentAsPDF",
+                html,
+                $"Beauty_Receipt_{fileId}.pdf");
+
             if (!downloaded)
             {
                 Feedback.Error(
-                    "The receipt PDF could not be generated or downloaded.",
+                    "The Beauty Aesthetics receipt PDF could not be generated.",
                     "Receipt download failed");
                 return;
             }
 
             Feedback.Success(
-                $"Receipt {ReceiptNumber} downloaded successfully.",
+                $"Receipt {ReceiptNumber} downloaded with Beauty Aesthetics branding.",
                 "Receipt downloaded",
                 2800);
         }
