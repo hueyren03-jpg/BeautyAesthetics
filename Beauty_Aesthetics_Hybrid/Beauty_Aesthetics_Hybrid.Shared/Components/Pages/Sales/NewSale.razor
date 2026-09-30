@@ -811,9 +811,9 @@
             <header class="receipt-heading">
                 <span class="receipt-success"><i class="bi bi-check2"></i></span>
                 <div>
-                    <span>Payment Successful</span>
-                    <h2>@(currentOrder.IsRedemptionMode ? "Redemption Completed" : "Sale Completed")</h2>
-                    <p>The transaction has been saved successfully and is ready to print.</p>
+                    <span>@(isReopenedRedemption ? "Saved Redemption" : "Payment Successful")</span>
+                    <h2>@(isReopenedRedemption ? "Redemption Reopened" : currentOrder.IsRedemptionMode ? "Redemption Completed" : "Sale Completed")</h2>
+                    <p>@(isReopenedRedemption ? "Loaded from the official saved redemption record." : "The transaction has been saved successfully and is ready to print.")</p>
                 </div>
             </header>
 
@@ -863,8 +863,8 @@
             </article>
 
             <div class="receipt-actions">
-                <button type="button" class="secondary-action" @onclick="GoToSalesDashboard">
-                    <i class="bi bi-arrow-left"></i> Back to Sales
+                <button type="button" class="secondary-action" @onclick="LeaveReceipt">
+                    <i class="bi bi-arrow-left"></i> @(isReopenedRedemption ? "Back to Redemption History" : "Back to Sales")
                 </button>
                 <button type="button" class="print-receipt-action" @onclick="PrintReceipt">
                     <i class="bi bi-printer"></i> Print Receipt
@@ -1338,8 +1338,12 @@
         Complete
     }
 
+    [SupplyParameterFromQuery(Name = "redemptionId")]
+    public string? ReopenRedemptionId { get; set; }
+
     private SaleStage stage = SaleStage.PendingOrders;
     private PendingOrder currentOrder = new();
+    private bool isReopenedRedemption;
     private List<PendingOrder> pendingOrders = new();
     private PendingOrder? orderToDelete;
     private string pendingSearchText = string.Empty;
@@ -1501,6 +1505,12 @@
         PendingOrderService.OnOrdersChanged += HandlePendingOrdersChanged;
         await LoadWorkspaceAsync();
         RefreshPendingOrders();
+
+        if (!string.IsNullOrWhiteSpace(ReopenRedemptionId))
+        {
+            await ReopenSavedRedemptionAsync(ReopenRedemptionId);
+        }
+
         isLoading = false;
     }
 
@@ -2386,6 +2396,161 @@
 
     private static string FormatCreditDate(DateTime value) =>
         value.Year <= 1900 ? "—" : value.ToString("dd/MM/yyyy");
+
+    private async Task ReopenSavedRedemptionAsync(string documentId)
+    {
+        var normalizedId = documentId.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedId))
+        {
+            return;
+        }
+
+        var result = await CashSalesService.LoadTransactionAsync(normalizedId, 52);
+        if (!result.Success || result.Value is null)
+        {
+            stage = SaleStage.PendingOrders;
+            Feedback.Fail(
+                Feedback.Loading("Loading saved redemption...", "Reopening redemption"),
+                result.ErrorMessage ?? "Unable to load the saved redemption.",
+                "Redemption not reopened");
+            return;
+        }
+
+        var restored = result.Value;
+        var redemptionItems = restored.Items
+            .Where(item => item.ActivityTypeId == 6)
+            .ToList();
+
+        if (redemptionItems.Count == 0)
+        {
+            stage = SaleStage.PendingOrders;
+            Feedback.Warning(
+                $"Document {normalizedId} did not contain saved redemption lines.",
+                "Redemption not reopened");
+            return;
+        }
+
+        savedSale = restored;
+        savedSale.DocumentTypeId = 52;
+        currentOrder = PendingOrderFromSavedRedemption(savedSale);
+        isReopenedRedemption = true;
+        stage = SaleStage.Complete;
+
+        var restoredCreditAccounts = redemptionItems
+            .SelectMany(item =>
+                item.MemberCreditAllocations.Count > 0
+                    ? item.MemberCreditAllocations.Select(allocation => allocation.MemberCreditAccountId)
+                    : string.IsNullOrWhiteSpace(item.MemberCreditAccountId)
+                        ? Array.Empty<string>()
+                        : new[] { item.MemberCreditAccountId })
+            .Where(accountId => !string.IsNullOrWhiteSpace(accountId))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+
+        var restoredReceiptLines = savedSale.ReceiptPayments.Count(payment =>
+            payment.PaymentTypeId == -10 &&
+            !string.IsNullOrWhiteSpace(payment.SourceDocumentLineId) &&
+            payment.Amount > 0m);
+
+        Console.WriteLine(
+            $"[Member Credit Step 32] PASS | Document={savedSale.DocumentId} | " +
+            $"RedemptionLines={redemptionItems.Count} | CreditAccounts={restoredCreditAccounts} | " +
+            $"CreditReceiptLines={restoredReceiptLines}");
+
+        Feedback.Success(
+            $"Redemption {savedSale.InvoiceNumber} was reloaded from the saved backend record.",
+            "Redemption reopened",
+            2600);
+    }
+
+    private static PendingOrder PendingOrderFromSavedRedemption(Transaction transaction)
+    {
+        var membershipType = transaction.Items
+            .Where(item => item.ActivityTypeId == 6)
+            .SelectMany(item =>
+                item.MemberCreditAllocations.Count > 0
+                    ? item.MemberCreditAllocations.Select(allocation => allocation.MemberTypeId)
+                    : new[] { item.MemberTypeId })
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
+            ?? string.Empty;
+
+        return new PendingOrder
+        {
+            Id = $"reopened-{transaction.DocumentId}",
+            OrderNumber = string.IsNullOrWhiteSpace(transaction.InvoiceNumber)
+                ? transaction.DocumentId
+                : transaction.InvoiceNumber,
+            CreatedAt = transaction.Date,
+            UpdatedAt = transaction.Date,
+            IsHeld = false,
+            IsRedemptionMode = true,
+            AccountId = transaction.AccountId,
+            CustomerName = transaction.CustomerName,
+            CustomerContact = transaction.CustomerContact,
+            CustomerEmail = transaction.CustomerEmail,
+            MembershipType = membershipType,
+            BranchId = transaction.BranchId,
+            BranchName = string.IsNullOrWhiteSpace(transaction.Branch)
+                ? transaction.BranchId
+                : transaction.Branch,
+            Notes = transaction.Notes,
+            Items = transaction.Items.Select(item => new TransactionItem
+            {
+                Id = item.Id,
+                TransactionId = item.TransactionId,
+                InventoryId = item.InventoryId,
+                Name = item.Name,
+                Sku = item.Sku,
+                Description = item.Description,
+                Remarks = item.Remarks,
+                ImageUrl = item.ImageUrl,
+                Category = item.Category,
+                InventoryTypeId = item.InventoryTypeId,
+                Quantity = item.Quantity,
+                UnitPrice = item.UnitPrice,
+                TotalPrice = item.TotalPrice,
+                Discount = item.Discount,
+                CashDiscountId = item.CashDiscountId,
+                DiscountMemo = item.DiscountMemo,
+                UnitOfMeasureId = item.UnitOfMeasureId,
+                TaxCodeId = item.TaxCodeId,
+                TaxPercentage = item.TaxPercentage,
+                TaxAmount = item.TaxAmount,
+                IsTaxInclusive = item.IsTaxInclusive,
+                ActivityTypeId = item.ActivityTypeId,
+                MemberCreditAccountId = item.MemberCreditAccountId,
+                MemberTypeId = item.MemberTypeId,
+                MembershipCredit = item.MembershipCredit,
+                MemberCreditAllocations = item.MemberCreditAllocations
+                    .Select(allocation => new MemberCreditAllocation
+                    {
+                        MemberCreditAccountId = allocation.MemberCreditAccountId,
+                        MemberTypeId = allocation.MemberTypeId,
+                        Amount = allocation.Amount
+                    })
+                    .ToList()
+            }).ToList(),
+            Payments = transaction.Payments.Select(payment => new TransactionPayment
+            {
+                ReceiptLineId = payment.ReceiptLineId,
+                PaymentTypeId = payment.PaymentTypeId,
+                PaymentMethod = payment.PaymentMethod,
+                SourceDocumentLineId = payment.SourceDocumentLineId,
+                Amount = payment.Amount,
+                ChangeAmount = payment.ChangeAmount,
+                FinancialAccountId = payment.FinancialAccountId,
+                BankName = payment.BankName
+            }).ToList()
+        };
+    }
+
+    private void LeaveReceipt()
+    {
+        NavigationManager.NavigateTo(
+            isReopenedRedemption
+                ? "/sales/redemptions"
+                : "/sales");
+    }
 
     // ========================================= STAGE TRANSITIONS & ACTIONS =========================================
 
