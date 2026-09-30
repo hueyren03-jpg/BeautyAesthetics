@@ -844,9 +844,9 @@
                 </section>
 
                 <section class="receipt-totals">
-                    <div><span>Subtotal</span><strong>MYR @currentOrder.Subtotal.ToString("N2")</strong></div>
-                    <div><span>Discount</span><strong>- MYR @currentOrder.Discount.ToString("N2")</strong></div>
-                    <div class="receipt-total"><span>Total Paid</span><strong>MYR @currentOrder.Total.ToString("N2")</strong></div>
+                    <div><span>Subtotal</span><strong>MYR @ReceiptSubtotalAmount.ToString("N2")</strong></div>
+                    <div><span>Discount</span><strong>- MYR @ReceiptDiscountAmount.ToString("N2")</strong></div>
+                    <div class="receipt-total"><span>Total Paid</span><strong>MYR @ReceiptTotalAmount.ToString("N2")</strong></div>
                 </section>
 
                 <section class="receipt-payment-breakdown">
@@ -1435,6 +1435,9 @@
     private decimal CalculatorAmount => decimal.TryParse(calculatorDigits, out var cents) ? cents / 100m : 0;
 
     private string ReceiptNumber => string.IsNullOrWhiteSpace(savedSale?.InvoiceNumber) ? currentOrder.OrderNumber : savedSale.InvoiceNumber;
+    private decimal ReceiptSubtotalAmount => isReopenedRedemption && savedSale is not null ? savedSale.Subtotal : currentOrder.Subtotal;
+    private decimal ReceiptDiscountAmount => isReopenedRedemption && savedSale is not null ? savedSale.Discount : currentOrder.Discount;
+    private decimal ReceiptTotalAmount => isReopenedRedemption && savedSale is not null ? savedSale.Amount : currentOrder.Total;
     private DateTime ReceiptDate => savedSale?.Date is { Year: > 1 } value ? value : DateTime.Now;
     private string ReceiptCustomer => string.IsNullOrWhiteSpace(savedSale?.CustomerName) ? currentOrder.CustomerName : savedSale.CustomerName;
     private string ReceiptBranch => string.IsNullOrWhiteSpace(savedSale?.Branch) ? currentOrder.BranchName : savedSale.Branch;
@@ -2452,15 +2455,34 @@
             !string.IsNullOrWhiteSpace(payment.SourceDocumentLineId) &&
             payment.Amount > 0m);
 
+        var allCreditMappingsRestored = redemptionItems.All(item =>
+            item.MemberCreditAllocations.Any(allocation =>
+                !string.IsNullOrWhiteSpace(allocation.MemberCreditAccountId) &&
+                allocation.Amount > 0m));
+
+        var step32Passed =
+            allCreditMappingsRestored &&
+            restoredCreditAccounts > 0 &&
+            restoredReceiptLines > 0;
+
         Console.WriteLine(
-            $"[Member Credit Step 32] PASS | Document={savedSale.DocumentId} | " +
+            $"[Member Credit Step 32] {(step32Passed ? "PASS" : "WARNING")} | Document={savedSale.DocumentId} | " +
             $"RedemptionLines={redemptionItems.Count} | CreditAccounts={restoredCreditAccounts} | " +
             $"CreditReceiptLines={restoredReceiptLines}");
 
-        Feedback.Success(
-            $"Redemption {savedSale.InvoiceNumber} was reloaded from the saved backend record.",
-            "Redemption reopened",
-            2600);
+        if (step32Passed)
+        {
+            Feedback.Success(
+                $"Redemption {savedSale.InvoiceNumber} was reloaded from the saved backend record.",
+                "Redemption reopened",
+                2600);
+        }
+        else
+        {
+            Feedback.Warning(
+                $"Redemption {savedSale.InvoiceNumber} was loaded, but some saved Member Credit mappings or receipt lines were not returned by the backend.",
+                "Redemption reopened with warning");
+        }
     }
 
     private static PendingOrder PendingOrderFromSavedRedemption(Transaction transaction)
