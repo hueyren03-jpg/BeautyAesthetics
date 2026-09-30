@@ -1,0 +1,723 @@
+@page "/sales/redemptions"
+@namespace Beauty_Aesthetics_WebPos.Components.Pages
+@using Beauty_Aesthetics_WebPos.APIClient.ResultPattern
+@using Beauty_Aesthetics_WebPos.Components.Models
+@using Beauty_Aesthetics_WebPos.Components.Services.Feedback
+@using Beauty_Aesthetics_WebPos.Components.Services.Inventory
+@using Beauty_Aesthetics_WebPos.Components.Services.Sales
+@inject ICashSalesService CashSalesService
+@inject IBranchLookupService BranchLookupService
+@inject NavigationManager Navigation
+@inject AppFeedbackService Feedback
+
+<PageTitle>Redemption History</PageTitle>
+
+<main class="redemption-page">
+    <header class="redemption-header">
+        <div class="redemption-title-group">
+            <button type="button" class="icon-button" title="Back to sales" aria-label="Back to sales" @onclick="BackToSales">
+                <i class="bi bi-arrow-left"></i>
+            </button>
+            <div>
+                <h1>Redemption History</h1>
+                <p>Review completed Member Credit redemptions.</p>
+            </div>
+        </div>
+        <div class="redemption-count">
+            <span>@FilteredRedemptions.Count</span>
+            <small>records</small>
+        </div>
+    </header>
+
+    <section class="filter-panel" aria-label="Redemption filters">
+        <div class="filter-grid">
+            <label class="filter-field search-field">
+                <span>Search</span>
+                <div class="input-with-icon">
+                    <i class="bi bi-search"></i>
+                    <input value="@searchText" @oninput="OnSearchInput" placeholder="Redemption no., customer, document ID..." />
+                </div>
+            </label>
+
+            <label class="filter-field">
+                <span>From</span>
+                <input type="date" @bind="startDate" />
+            </label>
+
+            <label class="filter-field">
+                <span>To</span>
+                <input type="date" @bind="endDate" />
+            </label>
+
+            <label class="filter-field">
+                <span>Outlet</span>
+                <select @bind="selectedBranch">
+                    <option value="">All outlets</option>
+                    @foreach (var branch in branches)
+                    {
+                        <option value="@branch.Id">@branch.DisplayName</option>
+                    }
+                </select>
+            </label>
+        </div>
+
+        <div class="filter-actions">
+            <button type="button" class="secondary-button" @onclick="ClearFiltersAsync" disabled="@isLoading">
+                <i class="bi bi-x-circle"></i>
+                <span>Clear</span>
+            </button>
+            <button type="button" class="primary-button" @onclick="ApplyFiltersAsync" disabled="@isLoading">
+                @if (isLoading)
+                {
+                    <span class="button-spinner" aria-hidden="true"></span>
+                    <span>Loading</span>
+                }
+                else
+                {
+                    <i class="bi bi-funnel"></i>
+                    <span>Apply Filters</span>
+                }
+            </button>
+        </div>
+    </section>
+
+    <section class="redemption-results" aria-live="polite">
+        @if (isLoading)
+        {
+            <div class="redemption-state">
+                <span class="loading-ring"></span>
+                <strong>Loading redemptions...</strong>
+            </div>
+        }
+        else if (!PagedRedemptions.Any())
+        {
+            <div class="redemption-state">
+                <i class="bi bi-arrow-repeat"></i>
+                <strong>No redemption records found</strong>
+                <span>Try a wider date range or another outlet.</span>
+            </div>
+        }
+        else
+        {
+            <div class="redemption-table-wrap">
+                <table class="redemption-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Redemption No.</th>
+                            <th>Customer</th>
+                            <th>Outlet</th>
+                            <th>Items</th>
+                            <th class="amount-column">Redeemed Amount</th>
+                            <th>Status</th>
+                            <th class="actions-column">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var redemption in PagedRedemptions)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@redemption.Date.ToString("dd/MM/yyyy")</strong>
+                                    <small>@redemption.Date.ToString("hh:mm tt")</small>
+                                </td>
+                                <td class="redemption-number">@Display(redemption.InvoiceNumber)</td>
+                                <td>@Display(redemption.CustomerName)</td>
+                                <td>@BranchName(redemption.BranchId)</td>
+                                <td>@(redemption.ItemCount > 0 ? redemption.ItemCount.ToString() : "-")</td>
+                                <td class="amount-column">MYR @RedeemedAmount(redemption).ToString("N2")</td>
+                                <td><span class="status-pill @StatusClass(redemption.Status)">@Display(redemption.Status)</span></td>
+                                <td class="actions-column">
+                                    <button type="button"
+                                            class="row-action-button"
+                                            title="View redemption details"
+                                            aria-label="View redemption @redemption.InvoiceNumber"
+                                            disabled="@(isDetailLoading && loadingDocumentId == redemption.DocumentId)"
+                                            @onclick="() => ViewRedemptionAsync(redemption)">
+                                        @if (isDetailLoading && loadingDocumentId == redemption.DocumentId)
+                                        {
+                                            <span class="button-spinner small" aria-hidden="true"></span>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-eye"></i>
+                                        }
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="redemption-mobile-list">
+                @foreach (var redemption in PagedRedemptions)
+                {
+                    <article class="redemption-mobile-card">
+                        <div class="mobile-card-heading">
+                            <div>
+                                <strong>@Display(redemption.InvoiceNumber)</strong>
+                                <span>@Display(redemption.CustomerName)</span>
+                            </div>
+                            <span class="status-pill @StatusClass(redemption.Status)">@Display(redemption.Status)</span>
+                        </div>
+
+                        <div class="mobile-card-grid">
+                            <div>
+                                <small>Date</small>
+                                <span>@redemption.Date.ToString("dd/MM/yyyy, hh:mm tt")</span>
+                            </div>
+                            <div>
+                                <small>Redeemed</small>
+                                <span class="mobile-amount">MYR @RedeemedAmount(redemption).ToString("N2")</span>
+                            </div>
+                            <div>
+                                <small>Outlet</small>
+                                <span>@BranchName(redemption.BranchId)</span>
+                            </div>
+                            <div>
+                                <small>Items</small>
+                                <span>@(redemption.ItemCount > 0 ? redemption.ItemCount.ToString() : "-")</span>
+                            </div>
+                        </div>
+
+                        <button type="button"
+                                class="mobile-view-button"
+                                disabled="@(isDetailLoading && loadingDocumentId == redemption.DocumentId)"
+                                @onclick="() => ViewRedemptionAsync(redemption)">
+                            @if (isDetailLoading && loadingDocumentId == redemption.DocumentId)
+                            {
+                                <span class="button-spinner small" aria-hidden="true"></span>
+                                <span>Loading...</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-eye"></i>
+                                <span>View Details</span>
+                            }
+                        </button>
+                    </article>
+                }
+            </div>
+
+            <footer class="redemption-pagination">
+                <span>Showing @PageStart-@PageEnd of @FilteredRedemptions.Count</span>
+                <div>
+                    <button type="button" class="icon-button" title="Previous page" disabled="@(currentPage <= 1)" @onclick="PreviousPage">
+                        <i class="bi bi-chevron-left"></i>
+                    </button>
+                    <strong>@currentPage of @TotalPages</strong>
+                    <button type="button" class="icon-button" title="Next page" disabled="@(currentPage >= TotalPages)" @onclick="NextPage">
+                        <i class="bi bi-chevron-right"></i>
+                    </button>
+                </div>
+            </footer>
+        }
+    </section>
+</main>
+
+@if (selectedRedemption is not null)
+{
+    <div class="redemption-dialog-backdrop" @onclick="CloseDetails"></div>
+    <section class="redemption-dialog" role="dialog" aria-modal="true" aria-labelledby="redemption-detail-title">
+        <header class="redemption-dialog-header">
+            <div>
+                <h3 id="redemption-detail-title"><i class="bi bi-arrow-repeat"></i> Redemption Details</h3>
+                <span>@Display(selectedRedemption.InvoiceNumber)</span>
+            </div>
+            <button type="button" title="Close" aria-label="Close redemption details" @onclick="CloseDetails">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </header>
+
+        <div class="redemption-dialog-content">
+            <section class="detail-section">
+                <h4><i class="bi bi-clipboard-data"></i> Redemption Information</h4>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <span class="detail-label">Redemption No.</span>
+                        <span class="detail-value">@Display(selectedRedemption.InvoiceNumber)</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Document ID</span>
+                        <span class="detail-value">@Display(selectedRedemption.DocumentId)</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Date</span>
+                        <span class="detail-value">@selectedRedemption.Date.ToString("dd MMMM yyyy, hh:mm tt")</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Outlet / Branch</span>
+                        <span class="detail-value">@BranchName(selectedRedemption.BranchId)</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Status</span>
+                        <span class="status-pill @StatusClass(selectedRedemption.Status)">@Display(selectedRedemption.Status)</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Redeemed Amount</span>
+                        <span class="detail-value detail-amount">MYR @RedeemedAmount(selectedRedemption).ToString("N2")</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="detail-section">
+                <h4><i class="bi bi-person"></i> Customer</h4>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <span class="detail-label">Customer</span>
+                        <span class="detail-value">@Display(selectedRedemption.CustomerName)</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Customer ID</span>
+                        <span class="detail-value">@Display(selectedRedemption.AccountId)</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Contact</span>
+                        <span class="detail-value">@Display(selectedRedemption.CustomerContact)</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Reference</span>
+                        <span class="detail-value">@Display(selectedRedemption.ReferenceNumber)</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="detail-section">
+                <h4><i class="bi bi-bag-check"></i> Redeemed Items</h4>
+                @if (selectedRedemption.Items.Any())
+                {
+                    <div class="detail-list">
+                        @foreach (var item in selectedRedemption.Items)
+                        {
+                            <div class="detail-list-row">
+                                <div>
+                                    <strong>@Display(item.Name)</strong>
+                                    <small>@item.Quantity x MYR @item.UnitPrice.ToString("N2")</small>
+                                </div>
+                                <strong>MYR @item.TotalPrice.ToString("N2")</strong>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="empty-detail">No redeemed item details were returned.</div>
+                }
+            </section>
+
+            <section class="detail-section">
+                <h4><i class="bi bi-wallet2"></i> Member Credit Accounts</h4>
+                @{
+                    var creditLines = CreditLines(selectedRedemption);
+                }
+                @if (creditLines.Any())
+                {
+                    <div class="credit-list">
+                        @foreach (var credit in creditLines)
+                        {
+                            <div class="credit-row">
+                                <div>
+                                    <span class="credit-label">Credit Account</span>
+                                    <strong>@credit.AccountId</strong>
+                                    @if (!string.IsNullOrWhiteSpace(credit.MemberTypeId))
+                                    {
+                                        <small>@credit.MemberTypeId</small>
+                                    }
+                                </div>
+                                <div class="credit-amount">MYR @credit.Amount.ToString("N2")</div>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="empty-detail">No Member Credit account lines were returned.</div>
+                }
+            </section>
+
+            @if (!string.IsNullOrWhiteSpace(selectedRedemption.Notes))
+            {
+                <section class="detail-section">
+                    <h4><i class="bi bi-journal-text"></i> Notes</h4>
+                    <div class="notes-box">@selectedRedemption.Notes</div>
+                </section>
+            }
+
+            <footer class="dialog-actions">
+                <button type="button" class="secondary-button" @onclick="CloseDetails">Close</button>
+            </footer>
+        </div>
+    </section>
+}
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <AppErrorPopup Title="Unable to load redemption history" Message="@errorMessage" OnDismiss="DismissError" />
+}
+
+@code {
+    private const int PageSize = 20;
+
+    private readonly List<Transaction> redemptions = new();
+    private readonly List<BranchLookupItem> branches = new();
+
+    private DateTime startDate = DateTime.Today.AddDays(-30);
+    private DateTime endDate = DateTime.Today;
+    private string searchText = string.Empty;
+    private string selectedBranch = string.Empty;
+    private string errorMessage = string.Empty;
+    private bool isLoading;
+    private bool isDetailLoading;
+    private string loadingDocumentId = string.Empty;
+    private int currentPage = 1;
+    private Transaction? selectedRedemption;
+
+    private IReadOnlyList<Transaction> FilteredRedemptions => redemptions
+        .Where(MatchesFilters)
+        .OrderByDescending(redemption => redemption.Date)
+        .ToList();
+
+    private IReadOnlyList<Transaction> PagedRedemptions => FilteredRedemptions
+        .Skip((currentPage - 1) * PageSize)
+        .Take(PageSize)
+        .ToList();
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(FilteredRedemptions.Count / (double)PageSize));
+    private int PageStart => FilteredRedemptions.Count == 0 ? 0 : ((currentPage - 1) * PageSize) + 1;
+    private int PageEnd => Math.Min(currentPage * PageSize, FilteredRedemptions.Count);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var branchResult = await BranchLookupService.LoadBranchesAsync();
+        if (branchResult.Success && branchResult.Value is not null)
+        {
+            branches.AddRange(branchResult.Value);
+        }
+        else
+        {
+            errorMessage = branchResult.ErrorMessage ?? "Unable to load outlets.";
+        }
+
+        await LoadRedemptionsAsync();
+    }
+
+    private async Task ApplyFiltersAsync()
+    {
+        if (endDate < startDate)
+        {
+            Feedback.Warning("The end date must be on or after the start date.", "Check date range");
+            return;
+        }
+
+        currentPage = 1;
+        await LoadRedemptionsAsync();
+
+        if (string.IsNullOrWhiteSpace(errorMessage))
+        {
+            Feedback.Info(
+                $"{FilteredRedemptions.Count} redemption{(FilteredRedemptions.Count == 1 ? string.Empty : "s")} matched the filters.",
+                "Filters applied",
+                2200);
+        }
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        startDate = DateTime.Today.AddDays(-30);
+        endDate = DateTime.Today;
+        selectedBranch = string.Empty;
+        searchText = string.Empty;
+        currentPage = 1;
+        await LoadRedemptionsAsync();
+    }
+
+    private async Task LoadRedemptionsAsync()
+    {
+        isLoading = true;
+        errorMessage = string.Empty;
+
+        try
+        {
+            var result = await LoadSelectedOutletRedemptionsAsync();
+            redemptions.Clear();
+
+            if (result.Success && result.Value is not null)
+            {
+                redemptions.AddRange(result.Value);
+            }
+            else
+            {
+                errorMessage = result.ErrorMessage ?? "Unable to load redemption history.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Unable to load redemption history. {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task<ApiCallResult<IReadOnlyList<Transaction>>> LoadSelectedOutletRedemptionsAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(selectedBranch) || branches.Count == 0)
+        {
+            return await CashSalesService.LoadRedemptionsAsync(startDate, endDate, selectedBranch);
+        }
+
+        var branchIds = branches
+            .Select(branch => branch.Id)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (branchIds.Count == 0)
+        {
+            return await CashSalesService.LoadRedemptionsAsync(startDate, endDate, string.Empty);
+        }
+
+        var results = await Task.WhenAll(branchIds.Select(branchId =>
+            CashSalesService.LoadRedemptionsAsync(startDate, endDate, branchId)));
+
+        var successfulResults = results
+            .Where(result => result.Success && result.Value is not null)
+            .ToList();
+
+        if (successfulResults.Count == 0)
+        {
+            var failure = results.FirstOrDefault(result => !result.Success);
+            return ApiCallResult<IReadOnlyList<Transaction>>.Failure(
+                failure?.StatusCode ?? System.Net.HttpStatusCode.BadGateway,
+                failure?.ErrorMessage ?? "Unable to load redemptions for any outlet.");
+        }
+
+        var merged = successfulResults
+            .SelectMany(result => result.Value!)
+            .GroupBy(RedemptionIdentity, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderByDescending(redemption => redemption.Date)
+            .ToList();
+
+        return ApiCallResult<IReadOnlyList<Transaction>>.Ok(
+            successfulResults[0].StatusCode,
+            merged);
+    }
+
+    private bool MatchesFilters(Transaction redemption)
+    {
+        if (string.IsNullOrWhiteSpace(searchText))
+        {
+            return true;
+        }
+
+        return Contains(redemption.InvoiceNumber, searchText) ||
+               Contains(redemption.CustomerName, searchText) ||
+               Contains(redemption.DocumentId, searchText) ||
+               Contains(redemption.ReferenceNumber, searchText);
+    }
+
+    private void OnSearchInput(ChangeEventArgs args)
+    {
+        searchText = args.Value?.ToString() ?? string.Empty;
+        currentPage = 1;
+    }
+
+    private async Task ViewRedemptionAsync(Transaction redemption)
+    {
+        if (isDetailLoading || string.IsNullOrWhiteSpace(redemption.DocumentId))
+        {
+            return;
+        }
+
+        isDetailLoading = true;
+        loadingDocumentId = redemption.DocumentId;
+        errorMessage = string.Empty;
+
+        try
+        {
+            var result = await CashSalesService.LoadTransactionAsync(
+                redemption.DocumentId,
+                52);
+
+            if (!result.Success || result.Value is null)
+            {
+                errorMessage = result.ErrorMessage ?? "Unable to load redemption details.";
+                return;
+            }
+
+            selectedRedemption = result.Value;
+            selectedRedemption.DocumentTypeId = 52;
+
+            if (string.IsNullOrWhiteSpace(selectedRedemption.InvoiceNumber) ||
+                selectedRedemption.InvoiceNumber == "-")
+            {
+                selectedRedemption.InvoiceNumber = redemption.InvoiceNumber;
+            }
+
+            if (string.IsNullOrWhiteSpace(selectedRedemption.CustomerName))
+            {
+                selectedRedemption.CustomerName = redemption.CustomerName;
+            }
+
+            if (string.IsNullOrWhiteSpace(selectedRedemption.BranchId))
+            {
+                selectedRedemption.BranchId = redemption.BranchId;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Unable to load redemption details. {ex.Message}";
+        }
+        finally
+        {
+            isDetailLoading = false;
+            loadingDocumentId = string.Empty;
+        }
+    }
+
+    private IReadOnlyList<RedemptionCreditLine> CreditLines(Transaction redemption)
+    {
+        var receiptCredits = redemption.ReceiptPayments
+            .Where(payment =>
+                payment.PaymentTypeId == -10 &&
+                !string.IsNullOrWhiteSpace(payment.SourceDocumentLineId) &&
+                payment.Amount > 0m)
+            .GroupBy(payment => payment.SourceDocumentLineId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new RedemptionCreditLine(
+                group.Key,
+                FindMemberType(redemption, group.Key),
+                group.Sum(payment => payment.Amount)))
+            .OrderBy(line => line.AccountId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (receiptCredits.Count > 0)
+        {
+            return receiptCredits;
+        }
+
+        return redemption.Items
+            .Where(item => item.ActivityTypeId == 6)
+            .SelectMany(item =>
+            {
+                if (item.MemberCreditAllocations.Count > 0)
+                {
+                    return item.MemberCreditAllocations.Select(allocation =>
+                        new RedemptionCreditLine(
+                            allocation.MemberCreditAccountId,
+                            allocation.MemberTypeId,
+                            allocation.Amount));
+                }
+
+                if (!string.IsNullOrWhiteSpace(item.MemberCreditAccountId))
+                {
+                    return new[]
+                    {
+                        new RedemptionCreditLine(
+                            item.MemberCreditAccountId,
+                            item.MemberTypeId,
+                            Math.Max(0m, item.TotalPrice))
+                    };
+                }
+
+                return Array.Empty<RedemptionCreditLine>();
+            })
+            .Where(line => !string.IsNullOrWhiteSpace(line.AccountId) && line.Amount > 0m)
+            .GroupBy(line => line.AccountId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new RedemptionCreditLine(
+                group.Key,
+                group.Select(line => line.MemberTypeId)
+                    .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty,
+                group.Sum(line => line.Amount)))
+            .OrderBy(line => line.AccountId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string FindMemberType(Transaction redemption, string accountId)
+    {
+        foreach (var item in redemption.Items.Where(item => item.ActivityTypeId == 6))
+        {
+            if (string.Equals(item.MemberCreditAccountId, accountId, StringComparison.OrdinalIgnoreCase))
+            {
+                return item.MemberTypeId;
+            }
+
+            var allocation = item.MemberCreditAllocations.FirstOrDefault(value =>
+                string.Equals(value.MemberCreditAccountId, accountId, StringComparison.OrdinalIgnoreCase));
+
+            if (allocation is not null && !string.IsNullOrWhiteSpace(allocation.MemberTypeId))
+            {
+                return allocation.MemberTypeId;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private decimal RedeemedAmount(Transaction redemption)
+    {
+        var credits = CreditLines(redemption);
+        return credits.Count > 0
+            ? credits.Sum(line => line.Amount)
+            : Math.Abs(redemption.Amount);
+    }
+
+    private string BranchName(string? branchId)
+    {
+        if (string.IsNullOrWhiteSpace(branchId))
+        {
+            return "-";
+        }
+
+        return branches.FirstOrDefault(branch =>
+                   string.Equals(branch.Id, branchId, StringComparison.OrdinalIgnoreCase))
+               ?.DisplayName
+               ?? branchId;
+    }
+
+    private void PreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+        }
+    }
+
+    private void NextPage()
+    {
+        if (currentPage < TotalPages)
+        {
+            currentPage++;
+        }
+    }
+
+    private void CloseDetails() => selectedRedemption = null;
+    private void BackToSales() => Navigation.NavigateTo("/sales");
+    private void DismissError() => errorMessage = string.Empty;
+
+    private static bool Contains(string? value, string search) =>
+        value?.Contains(search, StringComparison.OrdinalIgnoreCase) == true;
+
+    private static string Display(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "-" : value;
+
+    private static string RedemptionIdentity(Transaction redemption) =>
+        !string.IsNullOrWhiteSpace(redemption.DocumentId)
+            ? redemption.DocumentId
+            : $"{redemption.BranchId}|{redemption.InvoiceNumber}|{redemption.Date:O}|{redemption.Amount}";
+
+    private static string StatusClass(string? status) =>
+        status?.Trim().ToLowerInvariant() switch
+        {
+            "paid" or "completed" => "status-success",
+            "cancelled" or "voided" => "status-danger",
+            _ => "status-neutral"
+        };
+
+    private sealed record RedemptionCreditLine(
+        string AccountId,
+        string MemberTypeId,
+        decimal Amount);
+}
