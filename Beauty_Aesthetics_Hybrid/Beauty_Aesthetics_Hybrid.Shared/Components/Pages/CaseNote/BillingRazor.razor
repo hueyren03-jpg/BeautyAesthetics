@@ -3567,8 +3567,34 @@
                 return;
             }
 
-            _completedSaleDocumentId = result.Value.DocumentId;
-            _completedReceiptNumber = result.Value.InvoiceNumber;
+            var completedTransaction = result.Value;
+
+            // Keep Appointment Billing in the same completed-sale flow as + New Sales:
+            // reload the saved backend transaction so receipt rows include system
+            // payments such as Member Credit (POSPaymentTypeID = -10).
+            if (!string.IsNullOrWhiteSpace(completedTransaction.DocumentId))
+            {
+                var completedResult = await CashSalesService.LoadTransactionAsync(
+                    completedTransaction.DocumentId);
+
+                if (completedResult.Success && completedResult.Value is not null)
+                {
+                    if (string.IsNullOrWhiteSpace(completedResult.Value.InvoiceNumber))
+                    {
+                        completedResult.Value.InvoiceNumber = completedTransaction.InvoiceNumber;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(completedResult.Value.CustomerName))
+                    {
+                        completedResult.Value.CustomerName = transaction.CustomerName;
+                    }
+
+                    completedTransaction = completedResult.Value;
+                }
+            }
+
+            _completedSaleDocumentId = completedTransaction.DocumentId;
+            _completedReceiptNumber = completedTransaction.InvoiceNumber;
 
             // The sale already exists at this point. Lock payment immediately so
             // a failed appointment-status update can never trigger a second charge
@@ -3577,11 +3603,11 @@
             _appointmentSaleExists = !string.IsNullOrWhiteSpace(AppointmentId);
             BillingStatusText = "Paid";
 
-            AppState.LastSaleDocumentId = result.Value.DocumentId;
-            AppState.LastReceiptNo = result.Value.InvoiceNumber;
+            AppState.LastSaleDocumentId = completedTransaction.DocumentId;
+            AppState.LastReceiptNo = completedTransaction.InvoiceNumber;
             AppState.LastPaidAmount = AmountReceived ?? TotalPayable;
             AppState.LastPaymentMethod = PaymentMethodDisplay;
-            AppState.LastCompletedTransaction = result.Value;
+            AppState.LastCompletedTransaction = completedTransaction;
             AppState.LastPaymentReturnUrl = PatientContext.WithCustomer("/case-notes");
 
             _showConfirmPaymentModal = false;
@@ -3591,7 +3617,7 @@
             {
                 Feedback.Resolve(
                     feedbackId,
-                    $"Sale {result.Value.InvoiceNumber} was saved, but the appointment status could not be updated automatically.",
+                    $"Sale {completedTransaction.InvoiceNumber} was saved, but the appointment status could not be updated automatically.",
                     "Sale saved");
                 Feedback.Warning(
                     _appointmentBillingError ??
@@ -3603,7 +3629,7 @@
 
             Feedback.Resolve(
                 feedbackId,
-                $"Sale {result.Value.InvoiceNumber} completed and the appointment was marked Paid.",
+                $"Sale {completedTransaction.InvoiceNumber} completed and the appointment was marked Paid.",
                 "Sale completed");
 
             NavigationManager.NavigateTo("/complete-sales");
@@ -3999,11 +4025,22 @@
             ? transaction.Payments.Sum(payment => payment.Amount)
             : AmountReceived ?? transaction.Amount;
 
-        var payments = transaction.Payments.Count > 0
-            ? transaction.Payments
+        // Match + New Sales and Senang: print every saved receipt line, including
+        // Member Credit rows (POSPaymentTypeID = -10), while normal payment logic
+        // continues to use transaction.Payments only.
+        var receiptPayments = transaction.ReceiptPayments.Count > 0
+            ? transaction.ReceiptPayments
+            : transaction.Payments;
+
+        var payments = receiptPayments.Count > 0
+            ? receiptPayments
+                .Where(payment => payment.Amount > 0m)
                 .Select(payment => new ReceiptPaymentLine
                 {
-                    Method = payment.PaymentMethod,
+                    Method = payment.PaymentTypeId == -10 &&
+                             !string.IsNullOrWhiteSpace(payment.SourceDocumentLineId)
+                        ? $"Member Credit ({payment.SourceDocumentLineId})"
+                        : payment.PaymentMethod,
                     Amount = payment.Amount
                 })
                 .ToList()
