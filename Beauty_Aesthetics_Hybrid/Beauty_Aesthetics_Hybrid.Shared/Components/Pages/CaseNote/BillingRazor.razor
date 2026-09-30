@@ -4137,23 +4137,16 @@
             }
 
             var receiptData = BuildPhysicalReceiptData(transaction);
-            var html = ReceiptHtmlBuilder.Build(receiptData);
             var fileId = string.IsNullOrWhiteSpace(transaction.DocumentId)
                 ? _completedSaleDocumentId
                 : transaction.DocumentId;
+            var fileName = $"Beauty_Receipt_{fileId}.pdf";
+            var pdfBase64 = ReceiptPdfBuilder.BuildBase64(receiptData);
 
-            var downloaded = await JS.InvokeAsync<bool>(
-                "downloadDocumentAsPDF",
-                html,
-                $"Beauty_Receipt_{fileId}.pdf");
-
-            if (!downloaded)
-            {
-                Feedback.Error(
-                    "The Beauty Aesthetics receipt PDF could not be generated.",
-                    "Receipt download failed");
-                return;
-            }
+            await FileDownloadService.DownloadBinaryFileAsync(
+                fileName,
+                pdfBase64,
+                "application/pdf");
 
             Feedback.Success(
                 $"Beauty Aesthetics receipt {_completedReceiptNumber} downloaded.",
