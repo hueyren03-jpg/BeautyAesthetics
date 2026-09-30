@@ -65,6 +65,44 @@ public sealed class CashSalesService : ICashSalesService
         return ApiCallResult<IReadOnlyList<Transaction>>.Ok(result.StatusCode, transactions);
     }
 
+    public async Task<ApiCallResult<IReadOnlyList<Transaction>>> LoadRedemptionsAsync(
+        DateTime startDate,
+        DateTime endDate,
+        string branchId = "",
+        CancellationToken cancellationToken = default)
+    {
+        var result = await cashSalesAC.LoadRedemptionProxyAsync(
+            new RedemptionLoadRequestDTO
+            {
+                Id = branchId ?? string.Empty,
+                StartDate = startDate.Date,
+                EndDate = endDate.Date.AddDays(1).AddTicks(-1)
+            },
+            cancellationToken);
+
+        if (!result.Success || result.Value is null)
+        {
+            return ApiCallResult<IReadOnlyList<Transaction>>.Failure(
+                result.StatusCode,
+                result.ErrorMessage ?? "Unable to load redemption history.");
+        }
+
+        var redemptions = result.Value
+            .Select(ToTransaction)
+            .Select(transaction =>
+            {
+                transaction.DocumentTypeId = 52;
+                transaction.Type = "Redemption";
+                transaction.PaymentTypeId = -10;
+                transaction.PaymentMethod = "Member Credit";
+                return transaction;
+            })
+            .OrderByDescending(transaction => transaction.Date)
+            .ToList();
+
+        return ApiCallResult<IReadOnlyList<Transaction>>.Ok(result.StatusCode, redemptions);
+    }
+
     private async Task PopulatePaymentMethodsAsync(
         IReadOnlyList<Transaction> transactions,
         CancellationToken cancellationToken)
@@ -172,7 +210,9 @@ public sealed class CashSalesService : ICashSalesService
 
         var receiptResult = await receiptTask;
         var paymentTypeResult = await paymentTypeTask;
-        if (receiptResult.Success && receiptResult.Value is not null)
+        if (receiptResult.Success &&
+            receiptResult.Value is not null &&
+            receiptResult.Value.Count > 0)
         {
             var names = paymentTypeResult.Success && paymentTypeResult.Value is not null
                 ? paymentTypeResult.Value
@@ -789,23 +829,39 @@ public sealed class CashSalesService : ICashSalesService
             Items = lines.Select(ToTransactionItem).ToList()
         };
 
-        transaction.Payments = receipts.OfType<JsonObject>()
+        transaction.ReceiptPayments = receipts.OfType<JsonObject>()
             .Select(receipt => new TransactionPayment
             {
                 ReceiptLineId = Text(receipt, "POSReceiptLineID"),
                 PaymentTypeId = Integer(receipt, "POSPaymentTypeID"),
-                PaymentMethod = First(Text(receipt, "POSPaymentTypeName"), Text(receipt, "Description"), "Payment")!,
+                PaymentMethod = Integer(receipt, "POSPaymentTypeID") == -10
+                    ? "Member Credit"
+                    : First(Text(receipt, "POSPaymentTypeName"), Text(receipt, "Description"), "Payment")!,
+                SourceDocumentLineId = Text(receipt, "SourceDocumentLineID"),
                 Amount = Number(receipt, "POSReceiptLineAmount"),
-                ChangeAmount = Math.Abs(Number(receipt, "POSReceiptChangeAmount"))
+                ChangeAmount = Math.Abs(Number(receipt, "POSReceiptChangeAmount")),
+                FinancialAccountId = Text(receipt, "FinancialAccountID"),
+                BankName = Text(receipt, "BankName")
             })
             .Where(payment => payment.PaymentTypeId != 0 && payment.Amount > 0)
             .ToList();
+
+        transaction.Payments = transaction.ReceiptPayments
+            .Where(payment => payment.PaymentTypeId != -10)
+            .ToList();
+
         if (transaction.Payments.Count > 0)
         {
             transaction.PaymentTypeId = transaction.Payments[0].PaymentTypeId;
             transaction.PaymentMethod = string.Join(" + ", transaction.Payments
                 .Select(payment => payment.PaymentMethod)
                 .Distinct(StringComparer.OrdinalIgnoreCase));
+        }
+        else if (transaction.DocumentTypeId == 52 &&
+                 transaction.ReceiptPayments.Any(payment => payment.PaymentTypeId == -10))
+        {
+            transaction.PaymentTypeId = -10;
+            transaction.PaymentMethod = "Member Credit";
         }
 
         var categories = transaction.Items.Select(item => item.Category).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
