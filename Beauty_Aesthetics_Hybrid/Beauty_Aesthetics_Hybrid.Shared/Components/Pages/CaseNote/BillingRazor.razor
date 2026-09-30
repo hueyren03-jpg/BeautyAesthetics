@@ -4056,7 +4056,8 @@
 
         return new ReceiptData
         {
-            CompanyName = "Beauty Aesthetics",
+            CompanyName = ReceiptBranding.AppTitle,
+            LogoUrl = ReceiptBranding.LogoUrl,
             BranchName = AppState.CurrentBranch?.Name ?? transaction.Branch,
             ReceiptNo = string.IsNullOrWhiteSpace(transaction.InvoiceNumber)
                 ? _completedReceiptNumber
@@ -4116,37 +4117,46 @@
 
         try
         {
-            var completedDocumentTypeId = AppState.LastCompletedTransaction?.DocumentTypeId == 52 ? 52 : 5;
-            var result = await CashSalesService.RequestReceiptPdfAsync(
+            var completedDocumentTypeId =
+                AppState.LastCompletedTransaction?.DocumentTypeId == 52 ? 52 : 5;
+
+            var saleResult = await CashSalesService.LoadTransactionAsync(
                 _completedSaleDocumentId,
                 completedDocumentTypeId);
 
-            if (!result.Success || string.IsNullOrWhiteSpace(result.Value))
+            var transaction = saleResult.Success && saleResult.Value is not null
+                ? saleResult.Value
+                : AppState.LastCompletedTransaction;
+
+            if (transaction is null)
             {
                 Feedback.Error(
-                    result.ErrorMessage ?? "Unable to generate the receipt PDF.",
+                    saleResult.ErrorMessage ?? "Unable to load the completed sale for the receipt.",
                     "Receipt unavailable");
                 return;
             }
 
-            var receiptPdf = result.Value.Trim();
+            var receiptData = BuildPhysicalReceiptData(transaction);
+            var html = ReceiptHtmlBuilder.Build(receiptData);
+            var fileId = string.IsNullOrWhiteSpace(transaction.DocumentId)
+                ? _completedSaleDocumentId
+                : transaction.DocumentId;
 
-            var safeDocumentId = Regex.Replace(
-                string.IsNullOrWhiteSpace(_completedSaleDocumentId)
-                    ? "Receipt"
-                    : _completedSaleDocumentId,
-                @"[^A-Za-z0-9_-]+",
-                "_");
+            var downloaded = await JS.InvokeAsync<bool>(
+                "downloadDocumentAsPDF",
+                html,
+                $"Beauty_Receipt_{fileId}.pdf");
 
-            var fileName = $"Thermal_Receipt_{safeDocumentId}.pdf";
-
-            await FileDownloadService.DownloadBinaryFileAsync(
-                fileName,
-                receiptPdf,
-                "application/pdf");
+            if (!downloaded)
+            {
+                Feedback.Error(
+                    "The Beauty Aesthetics receipt PDF could not be generated.",
+                    "Receipt download failed");
+                return;
+            }
 
             Feedback.Success(
-                $"{fileName} downloaded.",
+                $"Beauty Aesthetics receipt {_completedReceiptNumber} downloaded.",
                 "Receipt downloaded",
                 2400);
 
