@@ -21,6 +21,7 @@
 @implements IAsyncDisposable
 @inject IStringLocalizer<Sales> L
 @inject AppFeedbackService Feedback
+@inject Beauty_Aesthetics_WebPos.Components.Services.Files.IFileDownloadService FileDownloadService
 
 <style>
     /* Hide Blazor Error UI by default */
@@ -2849,23 +2850,16 @@
             await InvokeAsync(StateHasChanged);
 
             var receiptData = BuildSalesReceiptData(transaction, amountReceived);
-            var html = ReceiptHtmlBuilder.Build(receiptData);
             var fileId = string.IsNullOrWhiteSpace(transaction.DocumentId)
                 ? receiptData.ReceiptNo
                 : transaction.DocumentId;
+            var fileName = $"Beauty_Receipt_{fileId}.pdf";
+            var pdfBase64 = ReceiptPdfBuilder.BuildBase64(receiptData);
 
-            var downloaded = await JS.InvokeAsync<bool>(
-                "downloadDocumentAsPDF",
-                html,
-                $"Beauty_Receipt_{fileId}.pdf");
-
-            if (!downloaded)
-            {
-                Feedback.Error(
-                    "The Beauty Aesthetics receipt PDF could not be generated.",
-                    "Receipt download failed");
-                return;
-            }
+            await FileDownloadService.DownloadBinaryFileAsync(
+                fileName,
+                pdfBase64,
+                "application/pdf");
 
             Feedback.Success(
                 $"Beauty Aesthetics receipt {receiptData.ReceiptNo} downloaded.",
