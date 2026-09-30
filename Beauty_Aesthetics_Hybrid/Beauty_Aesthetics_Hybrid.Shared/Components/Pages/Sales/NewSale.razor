@@ -3076,10 +3076,18 @@
             var result = await CashSalesService.CreateTransactionAsync(saleTransaction);
             if (!result.Success)
             {
+                if (currentOrder.IsRedemptionMode &&
+                    !string.IsNullOrWhiteSpace(currentOrder.AccountId))
+                {
+                    await LoadSelectedCustomerBalancesAsync(currentOrder.AccountId);
+                }
+
                 Feedback.Fail(
                     feedbackId,
                     result.ErrorMessage ?? "Unable to complete the sale.",
-                    "Sale not completed");
+                    currentOrder.IsRedemptionMode
+                        ? "Redemption not completed"
+                        : "Sale not completed");
                 return;
             }
 
