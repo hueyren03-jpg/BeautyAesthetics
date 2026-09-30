@@ -507,6 +507,23 @@ public sealed class CashSalesService : ICashSalesService
             transaction,
             cancellationToken);
 
+        // Step 28 — Final pre-save Member Credit revalidation.
+        // Reload the customer's current redeemable-credit state immediately before
+        // CreateRecord so stale UI/FIFO allocations cannot over-redeem an account.
+        var preSaveCreditValidation = await ValidateMemberCreditRedemptionBeforeCreateAsync(
+            transaction,
+            cancellationToken);
+
+        if (!preSaveCreditValidation.Success)
+        {
+            Console.WriteLine(
+                $"[Member Credit Step 28] BLOCKED | Customer={transaction.AccountId} | {preSaveCreditValidation.ErrorMessage}");
+
+            return ApiCallResult<Transaction>.Failure(
+                preSaveCreditValidation.StatusCode,
+                preSaveCreditValidation.ErrorMessage);
+        }
+
         var createResult = await cashSalesAC.CreateRecordAsync(document, cancellationToken);
         if (!createResult.Success)
         {
@@ -1118,6 +1135,240 @@ public sealed class CashSalesService : ICashSalesService
             Console.WriteLine(
                 $"[Member Credit Verify] Sale {transaction.DocumentId}: ARAPOutstandingID={persisted.ARAPOutstandingID} | Item={persisted.LineItemID} | MemberType={persisted.MemberTypeID} | Balance={persisted.NetBalanceAfterUtilised:N2}");
         }
+    }
+
+    private async Task<(bool Success, HttpStatusCode StatusCode, string ErrorMessage)> ValidateMemberCreditRedemptionBeforeCreateAsync(
+        Transaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var redemptionItems = transaction.Items
+            .Where(item => item.ActivityTypeId == 6)
+            .ToList();
+
+        var isMemberCreditRedemption =
+            transaction.DocumentTypeId == 52 ||
+            redemptionItems.Count > 0;
+
+        if (!isMemberCreditRedemption)
+        {
+            return (true, HttpStatusCode.OK, string.Empty);
+        }
+
+        if (string.IsNullOrWhiteSpace(transaction.AccountId))
+        {
+            return (
+                false,
+                HttpStatusCode.BadRequest,
+                "Member Credit redemption requires a customer before the sale can be completed.");
+        }
+
+        if (redemptionItems.Count == 0)
+        {
+            return (
+                false,
+                HttpStatusCode.BadRequest,
+                "Member Credit redemption has no redemption lines to validate.");
+        }
+
+        var allocatedByAccount = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        decimal expectedRedemptionTotal = 0m;
+        decimal allocatedRedemptionTotal = 0m;
+
+        foreach (var item in redemptionItems)
+        {
+            var lineAmount = Math.Round(
+                Math.Max(0m, item.TotalPrice),
+                2,
+                MidpointRounding.AwayFromZero);
+
+            if (lineAmount <= 0m)
+            {
+                return (
+                    false,
+                    HttpStatusCode.BadRequest,
+                    $"Member Credit redemption line '{First(item.Name, item.InventoryId, "Item")}' has no redeemable amount.");
+            }
+
+            var rawAllocationAccountIds = item.MemberCreditAllocations
+                .Where(allocation =>
+                    !string.IsNullOrWhiteSpace(allocation.MemberCreditAccountId) &&
+                    allocation.Amount > 0m)
+                .Select(allocation => allocation.MemberCreditAccountId.Trim())
+                .ToList();
+
+            if (rawAllocationAccountIds.Count !=
+                rawAllocationAccountIds.Distinct(StringComparer.OrdinalIgnoreCase).Count())
+            {
+                return (
+                    false,
+                    HttpStatusCode.BadRequest,
+                    $"Member Credit redemption line '{First(item.Name, item.InventoryId, "Item")}' contains the same credit account more than once.");
+            }
+
+            var allocations = EffectiveMemberCreditAllocations(item);
+            if (allocations.Count == 0)
+            {
+                return (
+                    false,
+                    HttpStatusCode.BadRequest,
+                    $"Member Credit redemption line '{First(item.Name, item.InventoryId, "Item")}' has no Member Credit account allocated.");
+            }
+
+            var lineAllocated = Math.Round(
+                allocations.Sum(allocation => allocation.Amount),
+                2,
+                MidpointRounding.AwayFromZero);
+
+            if (Math.Abs(lineAllocated - lineAmount) > 0.009m)
+            {
+                return (
+                    false,
+                    HttpStatusCode.Conflict,
+                    $"Member Credit allocation for '{First(item.Name, item.InventoryId, "Item")}' is incomplete. " +
+                    $"Allocated RM {lineAllocated:N2}, but the redemption line requires RM {lineAmount:N2}.");
+            }
+
+            foreach (var allocation in allocations)
+            {
+                var accountId = allocation.MemberCreditAccountId?.Trim() ?? string.Empty;
+                var amount = Math.Round(
+                    allocation.Amount,
+                    2,
+                    MidpointRounding.AwayFromZero);
+
+                if (string.IsNullOrWhiteSpace(accountId))
+                {
+                    return (
+                        false,
+                        HttpStatusCode.BadRequest,
+                        "A Member Credit allocation is missing its ARAPOutstandingID.");
+                }
+
+                if (amount <= 0m)
+                {
+                    return (
+                        false,
+                        HttpStatusCode.BadRequest,
+                        $"Member Credit {accountId} has an invalid redemption amount.");
+                }
+
+                allocatedByAccount[accountId] =
+                    allocatedByAccount.TryGetValue(accountId, out var existing)
+                        ? existing + amount
+                        : amount;
+            }
+
+            expectedRedemptionTotal += lineAmount;
+            allocatedRedemptionTotal += lineAllocated;
+        }
+
+        expectedRedemptionTotal = Math.Round(
+            expectedRedemptionTotal,
+            2,
+            MidpointRounding.AwayFromZero);
+        allocatedRedemptionTotal = Math.Round(
+            allocatedRedemptionTotal,
+            2,
+            MidpointRounding.AwayFromZero);
+
+        if (Math.Abs(expectedRedemptionTotal - allocatedRedemptionTotal) > 0.009m)
+        {
+            return (
+                false,
+                HttpStatusCode.Conflict,
+                $"Member Credit redemption allocation is inconsistent. " +
+                $"Expected RM {expectedRedemptionTotal:N2}, but RM {allocatedRedemptionTotal:N2} is allocated.");
+        }
+
+        var latestResult = await customerService.GetRedeemableCreditsAsync(
+            transaction.AccountId,
+            DateTime.Now,
+            cancellationToken);
+
+        if (!latestResult.Success || latestResult.Value is null)
+        {
+            return (
+                false,
+                HttpStatusCode.ServiceUnavailable,
+                "Member Credit balances could not be refreshed before saving. " +
+                "No redemption was created. Refresh the customer's credits and try again.");
+        }
+
+        var latestByAccount = latestResult.Value
+            .Where(credit => !string.IsNullOrWhiteSpace(credit.ARAPOutstandingID))
+            .GroupBy(
+                credit => credit.ARAPOutstandingID!.Trim(),
+                StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.First(),
+                StringComparer.OrdinalIgnoreCase);
+
+        foreach (var allocation in allocatedByAccount)
+        {
+            if (!latestByAccount.TryGetValue(allocation.Key, out var latestCredit))
+            {
+                return (
+                    false,
+                    HttpStatusCode.Conflict,
+                    $"Member Credit {allocation.Key} is no longer available. " +
+                    "The customer's credit balances were refreshed and the redemption was not saved.");
+            }
+
+            if (!latestCredit.IsRedeemable)
+            {
+                return (
+                    false,
+                    HttpStatusCode.Conflict,
+                    $"Member Credit {allocation.Key} is no longer redeemable. " +
+                    "The redemption was not saved.");
+            }
+
+            if (latestCredit.DueDate.Year > 1900 &&
+                latestCredit.DueDate.Date < DateTime.Today)
+            {
+                return (
+                    false,
+                    HttpStatusCode.Conflict,
+                    $"Member Credit {allocation.Key} expired on {latestCredit.DueDate:dd/MM/yyyy}. " +
+                    "The redemption was not saved.");
+            }
+
+            var latestBalance = Math.Round(
+                Math.Max(0m, latestCredit.NetBalanceAfterUtilised),
+                2,
+                MidpointRounding.AwayFromZero);
+
+            if (latestBalance <= 0m)
+            {
+                return (
+                    false,
+                    HttpStatusCode.Conflict,
+                    $"Member Credit {allocation.Key} no longer has an available balance. " +
+                    "The redemption was not saved.");
+            }
+
+            var requestedAmount = Math.Round(
+                allocation.Value,
+                2,
+                MidpointRounding.AwayFromZero);
+
+            if (requestedAmount - latestBalance > 0.009m)
+            {
+                return (
+                    false,
+                    HttpStatusCode.Conflict,
+                    $"Member Credit {allocation.Key} changed before saving. " +
+                    $"Latest balance is RM {latestBalance:N2}, but RM {requestedAmount:N2} is allocated. " +
+                    "The redemption was not saved.");
+            }
+        }
+
+        Console.WriteLine(
+            $"[Member Credit Step 28] PASS | Customer={transaction.AccountId} | " +
+            $"Accounts={allocatedByAccount.Count} | RedeemTotal={allocatedRedemptionTotal:N2}");
+
+        return (true, HttpStatusCode.OK, string.Empty);
     }
 
     private async Task<(string AccountId, decimal Amount, decimal? BeforeBalance)?> CaptureSingleMemberCreditRedemptionAsync(
