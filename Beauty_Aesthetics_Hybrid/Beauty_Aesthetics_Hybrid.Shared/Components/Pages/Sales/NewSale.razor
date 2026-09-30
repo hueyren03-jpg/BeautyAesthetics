@@ -3082,11 +3082,25 @@
             if (string.IsNullOrWhiteSpace(savedSale.CustomerName)) savedSale.CustomerName = currentOrder.CustomerName;
             if (savedSale.Amount <= 0) savedSale.Amount = currentOrder.Total;
 
+            if (string.IsNullOrWhiteSpace(savedSale.DocumentId))
+            {
+                Feedback.Fail(
+                    feedbackId,
+                    currentOrder.IsRedemptionMode
+                        ? "The redemption was not completed because the API did not return Result.Id."
+                        : "The sale was not completed because the API did not return Result.Id.",
+                    currentOrder.IsRedemptionMode ? "Redemption not completed" : "Sale not completed");
+                savedSale = null;
+                return;
+            }
+
             // Reload the completed document so the receipt screen uses the actual
             // backend receipt rows, including Member Credit POSPaymentTypeID = -10.
             if (!string.IsNullOrWhiteSpace(savedSale.DocumentId))
             {
-                var completedResult = await CashSalesService.LoadTransactionAsync(savedSale.DocumentId);
+                var completedResult = await CashSalesService.LoadTransactionAsync(
+                    savedSale.DocumentId,
+                    currentOrder.IsRedemptionMode ? 52 : 5);
                 if (completedResult.Success && completedResult.Value is not null)
                 {
                     var completedSale = completedResult.Value;
@@ -3246,7 +3260,9 @@
             isDownloadingReceipt = true;
             await InvokeAsync(StateHasChanged);
 
-            var downloaded = await CashSalesService.DownloadReceiptPdfAsync(savedSale.DocumentId);
+            var downloaded = await CashSalesService.DownloadReceiptPdfAsync(
+                savedSale.DocumentId,
+                currentOrder.IsRedemptionMode ? 52 : 5);
             if (!downloaded)
             {
                 Feedback.Error(
