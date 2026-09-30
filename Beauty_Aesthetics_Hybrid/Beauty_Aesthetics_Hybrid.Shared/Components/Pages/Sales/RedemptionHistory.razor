@@ -128,21 +128,30 @@
                                 <td class="amount-column">MYR @RedeemedAmount(redemption).ToString("N2")</td>
                                 <td><span class="status-pill @StatusClass(redemption.Status)">@Display(redemption.Status)</span></td>
                                 <td class="actions-column">
-                                    <button type="button"
-                                            class="row-action-button"
-                                            title="View redemption details"
-                                            aria-label="View redemption @redemption.InvoiceNumber"
-                                            disabled="@(isDetailLoading && loadingDocumentId == redemption.DocumentId)"
-                                            @onclick="() => ViewRedemptionAsync(redemption)">
-                                        @if (isDetailLoading && loadingDocumentId == redemption.DocumentId)
-                                        {
-                                            <span class="button-spinner small" aria-hidden="true"></span>
-                                        }
-                                        else
-                                        {
-                                            <i class="bi bi-eye"></i>
-                                        }
-                                    </button>
+                                    <div class="row-actions">
+                                        <button type="button"
+                                                class="row-action-button"
+                                                title="View redemption details"
+                                                aria-label="View redemption @redemption.InvoiceNumber"
+                                                disabled="@(isDetailLoading && loadingDocumentId == redemption.DocumentId)"
+                                                @onclick="() => ViewRedemptionAsync(redemption)">
+                                            @if (isDetailLoading && loadingDocumentId == redemption.DocumentId)
+                                            {
+                                                <span class="button-spinner small" aria-hidden="true"></span>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-eye"></i>
+                                            }
+                                        </button>
+                                        <button type="button"
+                                                class="row-action-button action-reopen"
+                                                title="Reopen saved redemption"
+                                                aria-label="Reopen redemption @redemption.InvoiceNumber"
+                                                @onclick="() => ReopenRedemption(redemption)">
+                                            <i class="bi bi-box-arrow-up-right"></i>
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         }
@@ -181,21 +190,29 @@
                             </div>
                         </div>
 
-                        <button type="button"
-                                class="mobile-view-button"
-                                disabled="@(isDetailLoading && loadingDocumentId == redemption.DocumentId)"
-                                @onclick="() => ViewRedemptionAsync(redemption)">
-                            @if (isDetailLoading && loadingDocumentId == redemption.DocumentId)
-                            {
-                                <span class="button-spinner small" aria-hidden="true"></span>
-                                <span>Loading...</span>
-                            }
-                            else
-                            {
-                                <i class="bi bi-eye"></i>
-                                <span>View Details</span>
-                            }
-                        </button>
+                        <div class="mobile-action-row">
+                            <button type="button"
+                                    class="mobile-view-button"
+                                    disabled="@(isDetailLoading && loadingDocumentId == redemption.DocumentId)"
+                                    @onclick="() => ViewRedemptionAsync(redemption)">
+                                @if (isDetailLoading && loadingDocumentId == redemption.DocumentId)
+                                {
+                                    <span class="button-spinner small" aria-hidden="true"></span>
+                                    <span>Loading...</span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-eye"></i>
+                                    <span>View Details</span>
+                                }
+                            </button>
+                            <button type="button"
+                                    class="mobile-view-button mobile-reopen-button"
+                                    @onclick="() => ReopenRedemption(redemption)">
+                                <i class="bi bi-box-arrow-up-right"></i>
+                                <span>Reopen</span>
+                            </button>
+                        </div>
                     </article>
                 }
             </div>
@@ -346,6 +363,10 @@
 
             <footer class="dialog-actions">
                 <button type="button" class="secondary-button" @onclick="CloseDetails">Close</button>
+                <button type="button" class="primary-button" @onclick="() => ReopenRedemption(selectedRedemption)">
+                    <i class="bi bi-box-arrow-up-right"></i>
+                    Reopen in Sales
+                </button>
             </footer>
         </div>
     </section>
@@ -691,6 +712,20 @@
         {
             currentPage++;
         }
+    }
+
+    private void ReopenRedemption(Transaction redemption)
+    {
+        if (string.IsNullOrWhiteSpace(redemption.DocumentId))
+        {
+            Feedback.Warning("This redemption does not have a saved DocumentID.", "Cannot reopen redemption");
+            return;
+        }
+
+        // Pass only the backend DocumentID. New Sales reloads the official
+        // redemption using /api/Doc_Redemption/LoadRecord.
+        var documentId = Uri.EscapeDataString(redemption.DocumentId);
+        Navigation.NavigateTo($"/sales/new?redemptionId={documentId}");
     }
 
     private void CloseDetails() => selectedRedemption = null;
