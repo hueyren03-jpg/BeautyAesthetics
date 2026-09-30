@@ -2916,8 +2916,11 @@
             // A stale credit selection changes the amount still due, so any held
             // tender allocation must be recalculated rather than silently reused.
             currentOrder.Payments.Clear();
-            PendingOrderService.SaveOrUpdate(currentOrder);
         }
+
+        // Persist the freshly validated/canonical credit mappings back into the
+        // held order instead of keeping the pre-validation clone as authoritative.
+        PendingOrderService.SaveOrUpdate(currentOrder);
 
         heldRedemptionCreditValidationRequired = false;
         heldRedemptionCreditValidationError = null;
