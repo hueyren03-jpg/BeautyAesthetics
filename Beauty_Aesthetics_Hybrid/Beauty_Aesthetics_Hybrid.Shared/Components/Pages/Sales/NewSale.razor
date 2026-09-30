@@ -23,6 +23,7 @@
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JS
 @inject AppFeedbackService Feedback
+@inject Beauty_Aesthetics_WebPos.Components.Services.Files.IFileDownloadService FileDownloadService
 @implements IDisposable
 
 <PageTitle>New Sale - Pending Orders</PageTitle>
@@ -3230,23 +3231,16 @@
             await InvokeAsync(StateHasChanged);
 
             var receiptData = BuildReceiptDataForOutput();
-            var html = ReceiptHtmlBuilder.Build(receiptData);
             var fileId = string.IsNullOrWhiteSpace(savedSale.DocumentId)
                 ? ReceiptNumber
                 : savedSale.DocumentId;
+            var fileName = $"Beauty_Receipt_{fileId}.pdf";
+            var pdfBase64 = ReceiptPdfBuilder.BuildBase64(receiptData);
 
-            var downloaded = await JS.InvokeAsync<bool>(
-                "downloadDocumentAsPDF",
-                html,
-                $"Beauty_Receipt_{fileId}.pdf");
-
-            if (!downloaded)
-            {
-                Feedback.Error(
-                    "The Beauty Aesthetics receipt PDF could not be generated.",
-                    "Receipt download failed");
-                return;
-            }
+            await FileDownloadService.DownloadBinaryFileAsync(
+                fileName,
+                pdfBase64,
+                "application/pdf");
 
             Feedback.Success(
                 $"Receipt {ReceiptNumber} downloaded with Beauty Aesthetics branding.",
