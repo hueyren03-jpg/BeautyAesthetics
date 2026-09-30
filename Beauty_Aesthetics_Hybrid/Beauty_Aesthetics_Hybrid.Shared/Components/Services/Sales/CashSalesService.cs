@@ -507,6 +507,10 @@ public sealed class CashSalesService : ICashSalesService
             transaction,
             cancellationToken);
 
+        var step30TotalCreditBefore = await CaptureStep30TotalCreditBeforeAsync(
+            transaction,
+            cancellationToken);
+
         // Step 28 — Final pre-save Member Credit revalidation.
         // Reload the customer's current redeemable-credit state immediately before
         // CreateRecord so stale UI/FIFO allocations cannot over-redeem an account.
@@ -578,6 +582,13 @@ public sealed class CashSalesService : ICashSalesService
         await VerifyMultiMemberCreditRedemptionAsync(
             transaction,
             multiCreditVerification,
+            cancellationToken);
+
+        await VerifyStep30RedemptionAfterSaveAsync(
+            transaction,
+            singleCreditVerification,
+            multiCreditVerification,
+            step30TotalCreditBefore,
             cancellationToken);
 
         return ApiCallResult<Transaction>.Ok(createResult.StatusCode, transaction);
@@ -1150,6 +1161,419 @@ public sealed class CashSalesService : ICashSalesService
                 $"[Member Credit Verify] Sale {transaction.DocumentId}: ARAPOutstandingID={persisted.ARAPOutstandingID} | Item={persisted.LineItemID} | MemberType={persisted.MemberTypeID} | Balance={persisted.NetBalanceAfterUtilised:N2}");
         }
     }
+
+    private async Task<decimal?> CaptureStep30TotalCreditBeforeAsync(
+        Transaction transaction,
+        CancellationToken cancellationToken)
+    {
+        if (transaction.DocumentTypeId != 52 ||
+            string.IsNullOrWhiteSpace(transaction.AccountId) ||
+            !transaction.Items.Any(item => item.ActivityTypeId == 6))
+        {
+            return null;
+        }
+
+        var summaryResult = await customerService.GetBalanceSummaryAsync(
+            transaction.AccountId,
+            cancellationToken);
+
+        if (!summaryResult.Success || summaryResult.Value is null)
+        {
+            Console.WriteLine(
+                $"[Member Credit Step 30] BEFORE TOTAL WARNING | Customer={transaction.AccountId} | Unable to load GetMemberBalanceSummary: {summaryResult.ErrorMessage}");
+            return null;
+        }
+
+        Console.WriteLine(
+            $"[Member Credit Step 30] BEFORE TOTAL | Customer={transaction.AccountId} | Credit={summaryResult.Value.CreditBalance:N2}");
+
+        return summaryResult.Value.CreditBalance;
+    }
+
+    private async Task VerifyStep30RedemptionAfterSaveAsync(
+        Transaction transaction,
+        (string AccountId, decimal Amount, decimal? BeforeBalance)? singleVerification,
+        IReadOnlyList<(string AccountId, decimal Amount, decimal? BeforeBalance)>? multiVerification,
+        decimal? totalCreditBefore,
+        CancellationToken cancellationToken)
+    {
+        if (transaction.DocumentTypeId != 52 ||
+            string.IsNullOrWhiteSpace(transaction.DocumentId) ||
+            string.IsNullOrWhiteSpace(transaction.AccountId))
+        {
+            return;
+        }
+
+        var expectedAllocations = transaction.Items
+            .Where(item => item.ActivityTypeId == 6)
+            .SelectMany(EffectiveMemberCreditAllocations)
+            .Where(allocation =>
+                !string.IsNullOrWhiteSpace(allocation.MemberCreditAccountId) &&
+                allocation.Amount > 0m)
+            .GroupBy(
+                allocation => allocation.MemberCreditAccountId.Trim(),
+                StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => Math.Round(
+                    group.Sum(allocation => allocation.Amount),
+                    2,
+                    MidpointRounding.AwayFromZero),
+                StringComparer.OrdinalIgnoreCase);
+
+        if (expectedAllocations.Count == 0)
+        {
+            Console.WriteLine(
+                $"[Member Credit Step 30] WARNING | Document={transaction.DocumentId} | No Member Credit allocations were available for verification.");
+            return;
+        }
+
+        var expectedReceiptLineCount = transaction.Items
+            .Where(item => item.ActivityTypeId == 6)
+            .SelectMany(EffectiveMemberCreditAllocations)
+            .Count(allocation =>
+                !string.IsNullOrWhiteSpace(allocation.MemberCreditAccountId) &&
+                allocation.Amount > 0m);
+
+        var totalRedeemed = Math.Round(
+            expectedAllocations.Values.Sum(),
+            2,
+            MidpointRounding.AwayFromZero);
+
+        var beforeByAccount = new Dictionary<string, decimal?>(StringComparer.OrdinalIgnoreCase);
+
+        if (singleVerification.HasValue)
+        {
+            beforeByAccount[singleVerification.Value.AccountId] =
+                singleVerification.Value.BeforeBalance;
+        }
+
+        if (multiVerification is not null)
+        {
+            foreach (var item in multiVerification)
+            {
+                beforeByAccount[item.AccountId] = item.BeforeBalance;
+            }
+        }
+
+        var definiteFailure = false;
+        var accountBalancesFullyVerified = true;
+
+        // Step 30.1 — reload GetRedeemableCredits and confirm each used account decreased.
+        var afterCreditsResult = await customerService.GetRedeemableCreditsAsync(
+            transaction.AccountId,
+            DateTime.Now,
+            cancellationToken);
+
+        if (!afterCreditsResult.Success || afterCreditsResult.Value is null)
+        {
+            accountBalancesFullyVerified = false;
+            Console.WriteLine(
+                $"[Member Credit Step 30] ACCOUNT BALANCE WARNING | Customer={transaction.AccountId} | Unable to reload GetRedeemableCredits: {afterCreditsResult.ErrorMessage}");
+        }
+        else
+        {
+            var afterByAccount = afterCreditsResult.Value
+                .Where(credit => !string.IsNullOrWhiteSpace(credit.ARAPOutstandingID))
+                .GroupBy(
+                    credit => credit.ARAPOutstandingID!.Trim(),
+                    StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.First().NetBalanceAfterUtilised,
+                    StringComparer.OrdinalIgnoreCase);
+
+            foreach (var expected in expectedAllocations)
+            {
+                var actualAfter = afterByAccount.TryGetValue(expected.Key, out var remaining)
+                    ? remaining
+                    : 0m;
+
+                if (!beforeByAccount.TryGetValue(expected.Key, out var beforeBalance) ||
+                    !beforeBalance.HasValue)
+                {
+                    accountBalancesFullyVerified = false;
+                    Console.WriteLine(
+                        $"[Member Credit Step 30] ACCOUNT BALANCE WARNING | Account={expected.Key} | Redeemed={expected.Value:N2} | ActualAfter={actualAfter:N2} | Before balance unavailable.");
+                    continue;
+                }
+
+                var expectedAfter = Math.Max(
+                    0m,
+                    Math.Round(
+                        beforeBalance.Value - expected.Value,
+                        2,
+                        MidpointRounding.AwayFromZero));
+
+                var passed = Math.Abs(actualAfter - expectedAfter) < 0.01m;
+                definiteFailure |= !passed;
+
+                Console.WriteLine(
+                    $"[Member Credit Step 30] ACCOUNT BALANCE {(passed ? "PASS" : "FAIL")} | " +
+                    $"Account={expected.Key} | Before={beforeBalance.Value:N2} | Redeemed={expected.Value:N2} | " +
+                    $"ExpectedAfter={expectedAfter:N2} | ActualAfter={actualAfter:N2}");
+            }
+        }
+
+        // Step 30.2 — reload GetMemberBalanceSummary and confirm total Credit decreased.
+        var totalCreditVerified = true;
+        var afterSummaryResult = await customerService.GetBalanceSummaryAsync(
+            transaction.AccountId,
+            cancellationToken);
+
+        if (!afterSummaryResult.Success || afterSummaryResult.Value is null)
+        {
+            totalCreditVerified = false;
+            Console.WriteLine(
+                $"[Member Credit Step 30] TOTAL CREDIT WARNING | Customer={transaction.AccountId} | Unable to reload GetMemberBalanceSummary: {afterSummaryResult.ErrorMessage}");
+        }
+        else if (!totalCreditBefore.HasValue)
+        {
+            totalCreditVerified = false;
+            Console.WriteLine(
+                $"[Member Credit Step 30] TOTAL CREDIT WARNING | Customer={transaction.AccountId} | After={afterSummaryResult.Value.CreditBalance:N2} | Before total Credit was unavailable.");
+        }
+        else
+        {
+            var expectedTotalAfter = Math.Max(
+                0m,
+                Math.Round(
+                    totalCreditBefore.Value - totalRedeemed,
+                    2,
+                    MidpointRounding.AwayFromZero));
+            var actualTotalAfter = afterSummaryResult.Value.CreditBalance;
+            var totalPassed = Math.Abs(actualTotalAfter - expectedTotalAfter) < 0.01m;
+            definiteFailure |= !totalPassed;
+
+            Console.WriteLine(
+                $"[Member Credit Step 30] TOTAL CREDIT {(totalPassed ? "PASS" : "FAIL")} | " +
+                $"Before={totalCreditBefore.Value:N2} | Redeemed={totalRedeemed:N2} | " +
+                $"ExpectedAfter={expectedTotalAfter:N2} | ActualAfter={actualTotalAfter:N2}");
+        }
+
+        // Step 30.3 — load the official saved redemption and compare its persisted
+        // document lines and Member Credit (-10) receipt lines to the request.
+        var savedRecordVerified = true;
+        var savedResult = await cashSalesAC.LoadRedemptionRecordAsync(
+            transaction.DocumentId,
+            cancellationToken);
+
+        if (!savedResult.Success || savedResult.Value is null)
+        {
+            savedRecordVerified = false;
+            Console.WriteLine(
+                $"[Member Credit Step 30] SAVED DOCUMENT WARNING | Document={transaction.DocumentId} | /api/Doc_Redemption/LoadRecord could not be verified: {savedResult.ErrorMessage}");
+        }
+        else
+        {
+            var saved = savedResult.Value;
+            var savedHeader = saved["objDoc_CashSales"] as JsonObject;
+            var savedLines = saved["lstDocumentLine"] as JsonArray ?? new JsonArray();
+            var savedReceipts = saved["lstReceiptLines"] as JsonArray ?? new JsonArray();
+
+            var savedDocumentId = savedHeader is null
+                ? string.Empty
+                : Text(savedHeader, "DocumentID");
+            var savedDocumentTypeId = savedHeader is null
+                ? 0
+                : Integer(savedHeader, "DocumentTypeID");
+
+            var savedRedemptionLines = savedLines
+                .OfType<JsonObject>()
+                .Where(line => Integer(line, "ActivityTypeID") == 6)
+                .ToList();
+
+            var savedLineAllocations =
+                new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var line in savedRedemptionLines)
+            {
+                var singleAccountId = Text(line, "MemberCreditAccountID").Trim();
+
+                if (!string.IsNullOrWhiteSpace(singleAccountId))
+                {
+                    var amount = Number(line, "SubTotal");
+                    if (amount <= 0m)
+                    {
+                        amount = Number(line, "Amount");
+                    }
+
+                    if (amount > 0m)
+                    {
+                        savedLineAllocations[singleAccountId] =
+                            savedLineAllocations.TryGetValue(singleAccountId, out var current)
+                                ? current + amount
+                                : amount;
+                    }
+
+                    continue;
+                }
+
+                var nestedCredits = line["lstMembershipCredit"] as JsonArray;
+                var nestedFound = false;
+
+                if (nestedCredits is not null)
+                {
+                    foreach (var node in nestedCredits.OfType<JsonObject>())
+                    {
+                        var accountId = Text(node, "MemberCreditAccountID").Trim();
+                        var amount = Number(node, "MemberCredit");
+
+                        if (string.IsNullOrWhiteSpace(accountId) || amount <= 0m)
+                        {
+                            continue;
+                        }
+
+                        nestedFound = true;
+                        savedLineAllocations[accountId] =
+                            savedLineAllocations.TryGetValue(accountId, out var current)
+                                ? current + amount
+                                : amount;
+                    }
+                }
+
+                if (!nestedFound)
+                {
+                    foreach (var allocation in ParseMemberCreditAllocations(
+                                 Text(line, "MembershipCredit"),
+                                 Text(line, "MemberTypeID")))
+                    {
+                        var accountId = allocation.MemberCreditAccountId.Trim();
+                        if (string.IsNullOrWhiteSpace(accountId) || allocation.Amount <= 0m)
+                        {
+                            continue;
+                        }
+
+                        savedLineAllocations[accountId] =
+                            savedLineAllocations.TryGetValue(accountId, out var current)
+                                ? current + allocation.Amount
+                                : allocation.Amount;
+                    }
+                }
+            }
+
+            var savedCreditReceipts = savedReceipts
+                .OfType<JsonObject>()
+                .Where(receipt => Integer(receipt, "POSPaymentTypeID") == -10)
+                .ToList();
+
+            var savedReceiptAllocations =
+                new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var receipt in savedCreditReceipts)
+            {
+                var accountId = Text(receipt, "SourceDocumentLineID").Trim();
+                var amount = Number(receipt, "POSReceiptLineAmount");
+
+                if (string.IsNullOrWhiteSpace(accountId) || amount <= 0m)
+                {
+                    continue;
+                }
+
+                savedReceiptAllocations[accountId] =
+                    savedReceiptAllocations.TryGetValue(accountId, out var current)
+                        ? current + amount
+                        : amount;
+            }
+
+            var headerPassed =
+                savedDocumentTypeId == 52 &&
+                string.Equals(
+                    savedDocumentId,
+                    transaction.DocumentId,
+                    StringComparison.OrdinalIgnoreCase);
+
+            var lineAccountsPassed =
+                MemberCreditAmountMapsMatch(expectedAllocations, savedLineAllocations);
+
+            var receiptAccountsPassed =
+                MemberCreditAmountMapsMatch(expectedAllocations, savedReceiptAllocations);
+
+            var receiptCountPassed =
+                savedCreditReceipts.Count == expectedReceiptLineCount;
+
+            var savedReceiptTotal = Math.Round(
+                savedCreditReceipts.Sum(receipt => Number(receipt, "POSReceiptLineAmount")),
+                2,
+                MidpointRounding.AwayFromZero);
+            var redeemedAmountPassed =
+                Math.Abs(savedReceiptTotal - totalRedeemed) < 0.01m;
+
+            var savedPassed =
+                headerPassed &&
+                savedRedemptionLines.Count == transaction.Items.Count(item => item.ActivityTypeId == 6) &&
+                lineAccountsPassed &&
+                receiptAccountsPassed &&
+                receiptCountPassed &&
+                redeemedAmountPassed;
+
+            definiteFailure |= !savedPassed;
+
+            Console.WriteLine(
+                $"[Member Credit Step 30] SAVED DOCUMENT {(savedPassed ? "PASS" : "FAIL")} | " +
+                $"Document={transaction.DocumentId} | DocumentTypeID={savedDocumentTypeId} | " +
+                $"RedemptionLines={savedRedemptionLines.Count} | CreditReceiptLines={savedCreditReceipts.Count} | " +
+                $"RedeemTotal={totalRedeemed:N2} | SavedReceiptTotal={savedReceiptTotal:N2}");
+
+            if (!lineAccountsPassed)
+            {
+                Console.WriteLine(
+                    $"[Member Credit Step 30] SAVED LINES FAIL | Expected={FormatMemberCreditAmounts(expectedAllocations)} | Saved={FormatMemberCreditAmounts(savedLineAllocations)}");
+            }
+
+            if (!receiptAccountsPassed || !receiptCountPassed)
+            {
+                Console.WriteLine(
+                    $"[Member Credit Step 30] SAVED RECEIPTS FAIL | Expected={FormatMemberCreditAmounts(expectedAllocations)} | Saved={FormatMemberCreditAmounts(savedReceiptAllocations)} | ExpectedLines={expectedReceiptLineCount} | SavedLines={savedCreditReceipts.Count}");
+            }
+        }
+
+        var fullyVerified =
+            accountBalancesFullyVerified &&
+            totalCreditVerified &&
+            savedRecordVerified;
+
+        var status = definiteFailure
+            ? "FAIL"
+            : fullyVerified
+                ? "PASS"
+                : "WARNING";
+
+        Console.WriteLine(
+            $"[Member Credit Step 30] {status} | Document={transaction.DocumentId} | " +
+            $"Customer={transaction.AccountId} | Accounts={expectedAllocations.Count} | RedeemTotal={totalRedeemed:N2}");
+    }
+
+    private static bool MemberCreditAmountMapsMatch(
+        IReadOnlyDictionary<string, decimal> expected,
+        IReadOnlyDictionary<string, decimal> actual)
+    {
+        if (expected.Count != actual.Count)
+        {
+            return false;
+        }
+
+        foreach (var item in expected)
+        {
+            if (!actual.TryGetValue(item.Key, out var actualAmount) ||
+                Math.Abs(actualAmount - item.Value) >= 0.01m)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static string FormatMemberCreditAmounts(
+        IReadOnlyDictionary<string, decimal> values) =>
+        values.Count == 0
+            ? "(none)"
+            : string.Join(
+                ", ",
+                values
+                    .OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+                    .Select(item => $"{item.Key}={item.Value:N2}"));
 
     private static (bool Success, string ErrorMessage) ValidateFinalRedemptionRequest(
         Transaction transaction,
