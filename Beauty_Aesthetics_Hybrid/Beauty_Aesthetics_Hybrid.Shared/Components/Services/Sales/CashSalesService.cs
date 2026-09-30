@@ -455,6 +455,10 @@ public sealed class CashSalesService : ICashSalesService
             transaction,
             cancellationToken);
 
+        var multiCreditVerification = await CaptureMultiMemberCreditRedemptionAsync(
+            transaction,
+            cancellationToken);
+
         var createResult = await cashSalesAC.CreateRecordAsync(document, cancellationToken);
         if (!createResult.Success)
         {
@@ -473,6 +477,11 @@ public sealed class CashSalesService : ICashSalesService
         await VerifySingleMemberCreditRedemptionAsync(
             transaction,
             singleCreditVerification,
+            cancellationToken);
+
+        await VerifyMultiMemberCreditRedemptionAsync(
+            transaction,
+            multiCreditVerification,
             cancellationToken);
 
         return ApiCallResult<Transaction>.Ok(createResult.StatusCode, transaction);
@@ -1202,6 +1211,206 @@ public sealed class CashSalesService : ICashSalesService
 
         Console.WriteLine(
             $"[Member Credit Single Verify] BALANCE {(balancePassed ? "PASS" : "FAIL")} | Account={expected.AccountId} | Before={expected.BeforeBalance.Value:N2} | Redeemed={expected.Amount:N2} | ExpectedAfter={expectedAfter:N2} | ActualAfter={afterBalance:N2}");
+    }
+
+    private async Task<IReadOnlyList<(string AccountId, decimal Amount, decimal? BeforeBalance)>?> CaptureMultiMemberCreditRedemptionAsync(
+        Transaction transaction,
+        CancellationToken cancellationToken)
+    {
+        if (transaction.DocumentTypeId != 52 || string.IsNullOrWhiteSpace(transaction.AccountId))
+        {
+            return null;
+        }
+
+        var allocations = transaction.Items
+            .Where(item => item.ActivityTypeId == 6)
+            .SelectMany(EffectiveMemberCreditAllocations)
+            .Where(allocation =>
+                !string.IsNullOrWhiteSpace(allocation.MemberCreditAccountId) &&
+                allocation.Amount > 0m)
+            .GroupBy(allocation => allocation.MemberCreditAccountId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => (
+                AccountId: group.Key,
+                Amount: group.Sum(allocation => allocation.Amount)))
+            .ToList();
+
+        // Step 27 is the multi-account FIFO checkpoint. Single-account verification
+        // remains handled by Step 26.
+        if (allocations.Count <= 1)
+        {
+            return null;
+        }
+
+        var beforeResult = await customerService.GetRedeemableCreditsAsync(
+            transaction.AccountId,
+            DateTime.Now,
+            cancellationToken);
+
+        var beforeByAccount = beforeResult.Success && beforeResult.Value is not null
+            ? beforeResult.Value
+                .Where(credit => !string.IsNullOrWhiteSpace(credit.ARAPOutstandingID))
+                .GroupBy(
+                    credit => credit.ARAPOutstandingID!,
+                    StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.First().NetBalanceAfterUtilised,
+                    StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+
+        if (!beforeResult.Success || beforeResult.Value is null)
+        {
+            Console.WriteLine(
+                $"[Member Credit FIFO Verify] BEFORE WARNING | Unable to load redeemable credits for Customer={transaction.AccountId}: {beforeResult.ErrorMessage}");
+        }
+
+        var captured = allocations
+            .Select(allocation => (
+                allocation.AccountId,
+                allocation.Amount,
+                BeforeBalance: beforeByAccount.TryGetValue(allocation.AccountId, out var balance)
+                    ? (decimal?)balance
+                    : null))
+            .ToList();
+
+        Console.WriteLine(
+            $"[Member Credit FIFO Verify] BEFORE | Accounts={captured.Count} | RedeemTotal={captured.Sum(item => item.Amount):N2} | Order={string.Join(" -> ", captured.Select(item => item.AccountId))}");
+
+        foreach (var allocation in captured)
+        {
+            Console.WriteLine(
+                $"[Member Credit FIFO Verify] BEFORE ACCOUNT | Account={allocation.AccountId} | Redeem={allocation.Amount:N2} | Balance={(allocation.BeforeBalance.HasValue ? allocation.BeforeBalance.Value.ToString("N2") : "unknown")}");
+        }
+
+        return captured;
+    }
+
+    private async Task VerifyMultiMemberCreditRedemptionAsync(
+        Transaction transaction,
+        IReadOnlyList<(string AccountId, decimal Amount, decimal? BeforeBalance)>? verification,
+        CancellationToken cancellationToken)
+    {
+        if (verification is null || verification.Count <= 1)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(transaction.DocumentId))
+        {
+            Console.WriteLine(
+                $"[Member Credit FIFO Verify] FAIL | Created redemption has no DocumentID, so {verification.Count} FIFO receipt lines cannot be verified.");
+            return;
+        }
+
+        var receiptResult = await cashSalesAC.LoadReceiptLinesAsync(
+            transaction.DocumentId,
+            cancellationToken);
+
+        if (!receiptResult.Success || receiptResult.Value is null)
+        {
+            Console.WriteLine(
+                $"[Member Credit FIFO Verify] RECEIPT FAIL | Document={transaction.DocumentId} | Unable to reload receipt lines: {receiptResult.ErrorMessage}");
+        }
+        else
+        {
+            var memberCreditReceipts = receiptResult.Value
+                .Where(line => line.POSPaymentTypeID == -10)
+                .ToList();
+
+            var receiptAccountsPassed = true;
+
+            foreach (var expected in verification)
+            {
+                var matching = memberCreditReceipts
+                    .Where(line =>
+                        string.Equals(
+                            line.SourceDocumentLineID,
+                            expected.AccountId,
+                            StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                var accountPassed =
+                    matching.Count == 1 &&
+                    !string.IsNullOrWhiteSpace(matching[0].POSReceiptLineID) &&
+                    Math.Abs(matching[0].POSReceiptLineAmount - expected.Amount) < 0.01m;
+
+                receiptAccountsPassed &= accountPassed;
+
+                Console.WriteLine(
+                    $"[Member Credit FIFO Verify] RECEIPT ACCOUNT {(accountPassed ? "PASS" : "FAIL")} | Account={expected.AccountId} | ExpectedAmount={expected.Amount:N2} | SavedLines={matching.Count} | SavedAmount={(matching.Count == 1 ? matching[0].POSReceiptLineAmount.ToString("N2") : "n/a")} | POSReceiptLineID={(matching.Count == 1 ? matching[0].POSReceiptLineID : "n/a")}");
+            }
+
+            var expectedAccountIds = verification
+                .Select(item => item.AccountId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var unexpectedReceipts = memberCreditReceipts
+                .Where(line =>
+                    string.IsNullOrWhiteSpace(line.SourceDocumentLineID) ||
+                    !expectedAccountIds.Contains(line.SourceDocumentLineID))
+                .ToList();
+
+            var receiptPassed =
+                receiptAccountsPassed &&
+                memberCreditReceipts.Count == verification.Count &&
+                unexpectedReceipts.Count == 0;
+
+            Console.WriteLine(
+                $"[Member Credit FIFO Verify] RECEIPT {(receiptPassed ? "PASS" : "FAIL")} | Document={transaction.DocumentId} | ExpectedAccounts={verification.Count} | SavedMinus10Lines={memberCreditReceipts.Count} | UnexpectedLines={unexpectedReceipts.Count}");
+        }
+
+        var afterResult = await customerService.GetRedeemableCreditsAsync(
+            transaction.AccountId,
+            DateTime.Now,
+            cancellationToken);
+
+        if (!afterResult.Success || afterResult.Value is null)
+        {
+            Console.WriteLine(
+                $"[Member Credit FIFO Verify] BALANCE WARNING | Unable to reload redeemable credits for Customer={transaction.AccountId}: {afterResult.ErrorMessage}");
+            return;
+        }
+
+        var afterByAccount = afterResult.Value
+            .Where(credit => !string.IsNullOrWhiteSpace(credit.ARAPOutstandingID))
+            .GroupBy(
+                credit => credit.ARAPOutstandingID!,
+                StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.First().NetBalanceAfterUtilised,
+                StringComparer.OrdinalIgnoreCase);
+
+        var balancesVerified = true;
+        var everyBeforeBalanceAvailable = true;
+
+        foreach (var expected in verification)
+        {
+            var actualAfter = afterByAccount.TryGetValue(expected.AccountId, out var balance)
+                ? balance
+                : 0m;
+
+            if (!expected.BeforeBalance.HasValue)
+            {
+                everyBeforeBalanceAvailable = false;
+                balancesVerified = false;
+                Console.WriteLine(
+                    $"[Member Credit FIFO Verify] BALANCE UNVERIFIED | Account={expected.AccountId} | Redeemed={expected.Amount:N2} | ActualAfter={actualAfter:N2} | Before balance was unavailable.");
+                continue;
+            }
+
+            var expectedAfter = Math.Max(0m, expected.BeforeBalance.Value - expected.Amount);
+            var accountPassed = Math.Abs(actualAfter - expectedAfter) < 0.01m;
+            balancesVerified &= accountPassed;
+
+            Console.WriteLine(
+                $"[Member Credit FIFO Verify] BALANCE ACCOUNT {(accountPassed ? "PASS" : "FAIL")} | Account={expected.AccountId} | Before={expected.BeforeBalance.Value:N2} | Redeemed={expected.Amount:N2} | ExpectedAfter={expectedAfter:N2} | ActualAfter={actualAfter:N2}");
+        }
+
+        Console.WriteLine(
+            everyBeforeBalanceAvailable
+                ? $"[Member Credit FIFO Verify] BALANCE {(balancesVerified ? "PASS" : "FAIL")} | Accounts={verification.Count} | RedeemTotal={verification.Sum(item => item.Amount):N2}"
+                : $"[Member Credit FIFO Verify] BALANCE UNVERIFIED | Accounts={verification.Count} | One or more before balances were unavailable.");
     }
 
     private static JsonArray BuildReceiptLines(Transaction transaction)
