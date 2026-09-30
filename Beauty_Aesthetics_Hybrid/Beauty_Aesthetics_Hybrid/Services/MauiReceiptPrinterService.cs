@@ -249,13 +249,11 @@ public sealed class MauiReceiptPrinterService : IReceiptPrinterService
 
         buffer.AddRange(new byte[] { 0x1B, 0x40 });
 
-        if (!string.IsNullOrWhiteSpace(data.CompanyName))
-        {
-            buffer.AddRange(Center());
-            buffer.AddRange(Bold(true));
-            WriteLine(buffer, encoding, Truncate(data.CompanyName, width));
-            buffer.AddRange(Bold(false));
-        }
+        buffer.AddRange(Center());
+        buffer.AddRange(Bold(true));
+        WriteLine(buffer, encoding, Truncate(ReceiptBranding.AppTitle, width));
+        buffer.AddRange(Bold(false));
+        WriteLine(buffer, encoding, Truncate(ReceiptBranding.AppSubtitle, width));
 
         foreach (var addressLine in new[] { data.Address1, data.Address2, data.Address3 })
         {
