@@ -88,12 +88,105 @@ window.generateDocumentPDF = function (htmlContent, fileName) {
     window.printDocument(htmlContent, fileName);
 };
 
-// Download document as PDF (opens print dialog)
-window.downloadDocumentAsPDF = function (htmlContent, fileName) {
-    console.log('📥 Downloading document as PDF:', fileName);
-    
-    // Use print function which allows user to save as PDF
-    window.printDocument(htmlContent, fileName);
+// Download document as a real PDF using the local Beauty receipt HTML.
+// This intentionally avoids the backend thermal PDF so server-side Senang
+// branding cannot leak into Beauty Aesthetics receipts.
+window.downloadDocumentAsPDF = async function (htmlContent, fileName) {
+    console.log('📥 Downloading branded PDF:', fileName);
+
+    const normalizedFileName = (fileName || 'Receipt.pdf').toLowerCase().endsWith('.pdf')
+        ? fileName
+        : (fileName || 'Receipt') + '.pdf';
+
+    if (typeof window.html2pdf !== 'function') {
+        console.warn('html2pdf is unavailable; opening the print dialog as PDF fallback.');
+        window.printDocument(htmlContent, normalizedFileName);
+        return true;
+    }
+
+    const existingFrame = document.getElementById('document-pdf-frame');
+    if (existingFrame && existingFrame.parentNode) {
+        existingFrame.parentNode.removeChild(existingFrame);
+    }
+
+    const frame = document.createElement('iframe');
+    frame.id = 'document-pdf-frame';
+    frame.style.position = 'fixed';
+    frame.style.left = '-10000px';
+    frame.style.top = '0';
+    frame.style.width = '900px';
+    frame.style.height = '1300px';
+    frame.style.border = '0';
+    frame.style.background = '#ffffff';
+    document.body.appendChild(frame);
+
+    try {
+        const doc = frame.contentWindow.document;
+        doc.open();
+        doc.write(htmlContent);
+        doc.close();
+
+        await new Promise((resolve) => {
+            if (doc.readyState === 'complete') {
+                resolve();
+                return;
+            }
+
+            frame.onload = () => resolve();
+            setTimeout(resolve, 600);
+        });
+
+        if (doc.fonts && doc.fonts.ready) {
+            try {
+                await doc.fonts.ready;
+            } catch (_) {
+                // Font readiness is best-effort only.
+            }
+        }
+
+        const images = Array.from(doc.images || []);
+        await Promise.all(images.map((img) => {
+            if (img.complete) return Promise.resolve();
+            return new Promise((resolve) => {
+                img.onload = resolve;
+                img.onerror = resolve;
+                setTimeout(resolve, 1500);
+            });
+        }));
+
+        const target = doc.querySelector('.receipt') || doc.body;
+
+        await window.html2pdf()
+            .set({
+                margin: [8, 8, 8, 8],
+                filename: normalizedFileName,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: {
+                    scale: 2,
+                    useCORS: true,
+                    backgroundColor: '#ffffff',
+                    logging: false
+                },
+                jsPDF: {
+                    unit: 'mm',
+                    format: 'a4',
+                    orientation: 'portrait'
+                },
+                pagebreak: { mode: ['css', 'legacy'] }
+            })
+            .from(target)
+            .save();
+
+        console.log('✓ Branded PDF downloaded:', normalizedFileName);
+        return true;
+    } catch (error) {
+        console.error('PDF generation failed:', error);
+        return false;
+    } finally {
+        if (frame && frame.parentNode) {
+            frame.parentNode.removeChild(frame);
+        }
+    }
 };
 
 console.log('✓ Document Print Module Loaded');
