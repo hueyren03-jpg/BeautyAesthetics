@@ -1526,18 +1526,32 @@ public sealed class CashSalesService : ICashSalesService
         IEnumerable<CashSalesReceiptLineDTO> receiptLines,
         IReadOnlyDictionary<int, string> paymentTypeNames)
     {
-        transaction.Payments = receiptLines
+        var savedReceiptLines = receiptLines
             .Where(line => line.POSPaymentTypeID != 0 &&
-                           line.POSPaymentTypeID != -10 &&
                            line.POSReceiptLineAmount > 0)
+            .ToList();
+
+        // Preserve every saved receipt row for the printed receipt, including the
+        // system-controlled Member Credit rows (POSPaymentTypeID = -10).
+        transaction.ReceiptPayments = savedReceiptLines
             .Select(receipt => new TransactionPayment
             {
                 ReceiptLineId = receipt.POSReceiptLineID ?? string.Empty,
                 PaymentTypeId = receipt.POSPaymentTypeID,
-                PaymentMethod = First(receipt.POSPaymentTypeName, receipt.Description,
-                    paymentTypeNames.GetValueOrDefault(receipt.POSPaymentTypeID), "Payment")!,
-                Amount = receipt.POSReceiptLineAmount
+                PaymentMethod = receipt.POSPaymentTypeID == -10
+                    ? "Member Credit"
+                    : First(receipt.POSPaymentTypeName, receipt.Description,
+                        paymentTypeNames.GetValueOrDefault(receipt.POSPaymentTypeID), "Payment")!,
+                SourceDocumentLineId = receipt.SourceDocumentLineID ?? string.Empty,
+                Amount = receipt.POSReceiptLineAmount,
+                ChangeAmount = Math.Abs(receipt.POSReceiptChangeAmount)
             })
+            .ToList();
+
+        // Keep Member Credit outside the normal tender collection so normal
+        // Cash/Card/Multi-Payment editing does not treat -10 as a selectable payment.
+        transaction.Payments = transaction.ReceiptPayments
+            .Where(payment => payment.PaymentTypeId != -10)
             .ToList();
 
         if (transaction.Payments.Count == 0)
