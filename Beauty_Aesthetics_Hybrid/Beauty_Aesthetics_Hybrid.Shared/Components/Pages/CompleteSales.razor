@@ -429,11 +429,20 @@
             }
         }
 
-        var payments = salesRecord.Payments
+        // Match Senang receipt behaviour: print every saved receipt line, including
+        // system-controlled Member Credit rows (POSPaymentTypeID = -10).
+        var receiptPayments = salesRecord.ReceiptPayments.Count > 0
+            ? salesRecord.ReceiptPayments
+            : salesRecord.Payments;
+
+        var payments = receiptPayments
             .Where(payment => payment.Amount > 0)
             .Select(payment => new ReceiptPaymentLine
             {
-                Method = payment.PaymentMethod,
+                Method = payment.PaymentTypeId == -10 &&
+                         !string.IsNullOrWhiteSpace(payment.SourceDocumentLineId)
+                    ? $"Member Credit ({payment.SourceDocumentLineId})"
+                    : payment.PaymentMethod,
                 Amount = payment.Amount
             })
             .ToList();
