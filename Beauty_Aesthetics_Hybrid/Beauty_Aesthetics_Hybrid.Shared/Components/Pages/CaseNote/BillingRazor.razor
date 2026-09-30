@@ -3575,7 +3575,8 @@
             if (!string.IsNullOrWhiteSpace(completedTransaction.DocumentId))
             {
                 var completedResult = await CashSalesService.LoadTransactionAsync(
-                    completedTransaction.DocumentId);
+                    completedTransaction.DocumentId,
+                    completedTransaction.DocumentTypeId == 52 ? 52 : 5);
 
                 if (completedResult.Success && completedResult.Value is not null)
                 {
@@ -4115,8 +4116,10 @@
 
         try
         {
+            var completedDocumentTypeId = AppState.LastCompletedTransaction?.DocumentTypeId == 52 ? 52 : 5;
             var result = await CashSalesService.RequestReceiptPdfAsync(
-                _completedSaleDocumentId);
+                _completedSaleDocumentId,
+                completedDocumentTypeId);
 
             if (!result.Success || string.IsNullOrWhiteSpace(result.Value))
             {
