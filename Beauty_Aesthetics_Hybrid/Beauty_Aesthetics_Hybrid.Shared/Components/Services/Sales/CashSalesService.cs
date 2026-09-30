@@ -129,13 +129,38 @@ public sealed class CashSalesService : ICashSalesService
                 result.StatusCode, result.ErrorMessage ?? "Unable to load sales collections.");
     }
 
-    public async Task<ApiCallResult<Transaction>> LoadTransactionAsync(string documentId, CancellationToken cancellationToken = default)
+    public Task<ApiCallResult<Transaction>> LoadTransactionAsync(
+        string documentId,
+        CancellationToken cancellationToken = default) =>
+        LoadTransactionAsync(documentId, 5, cancellationToken);
+
+    public async Task<ApiCallResult<Transaction>> LoadTransactionAsync(
+        string documentId,
+        int documentTypeId,
+        CancellationToken cancellationToken = default)
     {
-        var result = await cashSalesAC.LoadRecordAsync(documentId, cancellationToken);
+        var result = documentTypeId == 52
+            ? await cashSalesAC.LoadRedemptionRecordAsync(documentId, cancellationToken)
+            : await cashSalesAC.LoadRecordAsync(documentId, cancellationToken);
+
         if (!result.Success || result.Value is null)
-            return ApiCallResult<Transaction>.Failure(result.StatusCode, result.ErrorMessage ?? "Unable to load the cash sale.");
+        {
+            return ApiCallResult<Transaction>.Failure(
+                result.StatusCode,
+                result.ErrorMessage ??
+                (documentTypeId == 52
+                    ? "Unable to load the redemption."
+                    : "Unable to load the cash sale."));
+        }
 
         var transaction = ToTransaction(result.Value);
+        transaction.DocumentTypeId = documentTypeId == 52 ? 52 : transaction.DocumentTypeId;
+
+        if (string.IsNullOrWhiteSpace(transaction.DocumentId))
+        {
+            transaction.DocumentId = documentId;
+        }
+
         var receiptTask = cashSalesAC.LoadReceiptLinesAsync(documentId, cancellationToken);
         var paymentTypeTask = cashSalesAC.LoadPaymentTypesAsync(cancellationToken);
         await Task.WhenAll(receiptTask, paymentTypeTask);
@@ -294,47 +319,55 @@ public sealed class CashSalesService : ICashSalesService
         return ApiCallResult<string>.Ok(submitResult.StatusCode, submitResult.Value);
     }
 
+    public Task<ApiCallResult<string>> RequestReceiptPdfAsync(
+        string documentId,
+        CancellationToken cancellationToken = default) =>
+        RequestReceiptPdfAsync(documentId, 5, cancellationToken);
+
     public async Task<ApiCallResult<string>> RequestReceiptPdfAsync(
         string documentId,
+        int documentTypeId,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(documentId))
         {
             return ApiCallResult<string>.Failure(
                 HttpStatusCode.BadRequest,
-                "A completed cash sale document is required before requesting a receipt.");
+                "A completed sales document is required before requesting a receipt.");
         }
 
-        var loadResult = await cashSalesAC.LoadRecordAsync(documentId, cancellationToken);
-        if (!loadResult.Success || loadResult.Value is null)
-        {
-            return ApiCallResult<string>.Failure(
-                loadResult.StatusCode,
-                loadResult.ErrorMessage ?? "Unable to load the completed cash sale.");
-        }
-
+        var resolvedDocumentTypeId = documentTypeId == 52 ? 52 : 5;
         var savedDocumentId = documentId;
-        var header = loadResult.Value["objDoc_CashSales"] as JsonObject;
-        if (header is not null)
-        {
-            var headerDocumentId = TextIgnoreCase(header, "DocumentID");
-            if (!string.IsNullOrWhiteSpace(headerDocumentId))
-            {
-                savedDocumentId = headerDocumentId;
-            }
-        }
 
-        var documentTypeId = 5;
-        var lines = loadResult.Value["lstDocumentLine"] as JsonArray;
-        if (lines is not null && lines.OfType<JsonObject>().Any(line =>
-                IntegerIgnoreCase(line, "OwnerDocumentTypeID") == 52))
+        // Follow Senang: redemption uses document type 52 explicitly.
+        // Normal sales may still be inspected to detect a redemption-owned line.
+        if (resolvedDocumentTypeId != 52)
         {
-            documentTypeId = 52;
+            var loadResult = await cashSalesAC.LoadRecordAsync(documentId, cancellationToken);
+            if (loadResult.Success && loadResult.Value is not null)
+            {
+                var header = loadResult.Value["objDoc_CashSales"] as JsonObject;
+                if (header is not null)
+                {
+                    var headerDocumentId = TextIgnoreCase(header, "DocumentID");
+                    if (!string.IsNullOrWhiteSpace(headerDocumentId))
+                    {
+                        savedDocumentId = headerDocumentId;
+                    }
+                }
+
+                var lines = loadResult.Value["lstDocumentLine"] as JsonArray;
+                if (lines is not null && lines.OfType<JsonObject>().Any(line =>
+                        IntegerIgnoreCase(line, "OwnerDocumentTypeID") == 52))
+                {
+                    resolvedDocumentTypeId = 52;
+                }
+            }
         }
 
         var receiptResult = await cashSalesAC.GetThermalReceiptPdfAsync(
             savedDocumentId,
-            documentTypeId,
+            resolvedDocumentTypeId,
             cancellationToken);
 
         if (!receiptResult.Success || string.IsNullOrWhiteSpace(receiptResult.Value))
@@ -347,13 +380,23 @@ public sealed class CashSalesService : ICashSalesService
         return ApiCallResult<string>.Ok(receiptResult.StatusCode, receiptResult.Value);
     }
 
+    public Task<bool> DownloadReceiptPdfAsync(
+        string documentId,
+        CancellationToken cancellationToken = default) =>
+        DownloadReceiptPdfAsync(documentId, 5, cancellationToken);
+
     public async Task<bool> DownloadReceiptPdfAsync(
         string documentId,
+        int documentTypeId,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            var result = await RequestReceiptPdfAsync(documentId, cancellationToken);
+            var result = await RequestReceiptPdfAsync(
+                documentId,
+                documentTypeId,
+                cancellationToken);
+
             if (!result.Success || string.IsNullOrWhiteSpace(result.Value))
             {
                 return false;
