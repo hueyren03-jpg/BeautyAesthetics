@@ -47,6 +47,16 @@ public sealed class CashSalesAC
             "Cash sales history response was invalid.",
             cancellationToken);
 
+    public Task<ApiCallResult<List<CashSalesProxyDTO>>> LoadRedemptionProxyAsync(
+        RedemptionLoadRequestDTO request,
+        CancellationToken cancellationToken = default) =>
+        SendAsync<List<CashSalesProxyDTO>>(
+            HttpMethod.Post,
+            "/api/Doc_Redemption/LoadProxy",
+            request,
+            "Redemption list response was invalid.",
+            cancellationToken);
+
     public Task<ApiCallResult<JsonObject>> LoadRecordAsync(
         string documentId,
         CancellationToken cancellationToken = default) =>
