@@ -876,6 +876,24 @@ public sealed class CashSalesService : ICashSalesService
         var quantity = Number(line, "Quantity");
         var unitPrice = Number(line, "UnitPrice");
         var total = Number(line, "SubTotal");
+        var memberCreditAccountId = Text(line, "MemberCreditAccountID");
+        var memberTypeId = Text(line, "MemberTypeID");
+        var memberCreditAllocations = ParseSavedMemberCreditAllocations(
+            line,
+            memberCreditAccountId,
+            memberTypeId,
+            total != 0 ? total : quantity * unitPrice);
+        var membershipCredit = Text(line, "MembershipCredit");
+
+        // Some redemption LoadRecord responses persist the multi-credit collection
+        // as lstMembershipCredit while MembershipCredit is blank. Reconstruct the
+        // serialized field so a reopened redemption has both representations.
+        if (string.IsNullOrWhiteSpace(membershipCredit) &&
+            memberCreditAllocations.Count > 1)
+        {
+            membershipCredit = SerializeMemberCreditAllocations(memberCreditAllocations);
+        }
+
         return new TransactionItem
         {
             InventoryId = Text(line, "InventoryID"),
@@ -902,12 +920,10 @@ public sealed class CashSalesService : ICashSalesService
             UnitOfMeasureId = Text(line, "UnitOfMeasureID"),
             IsTaxInclusive = Bool(line, "IsTaxInclusive"),
             ActivityTypeId = Integer(line, "ActivityTypeID") == 0 ? 1 : Integer(line, "ActivityTypeID"),
-            MemberCreditAccountId = Text(line, "MemberCreditAccountID"),
-            MemberTypeId = Text(line, "MemberTypeID"),
-            MembershipCredit = Text(line, "MembershipCredit"),
-            MemberCreditAllocations = ParseMemberCreditAllocations(
-                Text(line, "MembershipCredit"),
-                Text(line, "MemberTypeID"))
+            MemberCreditAccountId = memberCreditAccountId,
+            MemberTypeId = memberTypeId,
+            MembershipCredit = membershipCredit,
+            MemberCreditAllocations = memberCreditAllocations
         };
     }
 
@@ -2640,6 +2656,91 @@ public sealed class CashSalesService : ICashSalesService
                     allocation.Amount > 0m)
                 .Select(allocation =>
                     $"{allocation.MemberCreditAccountId.Trim()},{allocation.Amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}"));
+
+    private static List<MemberCreditAllocation> ParseSavedMemberCreditAllocations(
+        JsonObject? line,
+        string? singleAccountId,
+        string? fallbackMemberTypeId,
+        decimal fallbackAmount)
+    {
+        var result = new List<MemberCreditAllocation>();
+
+        if (line?["lstMembershipCredit"] is JsonArray nestedCredits)
+        {
+            foreach (var node in nestedCredits.OfType<JsonObject>())
+            {
+                var accountId = First(
+                    Text(node, "MemberCreditAccountID"),
+                    Text(node, "ARAPOutstandingID"),
+                    Text(node, "SourceDocumentLineID"),
+                    string.Empty) ?? string.Empty;
+                var memberTypeId = First(
+                    Text(node, "MemberTypeID"),
+                    fallbackMemberTypeId,
+                    string.Empty) ?? string.Empty;
+                var amount = Number(node, "MemberCredit");
+                if (amount <= 0m)
+                {
+                    amount = Number(node, "Amount");
+                }
+                if (amount <= 0m)
+                {
+                    amount = Number(node, "POSReceiptLineAmount");
+                }
+
+                if (string.IsNullOrWhiteSpace(accountId) || amount <= 0m)
+                {
+                    continue;
+                }
+
+                result.Add(new MemberCreditAllocation
+                {
+                    MemberCreditAccountId = accountId.Trim(),
+                    MemberTypeId = memberTypeId,
+                    Amount = amount
+                });
+            }
+        }
+
+        if (result.Count == 0)
+        {
+            result.AddRange(ParseMemberCreditAllocations(
+                Text(line, "MembershipCredit"),
+                fallbackMemberTypeId));
+        }
+
+        // Senang's single-credit structure stores the account directly on the
+        // document line and may leave both multi-credit fields empty.
+        if (result.Count == 0 &&
+            !string.IsNullOrWhiteSpace(singleAccountId) &&
+            fallbackAmount > 0m)
+        {
+            result.Add(new MemberCreditAllocation
+            {
+                MemberCreditAccountId = singleAccountId.Trim(),
+                MemberTypeId = fallbackMemberTypeId ?? string.Empty,
+                Amount = fallbackAmount
+            });
+        }
+
+        return result
+            .Where(allocation =>
+                !string.IsNullOrWhiteSpace(allocation.MemberCreditAccountId) &&
+                allocation.Amount > 0m)
+            .GroupBy(
+                allocation => allocation.MemberCreditAccountId.Trim(),
+                StringComparer.OrdinalIgnoreCase)
+            .Select(group => new MemberCreditAllocation
+            {
+                MemberCreditAccountId = group.Key,
+                MemberTypeId = group
+                    .Select(allocation => allocation.MemberTypeId)
+                    .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
+                    ?? string.Empty,
+                Amount = group.Sum(allocation => allocation.Amount)
+            })
+            .ToList();
+    }
 
     private static List<MemberCreditAllocation> ParseMemberCreditAllocations(
         string? serialized,
