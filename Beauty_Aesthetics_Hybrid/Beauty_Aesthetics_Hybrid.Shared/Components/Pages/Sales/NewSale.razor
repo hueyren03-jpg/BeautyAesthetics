@@ -1387,6 +1387,8 @@
     private bool isSelectedCustomerBalanceLoading;
     private string? selectedCustomerBalanceError;
     private int selectedCustomerBalanceRequestVersion;
+    private bool heldRedemptionCreditValidationRequired;
+    private string? heldRedemptionCreditValidationError;
 
     private CatalogItem? editingCatalogItem;
     private TransactionItem? editingCartItem;
@@ -2685,12 +2687,300 @@
         }
     }
 
+    private async Task<bool> RefreshAndRevalidateHeldRedemptionCreditsAsync(bool showFeedback)
+    {
+        if (!currentOrder.IsRedemptionMode)
+        {
+            heldRedemptionCreditValidationRequired = false;
+            heldRedemptionCreditValidationError = null;
+            return true;
+        }
+
+        var heldLines = currentOrder.Items
+            .Where(item =>
+                item.ActivityTypeId == 6 ||
+                EffectiveLineCreditAllocations(item).Count > 0)
+            .ToList();
+
+        if (heldLines.Count == 0)
+        {
+            heldRedemptionCreditValidationRequired = false;
+            heldRedemptionCreditValidationError = null;
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(currentOrder.AccountId))
+        {
+            heldRedemptionCreditValidationRequired = true;
+            heldRedemptionCreditValidationError =
+                "The held redemption has no customer and its Member Credit cannot be revalidated.";
+
+            Console.WriteLine(
+                $"[Member Credit Step 33] BLOCKED | Order={currentOrder.OrderNumber} | Customer missing.");
+
+            if (showFeedback)
+            {
+                Feedback.Warning(
+                    heldRedemptionCreditValidationError,
+                    "Held redemption needs attention");
+            }
+
+            return false;
+        }
+
+        // Never trust the held copy. Always fetch the customer's current backend
+        // balances before accepting any stored ARAP allocation.
+        heldRedemptionCreditValidationRequired = true;
+        heldRedemptionCreditValidationError = null;
+        await LoadSelectedCustomerBalancesAsync(currentOrder.AccountId);
+
+        if (!string.IsNullOrWhiteSpace(redeemableCreditsError))
+        {
+            heldRedemptionCreditValidationError =
+                $"Unable to revalidate held Member Credit from the backend. {redeemableCreditsError}";
+
+            Console.WriteLine(
+                $"[Member Credit Step 33] BLOCKED | Order={currentOrder.OrderNumber} | " +
+                $"Customer={currentOrder.AccountId} | {heldRedemptionCreditValidationError}");
+
+            if (showFeedback)
+            {
+                Feedback.Warning(
+                    heldRedemptionCreditValidationError,
+                    "Credit revalidation required");
+            }
+
+            return false;
+        }
+
+        var latestByAccount = redeemableCredits
+            .Where(credit => !string.IsNullOrWhiteSpace(credit.ARAPOutstandingID))
+            .GroupBy(
+                credit => credit.ARAPOutstandingID!.Trim(),
+                StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.First(),
+                StringComparer.OrdinalIgnoreCase);
+
+        var allocationsByLine = new Dictionary<TransactionItem, List<MemberCreditAllocation>>();
+        var invalidLines = new Dictionary<TransactionItem, HashSet<string>>();
+        var requiredByAccount = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var line in heldLines)
+        {
+            var allocations = EffectiveLineCreditAllocations(line);
+            allocationsByLine[line] = allocations;
+
+            var lineReasons = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (allocations.Count == 0)
+            {
+                lineReasons.Add("missing allocation");
+            }
+
+            var allocatedTotal = Math.Round(
+                allocations.Sum(allocation => allocation.Amount),
+                2,
+                MidpointRounding.AwayFromZero);
+            var lineTotal = Math.Round(
+                Math.Max(0m, line.TotalPrice),
+                2,
+                MidpointRounding.AwayFromZero);
+
+            if (Math.Abs(allocatedTotal - lineTotal) > 0.009m)
+            {
+                lineReasons.Add("allocation no longer matches line amount");
+            }
+
+            if (lineReasons.Count > 0)
+            {
+                invalidLines[line] = lineReasons;
+                continue;
+            }
+
+            foreach (var allocation in allocations)
+            {
+                var accountId = allocation.MemberCreditAccountId.Trim();
+                requiredByAccount[accountId] =
+                    requiredByAccount.TryGetValue(accountId, out var current)
+                        ? current + allocation.Amount
+                        : allocation.Amount;
+            }
+        }
+
+        var invalidAccounts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var required in requiredByAccount)
+        {
+            if (!latestByAccount.TryGetValue(required.Key, out var latest))
+            {
+                invalidAccounts.Add(required.Key);
+                continue;
+            }
+
+            var latestBalance = Math.Round(
+                latest.NetBalanceAfterUtilised,
+                2,
+                MidpointRounding.AwayFromZero);
+            var requested = Math.Round(
+                required.Value,
+                2,
+                MidpointRounding.AwayFromZero);
+
+            if (!latest.IsRedeemable ||
+                latestBalance <= 0m ||
+                (latest.DueDate.Year > 1900 && latest.DueDate.Date < DateTime.Today) ||
+                requested - latestBalance > 0.009m)
+            {
+                invalidAccounts.Add(required.Key);
+            }
+        }
+
+        foreach (var pair in allocationsByLine)
+        {
+            if (invalidLines.ContainsKey(pair.Key))
+            {
+                continue;
+            }
+
+            var affectedAccounts = pair.Value
+                .Select(allocation => allocation.MemberCreditAccountId.Trim())
+                .Where(invalidAccounts.Contains)
+                .ToList();
+
+            if (affectedAccounts.Count > 0)
+            {
+                invalidLines[pair.Key] = affectedAccounts
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            }
+        }
+
+        var removedLines = 0;
+        var removedAccounts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var line in heldLines)
+        {
+            if (invalidLines.TryGetValue(line, out var reasons))
+            {
+                foreach (var allocation in allocationsByLine.GetValueOrDefault(line) ?? new List<MemberCreditAllocation>())
+                {
+                    if (!string.IsNullOrWhiteSpace(allocation.MemberCreditAccountId))
+                    {
+                        removedAccounts.Add(allocation.MemberCreditAccountId.Trim());
+                    }
+                }
+
+                ClearCreditFromLine(line);
+                removedLines++;
+                continue;
+            }
+
+            var normalized = allocationsByLine[line]
+                .Select(allocation =>
+                {
+                    var accountId = allocation.MemberCreditAccountId.Trim();
+                    latestByAccount.TryGetValue(accountId, out var latest);
+
+                    return new MemberCreditAllocation
+                    {
+                        MemberCreditAccountId = accountId,
+                        MemberTypeId = latest?.MemberTypeID ??
+                                       allocation.MemberTypeId ??
+                                       string.Empty,
+                        Amount = Math.Round(
+                            allocation.Amount,
+                            2,
+                            MidpointRounding.AwayFromZero)
+                    };
+                })
+                .ToList();
+
+            line.MemberCreditAllocations = normalized;
+            line.ActivityTypeId = 6;
+            line.MemberTypeId = normalized.FirstOrDefault()?.MemberTypeId ?? string.Empty;
+
+            if (normalized.Count == 1)
+            {
+                line.MemberCreditAccountId = normalized[0].MemberCreditAccountId;
+                line.MembershipCredit = string.Empty;
+            }
+            else
+            {
+                line.MemberCreditAccountId = string.Empty;
+                line.MembershipCredit = SerializeLineCreditAllocations(normalized);
+            }
+        }
+
+        if (removedLines > 0)
+        {
+            // A stale credit selection changes the amount still due, so any held
+            // tender allocation must be recalculated rather than silently reused.
+            currentOrder.Payments.Clear();
+            PendingOrderService.SaveOrUpdate(currentOrder);
+        }
+
+        heldRedemptionCreditValidationRequired = false;
+        heldRedemptionCreditValidationError = null;
+
+        var validAllocations = currentOrder.Items
+            .Where(item => item.ActivityTypeId == 6)
+            .SelectMany(EffectiveLineCreditAllocations)
+            .ToList();
+
+        Console.WriteLine(
+            $"[Member Credit Step 33] PASS | Order={currentOrder.OrderNumber} | " +
+            $"Customer={currentOrder.AccountId} | FreshBackend=True | " +
+            $"RestoredLines={heldLines.Count} | RemovedStaleLines={removedLines} | " +
+            $"ValidAccounts={validAllocations.Select(allocation => allocation.MemberCreditAccountId).Distinct(StringComparer.OrdinalIgnoreCase).Count()} | " +
+            $"ValidAllocated={validAllocations.Sum(allocation => allocation.Amount):N2}");
+
+        if (showFeedback)
+        {
+            if (removedLines > 0)
+            {
+                var accountText = removedAccounts.Count == 0
+                    ? "one or more saved credit accounts"
+                    : string.Join(", ", removedAccounts.OrderBy(value => value, StringComparer.OrdinalIgnoreCase));
+
+                Feedback.Warning(
+                    $"The held order was resumed, but {removedLines} Member Credit line allocation(s) were removed because the latest backend credit changed ({accountText}). Reassign credit before continuing.",
+                    "Held credit updated");
+            }
+            else
+            {
+                Feedback.Success(
+                    "Held Member Credit selections were restored and revalidated against the latest backend balances.",
+                    "Held redemption resumed",
+                    2400);
+            }
+        }
+
+        return true;
+    }
+
     private async Task ResumeOrder(PendingOrder order)
     {
         currentOrder = order.Clone();
         currentOrder.IsHeld = true;
+        isReopenedRedemption = false;
         stage = SaleStage.Cart;
-        await LoadSelectedCustomerBalancesAsync(currentOrder.AccountId);
+
+        var hasHeldCreditSelections = currentOrder.IsRedemptionMode &&
+            currentOrder.Items.Any(item =>
+                item.ActivityTypeId == 6 &&
+                EffectiveLineCreditAllocations(item).Count > 0);
+
+        heldRedemptionCreditValidationRequired = hasHeldCreditSelections;
+        heldRedemptionCreditValidationError = null;
+
+        if (hasHeldCreditSelections)
+        {
+            await RefreshAndRevalidateHeldRedemptionCreditsAsync(showFeedback: true);
+        }
+        else
+        {
+            await LoadSelectedCustomerBalancesAsync(currentOrder.AccountId);
+        }
     }
 
     private void HoldCurrentOrder()
@@ -2704,6 +2994,22 @@
         }
 
         currentOrder.IsHeld = true;
+
+        if (currentOrder.IsRedemptionMode)
+        {
+            var heldAllocations = currentOrder.Items
+                .Where(item => item.ActivityTypeId == 6)
+                .SelectMany(EffectiveLineCreditAllocations)
+                .ToList();
+
+            Console.WriteLine(
+                $"[Member Credit Step 33] HOLD | Order={currentOrder.OrderNumber} | " +
+                $"Customer={currentOrder.AccountId} | RedemptionMode=True | " +
+                $"CreditLines={currentOrder.Items.Count(item => item.ActivityTypeId == 6)} | " +
+                $"CreditAccounts={heldAllocations.Select(allocation => allocation.MemberCreditAccountId).Distinct(StringComparer.OrdinalIgnoreCase).Count()} | " +
+                $"Allocated={heldAllocations.Sum(allocation => allocation.Amount):N2}");
+        }
+
         PendingOrderService.SaveOrUpdate(currentOrder);
         RefreshPendingOrders();
         stage = SaleStage.PendingOrders;
@@ -3081,6 +3387,15 @@
             {
                 Feedback.Warning("Select a customer before redeeming Member Credit.", "Customer required");
                 return;
+            }
+
+            if (heldRedemptionCreditValidationRequired)
+            {
+                var revalidated = await RefreshAndRevalidateHeldRedemptionCreditsAsync(showFeedback: true);
+                if (!revalidated)
+                {
+                    return;
+                }
             }
 
             if (!currentOrder.Items.Any(item =>
