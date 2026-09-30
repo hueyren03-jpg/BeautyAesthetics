@@ -13,9 +13,6 @@ public static class ReceiptHtmlBuilder
         var companyName = string.IsNullOrWhiteSpace(data.CompanyName)
             ? ReceiptBranding.AppTitle
             : data.CompanyName.Trim();
-        var logoUrl = string.IsNullOrWhiteSpace(data.LogoUrl)
-            ? ReceiptBranding.LogoUrl
-            : data.LogoUrl.Trim();
         var saleDate = data.DateTimeOfSale ?? DateTime.Now;
 
         var itemRows = new StringBuilder();
@@ -81,7 +78,20 @@ public static class ReceiptHtmlBuilder
                     body { color: #172033; font-family: Arial, Helvetica, sans-serif; font-size: 12px; }
                     .receipt { width: 100%; max-width: 720px; margin: 0 auto; padding: 22px; background: #fff; }
                     .brand { text-align: center; padding-bottom: 16px; border-bottom: 2px solid #0759ad; }
-                    .brand img { display: block; max-width: 150px; max-height: 72px; width: auto; height: auto; object-fit: contain; margin: 0 auto 8px; }
+                    .brand-mark {
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
+                        width: 58px;
+                        height: 58px;
+                        margin: 0 auto 9px;
+                        border-radius: 50%;
+                        background: #0866c7;
+                        color: #ffffff;
+                        font-size: 20px;
+                        font-weight: 800;
+                        letter-spacing: .04em;
+                    }
                     .brand h1 { margin: 0; color: #064a94; font-size: 23px; line-height: 1.15; }
                     .brand p { margin: 4px 0 0; color: #64748b; }
                     .brand .label { margin-top: 9px; color: #475569; font-size: 10px; font-weight: 700; letter-spacing: .09em; }
@@ -110,8 +120,8 @@ public static class ReceiptHtmlBuilder
             <body>
                 <main class="receipt">
                     <header class="brand">
-                        <img src="{{Encode(logoUrl)}}" alt="{{Encode(companyName)}} logo">
-                        <h1>{{Encode(companyName)}}</h1>
+                        <div class="brand-mark" aria-label="{{Encode(companyName)}} logo">{{Encode(ReceiptBranding.BrandMark)}}</div>
+                        <h1>{{Encode(ReceiptBranding.AppTitle)}}</h1>
                         <p>{{Encode(ReceiptBranding.AppSubtitle)}}</p>
                         <div class="label">OFFICIAL RECEIPT</div>
                         <div class="company-meta">
