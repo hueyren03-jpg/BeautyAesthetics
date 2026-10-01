@@ -281,6 +281,9 @@ public sealed class CashSalesAC
             StringComparison.OrdinalIgnoreCase) ||
         uri.Equals(
             "/api/Doc_Redemption/LoadRecord",
+            StringComparison.OrdinalIgnoreCase) ||
+        uri.Equals(
+            "/api/Doc_CashSales/GetAppSalesList",
             StringComparison.OrdinalIgnoreCase);
 
     private static string SanitizeLogBody(string? body)
