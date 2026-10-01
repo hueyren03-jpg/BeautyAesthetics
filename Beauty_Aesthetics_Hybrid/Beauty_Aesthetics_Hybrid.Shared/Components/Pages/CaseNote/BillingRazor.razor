@@ -1797,10 +1797,10 @@
                                     <table class="billing-table">
                                         <thead>
                                             <tr>
-                                                <th>Credit Account</th>
+                                                <th>Member Credit</th>
                                                 <th>Redeem Date</th>
                                                 <th>Document</th>
-                                                <th>Redeemed Amount</th>
+                                                <th>Redeem Amount</th>
                                                 <th>Branch</th>
                                             </tr>
                                         </thead>
@@ -1938,6 +1938,7 @@
     private string _selectedHistoryCreditId = string.Empty;
     private bool _isCreditHistoryLoading;
     private string? _creditHistoryError;
+    private int _creditHistoryRequestVersion;
 
     private string FormatMoneyBalance(decimal? value) =>
         _isCustomerBalanceLoading ? "Loading..." : value.HasValue ? $"RM {value.Value:N2}" : "—";
@@ -3435,9 +3436,11 @@
     private void CloseRedeemableCredits()
     {
         _showRedeemableCredits = false;
+        _creditHistoryRequestVersion++;
         _selectedHistoryCreditId = string.Empty;
         _creditRedemptionHistory.Clear();
         _creditHistoryError = null;
+        _isCreditHistoryLoading = false;
     }
 
     private async Task ReloadRedeemableCreditsAsync()
@@ -3494,6 +3497,7 @@
             return;
         }
 
+        var requestVersion = ++_creditHistoryRequestVersion;
         _selectedHistoryCreditId = accountId;
         _creditRedemptionHistory.Clear();
         _creditHistoryError = null;
@@ -3503,6 +3507,18 @@
         try
         {
             var result = await MemberCreditWalletService.LoadHistoryAsync(accountId);
+
+            if (requestVersion != _creditHistoryRequestVersion ||
+                !string.Equals(
+                    _selectedHistoryCreditId,
+                    accountId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine(
+                    $"[Member Credit History] STALE RESPONSE IGNORED | Requested={accountId} | Selected={_selectedHistoryCreditId}");
+                return;
+            }
+
             if (!result.Success || result.Value is null)
             {
                 _creditHistoryError =
@@ -3514,13 +3530,27 @@
         }
         catch (Exception ex)
         {
-            _creditHistoryError =
-                $"Unable to load redemption history: {ex.Message}";
+            if (requestVersion == _creditHistoryRequestVersion &&
+                string.Equals(
+                    _selectedHistoryCreditId,
+                    accountId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                _creditHistoryError =
+                    $"Unable to load redemption history: {ex.Message}";
+            }
         }
         finally
         {
-            _isCreditHistoryLoading = false;
-            await InvokeAsync(StateHasChanged);
+            if (requestVersion == _creditHistoryRequestVersion &&
+                string.Equals(
+                    _selectedHistoryCreditId,
+                    accountId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                _isCreditHistoryLoading = false;
+                await InvokeAsync(StateHasChanged);
+            }
         }
     }
 
