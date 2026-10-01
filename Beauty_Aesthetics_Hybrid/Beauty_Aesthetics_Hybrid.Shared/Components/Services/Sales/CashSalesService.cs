@@ -52,9 +52,20 @@ public sealed class CashSalesService : ICashSalesService
     public async Task<ApiCallResult<IReadOnlyList<Transaction>>> LoadTransactionsAsync(
         DateTime startDate, DateTime endDate, string branchId = "", bool resolvePaymentMethods = true, CancellationToken cancellationToken = default)
     {
+        var normalizedBranchId = branchId?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalizedBranchId))
+        {
+            Console.WriteLine(
+                "[Cash Sales Load] BLOCKED | GetAppSalesList requires a working branch; strBranches was empty.");
+
+            return ApiCallResult<IReadOnlyList<Transaction>>.Failure(
+                HttpStatusCode.BadRequest,
+                "Working branch is required before sales history can be loaded.");
+        }
+
         var result = await cashSalesAC.GetAppSalesListAsync(new CashSalesLoadRequestDTO
         {
-            Id = branchId ?? string.Empty,
+            Id = normalizedBranchId,
             StartDate = startDate.Date,
             EndDate = endDate.Date.AddDays(1).AddTicks(-1)
         }, cancellationToken);
