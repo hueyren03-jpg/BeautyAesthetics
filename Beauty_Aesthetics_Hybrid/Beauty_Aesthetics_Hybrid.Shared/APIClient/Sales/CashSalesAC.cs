@@ -207,21 +207,49 @@ public sealed class CashSalesAC
         CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(method, uri);
+        string requestBody = string.Empty;
+
         if (payload is not null)
         {
-            request.Content = JsonContent.Create(payload, mediaType: JsonPatchMediaType, options: JsonOptions);
+            request.Content = JsonContent.Create(
+                payload,
+                mediaType: JsonPatchMediaType,
+                options: JsonOptions);
+
+            requestBody = JsonSerializer.Serialize(payload, JsonOptions);
+        }
+
+        var shouldLog = IsCriticalCreditEndpoint(uri);
+        if (shouldLog)
+        {
+            Console.WriteLine($"[API {method.Method} {uri}] URL: {uri}");
+            Console.WriteLine(
+                $"[API {method.Method} {uri}] Request Body: {SanitizeLogBody(requestBody)}");
         }
 
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+        var body = response.Content is null
+            ? string.Empty
+            : await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (shouldLog)
+        {
+            Console.WriteLine(
+                $"[API {method.Method} {uri}] HTTP {(int)response.StatusCode} {response.StatusCode}");
+            Console.WriteLine(
+                $"[API {method.Method} {uri}] Response Body: {SanitizeLogBody(body)}");
+        }
+
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
             return ApiCallResult<T>.Unauthorized(response.StatusCode);
         }
 
-        var body = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            return ApiCallResult<T>.Failure(response.StatusCode, ReadError(body, "Cash sales API request failed."));
+            return ApiCallResult<T>.Failure(
+                response.StatusCode,
+                ReadError(body, "Cash sales API request failed."));
         }
 
         if (string.IsNullOrWhiteSpace(body))
@@ -234,7 +262,8 @@ public sealed class CashSalesAC
             var apiResponse = JsonSerializer.Deserialize<ApiResponse<T>>(body, JsonOptions);
             if (apiResponse is null || !apiResponse.IsSuccess || apiResponse.Result is null)
             {
-                return ApiCallResult<T>.Failure(response.StatusCode,
+                return ApiCallResult<T>.Failure(
+                    response.StatusCode,
                     apiResponse?.Message ?? invalidResponseMessage);
             }
 
@@ -245,6 +274,75 @@ public sealed class CashSalesAC
             return ApiCallResult<T>.Failure(response.StatusCode, invalidResponseMessage);
         }
     }
+
+    private static bool IsCriticalCreditEndpoint(string uri) =>
+        uri.Equals(
+            "/api/Doc_CashSales/CreateRecord",
+            StringComparison.OrdinalIgnoreCase) ||
+        uri.Equals(
+            "/api/Doc_Redemption/LoadRecord",
+            StringComparison.OrdinalIgnoreCase);
+
+    private static string SanitizeLogBody(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return "<empty>";
+        }
+
+        try
+        {
+            var node = JsonNode.Parse(body);
+            if (node is null)
+            {
+                return body;
+            }
+
+            RedactSensitiveJson(node);
+            return node.ToJsonString(JsonOptions);
+        }
+        catch (JsonException)
+        {
+            return body;
+        }
+    }
+
+    private static void RedactSensitiveJson(JsonNode node)
+    {
+        if (node is JsonObject obj)
+        {
+            foreach (var property in obj.ToList())
+            {
+                if (IsSensitiveLogField(property.Key))
+                {
+                    obj[property.Key] = "***REDACTED***";
+                }
+                else if (property.Value is not null)
+                {
+                    RedactSensitiveJson(property.Value);
+                }
+            }
+
+            return;
+        }
+
+        if (node is JsonArray array)
+        {
+            foreach (var item in array)
+            {
+                if (item is not null)
+                {
+                    RedactSensitiveJson(item);
+                }
+            }
+        }
+    }
+
+    private static bool IsSensitiveLogField(string name) =>
+        name.Contains("token", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("authorization", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("password", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("secret", StringComparison.OrdinalIgnoreCase);
 
     private static string? FindReceiptBase64(JsonElement element)
     {
