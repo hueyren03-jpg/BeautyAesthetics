@@ -1515,6 +1515,8 @@
     private CancellationTokenSource? customerSearchCts;
 
     private decimal? selectedCustomerOutstandingBalance;
+    private List<OutstandingDocumentDTO> outstandingDocuments = new();
+    private string? outstandingDocumentsError;
     private decimal? selectedCustomerPointBalance;
     private decimal? selectedCustomerPackageBalance;
     private decimal? selectedCustomerCreditBalance;
@@ -2021,6 +2023,8 @@
     private void ResetSelectedCustomerBalances()
     {
         selectedCustomerOutstandingBalance = null;
+        outstandingDocuments.Clear();
+        outstandingDocumentsError = null;
         selectedCustomerPointBalance = null;
         selectedCustomerPackageBalance = null;
         selectedCustomerCreditBalance = null;
@@ -2213,15 +2217,29 @@
 
         try
         {
+            var workingBranchId = BranchSession.CurrentBranch?.Id?.Trim() ?? string.Empty;
+            var workingGroupId = BranchSession.CurrentBranch?.GroupId?.Trim();
+            if (string.IsNullOrWhiteSpace(workingGroupId))
+            {
+                workingGroupId = workingBranchId;
+            }
+
             var memberBalanceTask = CustomerService.GetBalanceSummaryAsync(customerId);
             var otherBalanceTask = OutstandingBalanceService.LoadSummaryAsync(customerId, DateTime.UtcNow);
+            var outstandingDocumentsTask = OutstandingBalanceService.LoadDocumentsAsync(
+                customerId,
+                workingGroupId ?? string.Empty);
             var redeemableCreditTask = MemberCreditWalletService.LoadWalletAsync(
                 customerId,
                 DateTime.Today,
                 BranchSession.CurrentBranch?.Id,
                 BranchSession.CurrentBranch?.GroupId);
 
-            await Task.WhenAll(memberBalanceTask, otherBalanceTask, redeemableCreditTask);
+            await Task.WhenAll(
+                memberBalanceTask,
+                otherBalanceTask,
+                outstandingDocumentsTask,
+                redeemableCreditTask);
 
             if (requestVersion != selectedCustomerBalanceRequestVersion)
             {
@@ -2230,6 +2248,7 @@
 
             var memberBalance = await memberBalanceTask;
             var otherBalance = await otherBalanceTask;
+            var detailedOutstanding = await outstandingDocumentsTask;
             var redeemableCredit = await redeemableCreditTask;
 
             if (memberBalance.Success && memberBalance.Value is not null)
@@ -2242,6 +2261,23 @@
             if (otherBalance.Success && otherBalance.Value is not null)
             {
                 selectedCustomerOutstandingBalance = otherBalance.Value.Outstanding;
+            }
+
+            if (detailedOutstanding.Success && detailedOutstanding.Value is not null)
+            {
+                outstandingDocuments = detailedOutstanding.Value.ToList();
+                outstandingDocumentsError = null;
+            }
+            else
+            {
+                outstandingDocuments.Clear();
+                outstandingDocumentsError =
+                    detailedOutstanding.ErrorMessage ??
+                    "Outstanding documents are unavailable.";
+
+                Console.WriteLine(
+                    $"[Outstanding Step 2] DETAIL LOAD FAILED | " +
+                    $"Customer={customerId} | Error={outstandingDocumentsError}");
             }
 
             if (redeemableCredit.Success && redeemableCredit.Value is not null)
