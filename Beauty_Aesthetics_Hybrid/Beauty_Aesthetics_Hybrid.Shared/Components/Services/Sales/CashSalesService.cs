@@ -1324,7 +1324,7 @@ public sealed class CashSalesService : ICashSalesService
 
         decimal grossTotal = 0m;
         decimal discountTotal = 0m;
-        decimal eligibleTotal = 0m;
+        decimal eligibleCreditTotal = 0m;
         decimal creditTotal = 0m;
         var discountedLines = 0;
         var ruleDiscountLines = 0;
@@ -1416,8 +1416,6 @@ public sealed class CashSalesService : ICashSalesService
 
             grossTotal += gross;
             discountTotal += resolvedDiscount;
-            eligibleTotal += eligibleSubTotal;
-
             if (item.ActivityTypeId != 6)
             {
                 continue;
@@ -1460,15 +1458,16 @@ public sealed class CashSalesService : ICashSalesService
                     $"Credit RM {allocated:N2}, discounted subtotal RM {eligibleSubTotal:N2}.");
             }
 
+            eligibleCreditTotal += eligibleSubTotal;
             creditTotal += allocated;
         }
 
         grossTotal = Math.Round(grossTotal, 2, MidpointRounding.AwayFromZero);
         discountTotal = Math.Round(discountTotal, 2, MidpointRounding.AwayFromZero);
-        eligibleTotal = Math.Round(eligibleTotal, 2, MidpointRounding.AwayFromZero);
+        eligibleCreditTotal = Math.Round(eligibleCreditTotal, 2, MidpointRounding.AwayFromZero);
         creditTotal = Math.Round(creditTotal, 2, MidpointRounding.AwayFromZero);
 
-        if (discountTotal < 0m || eligibleTotal < 0m || creditTotal < 0m)
+        if (discountTotal < 0m || eligibleCreditTotal < 0m || creditTotal < 0m)
         {
             return (
                 false,
@@ -1479,7 +1478,7 @@ public sealed class CashSalesService : ICashSalesService
             $"[Member Credit Step 36] PASS | DiscountedLines={discountedLines} | " +
             $"RuleDiscountLines={ruleDiscountLines} | ManualDiscountLines={manualDiscountLines} | " +
             $"Gross={grossTotal:N2} | Discount={discountTotal:N2} | " +
-            $"EligibleSubtotal={eligibleTotal:N2} | MemberCredit={creditTotal:N2}");
+            $"EligibleCreditSubtotal={eligibleCreditTotal:N2} | MemberCredit={creditTotal:N2}");
 
         return (true, string.Empty);
     }
