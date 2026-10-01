@@ -83,12 +83,75 @@ public sealed class MemberCreditWalletService : IMemberCreditWalletService
             new MemberCreditWalletSnapshot(total, accounts));
     }
 
-    public Task<CustomerOperationResult<IReadOnlyList<CreditRedemptionHistoryDTO>>> LoadHistoryAsync(
+    public async Task<CustomerOperationResult<IReadOnlyList<CreditRedemptionHistoryDTO>>> LoadHistoryAsync(
         string arapOutstandingId,
-        CancellationToken cancellationToken = default) =>
-        customerService.GetCreditRedemptionHistoryAsync(
-            arapOutstandingId,
+        CancellationToken cancellationToken = default)
+    {
+        var accountId = arapOutstandingId?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(accountId))
+        {
+            return CustomerOperationResult<IReadOnlyList<CreditRedemptionHistoryDTO>>.Fail(
+                "Member Credit account ID is required.");
+        }
+
+        var result = await customerService.GetCreditRedemptionHistoryAsync(
+            accountId,
             cancellationToken);
+
+        if (!result.Success || result.Value is null)
+        {
+            return CustomerOperationResult<IReadOnlyList<CreditRedemptionHistoryDTO>>.Fail(
+                result.ErrorMessage ?? "Unable to load Member Credit redemption history.");
+        }
+
+        // The endpoint is scoped by the requested ARAPOutstandingID, but older
+        // backend rows can return SourceARAPOutstandingID as blank. Normalize the
+        // source account here so every UI receives the same canonical history.
+        var normalized = result.Value
+            .Where(history =>
+                string.IsNullOrWhiteSpace(history.SourceARAPOutstandingID) ||
+                string.Equals(
+                    history.SourceARAPOutstandingID.Trim(),
+                    accountId,
+                    StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(
+                    history.ARAPOutstandingID?.Trim(),
+                    accountId,
+                    StringComparison.OrdinalIgnoreCase))
+            .Select(history => new CreditRedemptionHistoryDTO
+            {
+                ARAPOutstandingID = history.ARAPOutstandingID?.Trim() ?? string.Empty,
+                SourceARAPOutstandingID =
+                    string.IsNullOrWhiteSpace(history.SourceARAPOutstandingID)
+                        ? accountId
+                        : history.SourceARAPOutstandingID.Trim(),
+                FinancialDate = history.FinancialDate,
+                DisplayCode = history.DisplayCode?.Trim() ?? string.Empty,
+                TotalAmount = history.TotalAmount,
+                BranchID = history.BranchID?.Trim() ?? string.Empty
+            })
+            .GroupBy(
+                history => new
+                {
+                    history.ARAPOutstandingID,
+                    history.SourceARAPOutstandingID,
+                    history.FinancialDate,
+                    history.DisplayCode,
+                    history.TotalAmount,
+                    history.BranchID
+                })
+            .Select(group => group.First())
+            .OrderByDescending(history => history.FinancialDate)
+            .ThenBy(history => history.DisplayCode, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(history => history.ARAPOutstandingID, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        Console.WriteLine(
+            $"[Member Credit History] Account={accountId} | Rows={normalized.Count}");
+
+        return CustomerOperationResult<IReadOnlyList<CreditRedemptionHistoryDTO>>.Ok(
+            normalized);
+    }
 
     public async Task<CustomerOperationResult<MemberCreditWalletSnapshot>> RevalidateAsync(
         string customerId,
