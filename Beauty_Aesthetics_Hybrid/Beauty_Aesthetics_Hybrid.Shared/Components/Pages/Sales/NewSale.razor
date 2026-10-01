@@ -520,7 +520,7 @@
                                                 Tax @item.TaxCodeId
                                                 @if (item.TaxPercentage > 0m)
                                                 {
-                                                    <text> · @item.TaxPercentage.ToString("0.##")%</text>
+                                                    <text> · @((item.TaxPercentage * 100m).ToString("0.##"))%</text>
                                                 }
                                                 · @(item.IsTaxInclusive ? "Inclusive" : "Exclusive")
                                             </small>
@@ -592,7 +592,7 @@
                                             Tax @item.TaxCodeId
                                             @if (item.TaxPercentage > 0m)
                                             {
-                                                <text> · @item.TaxPercentage.ToString("0.##")%</text>
+                                                <text> · @((item.TaxPercentage * 100m).ToString("0.##"))%</text>
                                             }
                                             · @(item.IsTaxInclusive ? "Inclusive" : "Exclusive")
                                             · MYR @item.TaxAmount.ToString("N2")
@@ -654,8 +654,9 @@
                 }
 
                 <footer>
-                    <div><span>Subtotal</span><strong>MYR @currentOrder.Subtotal.ToString("N2")</strong></div>
+                    <div><span>Gross Subtotal</span><strong>MYR @currentOrder.Subtotal.ToString("N2")</strong></div>
                     <div><span>Discount</span><strong>- MYR @currentOrder.Discount.ToString("N2")</strong></div>
+                    <div><span>Subtotal Before Tax</span><strong>MYR @currentOrder.SubtotalBeforeTax.ToString("N2")</strong></div>
                     @if (currentOrder.Tax > 0m)
                     {
                         <div><span>Tax</span><strong>MYR @currentOrder.Tax.ToString("N2")</strong></div>
@@ -794,8 +795,13 @@
                 </div>
 
                 <div class="order-totals">
-                    <div><span>Subtotal</span><strong>MYR @currentOrder.Subtotal.ToString("N2")</strong></div>
+                    <div><span>Gross Subtotal</span><strong>MYR @currentOrder.Subtotal.ToString("N2")</strong></div>
                     <div><span>Discount</span><strong>- MYR @currentOrder.Discount.ToString("N2")</strong></div>
+                    <div><span>Subtotal Before Tax</span><strong>MYR @currentOrder.SubtotalBeforeTax.ToString("N2")</strong></div>
+                    @if (currentOrder.Tax > 0m)
+                    {
+                        <div><span>Tax</span><strong>MYR @currentOrder.Tax.ToString("N2")</strong></div>
+                    }
                     <div class="grand-total"><span>Total Payable</span><strong>MYR @currentOrder.Total.ToString("N2")</strong></div>
                     @if (currentOrder.IsRedemptionMode && RedeemedCreditAmount > 0m)
                     {
@@ -1246,7 +1252,7 @@
                     @editingCatalogItem.TaxCodeId
                     @if (editingCatalogItem.TaxPercentage > 0m)
                     {
-                        <text> · @editingCatalogItem.TaxPercentage.ToString("0.##")%</text>
+                        <text> · @((editingCatalogItem.TaxPercentage * 100m).ToString("0.##"))%</text>
                     }
                     · @(editingCatalogItem.IsTaxInclusive ? "Inclusive" : "Exclusive")
                 </strong>
@@ -1279,7 +1285,12 @@
         </div>
 
         <div class="item-dialog-total">
-            <span>Line Total</span>
+            <span>Tax</span>
+            <strong>MYR @DraftTaxAmount.ToString("N2")</strong>
+        </div>
+
+        <div class="item-dialog-total">
+            <span>Line Total Including Tax</span>
             <strong>MYR @DraftTotal.ToString("N2")</strong>
         </div>
 
@@ -1469,9 +1480,29 @@
         discountRules.FirstOrDefault(rule =>
             rule.Id.Equals(draftCashDiscountId, StringComparison.OrdinalIgnoreCase));
     private decimal DraftResolvedDiscount => ResolveDraftDiscount(out _);
-    private decimal DraftTotal => editingCatalogItem is null
-        ? 0
-        : Math.Max(0, editingCatalogItem.Price * Math.Max(1, draftQuantity) - DraftResolvedDiscount);
+    private (decimal BeforeTax, decimal Tax) DraftTaxAmounts
+    {
+        get
+        {
+            if (editingCatalogItem is null)
+            {
+                return (0m, 0m);
+            }
+
+            OrderLineTaxCalculator.ComputeLineAmounts(
+                editingCatalogItem.Price,
+                Math.Max(1, draftQuantity),
+                DraftResolvedDiscount,
+                editingCatalogItem.TaxPercentage,
+                editingCatalogItem.IsTaxInclusive,
+                out var beforeTax,
+                out var tax);
+
+            return (beforeTax, tax);
+        }
+    }
+    private decimal DraftTaxAmount => DraftTaxAmounts.Tax;
+    private decimal DraftTotal => Math.Max(0m, DraftTaxAmounts.BeforeTax + DraftTaxAmounts.Tax);
     private decimal CalculatorAmount => decimal.TryParse(calculatorDigits, out var cents) ? cents / 100m : 0;
 
     private string ReceiptNumber => string.IsNullOrWhiteSpace(savedSale?.InvoiceNumber) ? currentOrder.OrderNumber : savedSale.InvoiceNumber;
@@ -1714,15 +1745,13 @@
             return new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
         }
 
-        var resolved = await Task.WhenAll(codes.Select(async code =>
-            new KeyValuePair<string, decimal>(
-                code,
-                await GstTaxRateService.GetRateForTaxCodeAsync(code))));
+        var resolved = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var code in codes)
+        {
+            resolved[code] = await GstTaxRateService.GetRateForTaxCodeAsync(code);
+        }
 
-        return resolved.ToDictionary(
-            item => item.Key,
-            item => item.Value,
-            StringComparer.OrdinalIgnoreCase);
+        return resolved;
     }
 
     private static decimal CatalogTaxRate(

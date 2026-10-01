@@ -236,6 +236,12 @@
                                                     {
                                                         <small class="billing-line-code">@item.Sku</small>
                                                     }
+                                                    @if (!string.IsNullOrWhiteSpace(item.TaxCode))
+                                                    {
+                                                        <small class="billing-line-code">
+                                                            Tax @item.TaxCode · @((item.TaxRate * 100m).ToString("0.##"))% · @(item.IsTaxInclusive ? "Inclusive" : "Exclusive") · RM @item.LineTaxAmount.ToString("N2")
+                                                        </small>
+                                                    }
                                                 </td>
                                                 <td>@item.Quantity</td>
                                                 <td>RM @item.UnitPrice.ToString("N2")</td>
@@ -251,7 +257,7 @@
                                                         }
                                                     </button>
                                                 </td>
-                                                <td>RM @item.LineTotal.ToString("N2")</td>
+                                                <td>RM @item.LineTotalAfterTax.ToString("N2")</td>
                                             </tr>
                                         }
                                     </tbody>
@@ -327,6 +333,12 @@
                                                     {
                                                         <small class="billing-line-code">@service.Sku</small>
                                                     }
+                                                    @if (!string.IsNullOrWhiteSpace(service.TaxCode))
+                                                    {
+                                                        <small class="billing-line-code">
+                                                            Tax @service.TaxCode · @((service.TaxRate * 100m).ToString("0.##"))% · @(service.IsTaxInclusive ? "Inclusive" : "Exclusive") · RM @service.LineTaxAmount.ToString("N2")
+                                                        </small>
+                                                    }
                                                 </td>
                                                 <td>@service.Staff</td>
                                                 <td>@service.Quantity</td>
@@ -343,7 +355,7 @@
                                                         }
                                                     </button>
                                                 </td>
-                                                <td>RM @service.LineTotal.ToString("N2")</td>
+                                                <td>RM @service.LineTotalAfterTax.ToString("N2")</td>
                                             </tr>
                                         }
                                     </tbody>
@@ -389,6 +401,12 @@
                                                     {
                                                         <small class="billing-line-code">@credit.Sku</small>
                                                     }
+                                                    @if (!string.IsNullOrWhiteSpace(credit.TaxCode))
+                                                    {
+                                                        <small class="billing-line-code">
+                                                            Tax @credit.TaxCode · @((credit.TaxRate * 100m).ToString("0.##"))% · @(credit.IsTaxInclusive ? "Inclusive" : "Exclusive") · RM @credit.LineTaxAmount.ToString("N2")
+                                                        </small>
+                                                    }
                                                 </td>
                                                 <td>@credit.Quantity</td>
                                                 <td>RM @credit.UnitPrice.ToString("N2")</td>
@@ -404,7 +422,7 @@
                                                         }
                                                     </button>
                                                 </td>
-                                                <td>RM @credit.LineTotal.ToString("N2")</td>
+                                                <td>RM @credit.LineTotalAfterTax.ToString("N2")</td>
                                                 <td>
                                                     <button type="button"
                                                             class="btn-delete-mode"
@@ -3722,9 +3740,10 @@
             Discount = item.Discount,
             CashDiscountId = item.CashDiscountId,
             DiscountMemo = item.DiscountMemo,
-            TotalPrice = item.LineTotal,
+            TotalPrice = item.LineTotalAfterTax,
             TaxCodeId = item.TaxCode,
             TaxPercentage = item.TaxRate,
+            TaxAmount = item.LineTaxAmount,
             IsTaxInclusive = item.IsTaxInclusive
         }));
 
@@ -3739,10 +3758,11 @@
             Discount = item.Discount,
             CashDiscountId = item.CashDiscountId,
             DiscountMemo = item.DiscountMemo,
-            TotalPrice = item.LineTotal,
+            TotalPrice = item.LineTotalAfterTax,
             UnitOfMeasureId = item.UnitOfMeasureId,
             TaxCodeId = item.TaxCode,
             TaxPercentage = item.TaxRate,
+            TaxAmount = item.LineTaxAmount,
             IsTaxInclusive = item.IsTaxInclusive
         }));
 
@@ -3759,10 +3779,11 @@
             Discount = item.Discount,
             CashDiscountId = item.CashDiscountId,
             DiscountMemo = item.DiscountMemo,
-            TotalPrice = item.LineTotal,
+            TotalPrice = item.LineTotalAfterTax,
             UnitOfMeasureId = "UNIT",
             TaxCodeId = item.TaxCode,
             TaxPercentage = item.TaxRate,
+            TaxAmount = item.LineTaxAmount,
             IsTaxInclusive = item.IsTaxInclusive
         }));
 
@@ -3806,9 +3827,16 @@
 
             allocation = Math.Clamp(allocation, 0m, entry.NetBeforeBillDiscount);
             entry.Item.Discount += allocation;
+            var adjustedAmounts = CalculateBillingLineAmounts(
+                entry.Item.UnitPrice,
+                Math.Max(1, entry.Item.Quantity),
+                entry.Item.Discount,
+                entry.Item.TaxPercentage,
+                entry.Item.IsTaxInclusive);
+            entry.Item.TaxAmount = adjustedAmounts.Tax;
             entry.Item.TotalPrice = Math.Max(
                 0m,
-                entry.Item.UnitPrice * Math.Max(1, entry.Item.Quantity) - entry.Item.Discount);
+                adjustedAmounts.BeforeTax + adjustedAmounts.Tax);
 
             if (string.IsNullOrWhiteSpace(entry.Item.CashDiscountId))
             {
@@ -4917,6 +4945,25 @@
     private static string FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
 
+    private static (decimal BeforeTax, decimal Tax) CalculateBillingLineAmounts(
+        decimal unitPrice,
+        decimal quantity,
+        decimal discount,
+        decimal taxRate,
+        bool isTaxInclusive)
+    {
+        Beauty_Aesthetics_WebPos.Components.Services.Tax.OrderLineTaxCalculator.ComputeLineAmounts(
+            unitPrice,
+            Math.Max(1m, quantity),
+            discount,
+            taxRate,
+            isTaxInclusive,
+            out var beforeTax,
+            out var tax);
+
+        return (beforeTax, tax);
+    }
+
     private record BillingItem(string Name, int Quantity, decimal UnitPrice, decimal Discount, 
         string? Frequency = null, string? Duration = null, string? Reason = null, string? Notes = null,
         string SourceId = "", string Sku = "", decimal? AvailableStock = null,
@@ -4924,6 +4971,17 @@
         string CashDiscountId = "", string DiscountMemo = "")
     {
         public decimal LineTotal => Math.Max(0m, UnitPrice * Quantity - Discount);
+        public decimal LineTaxAmount => CalculateBillingLineAmounts(
+            UnitPrice, Quantity, Discount, TaxRate, IsTaxInclusive).Tax;
+        public decimal LineTotalAfterTax
+        {
+            get
+            {
+                var amounts = CalculateBillingLineAmounts(
+                    UnitPrice, Quantity, Discount, TaxRate, IsTaxInclusive);
+                return Math.Max(0m, amounts.BeforeTax + amounts.Tax);
+            }
+        }
     }
 
     private record BillingService(
@@ -4945,6 +5003,17 @@
         string DiscountMemo = "")
     {
         public decimal LineTotal => Math.Max(0m, UnitPrice * Quantity - Discount);
+        public decimal LineTaxAmount => CalculateBillingLineAmounts(
+            UnitPrice, Quantity, Discount, TaxRate, IsTaxInclusive).Tax;
+        public decimal LineTotalAfterTax
+        {
+            get
+            {
+                var amounts = CalculateBillingLineAmounts(
+                    UnitPrice, Quantity, Discount, TaxRate, IsTaxInclusive);
+                return Math.Max(0m, amounts.BeforeTax + amounts.Tax);
+            }
+        }
     }
 
     private record BillingMemberCredit(
@@ -4961,6 +5030,17 @@
         string DiscountMemo = "")
     {
         public decimal LineTotal => Math.Max(0m, UnitPrice * Quantity - Discount);
+        public decimal LineTaxAmount => CalculateBillingLineAmounts(
+            UnitPrice, Quantity, Discount, TaxRate, IsTaxInclusive).Tax;
+        public decimal LineTotalAfterTax
+        {
+            get
+            {
+                var amounts = CalculateBillingLineAmounts(
+                    UnitPrice, Quantity, Discount, TaxRate, IsTaxInclusive);
+                return Math.Max(0m, amounts.BeforeTax + amounts.Tax);
+            }
+        }
     }
 
     private sealed record BillingTaxLine(

@@ -340,7 +340,7 @@ public sealed class ProductInventoryService : IProductInventoryService
         record.SalesPrice = product.Price;
         record.PurchasePrice = Math.Max(0m, product.Cost);
         record.TaxCodeID = string.IsNullOrWhiteSpace(product.TaxCode) ? null : product.TaxCode.Trim();
-        record.IsTaxInclusive = product.IsTaxInclusive;
+        record.IsTaxInclusive = !string.IsNullOrWhiteSpace(record.TaxCodeID) && product.IsTaxInclusive;
         record.BrandName = product.Brand.Trim();
         record.ItemCategoryID = string.IsNullOrWhiteSpace(product.CategoryId)
             ? null

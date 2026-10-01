@@ -8,6 +8,8 @@
 @using Beauty_Aesthetics_WebPos.Components.ViewModels
 @using Beauty_Aesthetics_WebPos.Components.Services.Inventory
 @using Beauty_Aesthetics_WebPos.Components.Services.Branches
+@using Beauty_Aesthetics_WebPos.Components.Services.Tax
+@using Beauty_Aesthetics_WebPos.Models.DTOs
 @using Microsoft.JSInterop
 @using Microsoft.AspNetCore.Components.Forms
 @using System.Text
@@ -27,6 +29,7 @@
 @inject IInventoryPendingAcceptService PendingStockReceiptService
 @inject IBranchLookupService BranchLookupService
 @inject IBranchSessionService BranchSession
+@inject IGstTaxRateService GstTaxRateService
 @inject Beauty_Aesthetics_WebPos.Components.Services.AppState AppState
 @inject AppFeedbackService Feedback
 @inject NavigationManager NavigationManager
@@ -313,6 +316,29 @@
                                 </div>
                                 <div class="inventory__form-row">
                                     <div class="inventory__form-group">
+                                        <label>Tax Code</label>
+                                        <select @bind="NewProduct.TaxCode" disabled="@IsProductTaxCodeLoading">
+                                            <option value="">@(IsProductTaxCodeLoading ? "Loading tax codes..." : "No Tax")</option>
+                                            @foreach (var taxCode in ProductTaxCodeOptions(NewProduct.TaxCode))
+                                            {
+                                                <option value="@taxCode.TaxCodeID">@FormatProductTaxOption(taxCode)</option>
+                                            }
+                                        </select>
+                                        @if (!string.IsNullOrWhiteSpace(ProductTaxCodeError))
+                                        {
+                                            <small class="inventory__field-error">@ProductTaxCodeError</small>
+                                        }
+                                    </div>
+                                    <div class="inventory__form-group">
+                                        <label>Price Includes Tax</label>
+                                        <select @bind="NewProduct.IsTaxInclusive" disabled="@(string.IsNullOrWhiteSpace(NewProduct.TaxCode))">
+                                            <option value="false">No</option>
+                                            <option value="true">Yes</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="inventory__form-row">
+                                    <div class="inventory__form-group">
                                         <label>Locked</label>
                                         <select @bind="NewProduct.Locked">
                                             <option value="false">No</option>
@@ -500,22 +526,27 @@
 
                                             <div class="edit-product-field">
                                                 <label>Tax Code</label>
-                                                <select @bind="EditProduct.TaxCode">
-                                                    <option value="">Select Tax Code</option>
-                                                    <option value="SV-6">SV-6</option>
-                                                    <option value="SST-8">SST-8</option>
-                                                    <option value="GST-6">GST-6</option>
-                                                    <option value="NA">NA</option>
+                                                <select @bind="EditProduct.TaxCode" disabled="@IsProductTaxCodeLoading">
+                                                    <option value="">@(IsProductTaxCodeLoading ? "Loading tax codes..." : "No Tax")</option>
+                                                    @foreach (var taxCode in ProductTaxCodeOptions(EditProduct.TaxCode))
+                                                    {
+                                                        <option value="@taxCode.TaxCodeID">@FormatProductTaxOption(taxCode)</option>
+                                                    }
                                                 </select>
+                                                @if (!string.IsNullOrWhiteSpace(ProductTaxCodeError))
+                                                {
+                                                    <small class="inventory__field-error">@ProductTaxCodeError</small>
+                                                }
                                             </div>
 
                                             <div class="edit-product-field">
-                                                <label>Inclusive Tax</label>
+                                                <label>Price Includes Tax</label>
                                                 <div class="edit-product-radio-group">
                                                     <label>
                                                         <input type="radio"
                                                                name="edit-product-inclusive-tax"
                                                                checked="@EditProduct.IsTaxInclusive"
+                                                               disabled="@(string.IsNullOrWhiteSpace(EditProduct.TaxCode))"
                                                                @onchange="@(() => EditProduct.IsTaxInclusive = true)" />
                                                         <span>Yes</span>
                                                     </label>
@@ -523,6 +554,7 @@
                                                         <input type="radio"
                                                                name="edit-product-inclusive-tax"
                                                                checked="@(!EditProduct.IsTaxInclusive)"
+                                                               disabled="@(string.IsNullOrWhiteSpace(EditProduct.TaxCode))"
                                                                @onchange="@(() => EditProduct.IsTaxInclusive = false)" />
                                                         <span>No</span>
                                                     </label>
@@ -5936,8 +5968,12 @@
     private bool IsProductApiLoading { get; set; }
     private bool IsProductSaving { get; set; }
     private bool IsProductImageUploading { get; set; }
+    private bool IsProductTaxCodeLoading { get; set; }
     private string? ProductApiError { get; set; }
     private string? ProductImageError { get; set; }
+    private string? ProductTaxCodeError { get; set; }
+    private string ProductTaxCodesBranchId { get; set; } = string.Empty;
+    private List<GstTaxCodeDTO> ProductTaxCodes { get; set; } = [];
     private string NewProductImagePreview { get; set; } = string.Empty;
     private string EditProductImagePreview { get; set; } = string.Empty;
     private bool IsProductDetailsVisible { get; set; }
@@ -8684,7 +8720,7 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
 
     private async Task EnsureProductOptionsLoadedAsync()
     {
-        var loadTasks = new List<Task>(3);
+        var loadTasks = new List<Task>(4);
         if (Brands.Count == 0)
         {
             loadTasks.Add(LoadBrandsAsync());
@@ -8700,10 +8736,76 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
             loadTasks.Add(LoadItemGroupsAsync());
         }
 
+        if ((ProductTaxCodes.Count == 0 ||
+             !string.Equals(ProductTaxCodesBranchId, InventoryBranchId, StringComparison.OrdinalIgnoreCase)) &&
+            !IsProductTaxCodeLoading)
+        {
+            loadTasks.Add(LoadProductTaxCodesAsync());
+        }
+
         if (loadTasks.Count > 0)
         {
             await Task.WhenAll(loadTasks);
         }
+    }
+
+    private async Task LoadProductTaxCodesAsync()
+    {
+        IsProductTaxCodeLoading = true;
+        ProductTaxCodeError = null;
+
+        try
+        {
+            var result = await GstTaxRateService.LoadActiveTaxCodesAsync();
+            if (!result.Success || result.Value is null)
+            {
+                ProductTaxCodes = [];
+                ProductTaxCodeError = result.ErrorMessage ?? "Unable to load tax codes.";
+                return;
+            }
+
+            ProductTaxCodes = result.Value
+                .Where(code => !string.IsNullOrWhiteSpace(code.TaxCodeID))
+                .OrderBy(code => code.TaxCodeID)
+                .ToList();
+            ProductTaxCodesBranchId = InventoryBranchId;
+        }
+        finally
+        {
+            IsProductTaxCodeLoading = false;
+        }
+    }
+
+    private IEnumerable<GstTaxCodeDTO> ProductTaxCodeOptions(string? selectedCode)
+    {
+        var values = ProductTaxCodes.ToList();
+        if (!string.IsNullOrWhiteSpace(selectedCode) &&
+            values.All(code => !string.Equals(
+                code.TaxCodeID,
+                selectedCode,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            values.Insert(0, new GstTaxCodeDTO
+            {
+                TaxCodeID = selectedCode.Trim(),
+                TaxDescription = "Saved tax code",
+                Active = true
+            });
+        }
+
+        return values;
+    }
+
+    private static string FormatProductTaxOption(GstTaxCodeDTO taxCode)
+    {
+        var code = taxCode.TaxCodeID?.Trim() ?? string.Empty;
+        var description = taxCode.TaxDescription?.Trim();
+        var percentage = taxCode.TaxRate * 100m;
+        var descriptionText = string.IsNullOrWhiteSpace(description)
+            ? string.Empty
+            : $" — {description}";
+
+        return $"{code}{descriptionText} ({percentage:0.##}%)";
     }
 
     private void OnEditProductItemGroupChanged(ChangeEventArgs e)
