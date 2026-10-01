@@ -20,6 +20,7 @@ public sealed class PendingOrder
 
     public string BranchId { get; set; } = string.Empty;
     public string BranchName { get; set; } = string.Empty;
+    public string GroupId { get; set; } = string.Empty;
 
     public List<TransactionItem> Items { get; set; } = new();
     public List<TransactionPayment> Payments { get; set; } = new();
@@ -68,6 +69,7 @@ public sealed class PendingOrder
             MembershipType = MembershipType,
             BranchId = BranchId,
             BranchName = BranchName,
+            GroupId = GroupId,
             Notes = Notes,
             Items = Items.Select(i => new TransactionItem
             {
