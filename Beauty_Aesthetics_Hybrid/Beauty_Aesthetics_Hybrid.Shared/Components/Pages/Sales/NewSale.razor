@@ -1422,6 +1422,7 @@
     private bool isSelectedCustomerBalanceLoading;
     private string? selectedCustomerBalanceError;
     private int selectedCustomerBalanceRequestVersion;
+    private int redeemableCreditRequestVersion;
     private bool heldRedemptionCreditValidationRequired;
     private string? heldRedemptionCreditValidationError;
 
@@ -1870,9 +1871,54 @@
         isSelectedCustomerBalanceLoading = false;
     }
 
+    private decimal ResetMemberCreditForCustomerSwitch(
+        string? previousCustomerId,
+        string? nextCustomerId)
+    {
+        var releasedAmount = Math.Round(
+            currentOrder.Items
+                .Where(item =>
+                    item.ActivityTypeId == 6 ||
+                    item.MemberCreditAllocations.Count > 0 ||
+                    !string.IsNullOrWhiteSpace(item.MemberCreditAccountId))
+                .SelectMany(EffectiveLineCreditAllocations)
+                .Sum(allocation => allocation.Amount),
+            2,
+            MidpointRounding.AwayFromZero);
+
+        var releasedAccounts = currentOrder.Items
+            .SelectMany(EffectiveLineCreditAllocations)
+            .Where(allocation => !string.IsNullOrWhiteSpace(allocation.MemberCreditAccountId))
+            .Select(allocation => allocation.MemberCreditAccountId.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+
+        ClearAllLineCreditSelections();
+        currentOrder.Payments.Clear();
+        CloseLineCreditSelector();
+
+        // Invalidate every in-flight balance/credit request before changing AccountId.
+        selectedCustomerBalanceRequestVersion++;
+        redeemableCreditRequestVersion++;
+        ResetSelectedCustomerBalances();
+
+        heldRedemptionCreditValidationRequired = false;
+        heldRedemptionCreditValidationError = null;
+
+        Console.WriteLine(
+            $"[Member Credit Step 37] CUSTOMER SWITCH | " +
+            $"From={previousCustomerId ?? string.Empty} | To={nextCustomerId ?? string.Empty} | " +
+            $"ReleasedAccounts={releasedAccounts} | ReleasedAmount={releasedAmount:N2}");
+
+        return releasedAmount;
+    }
+
     private async Task LoadSelectedCustomerBalancesAsync(string? customerId)
     {
         var requestVersion = ++selectedCustomerBalanceRequestVersion;
+
+        // A full wallet refresh supersedes any standalone redeemable-credit load.
+        redeemableCreditRequestVersion++;
         ResetSelectedCustomerBalances();
 
         if (string.IsNullOrWhiteSpace(customerId))
@@ -2579,11 +2625,13 @@
 
     private async Task ReloadRedeemableCredits()
     {
-        if (string.IsNullOrWhiteSpace(currentOrder.AccountId))
+        var customerId = currentOrder.AccountId?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(customerId))
         {
             return;
         }
 
+        var requestVersion = ++redeemableCreditRequestVersion;
         isRedeemableCreditsLoading = true;
         redeemableCreditsError = null;
         await InvokeAsync(StateHasChanged);
@@ -2591,8 +2639,22 @@
         try
         {
             var result = await CustomerService.GetRedeemableCreditsAsync(
-                currentOrder.AccountId,
+                customerId,
                 DateTime.Today);
+
+            // Step 37: never let an old customer's async response replace the
+            // currently selected customer's credit accounts.
+            if (requestVersion != redeemableCreditRequestVersion ||
+                !string.Equals(
+                    customerId,
+                    currentOrder.AccountId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine(
+                    $"[Member Credit Step 37] STALE CREDIT RESPONSE IGNORED | " +
+                    $"RequestedCustomer={customerId} | CurrentCustomer={currentOrder.AccountId}");
+                return;
+            }
 
             if (!result.Success || result.Value is null)
             {
@@ -2615,13 +2677,28 @@
         }
         catch (Exception ex)
         {
-            redeemableCredits.Clear();
-            redeemableCreditsError = $"Unable to load redeemable Member Credit accounts: {ex.Message}";
+            if (requestVersion == redeemableCreditRequestVersion &&
+                string.Equals(
+                    customerId,
+                    currentOrder.AccountId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                redeemableCredits.Clear();
+                redeemableCreditsError =
+                    $"Unable to load redeemable Member Credit accounts: {ex.Message}";
+            }
         }
         finally
         {
-            isRedeemableCreditsLoading = false;
-            await InvokeAsync(StateHasChanged);
+            if (requestVersion == redeemableCreditRequestVersion &&
+                string.Equals(
+                    customerId,
+                    currentOrder.AccountId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                isRedeemableCreditsLoading = false;
+                await InvokeAsync(StateHasChanged);
+            }
         }
     }
 
@@ -2887,12 +2964,27 @@
         var branch = BranchSession.CurrentBranch;
         var branchId = branch?.Id ?? "HQ";
         var branchName = branch?.DisplayName ?? "HQ Outlet";
+        var nextCustomerId = customer.SystemID ?? string.Empty;
+        var previousCustomerId = currentOrder.AccountId ?? string.Empty;
+        var customerChanged =
+            isChangingCustomerForExistingOrder &&
+            !string.Equals(
+                previousCustomerId,
+                nextCustomerId,
+                StringComparison.OrdinalIgnoreCase);
+
+        var releasedCredit = 0m;
 
         if (isChangingCustomerForExistingOrder)
         {
-            ClearAllLineCreditSelections();
-            currentOrder.Payments.Clear();
-            currentOrder.AccountId = customer.SystemID ?? string.Empty;
+            if (customerChanged)
+            {
+                releasedCredit = ResetMemberCreditForCustomerSwitch(
+                    previousCustomerId,
+                    nextCustomerId);
+            }
+
+            currentOrder.AccountId = nextCustomerId;
             currentOrder.CustomerName = CustomerName(customer);
             currentOrder.CustomerContact = customer.ContactNumber1 ?? string.Empty;
             currentOrder.CustomerEmail = customer.Email ?? string.Empty;
@@ -2906,6 +2998,21 @@
 
         stage = SaleStage.Cart;
         await LoadSelectedCustomerBalancesAsync(currentOrder.AccountId);
+
+        if (customerChanged)
+        {
+            Console.WriteLine(
+                $"[Member Credit Step 37] PASS | Customer={currentOrder.AccountId} | " +
+                $"OldAssignmentsCleared=True | NewRedeemableAccounts={redeemableCredits.Count}");
+
+            if (releasedCredit > 0m)
+            {
+                Feedback.Info(
+                    $"Customer changed. RM {releasedCredit:N2} of the previous customer's Member Credit allocation was removed. Select the new customer's credit before continuing.",
+                    "Member Credit reset",
+                    3200);
+            }
+        }
     }
 
     private void SelectWalkInCustomer()
@@ -2931,6 +3038,11 @@
 
         if (isChangingCustomerForExistingOrder)
         {
+            var previousCustomerId = currentOrder.AccountId;
+            ResetMemberCreditForCustomerSwitch(
+                previousCustomerId,
+                string.Empty);
+
             currentOrder.AccountId = string.Empty;
             currentOrder.CustomerName = "Walk-in Customer";
             currentOrder.CustomerContact = string.Empty;
@@ -2941,10 +3053,11 @@
         else
         {
             currentOrder = PendingOrderService.Create(null, branchId, branchName);
+            selectedCustomerBalanceRequestVersion++;
+            redeemableCreditRequestVersion++;
+            ResetSelectedCustomerBalances();
         }
 
-        selectedCustomerBalanceRequestVersion++;
-        ResetSelectedCustomerBalances();
         stage = SaleStage.Cart;
     }
 
