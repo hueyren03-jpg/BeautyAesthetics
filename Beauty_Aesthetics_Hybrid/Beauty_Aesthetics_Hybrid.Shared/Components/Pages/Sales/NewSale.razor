@@ -962,7 +962,7 @@
             <div class="credit-wallet-metric selected">
                 <span class="credit-wallet-metric-icon"><i class="bi bi-check2-circle"></i></span>
                 <span>
-                    <small>Selected / Redeemed</small>
+                    <small>Selected This Bill</small>
                     <strong>RM @CreditModalSelectedAmount.ToString("N2")</strong>
                     <em>Allocated on the current bill</em>
                 </span>
@@ -970,9 +970,9 @@
             <div class="credit-wallet-metric remaining">
                 <span class="credit-wallet-metric-icon"><i class="bi bi-piggy-bank"></i></span>
                 <span>
-                    <small>Remaining Credit</small>
+                    <small>Remaining After Bill</small>
                     <strong>@FormatCreditModalAmount(CreditModalRemainingAmount)</strong>
-                    <em>After the current selection</em>
+                    <em>Available after current allocations</em>
                 </span>
             </div>
         </div>
@@ -1018,6 +1018,9 @@
                             <th>Expiry</th>
                             <th class="amount-cell">Original</th>
                             <th class="amount-cell">Balance</th>
+                            <th class="amount-cell">Selected</th>
+                            <th class="amount-cell">After Bill</th>
+                            <th>Status</th>
                             <th>History</th>
                         </tr>
                     </thead>
@@ -1033,6 +1036,13 @@
                                 <td>@FormatCreditDate(credit.DueDate)</td>
                                 <td class="amount-cell">RM @credit.TotalAmount.ToString("N2")</td>
                                 <td class="amount-cell credit-balance-value">RM @credit.NetBalanceAfterUtilised.ToString("N2")</td>
+                                <td class="amount-cell">RM @CreditSelectedOnCurrentBill(credit.ARAPOutstandingID).ToString("N2")</td>
+                                <td class="amount-cell credit-balance-value">RM @CreditRemainingAfterCurrentBill(credit).ToString("N2")</td>
+                                <td>
+                                    <span class="credit-status-badge @(credit.IsRedeemable ? "is-redeemable" : "is-unavailable")">
+                                        @(credit.IsRedeemable ? "Redeemable" : "Unavailable")
+                                    </span>
+                                </td>
                                 <td>
                                     <button type="button"
                                             class="secondary-action credit-history-button"
@@ -1513,6 +1523,36 @@
             : isRedeemableCreditsLoading
                 ? "Loading..."
                 : "—";
+
+    private decimal CreditSelectedOnCurrentBill(string? accountId)
+    {
+        if (string.IsNullOrWhiteSpace(accountId))
+        {
+            return 0m;
+        }
+
+        return Math.Round(
+            currentOrder.Items
+                .Where(item => item.ActivityTypeId == 6)
+                .SelectMany(EffectiveLineCreditAllocations)
+                .Where(allocation =>
+                    string.Equals(
+                        allocation.MemberCreditAccountId,
+                        accountId,
+                        StringComparison.OrdinalIgnoreCase))
+                .Sum(allocation => allocation.Amount),
+            2,
+            MidpointRounding.AwayFromZero);
+    }
+
+    private decimal CreditRemainingAfterCurrentBill(RedeemableCreditDTO credit) =>
+        Math.Round(
+            Math.Max(
+                0m,
+                credit.NetBalanceAfterUtilised -
+                CreditSelectedOnCurrentBill(credit.ARAPOutstandingID)),
+            2,
+            MidpointRounding.AwayFromZero);
     private decimal Remaining => Math.Max(0, AmountDueAfterCredit - PaidAmount);
     private decimal Change => Math.Max(0, PaidAmount - AmountDueAfterCredit);
     private decimal PaidExcludingCalculatorMethod => calculatorMethod is null
