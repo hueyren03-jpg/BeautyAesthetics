@@ -4111,10 +4111,31 @@
             .Select(group => new TaxSummaryLine
             {
                 TaxCode = $"{group.Key.TaxCodeId} {group.Key.TaxPercentage * 100:0.#}%",
-                Amount = group.Sum(item => (item.UnitPrice * item.Quantity) - item.Discount),
-                Tax = group.Sum(item => item.TaxAmount)
+                Amount = group.Sum(item => CalculateBillingLineAmounts(
+                    item.UnitPrice,
+                    Math.Max(1, item.Quantity),
+                    item.Discount,
+                    item.TaxPercentage,
+                    item.IsTaxInclusive).BeforeTax),
+                Tax = group.Sum(item => item.TaxAmount != 0m
+                    ? item.TaxAmount
+                    : CalculateBillingLineAmounts(
+                        item.UnitPrice,
+                        Math.Max(1, item.Quantity),
+                        item.Discount,
+                        item.TaxPercentage,
+                        item.IsTaxInclusive).Tax)
             })
             .ToList();
+        var receiptTaxAmount = transaction.Tax;
+        if (receiptTaxAmount == 0m)
+        {
+            receiptTaxAmount = taxSummary.Sum(line => line.Tax);
+        }
+        if (receiptTaxAmount == 0m)
+        {
+            receiptTaxAmount = TaxAmount;
+        }
 
         Customer? fullCustomer = null;
         if (!string.IsNullOrWhiteSpace(transaction.AccountId))
@@ -4191,7 +4212,7 @@
             Payments = payments,
             TaxSummary = taxSummary,
             Subtotal = transaction.Subtotal,
-            TaxAmount = transaction.Tax,
+            TaxAmount = receiptTaxAmount,
             TotalBeforeTax_ServiceCharge = transaction.ServiceChargeAmount,
             RoundingAmount = transaction.RoundingAmount,
             GrandTotal = transaction.Amount,

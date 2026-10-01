@@ -472,11 +472,15 @@
             .Select(group => new TaxSummaryLine
             {
                 TaxCode = $"{group.Key.TaxCodeId} {group.Key.TaxPercentage * 100:0.#}%",
-                Amount = group.Sum(item =>
-                    (item.UnitPrice * item.Quantity) - item.Discount),
-                Tax = group.Sum(item => item.TaxAmount)
+                Amount = group.Sum(item => ReceiptLineTaxAmounts(item).BeforeTax),
+                Tax = group.Sum(item => item.TaxAmount != 0m
+                    ? item.TaxAmount
+                    : ReceiptLineTaxAmounts(item).Tax)
             })
             .ToList();
+        var receiptTaxAmount = salesRecord.Tax != 0m
+            ? salesRecord.Tax
+            : taxSummary.Sum(line => line.Tax);
 
         return new ReceiptData
         {
@@ -532,7 +536,7 @@
             ChangeAmount = ReceiptChangeAmount,
             TaxSummary = taxSummary,
             Subtotal = salesRecord.Subtotal,
-            TaxAmount = salesRecord.Tax,
+            TaxAmount = receiptTaxAmount,
             TotalBeforeTax_ServiceCharge = salesRecord.ServiceChargeAmount,
             RoundingAmount = salesRecord.RoundingAmount,
             GrandTotal = salesRecord.Amount,
@@ -616,4 +620,18 @@
 
     private static string FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+
+    private static (decimal BeforeTax, decimal Tax) ReceiptLineTaxAmounts(TransactionItem item)
+    {
+        Beauty_Aesthetics_WebPos.Components.Services.Tax.OrderLineTaxCalculator.ComputeLineAmounts(
+            item.UnitPrice,
+            Math.Max(1, item.Quantity),
+            item.Discount,
+            item.TaxPercentage,
+            item.IsTaxInclusive,
+            out var beforeTax,
+            out var tax);
+
+        return (beforeTax, tax);
+    }
 }

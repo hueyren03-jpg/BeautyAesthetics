@@ -1465,6 +1465,14 @@
                 <strong>MYR @savedNewSale.Amount.ToString("N2")</strong>
                 <div class="pos-receipt-summary">
                     <div>
+                        <span>Subtotal before tax</span>
+                        <strong>MYR @savedNewSale.Subtotal.ToString("N2")</strong>
+                    </div>
+                    <div>
+                        <span>Tax</span>
+                        <strong>MYR @EffectiveTransactionTax(savedNewSale).ToString("N2")</strong>
+                    </div>
+                    <div>
                         <span>Customer</span>
                         <strong>@(string.IsNullOrWhiteSpace(savedNewSale.CustomerName) ? "Walk-in customer" : savedNewSale.CustomerName)</strong>
                     </div>
@@ -2792,6 +2800,22 @@
             });
         }
 
+        var taxSummary = transaction.Items
+            .Where(item => !string.IsNullOrWhiteSpace(item.TaxCodeId))
+            .GroupBy(item => new { item.TaxCodeId, item.TaxPercentage })
+            .Select(group => new TaxSummaryLine
+            {
+                TaxCode = $"{group.Key.TaxCodeId} {group.Key.TaxPercentage * 100:0.#}%",
+                Amount = group.Sum(item => ReceiptLineTaxAmounts(item).BeforeTax),
+                Tax = group.Sum(item => item.TaxAmount != 0m
+                    ? item.TaxAmount
+                    : ReceiptLineTaxAmounts(item).Tax)
+            })
+            .ToList();
+        var receiptTaxAmount = transaction.Tax != 0m
+            ? transaction.Tax
+            : taxSummary.Sum(line => line.Tax);
+
         return new ReceiptData
         {
             CompanyName = ReceiptBranding.AppTitle,
@@ -2815,13 +2839,40 @@
                 Remarks = item.Category
             }).ToList(),
             Payments = payments,
+            TaxSummary = taxSummary,
             Subtotal = transaction.Subtotal,
-            TaxAmount = transaction.Tax,
+            TaxAmount = receiptTaxAmount,
             RoundingAmount = transaction.RoundingAmount,
             GrandTotal = transaction.Amount,
             PaidAmount = paidAmount,
             ChangeAmount = Math.Max(0m, paidAmount - transaction.Amount)
         };
+    }
+
+    private static (decimal BeforeTax, decimal Tax) ReceiptLineTaxAmounts(TransactionItem item)
+    {
+        Beauty_Aesthetics_WebPos.Components.Services.Tax.OrderLineTaxCalculator.ComputeLineAmounts(
+            item.UnitPrice,
+            Math.Max(1, item.Quantity),
+            item.Discount,
+            item.TaxPercentage,
+            item.IsTaxInclusive,
+            out var beforeTax,
+            out var tax);
+
+        return (beforeTax, tax);
+    }
+
+    private static decimal EffectiveTransactionTax(Transaction transaction)
+    {
+        if (transaction.Tax != 0m)
+        {
+            return transaction.Tax;
+        }
+
+        return transaction.Items.Sum(item => item.TaxAmount != 0m
+            ? item.TaxAmount
+            : ReceiptLineTaxAmounts(item).Tax);
     }
 
     private async Task PrintReceipt(Transaction transaction, decimal? amountReceived = null)

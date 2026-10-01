@@ -40,6 +40,16 @@ public static class ReceiptHtmlBuilder
                 $"<div class=\"line\"><span>{Encode(payment.Method)}</span><strong>{FormatMoney(currency, payment.Amount)}</strong></div>");
         }
 
+        var taxSummaryRows = new StringBuilder();
+        foreach (var tax in data.TaxSummary)
+        {
+            taxSummaryRows.Append("<tr>");
+            taxSummaryRows.Append($"<td>{Encode(tax.TaxCode)}</td>");
+            taxSummaryRows.Append($"<td class=\"number\">{FormatMoney(currency, tax.Amount)}</td>");
+            taxSummaryRows.Append($"<td class=\"number\">{FormatMoney(currency, tax.Tax)}</td>");
+            taxSummaryRows.Append("</tr>");
+        }
+
         var branchLine = string.IsNullOrWhiteSpace(data.BranchName)
             ? string.Empty
             : $"<div><span>Branch</span><strong>{Encode(data.BranchName)}</strong></div>";
@@ -103,6 +113,9 @@ public static class ReceiptHtmlBuilder
                     .line.total { margin-top: 6px; padding-top: 10px; border-top: 2px solid #0759ad; color: #064a94; font-size: 15px; }
                     .payments { margin-top: 15px; padding: 12px; border-radius: 7px; background: #eff6ff; }
                     .payments .heading { margin-bottom: 5px; color: #64748b; font-size: 9px; font-weight: 700; letter-spacing: .07em; }
+                    .tax-summary { margin-top: 15px; }
+                    .tax-summary h2 { margin: 0 0 6px; color: #475569; font-size: 9px; letter-spacing: .07em; }
+                    .tax-summary table { margin-top: 0; }
                     .change { color: #087552; }
                     footer { margin-top: 20px; color: #64748b; text-align: center; font-size: 10px; }
                     @media print {
@@ -146,10 +159,20 @@ public static class ReceiptHtmlBuilder
 
                     <section class="totals">
                         <div class="line"><span>Subtotal</span><strong>{{FormatMoney(currency, data.Subtotal)}}</strong></div>
-                        {{(data.TaxAmount != 0m ? $"<div class=\"line\"><span>Tax</span><strong>{FormatMoney(currency, data.TaxAmount)}</strong></div>" : string.Empty)}}
+                        <div class="line"><span>Tax</span><strong>{{FormatMoney(currency, data.EffectiveTaxAmount)}}</strong></div>
                         {{(data.RoundingAmount != 0m ? $"<div class=\"line\"><span>Rounding</span><strong>{FormatMoney(currency, data.RoundingAmount)}</strong></div>" : string.Empty)}}
                         <div class="line total"><span>Total</span><strong>{{FormatMoney(currency, data.GrandTotal)}}</strong></div>
                     </section>
+
+                    {{(data.TaxSummary.Count == 0 ? string.Empty : $"""
+                    <section class="tax-summary">
+                        <h2>TAX SUMMARY</h2>
+                        <table>
+                            <thead><tr><th>Tax Code</th><th class="number">Taxable Amount</th><th class="number">Tax</th></tr></thead>
+                            <tbody>{taxSummaryRows}</tbody>
+                        </table>
+                    </section>
+                    """)}}
 
                     <section class="payments">
                         <div class="heading">PAYMENT BREAKDOWN</div>

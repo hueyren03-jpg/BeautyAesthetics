@@ -86,11 +86,7 @@ public static class ReceiptPdfBuilder
         EnsureSpace(128);
         y -= 2;
         DrawAmountRow(page, ref y, "Subtotal", data.Subtotal, data, false);
-
-        if (data.TaxAmount != 0m)
-        {
-            DrawAmountRow(page, ref y, "Tax", data.TaxAmount, data, false);
-        }
+        DrawAmountRow(page, ref y, "Tax", data.EffectiveTaxAmount, data, false);
 
         if (data.RoundingAmount != 0m)
         {
@@ -101,6 +97,28 @@ public static class ReceiptPdfBuilder
         DrawRule(page, y, 0.55);
         y -= 17;
         DrawAmountRow(page, ref y, "Total Paid", data.GrandTotal, data, true);
+
+        if (data.TaxSummary.Count > 0)
+        {
+            EnsureSpace(48 + (data.TaxSummary.Count * 16));
+            y -= 7;
+            DrawText(page, Margin, y, "TAX SUMMARY", 9, true, 0.35, 0.40, 0.48);
+            y -= 17;
+            DrawText(page, Margin, y, "TAX CODE", 8, true, 0.28, 0.35, 0.45);
+            DrawRight(page, 410, y, "TAXABLE AMOUNT", 8, true, 0.28, 0.35, 0.45);
+            DrawRight(page, 535, y, "TAX", 8, true, 0.28, 0.35, 0.45);
+            y -= 12;
+            DrawRule(page, y, 0.85);
+            y -= 14;
+
+            foreach (var tax in data.TaxSummary)
+            {
+                DrawText(page, Margin, y, Truncate(Clean(tax.TaxCode), 28), 9);
+                DrawRight(page, 410, y, Money(data, tax.Amount), 9);
+                DrawRight(page, 535, y, Money(data, tax.Tax), 9, true);
+                y -= 16;
+            }
+        }
 
         EnsureSpace(90 + (data.Payments.Count * 16));
         y -= 7;

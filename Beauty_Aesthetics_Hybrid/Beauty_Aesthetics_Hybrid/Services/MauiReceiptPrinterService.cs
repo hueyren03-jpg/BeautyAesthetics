@@ -393,7 +393,7 @@ public sealed class MauiReceiptPrinterService : IReceiptPrinterService
         WriteLine(buffer, encoding, PadRightDisplay("Total Discount:", labelWidth) + PadLeftDisplay(totalDiscount.ToString("F2"), totalWidth));
         WriteLine(buffer, encoding, PadRightDisplay("Subtotal:", labelWidth) + PadLeftDisplay(data.Subtotal.ToString("F2"), totalWidth));
         WriteLine(buffer, encoding, PadRightDisplay("Service Charge:", labelWidth) + PadLeftDisplay(serviceChargeText, totalWidth));
-        WriteLine(buffer, encoding, PadRightDisplay("Gov Tax:", labelWidth) + PadLeftDisplay(data.TaxAmount.ToString("F2"), totalWidth));
+        WriteLine(buffer, encoding, PadRightDisplay("Gov Tax:", labelWidth) + PadLeftDisplay(data.EffectiveTaxAmount.ToString("F2"), totalWidth));
         WriteLine(buffer, encoding, PadRightDisplay("Rounding Adj:", labelWidth) + PadLeftDisplay(data.RoundingAmount.ToString("F2"), totalWidth));
 
         WriteRule(buffer, encoding, width);

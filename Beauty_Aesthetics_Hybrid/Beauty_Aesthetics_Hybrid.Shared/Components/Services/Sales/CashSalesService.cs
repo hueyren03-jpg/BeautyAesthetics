@@ -845,6 +845,14 @@ public sealed class CashSalesService : ICashSalesService
             Items = lines.Select(ToTransactionItem).ToList()
         };
 
+        // Some LoadRecord responses leave the header TaxAmount at zero even
+        // though the saved document lines contain the tax fields. Receipts are
+        // line-driven, so retain the item tax instead of silently printing 0.00.
+        if (transaction.Tax == 0m && transaction.Items.Count > 0)
+        {
+            transaction.Tax = transaction.Items.Sum(ResolveReceiptLineTax);
+        }
+
         transaction.ReceiptPayments = receipts.OfType<JsonObject>()
             .Select(receipt => new TransactionPayment
             {
@@ -883,6 +891,17 @@ public sealed class CashSalesService : ICashSalesService
         var categories = transaction.Items.Select(item => item.Category).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         transaction.Type = categories.Count == 1 ? categories[0] : "Mixed";
         return transaction;
+    }
+
+    private static decimal ResolveReceiptLineTax(TransactionItem item)
+    {
+        if (item.TaxAmount != 0m)
+        {
+            return item.TaxAmount;
+        }
+
+        ComputeLineTaxBasis(item, out _, out var tax, out _);
+        return tax;
     }
 
     private static TransactionItem ToTransactionItem(JsonNode? node)

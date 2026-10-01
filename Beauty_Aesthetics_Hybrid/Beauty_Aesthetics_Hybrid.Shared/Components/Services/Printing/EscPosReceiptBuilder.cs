@@ -180,7 +180,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.Printing
 
             PrintColumns(buf, enc, "SubTotal", $"{data.Subtotal:#,##0.00}", width);
             PrintColumns(buf, enc, "Service Charge", $"{serviceChargeText}", width);
-            PrintColumns(buf, enc, "Gov Tax", $"{data.TaxAmount:#,##0.00}", width);
+            PrintColumns(buf, enc, "Gov Tax", $"{data.EffectiveTaxAmount:#,##0.00}", width);
             PrintColumns(buf, enc, "Rounding Adj", $"{data.RoundingAmount:#,##0.00}", width);
 
             buf.AddRange(enc.GetBytes(new string('-', width) + "\n"));
@@ -314,7 +314,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.Printing
 
             sb.Append($@"
     <div style=""display:flex; justify-content:space-between;""><span>SubTotal:</span><span>{data.Subtotal:#,##0.00}</span></div>
-    <div style=""display:flex; justify-content:space-between;""><span>Gov Tax:</span><span>{data.TaxAmount:#,##0.00}</span></div>
+    <div style=""display:flex; justify-content:space-between;""><span>Gov Tax:</span><span>{data.EffectiveTaxAmount:#,##0.00}</span></div>
     <div style=""display:flex; justify-content:space-between;""><span>Rounding:</span><span>{data.RoundingAmount:#,##0.00}</span></div>
     <hr style=""border:none; border-top:1px dashed #000; margin:4px 0;"" />
     <div style=""display:flex; justify-content:space-between; font-weight:bold; font-size:13px;""><span>GRAND TOTAL:</span><span>{data.GrandTotal:#,##0.00}</span></div>
@@ -331,6 +331,23 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.Printing
             if (data.ChangeAmount > 0)
             {
                 sb.Append($@"<div style=""display:flex; justify-content:space-between;""><span>Change:</span><span>({data.ChangeAmount:#,##0.00})</span></div>");
+            }
+
+            if (data.TaxSummary.Count > 0)
+            {
+                sb.Append(@"
+    <hr style=""border:none; border-top:1px dashed #000; margin:6px 0;"" />
+    <div style=""font-weight:bold; margin-bottom:3px;"">Tax Summary</div>
+    <table style=""width:100%; border-collapse:collapse; font-size:10px; font-family:inherit;"">
+        <thead><tr><th style=""text-align:left;"">Tax Code</th><th style=""text-align:right;"">Amount</th><th style=""text-align:right;"">Tax</th></tr></thead>
+        <tbody>");
+
+                foreach (var tax in data.TaxSummary)
+                {
+                    sb.Append($@"<tr><td>{tax.TaxCode}</td><td style=""text-align:right;"">{tax.Amount:#,##0.00}</td><td style=""text-align:right;"">{tax.Tax:#,##0.00}</td></tr>");
+                }
+
+                sb.Append("</tbody></table>");
             }
 
             sb.Append(@"

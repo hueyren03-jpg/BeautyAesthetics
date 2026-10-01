@@ -41,6 +41,10 @@ public sealed class ReceiptData
     public decimal TaxAmount { get; set; }
     public decimal TotalBeforeTax_ServiceCharge { get; set; }
     public string EInvoiceQrUrl { get; set; } = string.Empty;
+
+    public decimal EffectiveTaxAmount => TaxAmount != 0m
+        ? TaxAmount
+        : TaxSummary.Sum(line => line.Tax);
 }
 
 public sealed class ReceiptLineItem

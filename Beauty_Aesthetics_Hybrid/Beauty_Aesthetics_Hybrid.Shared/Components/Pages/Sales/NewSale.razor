@@ -875,6 +875,7 @@
                 <section class="receipt-totals">
                     <div><span>Subtotal</span><strong>MYR @ReceiptSubtotalAmount.ToString("N2")</strong></div>
                     <div><span>Discount</span><strong>- MYR @ReceiptDiscountAmount.ToString("N2")</strong></div>
+                    <div><span>Tax</span><strong>MYR @ReceiptTaxAmount.ToString("N2")</strong></div>
                     <div class="receipt-total"><span>Total Paid</span><strong>MYR @ReceiptTotalAmount.ToString("N2")</strong></div>
                 </section>
 
@@ -1508,6 +1509,20 @@
     private string ReceiptNumber => string.IsNullOrWhiteSpace(savedSale?.InvoiceNumber) ? currentOrder.OrderNumber : savedSale.InvoiceNumber;
     private decimal ReceiptSubtotalAmount => isReopenedRedemption && savedSale is not null ? savedSale.Subtotal : currentOrder.Subtotal;
     private decimal ReceiptDiscountAmount => isReopenedRedemption && savedSale is not null ? savedSale.Discount : currentOrder.Discount;
+    private decimal ReceiptTaxAmount
+    {
+        get
+        {
+            var savedTax = savedSale?.Tax ?? 0m;
+            if (savedTax != 0m)
+            {
+                return savedTax;
+            }
+
+            var savedLineTax = savedSale?.Items.Sum(item => item.TaxAmount) ?? 0m;
+            return savedLineTax != 0m ? savedLineTax : currentOrder.Tax;
+        }
+    }
     private decimal ReceiptTotalAmount => isReopenedRedemption && savedSale is not null ? savedSale.Amount : currentOrder.Total;
     private DateTime ReceiptDate => savedSale?.Date is { Year: > 1 } value ? value : DateTime.Now;
     private string ReceiptCustomer => string.IsNullOrWhiteSpace(savedSale?.CustomerName) ? currentOrder.CustomerName : savedSale.CustomerName;
@@ -4040,6 +4055,10 @@
         var receiptItems = savedSale?.Items is { Count: > 0 }
             ? savedSale.Items
             : currentOrder.Items;
+        var receiptTaxItems = receiptItems.Any(item =>
+                !string.IsNullOrWhiteSpace(item.TaxCodeId) || item.TaxAmount != 0m)
+            ? receiptItems
+            : currentOrder.Items;
         var customerId = string.IsNullOrWhiteSpace(savedSale?.AccountId)
             ? currentOrder.AccountId
             : savedSale.AccountId;
@@ -4076,16 +4095,28 @@
             changeAmount = Math.Max(0m, paidAmount - (savedSale?.Amount ?? currentOrder.Total));
         }
 
-        var taxSummary = receiptItems
+        var taxSummary = receiptTaxItems
             .Where(item => !string.IsNullOrWhiteSpace(item.TaxCodeId))
             .GroupBy(item => new { item.TaxCodeId, item.TaxPercentage })
             .Select(group => new TaxSummaryLine
             {
                 TaxCode = $"{group.Key.TaxCodeId} {group.Key.TaxPercentage * 100:0.#}%",
-                Amount = group.Sum(item => (item.UnitPrice * item.Quantity) - item.Discount),
-                Tax = group.Sum(item => item.TaxAmount)
+                Amount = group.Sum(item => ReceiptLineTaxAmounts(item).BeforeTax),
+                Tax = group.Sum(item =>
+                    item.TaxAmount != 0m
+                        ? item.TaxAmount
+                        : ReceiptLineTaxAmounts(item).Tax)
             })
             .ToList();
+        var receiptTaxAmount = savedSale?.Tax ?? 0m;
+        if (receiptTaxAmount == 0m)
+        {
+            receiptTaxAmount = taxSummary.Sum(line => line.Tax);
+        }
+        if (receiptTaxAmount == 0m)
+        {
+            receiptTaxAmount = currentOrder.Tax;
+        }
 
         return new ReceiptData
         {
@@ -4146,7 +4177,7 @@
             Subtotal = savedSale is { Subtotal: > 0m }
                 ? savedSale.Subtotal
                 : currentOrder.SubtotalBeforeTax,
-            TaxAmount = savedSale?.Tax ?? currentOrder.Tax,
+            TaxAmount = receiptTaxAmount,
             TotalBeforeTax_ServiceCharge = savedSale?.ServiceChargeAmount ?? 0m,
             RoundingAmount = savedSale?.RoundingAmount ?? 0m,
             GrandTotal = savedSale is { Amount: > 0m }
@@ -4245,6 +4276,20 @@
 
     private static string FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+
+    private static (decimal BeforeTax, decimal Tax) ReceiptLineTaxAmounts(TransactionItem item)
+    {
+        OrderLineTaxCalculator.ComputeLineAmounts(
+            item.UnitPrice,
+            Math.Max(1, item.Quantity),
+            item.Discount,
+            item.TaxPercentage,
+            item.IsTaxInclusive,
+            out var beforeTax,
+            out var tax);
+
+        return (beforeTax, tax);
+    }
 
     private void StartAnotherSale()
     {
