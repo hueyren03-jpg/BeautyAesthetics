@@ -435,7 +435,9 @@
                                 class="customer-balance-item customer-balance-button"
                                 title="View redeemable Member Credit accounts"
                                 disabled="@string.IsNullOrWhiteSpace(currentOrder.AccountId)"
-                                @onclick="OpenRedeemableCredits">
+                                aria-haspopup="dialog"
+                                aria-expanded="@showRedeemableCredits"
+                                @onclick="OpenRedeemableCreditsAsync">
                             <span class="customer-balance-icon"><i class="bi bi-credit-card-2-front"></i></span>
                             <span class="customer-balance-copy">
                                 <small>Credit</small>
@@ -948,6 +950,33 @@
             </button>
         </header>
 
+        <div class="credit-wallet-summary" aria-label="Member Credit balance summary">
+            <div class="credit-wallet-metric">
+                <span class="credit-wallet-metric-icon"><i class="bi bi-wallet2"></i></span>
+                <span>
+                    <small>Total Credit</small>
+                    <strong>@FormatCreditModalAmount(CreditModalTotalAmount)</strong>
+                    <em>Backend-available for this branch</em>
+                </span>
+            </div>
+            <div class="credit-wallet-metric selected">
+                <span class="credit-wallet-metric-icon"><i class="bi bi-check2-circle"></i></span>
+                <span>
+                    <small>Selected / Redeemed</small>
+                    <strong>RM @CreditModalSelectedAmount.ToString("N2")</strong>
+                    <em>Allocated on the current bill</em>
+                </span>
+            </div>
+            <div class="credit-wallet-metric remaining">
+                <span class="credit-wallet-metric-icon"><i class="bi bi-piggy-bank"></i></span>
+                <span>
+                    <small>Remaining Credit</small>
+                    <strong>@FormatCreditModalAmount(CreditModalRemainingAmount)</strong>
+                    <em>After the current selection</em>
+                </span>
+            </div>
+        </div>
+
         @if (isRedeemableCreditsLoading)
         {
             <div class="credit-dialog-state">
@@ -974,8 +1003,8 @@
         else
         {
             <div class="credit-account-summary">
-                <span><strong>@redeemableCredits.Count</strong> account@(redeemableCredits.Count == 1 ? "" : "s")</span>
-                <span>Total available: <strong>RM @redeemableCredits.Sum(x => x.NetBalanceAfterUtilised).ToString("N2")</strong></span>
+                <span><strong>@redeemableCredits.Count</strong> redeemable account@(redeemableCredits.Count == 1 ? "" : "s")</span>
+                <span>Accounts are ordered by earliest expiry first.</span>
             </div>
             <div class="credit-account-table-wrap">
                 <table class="credit-account-table">
@@ -1461,6 +1490,29 @@
             (credit.DueDate.Year <= 1900 || credit.DueDate.Date >= DateTime.Today) &&
             CreditAvailableForLine(credit, creditTargetItem) > 0m);
     private decimal AmountDueAfterCredit => Math.Max(0m, currentOrder.Total - RedeemedCreditAmount);
+    private decimal? CreditModalTotalAmount =>
+        selectedCustomerCreditBalance ??
+        (redeemableCredits.Count > 0
+            ? Math.Round(
+                redeemableCredits.Sum(credit => credit.NetBalanceAfterUtilised),
+                2,
+                MidpointRounding.AwayFromZero)
+            : null);
+    private decimal CreditModalSelectedAmount =>
+        Math.Round(RedeemedCreditAmount, 2, MidpointRounding.AwayFromZero);
+    private decimal? CreditModalRemainingAmount =>
+        CreditModalTotalAmount.HasValue
+            ? Math.Round(
+                Math.Max(0m, CreditModalTotalAmount.Value - CreditModalSelectedAmount),
+                2,
+                MidpointRounding.AwayFromZero)
+            : null;
+    private string FormatCreditModalAmount(decimal? amount) =>
+        amount.HasValue
+            ? $"RM {amount.Value:N2}"
+            : isRedeemableCreditsLoading
+                ? "Loading..."
+                : "—";
     private decimal Remaining => Math.Max(0, AmountDueAfterCredit - PaidAmount);
     private decimal Change => Math.Max(0, PaidAmount - AmountDueAfterCredit);
     private decimal PaidExcludingCalculatorMethod => calculatorMethod is null
@@ -2683,7 +2735,7 @@
         }
     }
 
-    private void OpenRedeemableCredits()
+    private async Task OpenRedeemableCreditsAsync()
     {
         if (string.IsNullOrWhiteSpace(currentOrder.AccountId))
         {
@@ -2692,6 +2744,13 @@
         }
 
         showRedeemableCredits = true;
+        selectedHistoryCreditId = string.Empty;
+        creditRedemptionHistory.Clear();
+        creditHistoryError = null;
+
+        // Step 39: opening the Credit card always refreshes the real backend
+        // balance/accounts so the modal does not rely on a stale displayed total.
+        await ReloadRedeemableCredits();
     }
 
     private async Task LoadCreditRedemptionHistoryAsync(RedeemableCreditDTO credit)
