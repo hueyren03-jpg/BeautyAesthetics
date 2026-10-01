@@ -33,8 +33,10 @@ public sealed class GstTaxRateService : IGstTaxRateService
         var result = await LoadActiveTaxCodesAsync(cancellationToken);
         if (!result.Success || result.Value is null) return 0m;
 
-        return result.Value.FirstOrDefault(code =>
+        var rate = result.Value.FirstOrDefault(code =>
             string.Equals(code.TaxCodeID, taxCodeId, StringComparison.OrdinalIgnoreCase))?.TaxRate ?? 0m;
+
+        return NormalizeTaxRate(rate);
     }
 
     public async Task<ApiCallResult<IReadOnlyList<GstTaxCodeDTO>>> LoadActiveTaxCodesAsync(
@@ -83,12 +85,27 @@ public sealed class GstTaxRateService : IGstTaxRateService
 
             codes = response.Value
                 .Where(code => code.Active && !string.IsNullOrWhiteSpace(code.TaxCodeID))
+                .Select(code =>
+                {
+                    code.TaxRate = NormalizeTaxRate(code.TaxRate);
+                    return code;
+                })
                 .OrderBy(code => code.TaxCodeID)
                 .ToList();
             cache[taxTypeId] = codes;
         }
 
         return ApiCallResult<IReadOnlyList<GstTaxCodeDTO>>.Ok(HttpStatusCode.OK, codes);
+    }
+
+    private static decimal NormalizeTaxRate(decimal rate)
+    {
+        if (rate <= 0m) return 0m;
+
+        // Backend installations may return either 0.06 or 6 for 6%.
+        return rate > 1m
+            ? rate / 100m
+            : rate;
     }
 
     private static string? FindText(JsonNode? node, params string[] names)
