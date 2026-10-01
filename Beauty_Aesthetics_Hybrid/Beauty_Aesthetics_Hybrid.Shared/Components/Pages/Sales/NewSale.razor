@@ -1245,20 +1245,34 @@
             <strong>MYR @editingCatalogItem.Price.ToString("N2")</strong>
         </div>
 
-        @if (!string.IsNullOrWhiteSpace(editingCatalogItem.TaxCodeId))
-        {
-            <div class="item-dialog-price">
-                <span>Tax</span>
-                <strong>
-                    @editingCatalogItem.TaxCodeId
-                    @if (editingCatalogItem.TaxPercentage > 0m)
+        <div class="item-fields">
+            <label>
+                <span>Tax Code</span>
+                <select value="@draftTaxCodeId" @onchange="OnDraftTaxCodeChanged">
+                    <option value="">No Tax</option>
+                    @foreach (var taxCode in activeTaxCodes)
                     {
-                        <text> · @((editingCatalogItem.TaxPercentage * 100m).ToString("0.##"))%</text>
+                        <option value="@taxCode.TaxCodeID">
+                            @taxCode.TaxCodeID
+                            @if (!string.IsNullOrWhiteSpace(taxCode.TaxDescription))
+                            {
+                                <text> - @taxCode.TaxDescription</text>
+                            }
+                            @if (taxCode.TaxRate > 0m)
+                            {
+                                <text> (@((taxCode.TaxRate * 100m).ToString("0.##"))%)</text>
+                            }
+                        </option>
                     }
-                    · @(editingCatalogItem.IsTaxInclusive ? "Inclusive" : "Exclusive")
-                </strong>
-            </div>
-        }
+                </select>
+            </label>
+            <label>
+                <span>Inclusive Tax</span>
+                <input type="checkbox"
+                       @bind="draftIsTaxInclusive"
+                       disabled="@string.IsNullOrWhiteSpace(draftTaxCodeId)" />
+            </label>
+        </div>
 
         <div class="item-fields">
             <label>
@@ -1447,6 +1461,10 @@
     private string draftCashDiscountId = string.Empty;
     private string draftDiscountMemo = string.Empty;
     private List<CashDiscountRuleDTO> discountRules = new();
+    private List<GstTaxCodeDTO> activeTaxCodes = new();
+    private string draftTaxCodeId = string.Empty;
+    private decimal draftTaxPercentage;
+    private bool draftIsTaxInclusive;
 
     private CashSalesPaymentTypeDTO? calculatorMethod;
     private bool mobileCartOpen;
@@ -1494,8 +1512,8 @@
                 editingCatalogItem.Price,
                 Math.Max(1, draftQuantity),
                 DraftResolvedDiscount,
-                editingCatalogItem.TaxPercentage,
-                editingCatalogItem.IsTaxInclusive,
+                draftTaxPercentage,
+                draftIsTaxInclusive,
                 out var beforeTax,
                 out var tax);
 
@@ -1633,8 +1651,9 @@
         var productTask = ProductInventoryService.LoadProductsAsync(branchId);
         var serviceTask = ServiceItemService.LoadServiceItemsAsync(branchId);
         var memberCreditTask = MemberCreditService.LoadMemberCreditsAsync(branchId);
+        var taxCodeTask = GstTaxRateService.LoadActiveTaxCodesAsync();
 
-        await Task.WhenAll(paymentTask, discountTask, customerTask, productTask, serviceTask, memberCreditTask);
+        await Task.WhenAll(paymentTask, discountTask, customerTask, productTask, serviceTask, memberCreditTask, taxCodeTask);
 
         var paymentResult = await paymentTask;
         var discountResult = await discountTask;
@@ -1642,6 +1661,11 @@
         var productResult = await productTask;
         var serviceResult = await serviceTask;
         var memberCreditResult = await memberCreditTask;
+        var taxCodeResult = await taxCodeTask;
+
+        activeTaxCodes = taxCodeResult.Success && taxCodeResult.Value is not null
+            ? taxCodeResult.Value.ToList()
+            : new List<GstTaxCodeDTO>();
 
         if (paymentResult.Success && paymentResult.Value is not null)
             paymentTypes = paymentResult.Value.ToList();
@@ -3386,6 +3410,9 @@
         draftDiscount = 0;
         draftCashDiscountId = string.Empty;
         draftDiscountMemo = string.Empty;
+        draftTaxCodeId = item.TaxCodeId ?? string.Empty;
+        draftTaxPercentage = item.TaxPercentage;
+        draftIsTaxInclusive = item.IsTaxInclusive;
     }
 
     private void EditCartItem(TransactionItem item)
@@ -3407,6 +3434,9 @@
         draftDiscount = item.Discount;
         draftCashDiscountId = item.CashDiscountId;
         draftDiscountMemo = item.DiscountMemo;
+        draftTaxCodeId = item.TaxCodeId;
+        draftTaxPercentage = item.TaxPercentage;
+        draftIsTaxInclusive = item.IsTaxInclusive;
     }
 
     private void CloseItemEditor()
@@ -3415,6 +3445,24 @@
         editingCartItem = null;
         draftCashDiscountId = string.Empty;
         draftDiscountMemo = string.Empty;
+        draftTaxCodeId = string.Empty;
+        draftTaxPercentage = 0m;
+        draftIsTaxInclusive = false;
+    }
+
+    private void OnDraftTaxCodeChanged(ChangeEventArgs e)
+    {
+        draftTaxCodeId = e.Value?.ToString()?.Trim() ?? string.Empty;
+
+        var selected = activeTaxCodes.FirstOrDefault(code =>
+            string.Equals(code.TaxCodeID, draftTaxCodeId, StringComparison.OrdinalIgnoreCase));
+
+        draftTaxPercentage = selected?.TaxRate ?? 0m;
+
+        if (string.IsNullOrWhiteSpace(draftTaxCodeId))
+        {
+            draftIsTaxInclusive = false;
+        }
     }
 
     private void OnDraftDiscountRuleChanged(ChangeEventArgs e)
@@ -3492,7 +3540,9 @@
                 i.Discount == 0 &&
                 discount == 0 &&
                 string.IsNullOrWhiteSpace(i.CashDiscountId) &&
-                string.IsNullOrWhiteSpace(draftCashDiscountId));
+                string.IsNullOrWhiteSpace(draftCashDiscountId) &&
+                string.Equals(i.TaxCodeId, draftTaxCodeId, StringComparison.OrdinalIgnoreCase) &&
+                i.IsTaxInclusive == draftIsTaxInclusive);
 
             if (existing is not null)
             {
@@ -3521,9 +3571,9 @@
                     CashDiscountId = draftCashDiscountId,
                     DiscountMemo = draftDiscountMemo,
                     UnitOfMeasureId = "UNIT",
-                    TaxCodeId = editingCatalogItem.TaxCodeId,
-                    TaxPercentage = editingCatalogItem.TaxPercentage,
-                    IsTaxInclusive = editingCatalogItem.IsTaxInclusive
+                    TaxCodeId = draftTaxCodeId,
+                    TaxPercentage = draftTaxPercentage,
+                    IsTaxInclusive = draftIsTaxInclusive
                 };
                 RecalculateItemTaxAndTotal(newItem);
                 currentOrder.Items.Add(newItem);
@@ -3541,6 +3591,9 @@
             editingCartItem.Discount = discount;
             editingCartItem.CashDiscountId = draftCashDiscountId;
             editingCartItem.DiscountMemo = draftDiscountMemo;
+            editingCartItem.TaxCodeId = draftTaxCodeId;
+            editingCartItem.TaxPercentage = draftTaxPercentage;
+            editingCartItem.IsTaxInclusive = draftIsTaxInclusive;
             RecalculateItemTaxAndTotal(editingCartItem);
 
             var changeSource = previousUnitPrice != editingCartItem.UnitPrice
