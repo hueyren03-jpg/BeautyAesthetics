@@ -1329,11 +1329,16 @@ textarea:focus {
 }
 .cart-item {
     display: grid;
-    grid-template-columns: 44px minmax(0,1fr) auto auto 56px;
-    gap: 8px;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    grid-template-areas:
+        "image details details"
+        "image quantity total"
+        "actions actions actions";
+    column-gap: 10px;
+    row-gap: 8px;
     align-items: center;
-    min-height: 64px;
-    padding: 8px 0;
+    min-height: 112px;
+    padding: 12px 0;
     border-bottom: 1px solid #e6ebf2;
     transition: background 0.15s ease;
 }
@@ -1348,12 +1353,46 @@ textarea:focus {
     object-fit: cover;
     background: #edf3f8;
 }
-.cart-item-info { min-width: 0; display: grid; gap: 2px; }
-.cart-item-info strong { font-size: 13px; color: #1e293b; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cart-item-info span { color: #64748b; font-size: 11px; }
+.cart-item > img { grid-area: image; align-self: start; }
+.cart-item-info { grid-area: details; min-width: 0; display: grid; gap: 3px; }
+.cart-item-info strong { font-size: 13px; color: #1e293b; font-weight: 700; overflow-wrap: anywhere; }
+.cart-item-info span { color: #64748b; font-size: 11px; line-height: 1.35; }
 .discount-badge { color: #dc2626; font-size: 11px; font-weight: 700; }
 
+.member-credit-assignment {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    color: #64748b;
+    font-size: 10.5px;
+    line-height: 1.35;
+}
+
+.member-credit-assignment i {
+    flex: 0 0 auto;
+    color: #64748b;
+}
+
+.member-credit-assignment span {
+    min-width: 0;
+}
+
+.member-credit-assignment strong {
+    color: inherit;
+    font-size: inherit;
+    overflow-wrap: anywhere;
+}
+
+.member-credit-assignment.is-assigned,
+.member-credit-assignment.is-assigned i,
+.member-credit-assignment.is-assigned strong {
+    color: #0759a8;
+}
+
 .cart-item-qty-stepper {
+    grid-area: quantity;
+    justify-self: start;
     display: inline-flex;
     align-items: center;
     border: 1.5px solid #cbd5e1;
@@ -1384,22 +1423,41 @@ textarea:focus {
     color: #1e293b;
 }
 
-.cart-item > b { font-size: 13.5px; font-weight: 800; color: #1e293b; white-space: nowrap; }
+.cart-item > b { grid-area: total; justify-self: end; font-size: 13.5px; font-weight: 800; color: #1e293b; white-space: nowrap; }
 
-.cart-item-actions { display: flex; align-items: center; gap: 4px; }
+.cart-item-actions {
+    grid-area: actions;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+}
 .cart-item-actions button {
-    display: grid;
-    place-items: center;
-    width: 28px;
-    height: 28px;
-    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 42px;
+    min-height: 36px;
+    padding: 0 10px;
     border: 1.5px solid #d7e1ed;
-    border-radius: 6px;
+    border-radius: 8px;
     background: #fff;
     color: #475569;
     cursor: pointer;
-    font-size: 11.5px;
+    font-size: 11px;
+    font-weight: 700;
     transition: all 0.18s ease;
+}
+.cart-item-actions button.credit-action {
+    flex: 1 1 auto;
+    color: #0759a8;
+    border-color: #b8d5f3;
+    background: #f4f9ff;
+}
+.cart-item-actions button.remove {
+    color: #b42318;
+    border-color: #fecaca;
 }
 .cart-item-actions button:hover {
     border-color: #0866c7;
@@ -2905,14 +2963,14 @@ textarea:focus {
     z-index: 1002;
     inset: 50% auto auto 50%;
     transform: translate(-50%, -50%);
-    width: min(1120px, calc(100vw - 40px));
-    max-height: min(760px, calc(100vh - 40px));
-    overflow-x: hidden;
-    overflow-y: auto;
+    width: min(1240px, calc(100vw - 32px));
+    height: min(780px, calc(100dvh - 32px));
+    max-height: calc(100dvh - 32px);
+    overflow: hidden;
     overscroll-behavior: contain;
-    scrollbar-gutter: stable;
     display: flex;
     flex-direction: column;
+    box-sizing: border-box;
     background: #fff;
     border-radius: 16px;
     box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
@@ -2944,6 +3002,9 @@ textarea:focus {
     margin: 3px 0 0;
     color: #64748b;
     font-size: 12.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .credit-dialog-icon {
@@ -3003,8 +3064,7 @@ textarea:focus {
     color: #64748b;
     font-size: 11px;
     font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.035em;
+    line-height: 1.2;
 }
 
 .credit-wallet-metric strong {
@@ -3046,34 +3106,34 @@ textarea:focus {
 
 .credit-account-table-wrap {
     overflow: auto;
-    flex: 0 0 auto;
-    min-height: 0;
-    max-height: min(360px, 44vh);
+    flex: 1 1 auto;
+    min-height: 120px;
+    max-height: none;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
 }
 
 /* Do not let the account list collapse when redemption history is opened. */
 .credit-accounts-dialog.has-credit-history > .credit-account-table-wrap {
-    min-height: 190px;
-    height: min(250px, 30vh);
-    max-height: min(250px, 30vh);
-    flex: 0 0 auto;
+    min-height: 150px;
+    flex: 1 1 50%;
 }
 
 .credit-account-table {
     width: 100%;
-    min-width: 1120px;
+    min-width: 0;
+    table-layout: fixed;
     border-collapse: collapse;
     font-size: 12.5px;
 }
 
 .credit-account-table th,
 .credit-account-table td {
-    padding: 11px 12px;
+    padding: 10px 9px;
     border-bottom: 1px solid #eef2f7;
     text-align: left;
     vertical-align: middle;
+    overflow-wrap: anywhere;
 }
 
 .credit-account-table th {
@@ -3095,6 +3155,46 @@ textarea:focus {
 .credit-account-table .amount-cell {
     text-align: right;
     white-space: nowrap;
+}
+
+.credit-viewer-dialog > .credit-account-table-wrap .credit-account-table th:nth-child(1) { width: 18%; }
+.credit-viewer-dialog > .credit-account-table-wrap .credit-account-table th:nth-child(2) { width: 18%; }
+.credit-viewer-dialog > .credit-account-table-wrap .credit-account-table th:nth-child(3) { width: 9%; }
+.credit-viewer-dialog > .credit-account-table-wrap .credit-account-table th:nth-child(4),
+.credit-viewer-dialog > .credit-account-table-wrap .credit-account-table th:nth-child(5),
+.credit-viewer-dialog > .credit-account-table-wrap .credit-account-table th:nth-child(6),
+.credit-viewer-dialog > .credit-account-table-wrap .credit-account-table th:nth-child(7) { width: 9.25%; }
+.credit-viewer-dialog > .credit-account-table-wrap .credit-account-table th:nth-child(8) { width: 9%; }
+.credit-viewer-dialog > .credit-account-table-wrap .credit-account-table th:nth-child(9) { width: 9%; }
+
+.credit-account-identity,
+.credit-account-source {
+    min-width: 0;
+}
+
+.credit-account-identity strong,
+.credit-account-source strong,
+.credit-account-identity small,
+.credit-account-source small {
+    display: block;
+}
+
+.credit-account-identity strong,
+.credit-account-source strong {
+    color: #1e293b;
+    font-weight: 700;
+}
+
+.credit-account-identity small,
+.credit-account-source small {
+    margin-top: 3px;
+    color: #64748b;
+    font-size: 10.5px;
+    line-height: 1.35;
+}
+
+.credit-row-action {
+    text-align: right !important;
 }
 
 .credit-balance-value {
@@ -3143,6 +3243,7 @@ textarea:focus {
 }
 
 .credit-accounts-dialog > footer {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -3160,65 +3261,253 @@ textarea:focus {
     font-size: 12px;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
     .credit-accounts-dialog {
-        width: calc(100vw - 20px);
-        max-height: calc(100vh - 20px);
+        width: calc(100vw - 24px);
+        height: calc(100dvh - 24px);
+        max-height: calc(100dvh - 24px);
         border-radius: 14px;
     }
 
-    .credit-accounts-dialog > .credit-account-table-wrap {
-        max-height: 38vh;
+    .credit-account-table,
+    .credit-account-table tbody {
+        display: block;
+        width: 100%;
     }
 
-    .credit-accounts-dialog.has-credit-history > .credit-account-table-wrap {
-        min-height: 150px;
-        height: 24vh;
-        max-height: 24vh;
+    .credit-account-table thead {
+        display: none;
+    }
+
+    .credit-account-table tbody {
+        display: grid;
+        gap: 9px;
+        padding: 10px 12px;
+    }
+
+    .credit-account-table tbody tr {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0;
+        overflow: hidden;
+        border: 1px solid #dce6f1;
+        border-radius: 10px;
+        background: #fff;
+    }
+
+    .credit-account-table tbody td,
+    .credit-account-table .amount-cell,
+    .credit-row-action {
+        min-width: 0;
+        min-height: 54px;
+        padding: 8px 10px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 3px;
+        border: 0;
+        border-right: 1px solid #eef2f7;
+        border-bottom: 1px solid #eef2f7;
+        text-align: left !important;
+        white-space: normal;
+    }
+
+    .credit-account-table tbody td::before {
+        content: attr(data-label);
+        color: #64748b;
+        font-size: 9.5px;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+
+    .credit-account-table tbody .credit-account-identity,
+    .credit-account-table tbody .credit-account-source {
+        grid-column: span 2;
+    }
+
+    .credit-account-table tbody .credit-row-action,
+    .credit-account-table tbody .credit-use-cell {
+        align-items: stretch;
+    }
+
+    .credit-account-table tbody .credit-selection-toggle {
+        align-items: center;
+    }
+
+    .credit-account-table tbody .credit-selection-toggle input {
+        width: 22px;
+        height: 22px;
     }
 
     .credit-redemption-history {
-        margin: 10px 10px 14px;
-    }
-
-    .credit-redemption-history .credit-account-table-wrap {
-        min-height: 150px;
-        height: 24vh;
-        max-height: 24vh;
+        margin: 10px 12px 12px;
     }
 
     .credit-accounts-dialog > header,
     .credit-accounts-dialog > footer {
-        padding: 14px;
+        padding: 12px 14px;
     }
 
     .credit-wallet-summary {
-        grid-template-columns: 1fr;
-        gap: 8px;
-        padding: 10px 14px;
+        gap: 6px;
+        padding: 9px 12px;
     }
 
     .credit-wallet-metric {
-        padding: 10px 11px;
+        gap: 7px;
+        padding: 9px;
     }
 
     .credit-wallet-metric strong {
-        font-size: 16px;
+        font-size: 14px;
     }
 
     .credit-account-summary {
-        padding: 10px 14px;
-        flex-direction: column;
-        gap: 4px;
+        padding: 8px 12px;
+        gap: 8px;
+        font-size: 11.5px;
+    }
+}
+
+@media (max-width: 600px) {
+    .credit-accounts-dialog {
+        inset: 0;
+        width: 100dvw;
+        height: 100dvh;
+        max-height: 100dvh;
+        transform: none;
+        border-radius: 0;
     }
 
-    .credit-accounts-dialog > footer {
-        align-items: stretch;
-        flex-direction: column;
+    .credit-accounts-dialog > header {
+        min-height: 58px;
+        padding: 9px 10px;
+    }
+
+    .credit-dialog-icon {
+        width: 36px;
+        height: 36px;
+        flex-basis: 36px;
+        border-radius: 9px;
+        font-size: 16px;
+    }
+
+    .credit-accounts-dialog h2 {
+        font-size: 16px;
+    }
+
+    .credit-accounts-dialog header p {
+        max-width: calc(100vw - 118px);
+        font-size: 10.5px;
+    }
+
+    .credit-wallet-summary {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 4px;
+        padding: 7px 8px;
+    }
+
+    .credit-wallet-metric {
+        min-height: 58px;
+        padding: 7px;
+        border-radius: 8px;
+        box-shadow: none;
+    }
+
+    .credit-wallet-metric-icon,
+    .credit-wallet-metric em {
+        display: none;
+    }
+
+    .credit-wallet-metric small {
+        font-size: 8.5px;
+    }
+
+    .credit-wallet-metric strong {
+        font-size: clamp(11px, 3.4vw, 14px);
+    }
+
+    .credit-account-summary {
+        flex-direction: row;
+        align-items: center;
+        padding: 7px 9px;
+        font-size: 10.5px;
+    }
+
+    .credit-account-summary span:last-child {
+        text-align: right;
+    }
+
+    .credit-account-table tbody {
+        gap: 8px;
+        padding: 8px;
+    }
+
+    .credit-account-table tbody tr {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .credit-account-table tbody td,
+    .credit-account-table .amount-cell,
+    .credit-row-action {
+        min-height: 50px;
+        padding: 7px 9px;
+    }
+
+    .credit-account-table tbody .credit-account-identity,
+    .credit-account-table tbody .credit-account-source,
+    .credit-account-table tbody .credit-row-action,
+    .credit-account-table tbody .credit-use-cell {
+        grid-column: 1 / -1;
+    }
+
+    .credit-history-button {
+        min-height: 42px;
+    }
+
+    .credit-viewer-dialog.has-credit-history > .credit-account-table-wrap,
+    .credit-viewer-dialog.has-credit-history > .credit-account-summary {
+        display: none;
+    }
+
+    .credit-redemption-history {
+        min-height: 0;
+        margin: 8px;
+        flex: 1 1 auto;
+    }
+
+    .credit-redemption-history .credit-account-table tbody tr {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .credit-redemption-history .credit-account-table tbody td:first-child {
+        grid-column: 1 / -1;
+    }
+
+    .credit-viewer-footer .credit-dialog-note {
+        display: none;
+    }
+
+    .credit-viewer-footer .secondary-action {
+        width: 100%;
+        min-height: 42px;
+    }
+
+    .credit-selector-footer {
+        display: grid !important;
+        grid-template-columns: 1fr 1.35fr;
+        gap: 8px !important;
+    }
+
+    .credit-selector-footer button {
+        min-width: 0;
+        min-height: 44px;
+        padding-inline: 10px;
     }
 
     .credit-dialog-note {
-        line-height: 1.4;
+        line-height: 1.35;
     }
 }
 
@@ -3347,17 +3636,20 @@ textarea:focus {
     border: 1px solid #dbe5f0;
     border-radius: 10px;
     overflow: hidden;
-    flex: 0 0 auto;
+    min-height: 180px;
+    flex: 1 1 42%;
+    display: flex;
+    flex-direction: column;
     background: #fff;
 }
 
 .credit-redemption-history .credit-account-table-wrap {
-    min-height: 170px;
-    height: min(230px, 28vh);
-    max-height: min(230px, 28vh);
+    min-height: 0;
+    height: auto;
+    max-height: none;
     overflow-y: auto;
-    overflow-x: auto;
-    flex: 0 0 auto;
+    overflow-x: hidden;
+    flex: 1 1 auto;
 }
 
 .credit-history-heading {
@@ -3380,27 +3672,364 @@ textarea:focus {
     font-size: 12px;
 }
 
-.credit-history-button {
-    padding: 6px 10px;
-    min-height: 32px;
+.credit-history-close {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 1px solid #d7e1ed;
+    border-radius: 8px;
+    background: #fff;
+    color: #475569;
+    cursor: pointer;
 }
 
-@media (max-width: 768px) {
+.credit-history-close:hover {
+    border-color: #8ebae9;
+    color: #0759a8;
+    background: #f4f9ff;
+}
+
+.credit-history-button {
+    width: 100%;
+    min-width: 36px;
+    min-height: 36px;
+    padding: 6px 8px;
+    gap: 5px;
+}
+
+@media (max-width: 600px) {
+    .credit-redemption-history {
+        min-height: 0;
+        margin: 8px;
+        flex: 1 1 auto;
+    }
+
     .credit-allocation-summary {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 4px;
+        padding: 7px 8px;
+    }
+
+    .credit-allocation-summary > div {
+        min-width: 0;
+    }
+
+    .credit-allocation-summary span {
+        font-size: 9px;
+    }
+
+    .credit-allocation-summary strong {
+        font-size: 12.5px;
+        overflow-wrap: anywhere;
     }
 
     .credit-auto-allocation-bar {
-        align-items: stretch;
-        flex-direction: column;
-        padding: 10px 14px;
+        gap: 8px;
+        padding: 8px;
+    }
+
+    .credit-auto-allocation-bar span {
+        display: none;
     }
 
     .credit-auto-allocate-button {
-        width: 100%;
+        min-height: 40px;
+        padding-inline: 10px;
     }
 
     .credit-allocation-input {
-        width: 96px;
+        width: 100%;
+        min-height: 42px;
+    }
+}
+
+@media (max-width: 1024px) {
+    .cart-item-actions button {
+        min-height: 44px;
+    }
+
+    .qty-btn {
+        width: 38px;
+        height: 40px;
+    }
+
+    .qty-num {
+        min-width: 30px;
+    }
+}
+
+/* Responsive Member Credit surfaces use dedicated cards below tablet width. */
+.credit-dialog-backdrop {
+    z-index: 1200;
+}
+
+.credit-accounts-dialog {
+    z-index: 1201;
+}
+
+.credit-account-mobile-list,
+.credit-allocation-mobile-list,
+.credit-history-mobile-list {
+    display: none;
+}
+
+@media (max-width: 900px) {
+    .credit-account-desktop,
+    .credit-history-desktop {
+        display: none !important;
+    }
+
+    .credit-account-mobile-list,
+    .credit-allocation-mobile-list,
+    .credit-history-mobile-list {
+        min-height: 0;
+        padding: 10px 12px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-content: start;
+        gap: 10px;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .credit-account-mobile-list,
+    .credit-allocation-mobile-list {
+        flex: 1 1 auto;
+    }
+
+    .credit-mobile-card,
+    .credit-history-mobile-card {
+        min-width: 0;
+        padding: 12px;
+        border: 1px solid #dce6f1;
+        border-radius: 12px;
+        background: #fff;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, .04);
+    }
+
+    .credit-mobile-card-heading,
+    .credit-history-mobile-heading {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+    }
+
+    .credit-mobile-card-heading > div,
+    .credit-mobile-card-heading > label,
+    .credit-history-mobile-heading > strong {
+        min-width: 0;
+    }
+
+    .credit-mobile-card-heading strong,
+    .credit-mobile-card-heading small {
+        display: block;
+        overflow-wrap: anywhere;
+    }
+
+    .credit-mobile-card-heading strong {
+        color: #172033;
+        font-size: 13px;
+        line-height: 1.3;
+    }
+
+    .credit-mobile-card-heading small {
+        margin-top: 3px;
+        color: #718096;
+        font-size: 10.5px;
+        line-height: 1.35;
+    }
+
+    .credit-mobile-source {
+        margin-top: 10px;
+        padding: 9px 10px;
+        display: grid;
+        gap: 2px;
+        border-radius: 9px;
+        background: #f7faff;
+    }
+
+    .credit-mobile-source span,
+    .credit-mobile-values dt,
+    .credit-history-mobile-card dt,
+    .credit-mobile-use > span {
+        color: #718096;
+        font-size: 9.5px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .025em;
+    }
+
+    .credit-mobile-source strong {
+        color: #1e293b;
+        font-size: 12px;
+    }
+
+    .credit-mobile-source small {
+        color: #64748b;
+        font-size: 10.5px;
+        overflow-wrap: anywhere;
+    }
+
+    .credit-mobile-values,
+    .credit-history-mobile-card dl {
+        margin: 10px 0;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1px;
+        overflow: hidden;
+        border: 1px solid #edf2f7;
+        border-radius: 9px;
+        background: #edf2f7;
+    }
+
+    .credit-mobile-values > div,
+    .credit-history-mobile-card dl > div {
+        min-width: 0;
+        min-height: 52px;
+        padding: 8px 9px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 3px;
+        background: #fff;
+    }
+
+    .credit-mobile-values dd,
+    .credit-history-mobile-card dd {
+        margin: 0;
+        color: #1e293b;
+        font-size: 11.5px;
+        font-weight: 650;
+        line-height: 1.3;
+        overflow-wrap: anywhere;
+    }
+
+    .credit-mobile-card .credit-history-button {
+        width: 100%;
+        min-height: 42px;
+    }
+
+    .credit-history-mobile-list {
+        flex: 1 1 auto;
+    }
+
+    .credit-history-mobile-heading span {
+        flex: 0 0 auto;
+        color: #0866c7;
+        font-size: 13px;
+        font-weight: 800;
+    }
+
+    .credit-history-mobile-card dl {
+        margin-bottom: 0;
+    }
+
+    .credit-mobile-check {
+        width: 100%;
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        cursor: pointer;
+    }
+
+    .credit-mobile-check input {
+        width: 22px;
+        height: 22px;
+        flex: 0 0 22px;
+        margin: 0;
+        accent-color: #0866c7;
+    }
+
+    .credit-mobile-check > span {
+        min-width: 0;
+    }
+
+    .credit-mobile-values.three-column {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .credit-mobile-use {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+    }
+
+    .credit-mobile-use .credit-allocation-input {
+        width: min(140px, 48%);
+        min-height: 42px;
+    }
+}
+
+@media (max-width: 600px) {
+    .credit-viewer-dialog .credit-wallet-summary {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        gap: 4px !important;
+        padding: 7px 8px !important;
+    }
+
+    .credit-viewer-dialog .credit-wallet-metric {
+        min-width: 0;
+        min-height: 56px;
+        padding: 7px !important;
+    }
+
+    .credit-viewer-dialog .credit-wallet-metric-icon,
+    .credit-viewer-dialog .credit-wallet-metric em {
+        display: none !important;
+    }
+
+    .credit-viewer-dialog .credit-wallet-metric small {
+        font-size: 8px;
+        line-height: 1.15;
+    }
+
+    .credit-viewer-dialog .credit-wallet-metric strong {
+        font-size: clamp(10px, 3.2vw, 13px);
+        white-space: nowrap;
+    }
+
+    .credit-account-mobile-list,
+    .credit-allocation-mobile-list,
+    .credit-history-mobile-list {
+        grid-template-columns: minmax(0, 1fr);
+        padding: 8px;
+        gap: 8px;
+    }
+
+    .credit-viewer-dialog.has-credit-history > .credit-wallet-summary,
+    .credit-viewer-dialog.has-credit-history > .credit-account-summary,
+    .credit-viewer-dialog.has-credit-history > .credit-account-mobile-list {
+        display: none !important;
+    }
+
+    .credit-viewer-dialog.has-credit-history .credit-redemption-history {
+        margin: 8px;
+        min-height: 0;
+        flex: 1 1 auto;
+    }
+
+    .credit-mobile-card,
+    .credit-history-mobile-card {
+        padding: 10px;
+        border-radius: 10px;
+    }
+
+    .credit-mobile-values.three-column {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .credit-mobile-values.three-column > div {
+        padding-inline: 6px;
+    }
+
+    .credit-mobile-values.three-column dd {
+        font-size: 10.5px;
     }
 }

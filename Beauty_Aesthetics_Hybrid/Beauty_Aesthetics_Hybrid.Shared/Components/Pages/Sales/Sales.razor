@@ -961,16 +961,6 @@
 
     /* Responsive */
     @@media (max-width: 768px) {
-        .transaction-history-link span {
-            display: none;
-        }
-
-        .transaction-history-link {
-            width: 40px;
-            padding: 0;
-            flex: 0 0 40px;
-        }
-
         .dashboard-card.recent-transactions-card {
             padding: 18px 14px;
             border-radius: 8px;
@@ -1240,16 +1230,11 @@
     }
 
 <div class="sales-header">
-    <h3 class="page-title">@L["Title_SalesDashboard"]</h3>
-    <div class="filters-row">
-        <input type="date" @bind="startDate" class="input date-input" max="@endDate.ToString("yyyy-MM-dd")" onclick="this.showPicker()" />
-        <span class="date-separator">@L["Label_To"]</span>
-        <input type="date" @bind="endDate" class="input date-input" min="@startDate.ToString("yyyy-MM-dd")" onclick="this.showPicker()" />
-        <input class="input outlet-select"
-               value="@WorkingBranchDisplay"
-               readonly
-               title="Working branch is selected at login and locked for this session." />
-        <button class="btn apply-btn" @onclick="ApplyFilters">@L["Btn_Apply"]</button>
+    <div class="sales-heading-row">
+        <div>
+            <h3 class="page-title">@L["Title_SalesDashboard"]</h3>
+            <p>Review sales activity and start a new transaction.</p>
+        </div>
         <button class="btn new-sale-btn" @onclick="OpenNewSalePage">
             <i class="bi bi-plus-lg"></i> @L["Btn_NewSale"]
             @if (PendingOrderService.GetAll().Count > 0)
@@ -1257,14 +1242,41 @@
                 <span class="toolbar-pending-badge" title="Pending Orders">@PendingOrderService.GetAll().Count</span>
             }
         </button>
-        <button type="button" class="transaction-history-link toolbar-history-link" @onclick="OpenTransactionHistory">
-            <i class="bi bi-clock-history"></i>
-            <span>Transaction History</span>
-        </button>
-        <button type="button" class="transaction-history-link" @onclick="OpenRedemptionHistory">
-            <i class="bi bi-arrow-repeat"></i>
-            <span>Redemption History</span>
-        </button>
+    </div>
+
+    <div class="sales-toolbar-row">
+        <div class="sales-filter-controls" aria-label="Sales date filters">
+            <label class="sales-filter-field">
+                <span>From</span>
+                <input type="date" @bind="startDate" class="input date-input" max="@endDate.ToString("yyyy-MM-dd")" onclick="this.showPicker()" />
+            </label>
+            <label class="sales-filter-field">
+                <span>To</span>
+                <input type="date" @bind="endDate" class="input date-input" min="@startDate.ToString("yyyy-MM-dd")" onclick="this.showPicker()" />
+            </label>
+            <label class="sales-filter-field sales-branch-field">
+                <span>Branch</span>
+                <input class="input outlet-select"
+                       value="@WorkingBranchDisplay"
+                       readonly
+                       title="Working branch is selected at login and locked for this session." />
+            </label>
+            <button class="btn apply-btn" @onclick="ApplyFilters">
+                <i class="bi bi-funnel"></i>
+                <span>@L["Btn_Apply"]</span>
+            </button>
+        </div>
+
+        <nav class="sales-history-actions" aria-label="Sales history">
+            <button type="button" class="transaction-history-link" @onclick="OpenTransactionHistory">
+                <i class="bi bi-clock-history"></i>
+                <span>Transaction History</span>
+            </button>
+            <button type="button" class="transaction-history-link" @onclick="OpenRedemptionHistory">
+                <i class="bi bi-arrow-repeat"></i>
+                <span>Redemption History</span>
+            </button>
+        </nav>
     </div>
 </div>
 

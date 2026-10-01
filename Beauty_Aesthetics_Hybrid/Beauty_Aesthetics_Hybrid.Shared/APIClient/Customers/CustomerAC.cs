@@ -95,15 +95,24 @@ public sealed class CustomerAC
         DateTime cutOffDate,
         CancellationToken cancellationToken = default)
     {
-        using var request = CreatePostRequest(
-            "/api/WebDashboard/GetMemberOtherBalanceSummary",
-            new MemberOtherBalanceSummaryRequestDTO
-            {
-                Id = customerId,
-                CutOffDate = cutOffDate
-            });
+        // Match Senang Retail's summary contract exactly:
+        // POST application/json { "id": customerId, "cutOffDate": cutOffDate }.
+        const string endpoint = "/api/WebDashboard/GetMemberOtherBalanceSummary";
+        var payload = new MemberOtherBalanceSummaryRequestDTO
+        {
+            Id = customerId,
+            CutOffDate = cutOffDate
+        };
+        var requestJson = JsonSerializer.Serialize(payload, JsonOptions);
 
+        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
+        {
+            Content = new StringContent(requestJson, Encoding.UTF8, "application/json")
+        };
+
+        LogCriticalRequest(request.Method, endpoint, requestJson);
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+        await LogCriticalResponseAsync(request.Method, endpoint, response, cancellationToken);
 
         return await ReadApiResponseAsync<List<MemberOtherBalanceSummaryDTO>>(
             response,

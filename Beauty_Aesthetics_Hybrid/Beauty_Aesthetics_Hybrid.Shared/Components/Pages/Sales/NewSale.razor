@@ -35,7 +35,9 @@
 
 <main class="sale-page">
     @* ========================================= 1. MAIN HEADER ========================================= *@
-    <header class="sale-page-header @(stage == SaleStage.Cart ? "cart-stage-header" : null) @(stage is SaleStage.Payment or SaleStage.Complete ? "mobile-step-header" : null)">
+    @if (stage != SaleStage.Complete)
+    {
+    <header class="sale-page-header @(stage == SaleStage.Cart ? "cart-stage-header" : null) @(stage == SaleStage.Payment ? "mobile-step-header" : null)">
         <div>
             @if (stage == SaleStage.PendingOrders)
             {
@@ -82,14 +84,6 @@
                     <p>Choose a payment method and collect payment.</p>
                 </div>
             }
-            else
-            {
-                <span class="sale-page-icon receipt-success"><i class="bi bi-check2-circle"></i></span>
-                <div>
-                    <h1>@(currentOrder.IsRedemptionMode ? "Redemption Completed" : "Sale Completed")</h1>
-                    <p>@(currentOrder.IsRedemptionMode ? "Member Credit redemption saved successfully." : "Transaction saved successfully and ready to print.")</p>
-                </div>
-            }
         </div>
 
         @if (stage == SaleStage.Cart)
@@ -127,12 +121,9 @@
             {
                 <span class="active"><i class="bi bi-credit-card"></i> Step 3: Payment</span>
             }
-            else
-            {
-                <span class="done"><i class="bi bi-check-lg"></i> Step 4: Completed</span>
-            }
         </div>
     </header>
+    }
 
     @* ========================================= 2. LOADING STATE ========================================= *@
     @if (isLoading)
@@ -606,23 +597,26 @@
                                     {
                                         @if (item.MemberCreditAllocations.Count > 1)
                                         {
-                                            <small class="discount-badge">
-                                                Member Credit · @item.MemberCreditAllocations.Count accounts · RM @item.MemberCreditAllocations.Sum(x => x.Amount).ToString("N2")
+                                            <small class="member-credit-assignment is-assigned">
+                                                <i class="bi bi-wallet2"></i>
+                                                <span>@item.MemberCreditAllocations.Count credit accounts assigned</span>
+                                                <strong>RM @item.MemberCreditAllocations.Sum(x => x.Amount).ToString("N2")</strong>
                                             </small>
-                                            @foreach (var allocation in item.MemberCreditAllocations)
-                                            {
-                                                <small>@allocation.MemberCreditAccountId · RM @allocation.Amount.ToString("N2")</small>
-                                            }
                                         }
                                         else if (!string.IsNullOrWhiteSpace(item.MemberCreditAccountId))
                                         {
-                                            <small class="discount-badge">
-                                                Member Credit · @item.MemberTypeId · @item.MemberCreditAccountId
+                                            <small class="member-credit-assignment is-assigned">
+                                                <i class="bi bi-wallet2"></i>
+                                                <span>Member Credit assigned</span>
+                                                <strong>@item.MemberCreditAccountId</strong>
                                             </small>
                                         }
                                         else
                                         {
-                                            <small>Not assigned to Member Credit</small>
+                                            <small class="member-credit-assignment">
+                                                <i class="bi bi-wallet"></i>
+                                                <span>Member Credit not assigned</span>
+                                            </small>
                                         }
                                     }
                                 </div>
@@ -640,16 +634,21 @@
                                     @if (currentOrder.IsRedemptionMode)
                                     {
                                         <button type="button"
+                                                class="credit-action"
                                                 title="Select Member Credit account"
+                                                aria-label="Select Member Credit account for @item.Name"
                                                 @onclick="() => OpenLineCreditSelectorAsync(item)">
                                             <i class="bi bi-wallet2"></i>
+                                            <span>@(string.IsNullOrWhiteSpace(item.MemberCreditAccountId) && item.MemberCreditAllocations.Count == 0 ? "Assign credit" : "Change credit")</span>
                                         </button>
                                     }
-                                    <button type="button" title="Edit item discount/price" @onclick="() => EditCartItem(item)">
+                                    <button type="button" class="edit-action" title="Edit item" aria-label="Edit @item.Name" @onclick="() => EditCartItem(item)">
                                         <i class="bi bi-pencil"></i>
+                                        <span>Edit</span>
                                     </button>
-                                    <button type="button" class="remove" title="Remove item" @onclick="() => RemoveItem(item)">
+                                    <button type="button" class="remove" title="Delete item" aria-label="Delete @item.Name" @onclick="() => RemoveItem(item)">
                                         <i class="bi bi-trash"></i>
+                                        <span>Delete</span>
                                     </button>
                                 </div>
                             </article>
@@ -937,8 +936,8 @@
 @* Item Quantity & Discount Editor Dialog *@
 @if (showRedeemableCredits)
 {
-    <div class="dialog-backdrop" @onclick="CloseRedeemableCredits"></div>
-    <section class="credit-accounts-dialog @(string.IsNullOrWhiteSpace(selectedHistoryCreditId) ? string.Empty : "has-credit-history")"
+    <div class="dialog-backdrop credit-dialog-backdrop" @onclick="CloseRedeemableCredits"></div>
+    <section class="credit-accounts-dialog credit-viewer-dialog @(string.IsNullOrWhiteSpace(selectedHistoryCreditId) ? string.Empty : "has-credit-history")"
              role="dialog"
              aria-modal="true"
              aria-label="Redeemable Member Credit accounts">
@@ -1011,54 +1010,95 @@
                 <span><strong>@redeemableCredits.Count</strong> redeemable account@(redeemableCredits.Count == 1 ? "" : "s")</span>
                 <span>Accounts are ordered by earliest expiry first.</span>
             </div>
-            <div class="credit-account-table-wrap">
+            <div class="credit-account-table-wrap credit-account-desktop">
                 <table class="credit-account-table">
                     <thead>
                         <tr>
                             <th>Credit Account</th>
-                            <th>Purchase Date</th>
-                            <th>Document</th>
-                            <th>Member Type</th>
-                            <th>Purchased Via</th>
+                            <th>Member Credit</th>
                             <th>Expiry</th>
                             <th class="amount-cell">Original</th>
                             <th class="amount-cell">Balance</th>
-                            <th class="amount-cell">Selected</th>
+                            <th class="amount-cell">This Bill</th>
                             <th class="amount-cell">After Bill</th>
                             <th>Status</th>
-                            <th>History</th>
+                            <th><span class="visually-hidden">Actions</span></th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var credit in redeemableCredits)
                         {
                             <tr>
-                                <td><strong>@credit.ARAPOutstandingID</strong></td>
-                                <td>@FormatCreditDate(credit.FinancialDate)</td>
-                                <td>@(string.IsNullOrWhiteSpace(credit.DisplayCode) ? "—" : credit.DisplayCode)</td>
-                                <td>@(string.IsNullOrWhiteSpace(credit.MemberTypeID) ? "—" : credit.MemberTypeID)</td>
-                                <td>@(string.IsNullOrWhiteSpace(credit.ItemDescription) ? "—" : credit.ItemDescription)</td>
-                                <td>@FormatCreditDate(credit.DueDate)</td>
-                                <td class="amount-cell">RM @credit.TotalAmount.ToString("N2")</td>
-                                <td class="amount-cell credit-balance-value">RM @credit.NetBalanceAfterUtilised.ToString("N2")</td>
-                                <td class="amount-cell">RM @CreditSelectedOnCurrentBill(credit.ARAPOutstandingID).ToString("N2")</td>
-                                <td class="amount-cell credit-balance-value">RM @CreditRemainingAfterCurrentBill(credit).ToString("N2")</td>
-                                <td>
+                                <td class="credit-account-identity" data-label="Credit Account">
+                                    <strong>@credit.ARAPOutstandingID</strong>
+                                    <small>
+                                        @(string.IsNullOrWhiteSpace(credit.DisplayCode) ? "No document" : credit.DisplayCode)
+                                        · @FormatCreditDate(credit.FinancialDate)
+                                    </small>
+                                </td>
+                                <td class="credit-account-source" data-label="Member Credit">
+                                    <strong>@(string.IsNullOrWhiteSpace(credit.MemberTypeID) ? "No member type" : credit.MemberTypeID)</strong>
+                                    <small>@(string.IsNullOrWhiteSpace(credit.ItemDescription) ? "No purchase description" : credit.ItemDescription)</small>
+                                </td>
+                                <td data-label="Expiry">@FormatCreditDate(credit.DueDate)</td>
+                                <td class="amount-cell" data-label="Original">RM @credit.TotalAmount.ToString("N2")</td>
+                                <td class="amount-cell credit-balance-value" data-label="Balance">RM @credit.NetBalanceAfterUtilised.ToString("N2")</td>
+                                <td class="amount-cell" data-label="This Bill">RM @CreditSelectedOnCurrentBill(credit.ARAPOutstandingID).ToString("N2")</td>
+                                <td class="amount-cell credit-balance-value" data-label="After Bill">RM @CreditRemainingAfterCurrentBill(credit).ToString("N2")</td>
+                                <td data-label="Status">
                                     <span class="credit-status-badge @(credit.IsRedeemable ? "is-redeemable" : "is-unavailable")">
                                         @(credit.IsRedeemable ? "Redeemable" : "Unavailable")
                                     </span>
                                 </td>
-                                <td>
+                                <td class="credit-row-action" data-label="Action">
                                     <button type="button"
                                             class="secondary-action credit-history-button"
+                                            aria-label="View redemption history for @credit.ARAPOutstandingID"
                                             @onclick="() => LoadCreditRedemptionHistoryAsync(credit)">
-                                        History
+                                        <i class="bi bi-clock-history"></i>
+                                        <span>History</span>
                                     </button>
                                 </td>
                             </tr>
                         }
                     </tbody>
                 </table>
+            </div>
+
+            <div class="credit-account-mobile-list" aria-label="Redeemable Member Credit accounts">
+                @foreach (var credit in redeemableCredits)
+                {
+                    <article class="credit-mobile-card">
+                        <div class="credit-mobile-card-heading">
+                            <div>
+                                <strong>@credit.ARAPOutstandingID</strong>
+                                <small>@(string.IsNullOrWhiteSpace(credit.DisplayCode) ? "No document" : credit.DisplayCode) · @FormatCreditDate(credit.FinancialDate)</small>
+                            </div>
+                            <span class="credit-status-badge @(credit.IsRedeemable ? "is-redeemable" : "is-unavailable")">
+                                @(credit.IsRedeemable ? "Redeemable" : "Unavailable")
+                            </span>
+                        </div>
+                        <div class="credit-mobile-source">
+                            <span>Member Credit</span>
+                            <strong>@(string.IsNullOrWhiteSpace(credit.MemberTypeID) ? "No member type" : credit.MemberTypeID)</strong>
+                            <small>@(string.IsNullOrWhiteSpace(credit.ItemDescription) ? "No purchase description" : credit.ItemDescription)</small>
+                        </div>
+                        <dl class="credit-mobile-values">
+                            <div><dt>Expiry</dt><dd>@FormatCreditDate(credit.DueDate)</dd></div>
+                            <div><dt>Original</dt><dd>RM @credit.TotalAmount.ToString("N2")</dd></div>
+                            <div><dt>Balance</dt><dd class="credit-balance-value">RM @credit.NetBalanceAfterUtilised.ToString("N2")</dd></div>
+                            <div><dt>This Bill</dt><dd>RM @CreditSelectedOnCurrentBill(credit.ARAPOutstandingID).ToString("N2")</dd></div>
+                            <div><dt>After Bill</dt><dd class="credit-balance-value">RM @CreditRemainingAfterCurrentBill(credit).ToString("N2")</dd></div>
+                        </dl>
+                        <button type="button"
+                                class="secondary-action credit-history-button"
+                                aria-label="View redemption history for @credit.ARAPOutstandingID"
+                                @onclick="() => LoadCreditRedemptionHistoryAsync(credit)">
+                            <i class="bi bi-clock-history"></i>
+                            <span>View History</span>
+                        </button>
+                    </article>
+                }
             </div>
 
             @if (!string.IsNullOrWhiteSpace(selectedHistoryCreditId))
@@ -1069,6 +1109,13 @@
                             <strong>Redemption History</strong>
                             <span>@selectedHistoryCreditId</span>
                         </div>
+                        <button type="button"
+                                class="credit-history-close"
+                                title="Back to credit accounts"
+                                aria-label="Close redemption history"
+                                @onclick="CloseCreditRedemptionHistory">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
                     </div>
 
                     @if (isCreditHistoryLoading)
@@ -1093,7 +1140,7 @@
                     }
                     else
                     {
-                        <div class="credit-account-table-wrap">
+                        <div class="credit-account-table-wrap credit-history-desktop">
                             <table class="credit-account-table">
                                 <thead>
                                     <tr>
@@ -1108,22 +1155,39 @@
                                     @foreach (var history in creditRedemptionHistory)
                                     {
                                         <tr>
-                                            <td>@history.SourceARAPOutstandingID</td>
-                                            <td>@FormatCreditDate(history.FinancialDate)</td>
-                                            <td>@(string.IsNullOrWhiteSpace(history.DisplayCode) ? "—" : history.DisplayCode)</td>
-                                            <td class="amount-cell">RM @Math.Abs(history.TotalAmount).ToString("N2")</td>
-                                            <td>@(string.IsNullOrWhiteSpace(history.BranchID) ? "—" : history.BranchID)</td>
+                                            <td data-label="Member Credit">@history.SourceARAPOutstandingID</td>
+                                            <td data-label="Redeem Date">@FormatCreditDate(history.FinancialDate)</td>
+                                            <td data-label="Document">@(string.IsNullOrWhiteSpace(history.DisplayCode) ? "—" : history.DisplayCode)</td>
+                                            <td class="amount-cell" data-label="Redeem Amount">RM @Math.Abs(history.TotalAmount).ToString("N2")</td>
+                                            <td data-label="Branch">@(string.IsNullOrWhiteSpace(history.BranchID) ? "—" : history.BranchID)</td>
                                         </tr>
                                     }
                                 </tbody>
                             </table>
+                        </div>
+
+                        <div class="credit-history-mobile-list" aria-label="Member Credit redemption history">
+                            @foreach (var history in creditRedemptionHistory)
+                            {
+                                <article class="credit-history-mobile-card">
+                                    <div class="credit-history-mobile-heading">
+                                        <strong>@(string.IsNullOrWhiteSpace(history.DisplayCode) ? "No document" : history.DisplayCode)</strong>
+                                        <span>RM @Math.Abs(history.TotalAmount).ToString("N2")</span>
+                                    </div>
+                                    <dl>
+                                        <div><dt>Member Credit</dt><dd>@history.SourceARAPOutstandingID</dd></div>
+                                        <div><dt>Redeem Date</dt><dd>@FormatCreditDate(history.FinancialDate)</dd></div>
+                                        <div><dt>Branch</dt><dd>@(string.IsNullOrWhiteSpace(history.BranchID) ? "—" : history.BranchID)</dd></div>
+                                    </dl>
+                                </article>
+                            }
                         </div>
                     }
                 </section>
             }
         }
 
-        <footer>
+        <footer class="credit-viewer-footer">
             <span class="credit-dialog-note">
                 <i class="bi bi-info-circle"></i>
                 In Redemption Mode, use the wallet button on a cart line to assign one of these accounts.
@@ -1135,8 +1199,8 @@
 
 @if (showLineCreditSelector && creditTargetItem is not null)
 {
-    <div class="dialog-backdrop" @onclick="CloseLineCreditSelector"></div>
-    <section class="credit-accounts-dialog" role="dialog" aria-modal="true" aria-label="Select Member Credit account">
+    <div class="dialog-backdrop credit-dialog-backdrop" @onclick="CloseLineCreditSelector"></div>
+    <section class="credit-accounts-dialog credit-selector-dialog" role="dialog" aria-modal="true" aria-label="Select Member Credit account">
         <header>
             <div>
                 <span class="credit-dialog-icon"><i class="bi bi-wallet2"></i></span>
@@ -1205,7 +1269,7 @@
                 </button>
             </div>
 
-            <div class="credit-account-table-wrap">
+            <div class="credit-account-table-wrap credit-account-desktop">
                 <table class="credit-account-table">
                     <thead>
                         <tr>
@@ -1224,20 +1288,20 @@
                             var available = CreditAvailableForLine(credit, creditTargetItem);
                             var selected = draftLineCreditAllocations.ContainsKey(accountId);
                             <tr class="@(selected ? "credit-allocation-selected" : string.Empty)">
-                                <td>
+                                <td class="credit-selection-toggle" data-label="Select">
                                     <input type="checkbox"
                                            checked="@selected"
                                            disabled="@(!selected && (available <= 0m || DraftLineCreditRemaining <= 0m))"
                                            @onchange="(ChangeEventArgs e) => ToggleLineCreditAllocation(credit, e.Value is bool isChecked && isChecked)" />
                                 </td>
-                                <td>
+                                <td class="credit-account-identity" data-label="Credit Account">
                                     <strong>@credit.ARAPOutstandingID</strong>
                                     <small>@(string.IsNullOrWhiteSpace(credit.ItemDescription) ? "" : credit.ItemDescription)</small>
                                 </td>
-                                <td>@(string.IsNullOrWhiteSpace(credit.MemberTypeID) ? "—" : credit.MemberTypeID)</td>
-                                <td>@FormatCreditDate(credit.DueDate)</td>
-                                <td class="amount-cell">RM @available.ToString("N2")</td>
-                                <td class="amount-cell">
+                                <td data-label="Member Type">@(string.IsNullOrWhiteSpace(credit.MemberTypeID) ? "—" : credit.MemberTypeID)</td>
+                                <td data-label="Expiry">@FormatCreditDate(credit.DueDate)</td>
+                                <td class="amount-cell" data-label="Available">RM @available.ToString("N2")</td>
+                                <td class="amount-cell credit-use-cell" data-label="Use">
                                     <input type="number"
                                            class="credit-allocation-input"
                                            min="0"
@@ -1252,9 +1316,48 @@
                     </tbody>
                 </table>
             </div>
+
+            <div class="credit-allocation-mobile-list" aria-label="Select Member Credit account">
+                @foreach (var credit in redeemableCredits)
+                {
+                    var accountId = credit.ARAPOutstandingID ?? string.Empty;
+                    var available = CreditAvailableForLine(credit, creditTargetItem);
+                    var selected = draftLineCreditAllocations.ContainsKey(accountId);
+                    <article class="credit-mobile-card credit-allocation-mobile-card @(selected ? "credit-allocation-selected" : string.Empty)">
+                        <div class="credit-mobile-card-heading">
+                            <label class="credit-mobile-check">
+                                <input type="checkbox"
+                                       checked="@selected"
+                                       disabled="@(!selected && (available <= 0m || DraftLineCreditRemaining <= 0m))"
+                                       @onchange="(ChangeEventArgs e) => ToggleLineCreditAllocation(credit, e.Value is bool isChecked && isChecked)" />
+                                <span>
+                                    <strong>@credit.ARAPOutstandingID</strong>
+                                    <small>@(string.IsNullOrWhiteSpace(credit.ItemDescription) ? "Member Credit" : credit.ItemDescription)</small>
+                                </span>
+                            </label>
+                        </div>
+                        <dl class="credit-mobile-values three-column">
+                            <div><dt>Member Type</dt><dd>@(string.IsNullOrWhiteSpace(credit.MemberTypeID) ? "—" : credit.MemberTypeID)</dd></div>
+                            <div><dt>Expiry</dt><dd>@FormatCreditDate(credit.DueDate)</dd></div>
+                            <div><dt>Available</dt><dd class="credit-balance-value">RM @available.ToString("N2")</dd></div>
+                        </dl>
+                        <label class="credit-mobile-use">
+                            <span>Amount to use</span>
+                            <input type="number"
+                                   class="credit-allocation-input"
+                                   min="0"
+                                   step="0.01"
+                                   max="@FormatCreditAmountInput(available)"
+                                   disabled="@(!selected)"
+                                   value="@FormatCreditAmountInput(DraftCreditAllocationAmount(credit))"
+                                   @onchange="(ChangeEventArgs e) => UpdateLineCreditAllocationAmount(credit, e.Value?.ToString())" />
+                        </label>
+                    </article>
+                }
+            </div>
         }
 
-        <footer>
+        <footer class="credit-selector-footer">
             <button type="button" class="secondary-action" @onclick="ClearLineCreditSelection">
                 Remove Credit
             </button>
@@ -2276,6 +2379,9 @@
             return;
         }
 
+        // Replace the mobile cart drawer with the selector so the dialog is never hidden behind it.
+        mobileCartOpen = false;
+
         if (redeemableCredits.Count == 0)
         {
             await ReloadRedeemableCredits();
@@ -2869,6 +2975,11 @@
     private void CloseRedeemableCredits()
     {
         showRedeemableCredits = false;
+        CloseCreditRedemptionHistory();
+    }
+
+    private void CloseCreditRedemptionHistory()
+    {
         creditHistoryRequestVersion++;
         selectedHistoryCreditId = string.Empty;
         creditRedemptionHistory.Clear();
