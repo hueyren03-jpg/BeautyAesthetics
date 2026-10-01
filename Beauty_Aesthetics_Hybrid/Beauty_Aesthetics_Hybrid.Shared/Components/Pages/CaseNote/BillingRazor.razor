@@ -1675,10 +1675,23 @@
 @if (_showRedeemableCredits)
 {
     <div class="modal-overlay" @onclick="CloseRedeemableCredits">
-        <div class="modal-container billing-service-modal" @onclick:stopPropagation="true">
-            <div class="modal-header modal-header-info">
-                <i class="bi bi-wallet2"></i>
-                <h3>Member Credit Accounts</h3>
+        <div class="modal-container billing-service-modal billing-credit-dialog @(!string.IsNullOrWhiteSpace(_selectedHistoryCreditId) ? "has-credit-history" : string.Empty)"
+             @onclick:stopPropagation="true">
+            <div class="billing-credit-dialog__header">
+                <div class="billing-credit-dialog__title">
+                    <span class="billing-credit-dialog__icon"><i class="bi bi-wallet2"></i></span>
+                    <div>
+                        <h3>Member Credit Accounts</h3>
+                        <p>@PatientName · available credit accounts ordered by expiry</p>
+                    </div>
+                </div>
+                <button type="button"
+                        class="billing-credit-dialog__close"
+                        title="Close"
+                        aria-label="Close"
+                        @onclick="CloseRedeemableCredits">
+                    <i class="bi bi-x-lg"></i>
+                </button>
             </div>
             <div class="modal-body">
                 @if (_isRedeemableCreditsLoading)
@@ -1718,6 +1731,10 @@
                             <small>Source</small>
                             <strong>Live Backend</strong>
                         </div>
+                    </div>
+                    <div class="billing-credit-account-summary">
+                        <span><strong>@_redeemableCredits.Count</strong> redeemable account@(_redeemableCredits.Count == 1 ? "" : "s")</span>
+                        <span>Accounts are ordered by earliest expiry first.</span>
                     </div>
                     <div class="table-wrapper billing-credit-table-wrap">
                         <table class="billing-table billing-credit-table">
@@ -1823,9 +1840,10 @@
                     }
                 }
             </div>
-            <div class="modal-footer">
-                <span style="margin-right:auto;color:#64748b;font-size:0.875rem;">
-                    Uses the same live Member Credit wallet service as New Sales. Accounts are refreshed and ordered by expiry.
+            <div class="modal-footer billing-credit-dialog__footer">
+                <span class="billing-credit-dialog__note">
+                    <i class="bi bi-info-circle"></i>
+                    Uses the same live Member Credit wallet service as New Sales.
                 </span>
                 <button class="btn-modal-cancel" @onclick="CloseRedeemableCredits">Close</button>
             </div>
