@@ -1459,6 +1459,7 @@
     private bool isCreditHistoryLoading;
     private string? creditHistoryError;
     private string selectedHistoryCreditId = string.Empty;
+    private int creditHistoryRequestVersion;
     private bool isSelectedCustomerBalanceLoading;
     private string? selectedCustomerBalanceError;
     private int selectedCustomerBalanceRequestVersion;
@@ -1956,6 +1957,7 @@
         redeemableCreditsError = null;
         isRedeemableCreditsLoading = false;
         showRedeemableCredits = false;
+        creditHistoryRequestVersion++;
         creditRedemptionHistory.Clear();
         selectedHistoryCreditId = string.Empty;
         creditHistoryError = null;
@@ -2803,17 +2805,32 @@
             return;
         }
 
+        var requestVersion = ++creditHistoryRequestVersion;
         selectedHistoryCreditId = accountId;
         creditRedemptionHistory.Clear();
         creditHistoryError = null;
         isCreditHistoryLoading = true;
+        await InvokeAsync(StateHasChanged);
 
         try
         {
             var result = await MemberCreditWalletService.LoadHistoryAsync(accountId);
+
+            if (requestVersion != creditHistoryRequestVersion ||
+                !string.Equals(
+                    selectedHistoryCreditId,
+                    accountId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine(
+                    $"[Member Credit History] STALE RESPONSE IGNORED | Requested={accountId} | Selected={selectedHistoryCreditId}");
+                return;
+            }
+
             if (!result.Success || result.Value is null)
             {
-                creditHistoryError = result.ErrorMessage ?? "Unable to load redemption history.";
+                creditHistoryError =
+                    result.ErrorMessage ?? "Unable to load redemption history.";
                 return;
             }
 
@@ -2821,20 +2838,38 @@
         }
         catch (Exception ex)
         {
-            creditHistoryError = $"Unable to load redemption history: {ex.Message}";
+            if (requestVersion == creditHistoryRequestVersion &&
+                string.Equals(
+                    selectedHistoryCreditId,
+                    accountId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                creditHistoryError =
+                    $"Unable to load redemption history: {ex.Message}";
+            }
         }
         finally
         {
-            isCreditHistoryLoading = false;
+            if (requestVersion == creditHistoryRequestVersion &&
+                string.Equals(
+                    selectedHistoryCreditId,
+                    accountId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                isCreditHistoryLoading = false;
+                await InvokeAsync(StateHasChanged);
+            }
         }
     }
 
     private void CloseRedeemableCredits()
     {
         showRedeemableCredits = false;
+        creditHistoryRequestVersion++;
         selectedHistoryCreditId = string.Empty;
         creditRedemptionHistory.Clear();
         creditHistoryError = null;
+        isCreditHistoryLoading = false;
     }
 
     private async Task ReloadRedeemableCredits()
