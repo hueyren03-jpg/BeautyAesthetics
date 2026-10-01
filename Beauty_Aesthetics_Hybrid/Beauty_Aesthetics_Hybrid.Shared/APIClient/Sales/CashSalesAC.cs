@@ -159,6 +159,12 @@ public sealed class CashSalesAC
         SendAsync<JsonElement>(HttpMethod.Post, "/api/Doc_CashSales/SaveDM", header,
             "Cash sale update response was invalid.", cancellationToken);
 
+    public Task<ApiCallResult<JsonElement>> SaveDocumentLineAsync(
+        JsonObject documentLine,
+        CancellationToken cancellationToken = default) =>
+        SendAsync<JsonElement>(HttpMethod.Post, "/api/DocumentLineTable/Save", documentLine,
+            "Cash sale document line update response was invalid.", cancellationToken);
+
     public Task<ApiCallResult<string>> DeleteAsync(
         CashSalesDeleteDTO request,
         CancellationToken cancellationToken = default) =>

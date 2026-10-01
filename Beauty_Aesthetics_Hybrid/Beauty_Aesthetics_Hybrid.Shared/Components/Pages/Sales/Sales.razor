@@ -8,6 +8,7 @@
 @using Beauty_Aesthetics_WebPos.Components.Services.Inventory
 @using Beauty_Aesthetics_WebPos.Components.Services.Customers
 @using Beauty_Aesthetics_WebPos.Components.Services.Printing
+@using Beauty_Aesthetics_WebPos.Components.Services.Tax
 @using Beauty_Aesthetics_WebPos.Models.DTOs
 @inject ICashSalesService CashSalesService
 @inject IPendingOrderService PendingOrderService
@@ -17,6 +18,7 @@
 @inject ProductImageService ProductImageService
 @inject IServiceItemService ServiceItemService
 @inject IPackageService PackageService
+@inject IGstTaxRateService GstTaxRateService
 @inject NavigationManager NavigationManager
 @implements IAsyncDisposable
 @inject IStringLocalizer<Sales> L
@@ -1737,6 +1739,8 @@
                             {
                                 <div class="discount"><span>Discount</span><strong>- MYR @NewSaleDiscount.ToString("N2")</strong></div>
                             }
+                            <div><span>Subtotal before tax</span><strong>MYR @NewSaleSubtotalBeforeTax.ToString("N2")</strong></div>
+                            <div><span>Tax</span><strong>MYR @NewSaleTax.ToString("N2")</strong></div>
                             <div class="total"><span>Cart total</span><strong>MYR @NewSaleTotal.ToString("N2")</strong></div>
                         </footer>
                         <div class="pos-mobile-cart-page-actions">
@@ -1892,7 +1896,7 @@
                         </div>
                         <div class="pos-total-row muted">
                             <span>Tax</span>
-                            <strong>MYR @newSale.Tax.ToString("N2")</strong>
+                            <strong>MYR @NewSaleTax.ToString("N2")</strong>
                         </div>
                         <div class="pos-total-row final">
                             <span>Total</span>
@@ -2301,7 +2305,9 @@
     private decimal cashMovementAmount => cashFlowData.Sum(item => item.Amount);
     private decimal NewSaleSubtotal => newSale.Items.Sum(item => Math.Max(1, item.Quantity) * item.UnitPrice);
     private decimal NewSaleDiscount => newSale.Items.Sum(item => Math.Clamp(item.Discount, 0, Math.Max(1, item.Quantity) * item.UnitPrice));
-    private decimal NewSaleTotal => Math.Max(0, NewSaleSubtotal - NewSaleDiscount + newSale.Tax);
+    private decimal NewSaleSubtotalBeforeTax => newSale.Items.Sum(item => ReceiptLineTaxAmounts(item).BeforeTax);
+    private decimal NewSaleTax => newSale.Items.Sum(item => ReceiptLineTaxAmounts(item).Tax);
+    private decimal NewSaleTotal => Math.Max(0, NewSaleSubtotalBeforeTax + NewSaleTax);
     private decimal NewSaleChange => Math.Max(0, newSalePaidAmount - NewSaleTotal);
     private decimal previousTotalSales;
     private int previousTransactionCount;
@@ -2402,10 +2408,26 @@
         {
             var productTask = ProductInventoryService.LoadProductsAsync("HQ");
             var serviceTask = ServiceItemService.LoadServiceItemsAsync("hq");
-            await Task.WhenAll(productTask, serviceTask);
+            var taxTask = GstTaxRateService.LoadActiveTaxCodesAsync();
+            await Task.WhenAll(productTask, serviceTask, taxTask);
 
             var productResult = await productTask;
             var serviceResult = await serviceTask;
+            var taxResult = await taxTask;
+            var taxRates = taxResult.Success && taxResult.Value is not null
+                ? taxResult.Value
+                    .Where(code => !string.IsNullOrWhiteSpace(code.TaxCodeID))
+                    .ToDictionary(
+                        code => code.TaxCodeID!,
+                        code => code.TaxRate,
+                        StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+
+            decimal TaxRateFor(string? taxCode) =>
+                !string.IsNullOrWhiteSpace(taxCode) &&
+                taxRates.TryGetValue(taxCode, out var rate)
+                    ? rate
+                    : 0m;
             var services = serviceResult.Success && serviceResult.Value is not null
                 ? serviceResult.Value
                     .Where(item => !string.Equals(item.Status, "Inactive", StringComparison.OrdinalIgnoreCase))
@@ -2424,7 +2446,12 @@
                         "Product",
                         item.Price,
                         item.Type,
-                        ResolveCatalogImage("Product", item.MasterAccountId, item.ImagePath, item.ImageFileName))));
+                        ResolveCatalogImage("Product", item.MasterAccountId, item.ImagePath, item.ImageFileName),
+                        item.TaxCode,
+                        item.IsTaxInclusive,
+                        TaxRateFor(item.TaxCode),
+                        item.InventoryTypeId,
+                        item.UnitOfMeasurementId)));
             }
 
             catalog.AddRange(services
@@ -2436,7 +2463,12 @@
                     "Service",
                     item.Price,
                     item.SalesDescription,
-                    ResolveCatalogImage("Service", item.MasterAccountId, item.ImagePath, item.ImageFileName))));
+                    ResolveCatalogImage("Service", item.MasterAccountId, item.ImagePath, item.ImageFileName),
+                    item.TaxCode,
+                    item.IsTaxInclusive,
+                    TaxRateFor(item.TaxCode),
+                    3,
+                    item.UnitOfMeasureId)));
 
             if (services.Count > 0)
             {
@@ -2453,7 +2485,12 @@
                             "Package",
                             item.Price,
                             item.SalesDescription,
-                            ResolveCatalogImage("Package", item.MasterAccountId, item.ImagePath, item.ImageFileName))));
+                            ResolveCatalogImage("Package", item.MasterAccountId, item.ImagePath, item.ImageFileName),
+                            item.TaxCode,
+                            item.IsTaxInclusive,
+                            TaxRateFor(item.TaxCode),
+                            5,
+                            item.UnitOfMeasure)));
                 }
             }
 
@@ -3124,13 +3161,19 @@
         {
             InventoryId = newSaleItemDraft.InventoryId,
             Name = newSaleItemDraft.Name.Trim(),
+            Sku = newSaleItemDraft.Sku,
             Description = newSaleItemDraft.Description,
             ImageUrl = newSaleItemDraft.ImageUrl,
             Category = string.IsNullOrWhiteSpace(newSaleItemDraft.Category) ? "Product" : newSaleItemDraft.Category,
             Quantity = quantity,
             UnitPrice = decimal.Round(newSaleItemDraft.UnitPrice, 2),
             Discount = decimal.Round(discount, 2),
-            TotalPrice = decimal.Round(draftTotal - discount, 2)
+            TotalPrice = decimal.Round(draftTotal - discount, 2),
+            TaxCodeId = newSaleItemDraft.TaxCodeId,
+            TaxPercentage = newSaleItemDraft.TaxPercentage,
+            IsTaxInclusive = newSaleItemDraft.IsTaxInclusive,
+            InventoryTypeId = newSaleItemDraft.InventoryTypeId,
+            UnitOfMeasureId = newSaleItemDraft.UnitOfMeasureId
         });
         newSaleItemDraft = CreateDefaultSaleItem();
         newSaleItemDraft.Category = selectedSaleItemType;
@@ -3154,12 +3197,18 @@
 
         newSaleItemDraft.InventoryId = selected.Id;
         newSaleItemDraft.Name = selected.Name;
+        newSaleItemDraft.Sku = selected.Sku;
         newSaleItemDraft.Description = string.IsNullOrWhiteSpace(selected.Description)
             ? selected.Name
             : selected.Description;
         newSaleItemDraft.ImageUrl = selected.ImageUrl;
         newSaleItemDraft.Category = selected.Type;
         newSaleItemDraft.UnitPrice = selected.Price;
+        newSaleItemDraft.TaxCodeId = selected.TaxCode;
+        newSaleItemDraft.TaxPercentage = selected.TaxRate;
+        newSaleItemDraft.IsTaxInclusive = selected.IsTaxInclusive;
+        newSaleItemDraft.InventoryTypeId = selected.InventoryTypeId;
+        newSaleItemDraft.UnitOfMeasureId = selected.UnitOfMeasureId;
         newSaleItemDraft.Quantity = Math.Max(1, newSaleItemDraft.Quantity);
         newSaleValidationMessages.Clear();
     }
@@ -3189,6 +3238,7 @@
             {
                 InventoryId = catalogItem.Id,
                 Name = catalogItem.Name,
+                Sku = catalogItem.Sku,
                 Description = string.IsNullOrWhiteSpace(catalogItem.Description)
                     ? catalogItem.Name
                     : catalogItem.Description,
@@ -3197,7 +3247,12 @@
                 Quantity = 1,
                 UnitPrice = decimal.Round(catalogItem.Price, 2),
                 Discount = 0,
-                TotalPrice = decimal.Round(catalogItem.Price, 2)
+                TotalPrice = decimal.Round(catalogItem.Price, 2),
+                TaxCodeId = catalogItem.TaxCode,
+                TaxPercentage = catalogItem.TaxRate,
+                IsTaxInclusive = catalogItem.IsTaxInclusive,
+                InventoryTypeId = catalogItem.InventoryTypeId,
+                UnitOfMeasureId = catalogItem.UnitOfMeasureId
             });
         }
 
@@ -3429,20 +3484,32 @@
     {
         if (sale.Items.Any())
         {
+            decimal subtotalBeforeTax = 0m;
+            decimal totalTax = 0m;
             foreach (var item in sale.Items)
             {
                 item.Quantity = Math.Max(1, item.Quantity);
                 var gross = item.Quantity * item.UnitPrice;
                 item.Discount = Math.Clamp(item.Discount, 0, gross);
-                item.TotalPrice = decimal.Round(Math.Max(0, gross - item.Discount), 2);
+                var lineAmounts = ReceiptLineTaxAmounts(item);
+                item.TaxAmount = lineAmounts.Tax;
+                item.TotalPrice = decimal.Round(
+                    Math.Max(0m, lineAmounts.BeforeTax + lineAmounts.Tax),
+                    2,
+                    MidpointRounding.AwayFromZero);
+                subtotalBeforeTax += lineAmounts.BeforeTax;
+                totalTax += lineAmounts.Tax;
                 if (string.IsNullOrWhiteSpace(item.Category))
                     item.Category = "Product";
             }
 
-            sale.Subtotal = decimal.Round(sale.Items.Sum(item => item.Quantity * item.UnitPrice), 2);
+            sale.Subtotal = decimal.Round(subtotalBeforeTax, 2, MidpointRounding.AwayFromZero);
             sale.Discount = decimal.Round(sale.Items.Sum(item => item.Discount), 2);
-            sale.Tax = 0;
-            sale.Amount = decimal.Round(Math.Max(0, sale.Subtotal - sale.Discount + sale.Tax), 2);
+            sale.Tax = decimal.Round(totalTax, 2, MidpointRounding.AwayFromZero);
+            sale.Amount = decimal.Round(
+                Math.Max(0m, sale.Subtotal + sale.Tax),
+                2,
+                MidpointRounding.AwayFromZero);
             sale.ItemCount = sale.Items.Sum(item => Math.Max(1, item.Quantity));
             var categories = sale.Items
                 .Select(item => item.Category)
@@ -3474,11 +3541,14 @@
         if (!sale.Items.Any())
             return sale.Amount;
 
-        return decimal.Round(sale.Items.Sum(item =>
-        {
-            var gross = Math.Max(1, item.Quantity) * item.UnitPrice;
-            return Math.Max(0, gross - Math.Clamp(item.Discount, 0, gross));
-        }), 2);
+        return decimal.Round(
+            sale.Items.Sum(item =>
+            {
+                var amounts = ReceiptLineTaxAmounts(item);
+                return amounts.BeforeTax + amounts.Tax;
+            }),
+            2,
+            MidpointRounding.AwayFromZero);
     }
 
     private static TransactionItem CreateDefaultSaleItem() => new()
@@ -3494,7 +3564,12 @@
         string Type,
         decimal Price,
         string Description,
-        string ImageUrl);
+        string ImageUrl,
+        string TaxCode,
+        bool IsTaxInclusive,
+        decimal TaxRate,
+        int InventoryTypeId,
+        string UnitOfMeasureId);
 
     private static Transaction CloneTransaction(Transaction source) => new()
     {
@@ -3502,6 +3577,7 @@
         DocumentId = source.DocumentId,
         AccountId = source.AccountId,
         BranchId = source.BranchId,
+        GroupId = source.GroupId,
         PaymentTypeId = source.PaymentTypeId,
         InvoiceNumber = source.InvoiceNumber,
         Date = source.Date,
@@ -3515,6 +3591,9 @@
         Subtotal = source.Subtotal,
         Tax = source.Tax,
         Discount = source.Discount,
+        RoundingAmount = source.RoundingAmount,
+        ServiceChargeAmount = source.ServiceChargeAmount,
+        CurrencyName = source.CurrencyName,
         PaymentMethod = source.PaymentMethod,
         Status = source.Status,
         ReferenceNumber = source.ReferenceNumber,
@@ -3524,20 +3603,46 @@
             Id = item.Id,
             InventoryId = item.InventoryId,
             Name = item.Name,
+            Sku = item.Sku,
             Description = item.Description,
+            Remarks = item.Remarks,
             ImageUrl = item.ImageUrl,
             Category = item.Category,
+            InventoryTypeId = item.InventoryTypeId,
             Quantity = item.Quantity,
             UnitPrice = item.UnitPrice,
             TotalPrice = item.TotalPrice,
-            Discount = item.Discount
+            Discount = item.Discount,
+            CashDiscountId = item.CashDiscountId,
+            DiscountMemo = item.DiscountMemo,
+            UnitOfMeasureId = item.UnitOfMeasureId,
+            TaxCodeId = item.TaxCodeId,
+            TaxPercentage = item.TaxPercentage,
+            TaxAmount = item.TaxAmount,
+            IsTaxInclusive = item.IsTaxInclusive,
+            ActivityTypeId = item.ActivityTypeId
         }).ToList(),
         Payments = source.Payments.Select(payment => new TransactionPayment
         {
             ReceiptLineId = payment.ReceiptLineId,
             PaymentTypeId = payment.PaymentTypeId,
             PaymentMethod = payment.PaymentMethod,
-            Amount = payment.Amount
+            SourceDocumentLineId = payment.SourceDocumentLineId,
+            Amount = payment.Amount,
+            ChangeAmount = payment.ChangeAmount,
+            FinancialAccountId = payment.FinancialAccountId,
+            BankName = payment.BankName
+        }).ToList(),
+        ReceiptPayments = source.ReceiptPayments.Select(payment => new TransactionPayment
+        {
+            ReceiptLineId = payment.ReceiptLineId,
+            PaymentTypeId = payment.PaymentTypeId,
+            PaymentMethod = payment.PaymentMethod,
+            SourceDocumentLineId = payment.SourceDocumentLineId,
+            Amount = payment.Amount,
+            ChangeAmount = payment.ChangeAmount,
+            FinancialAccountId = payment.FinancialAccountId,
+            BankName = payment.BankName
         }).ToList(),
         CreatedAt = source.CreatedAt,
         CreatedBy = source.CreatedBy

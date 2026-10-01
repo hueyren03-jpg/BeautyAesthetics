@@ -382,12 +382,19 @@ public sealed class CashSalesService : ICashSalesService
         }
 
         var resolvedDocumentTypeId = documentTypeId == 52 ? 52 : 5;
+        ApiCallResult<JsonObject>? loadResult = null;
 
         // Match Senang Retail: normal receipts default to type 5 and become
         // redemption statements only when a saved line is owned by type 52.
-        if (resolvedDocumentTypeId != 52)
+        if (resolvedDocumentTypeId == 52)
         {
-            var loadResult = await cashSalesAC.LoadRecordAsync(documentId, cancellationToken);
+            loadResult = await cashSalesAC.LoadRedemptionRecordAsync(
+                documentId,
+                cancellationToken);
+        }
+        else
+        {
+            loadResult = await cashSalesAC.LoadRecordAsync(documentId, cancellationToken);
             if (loadResult.Success && loadResult.Value is not null)
             {
                 var lines = loadResult.Value["lstDocumentLine"] as JsonArray;
@@ -396,6 +403,25 @@ public sealed class CashSalesService : ICashSalesService
                 {
                     resolvedDocumentTypeId = 52;
                 }
+            }
+        }
+
+        // The official thermal receipt prints directly from the persisted cash-sale
+        // header and document lines. Repair legacy records whose receipt fields were
+        // saved as zero before asking the API to render the Senang receipt.
+        if (loadResult?.Success == true && loadResult.Value is not null)
+        {
+            var repairResult = await RepairReceiptAmountsAsync(
+                loadResult.Value,
+                documentId,
+                resolvedDocumentTypeId,
+                cancellationToken);
+
+            if (!repairResult.Success)
+            {
+                return ApiCallResult<string>.Failure(
+                    repairResult.StatusCode,
+                    repairResult.ErrorMessage ?? "Unable to repair the receipt amounts.");
             }
         }
 
@@ -412,6 +438,277 @@ public sealed class CashSalesService : ICashSalesService
         }
 
         return ApiCallResult<string>.Ok(receiptResult.StatusCode, receiptResult.Value);
+    }
+
+    private async Task<ApiCallResult<bool>> RepairReceiptAmountsAsync(
+        JsonObject document,
+        string documentId,
+        int documentTypeId,
+        CancellationToken cancellationToken)
+    {
+        var header = document["objDoc_CashSales"] as JsonObject;
+        var lines = document["lstDocumentLine"] as JsonArray;
+        if (header is null || lines is null)
+        {
+            return ApiCallResult<bool>.Ok(HttpStatusCode.OK, false);
+        }
+
+        var activeLines = lines
+            .OfType<JsonObject>()
+            .Where(line =>
+                IntegerIgnoreCase(line, "SaveAction") != 3 &&
+                !string.Equals(
+                    TextIgnoreCase(line, "SaveAction"),
+                    "Deleted",
+                    StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (activeLines.Count == 0)
+        {
+            return ApiCallResult<bool>.Ok(HttpStatusCode.OK, false);
+        }
+
+        var receiptTotal = 0m;
+        if (document["lstReceiptLines"] is JsonArray receipts)
+        {
+            receiptTotal = Math.Round(
+                receipts.OfType<JsonObject>().Sum(receipt =>
+                    Math.Max(
+                        0m,
+                        Number(receipt, "POSReceiptLineAmount") -
+                        Math.Abs(Number(receipt, "POSReceiptChangeAmount")))),
+                2,
+                MidpointRounding.AwayFromZero);
+        }
+
+        var headerTotal = Math.Round(
+            Math.Max(0m, Number(header, "TotalAfterTax")),
+            2,
+            MidpointRounding.AwayFromZero);
+        var singleLineFallbackTotal = activeLines.Count == 1
+            ? Math.Max(headerTotal, receiptTotal)
+            : 0m;
+        var repairedAnyLine = false;
+
+        foreach (var line in activeLines)
+        {
+            var quantity = Number(line, "Quantity");
+            if (quantity <= 0m)
+            {
+                quantity = 1m;
+            }
+
+            var discount = Math.Max(
+                0m,
+                Math.Max(
+                    Number(line, "Discount"),
+                    Number(line, "DiscountAmount")));
+            var unitPrice = Math.Max(0m, Number(line, "UnitPrice"));
+            var beforeTax = Math.Max(
+                0m,
+                Math.Max(
+                    Number(line, "SubTotalBeforeGST"),
+                    Number(line, "ConvertedSubTotalBeforeGST")));
+            var taxAmount = Math.Max(
+                0m,
+                Math.Max(
+                    Number(line, "TaxAmount"),
+                    Number(line, "ConvertedTaxAmount")));
+            var lineTotal = Math.Max(
+                0m,
+                Math.Max(
+                    Number(line, "SubTotal"),
+                    Math.Max(
+                        Number(line, "Amount"),
+                        Number(line, "ConvertedAmount"))));
+            var storedTaxRate = Math.Max(0m, Number(line, "TaxPercentage"));
+            var calculationTaxRate = storedTaxRate > 1m
+                ? storedTaxRate / 100m
+                : storedTaxRate;
+            var isTaxInclusive = Bool(line, "IsTaxInclusive");
+
+            if (beforeTax <= 0m && unitPrice > 0m)
+            {
+                OrderLineTaxCalculator.ComputeLineAmounts(
+                    unitPrice,
+                    quantity,
+                    discount,
+                    calculationTaxRate,
+                    isTaxInclusive,
+                    out beforeTax,
+                    out taxAmount);
+                lineTotal = Math.Round(
+                    beforeTax + taxAmount,
+                    2,
+                    MidpointRounding.AwayFromZero);
+            }
+            else if (beforeTax <= 0m)
+            {
+                var recoverableTotal = lineTotal > 0m
+                    ? lineTotal
+                    : singleLineFallbackTotal;
+                if (recoverableTotal > 0m)
+                {
+                    beforeTax = calculationTaxRate > 0m
+                        ? Math.Round(
+                            recoverableTotal / (1m + calculationTaxRate),
+                            2,
+                            MidpointRounding.AwayFromZero)
+                        : recoverableTotal;
+                    taxAmount = Math.Round(
+                        Math.Max(0m, recoverableTotal - beforeTax),
+                        2,
+                        MidpointRounding.AwayFromZero);
+                    lineTotal = Math.Round(
+                        beforeTax + taxAmount,
+                        2,
+                        MidpointRounding.AwayFromZero);
+                }
+            }
+            else
+            {
+                if (taxAmount <= 0m && calculationTaxRate > 0m)
+                {
+                    taxAmount = Math.Round(
+                        beforeTax * calculationTaxRate,
+                        2,
+                        MidpointRounding.AwayFromZero);
+                }
+
+                if (lineTotal <= 0m)
+                {
+                    lineTotal = Math.Round(
+                        beforeTax + taxAmount,
+                        2,
+                        MidpointRounding.AwayFromZero);
+                }
+            }
+
+            if (unitPrice <= 0m && (beforeTax > 0m || lineTotal > 0m))
+            {
+                var priceBasis = isTaxInclusive && lineTotal > 0m
+                    ? lineTotal
+                    : beforeTax;
+                unitPrice = Math.Round(
+                    (priceBasis + discount) / quantity,
+                    2,
+                    MidpointRounding.AwayFromZero);
+            }
+
+            beforeTax = Math.Round(beforeTax, 2, MidpointRounding.AwayFromZero);
+            taxAmount = Math.Round(taxAmount, 2, MidpointRounding.AwayFromZero);
+            lineTotal = Math.Round(lineTotal, 2, MidpointRounding.AwayFromZero);
+            unitPrice = Math.Round(unitPrice, 2, MidpointRounding.AwayFromZero);
+
+            if (beforeTax <= 0m && lineTotal <= 0m && unitPrice <= 0m)
+            {
+                continue;
+            }
+
+            var changed = false;
+            changed |= SetDecimalIfDifferent(line, "UnitPrice", unitPrice);
+            changed |= SetDecimalIfDifferent(line, "Discount", discount);
+            changed |= SetDecimalIfDifferent(line, "DiscountAmount", discount);
+            changed |= SetDecimalIfDifferent(line, "SubTotalBeforeGST", beforeTax);
+            changed |= SetDecimalIfDifferent(line, "ConvertedSubTotalBeforeGST", beforeTax);
+            changed |= SetDecimalIfDifferent(line, "TaxableAmount", beforeTax);
+            changed |= SetDecimalIfDifferent(line, "ConvertedTaxableAmount", beforeTax);
+            changed |= SetDecimalIfDifferent(line, "TaxAmount", taxAmount);
+            changed |= SetDecimalIfDifferent(line, "ConvertedTaxAmount", taxAmount);
+            changed |= SetDecimalIfDifferent(line, "SubTotal", lineTotal);
+            changed |= SetDecimalIfDifferent(line, "Amount", lineTotal);
+            changed |= SetDecimalIfDifferent(line, "ConvertedAmount", lineTotal);
+
+            if (!changed)
+            {
+                continue;
+            }
+
+            line["DocumentID"] = documentId;
+            line["DocumentLineTypeID"] = Integer(line, "DocumentLineTypeID") == 0
+                ? 1
+                : Integer(line, "DocumentLineTypeID");
+            line["OwnerDocumentTypeID"] = documentTypeId;
+            line["SaveAction"] = "Changed";
+            line["IsDirty"] = true;
+
+            var lineSaveResult = await cashSalesAC.SaveDocumentLineAsync(
+                line,
+                cancellationToken);
+            if (!lineSaveResult.Success)
+            {
+                return ApiCallResult<bool>.Failure(
+                    lineSaveResult.StatusCode,
+                    lineSaveResult.ErrorMessage ?? "Unable to save the repaired receipt item amounts.");
+            }
+
+            repairedAnyLine = true;
+        }
+
+        var totalBeforeTax = Math.Round(
+            activeLines.Sum(line => Number(line, "SubTotalBeforeGST")),
+            2,
+            MidpointRounding.AwayFromZero);
+        var totalTax = Math.Round(
+            activeLines.Sum(line => Number(line, "TaxAmount")),
+            2,
+            MidpointRounding.AwayFromZero);
+        var rounding = Math.Round(
+            Number(header, "RoundingAmount"),
+            2,
+            MidpointRounding.AwayFromZero);
+        var totalAfterTax = Math.Round(
+            activeLines.Sum(line => Number(line, "SubTotal")) + rounding,
+            2,
+            MidpointRounding.AwayFromZero);
+        var serviceChargeBeforeTax = Math.Clamp(
+            Number(header, "TotalBeforeTax_ServiceCharge"),
+            0m,
+            totalBeforeTax);
+
+        var headerChanged = false;
+        headerChanged |= SetDecimalIfDifferent(header, "TotalBeforeTax", totalBeforeTax);
+        headerChanged |= SetDecimalIfDifferent(
+            header,
+            "TotalBeforeTax_NonServiceCharge",
+            Math.Max(0m, totalBeforeTax - serviceChargeBeforeTax));
+        headerChanged |= SetDecimalIfDifferent(
+            header,
+            "TotalBeforeTax_ServiceCharge",
+            serviceChargeBeforeTax);
+        headerChanged |= SetDecimalIfDifferent(header, "TaxableAmount", totalBeforeTax);
+        headerChanged |= SetDecimalIfDifferent(header, "TaxAmount", totalTax);
+        headerChanged |= SetDecimalIfDifferent(header, "TotalAfterTax", totalAfterTax);
+        headerChanged |= SetDecimalIfDifferent(header, "LocalTotalBeforeTax", totalBeforeTax);
+        headerChanged |= SetDecimalIfDifferent(header, "LocalTaxableAmount", totalBeforeTax);
+        headerChanged |= SetDecimalIfDifferent(header, "LocalTaxAmount", totalTax);
+        headerChanged |= SetDecimalIfDifferent(header, "LocalRoundingAmount", rounding);
+        headerChanged |= SetDecimalIfDifferent(header, "LocalTotalAfterTax", totalAfterTax);
+
+        if (headerChanged)
+        {
+            var now = DateTime.Now;
+            header["DocumentID"] = documentId;
+            header["DocumentTypeID"] = documentTypeId;
+            header["ModifiedDateTime"] = now;
+            header["UpdateTimeStamp"] = now;
+            header["SaveAction"] = "Changed";
+            header["IsDirty"] = true;
+
+            var headerSaveResult = await cashSalesAC.SaveHeaderAsync(
+                header,
+                cancellationToken);
+            if (!headerSaveResult.Success)
+            {
+                return ApiCallResult<bool>.Failure(
+                    headerSaveResult.StatusCode,
+                    headerSaveResult.ErrorMessage ?? "Unable to save the repaired receipt totals.");
+            }
+        }
+
+        return ApiCallResult<bool>.Ok(
+            HttpStatusCode.OK,
+            repairedAnyLine || headerChanged);
     }
 
     public Task<bool> DownloadReceiptPdfAsync(
@@ -518,9 +815,42 @@ public sealed class CashSalesService : ICashSalesService
 
         var document = (JsonObject)templateResult.Value.DeepClone();
         var header = document["objDoc_CashSales"] as JsonObject ?? new JsonObject();
-        ApplyHeader(header, transaction, true);
+        var gstTypeId = string.Empty;
+        var currencyId = "MYR";
+        if (!string.IsNullOrWhiteSpace(transaction.BranchId))
+        {
+            var branchResult = await branchAC.LoadRecordAsync(
+                transaction.BranchId,
+                cancellationToken);
+            if (branchResult.Success && branchResult.Value is not null)
+            {
+                gstTypeId = FindTextIgnoreCase(
+                    branchResult.Value,
+                    "TaxTypeID",
+                    "GSTTypeID") ?? string.Empty;
+                currencyId = First(
+                    FindTextIgnoreCase(branchResult.Value, "CurrencyID"),
+                    transaction.CurrencyName,
+                    "MYR")!;
+                transaction.GroupId = First(
+                    transaction.GroupId,
+                    FindTextIgnoreCase(branchResult.Value, "BranchGroupID", "GroupID"),
+                    string.Empty)!;
+                transaction.CurrencyName = First(
+                    FindTextIgnoreCase(branchResult.Value, "CurrencyName"),
+                    transaction.CurrencyName,
+                    "MYR")!;
+            }
+        }
+
+        var documentLines = BuildDocumentLines(
+            document,
+            transaction,
+            gstTypeId,
+            currencyId);
+        SynchronizeTransactionTotals(transaction, documentLines);
+        ApplyHeader(header, transaction, true, currencyId, gstTypeId);
         document["objDoc_CashSales"] = header;
-        var documentLines = BuildDocumentLines(document, transaction);
         document["lstDocumentLine"] = documentLines;
 
         var redemptionTaxValidation = ValidateAndApplyRedemptionTaxBasis(
@@ -1156,7 +1486,11 @@ public sealed class CashSalesService : ICashSalesService
             MidpointRounding.AwayFromZero);
     }
 
-    private static JsonArray BuildDocumentLines(JsonObject document, Transaction transaction)
+    private static JsonArray BuildDocumentLines(
+        JsonObject document,
+        Transaction transaction,
+        string gstTypeId,
+        string currencyId)
     {
         var template = document["ServiceChargeLine"] as JsonObject;
         var items = transaction.Items.Any()
@@ -1187,19 +1521,31 @@ public sealed class CashSalesService : ICashSalesService
                 out var lineTotal);
             var line = template is null ? new JsonObject() : (JsonObject)template.DeepClone();
             var currentLineOrder = lineOrder++;
+            var documentTypeId = transaction.DocumentTypeId == 52 ? 52 : 5;
+            var unitOfMeasurementId = string.IsNullOrWhiteSpace(item.UnitOfMeasureId)
+                ? "UNIT"
+                : item.UnitOfMeasureId;
+            item.TaxAmount = lineTax;
+            item.TotalPrice = lineTotal;
+
             line["DocumentLineID"] = currentLineOrder.ToString("D2");
             line["DocumentID"] = string.Empty;
+            line["DocumentLineTypeID"] = 1;
+            line["OwnerDocumentTypeID"] = documentTypeId;
             line["InventoryID"] = item.InventoryId;
             line["LineItemID"] = item.InventoryId;
+            line["InventoryItemAccountID"] = item.InventoryId;
             line["LineItemDisplayCode"] = item.Sku;
             line["LineOrder"] = currentLineOrder;
             line["Description"] = First(item.Description, item.Name, $"{transaction.Type} Item");
             line["ItemName"] = First(item.Name, item.Description, $"{transaction.Type} Item");
             line["Quantity"] = quantity;
             line["UnitPrice"] = item.UnitPrice;
+            line["Discount"] = discount;
             line["DiscountAmount"] = discount;
             line["CashDiscountID"] = item.CashDiscountId;
             line["Memo"] = item.DiscountMemo;
+            line["RefCompanyName"] = item.Remarks;
             line["SubTotal"] = lineTotal;
             line["SubTotalBeforeGST"] = beforeTax;
             line["ConvertedSubTotalBeforeGST"] = beforeTax;
@@ -1213,10 +1559,15 @@ public sealed class CashSalesService : ICashSalesService
             line["InventoryTypeID"] = item.InventoryTypeId > 0
                 ? item.InventoryTypeId
                 : InventoryTypeFor(item.Category);
-            line["UnitOfMeasureID"] = item.UnitOfMeasureId;
+            line["UnitOfMeasureID"] = unitOfMeasurementId;
+            line["UnitOfMeasurementID"] = unitOfMeasurementId;
+            line["SKUName"] = unitOfMeasurementId;
             line["TaxCodeID"] = item.TaxCodeId;
+            line["GSTTypeID"] = gstTypeId;
             line["IsTaxInclusive"] = item.IsTaxInclusive;
             line["ActivityTypeID"] = item.ActivityTypeId <= 0 ? 1 : item.ActivityTypeId;
+            line["AccountID"] = transaction.AccountId;
+            line["FinancialAccountID"] = string.Empty;
             line["MemberCreditAccountID"] = item.MemberCreditAllocations.Count > 1
                 ? string.Empty
                 : item.MemberCreditAccountId;
@@ -1242,15 +1593,49 @@ public sealed class CashSalesService : ICashSalesService
             line["BranchID"] = transaction.BranchId;
             line["EditBranchID"] = transaction.BranchId;
             line["GroupID"] = transaction.GroupId;
-            line["CurrencyID"] = string.IsNullOrWhiteSpace(transaction.CurrencyName) ? "MYR" : transaction.CurrencyName;
+            line["CurrencyID"] = string.IsNullOrWhiteSpace(currencyId) ? "MYR" : currencyId;
             line["ExchangeRate"] = 1m;
             line["FinancialDate"] = transaction.Date;
+            line["GSTTaxPointDate"] = documentTypeId == 52
+                ? DateTime.MinValue
+                : transaction.Date;
             line["SaveAction"] = 1;
             line["IsDirty"] = true;
             lines.Add(line);
         }
 
         return lines;
+    }
+
+    private static void SynchronizeTransactionTotals(
+        Transaction transaction,
+        JsonArray documentLines)
+    {
+        var activeLines = documentLines.OfType<JsonObject>().ToList();
+        var totalBeforeTax = Math.Round(
+            activeLines.Sum(line => Number(line, "SubTotalBeforeGST")),
+            2,
+            MidpointRounding.AwayFromZero);
+        var totalTax = Math.Round(
+            activeLines.Sum(line => Number(line, "TaxAmount")),
+            2,
+            MidpointRounding.AwayFromZero);
+        var totalAfterTaxBeforeRounding = Math.Round(
+            activeLines.Sum(line => Number(line, "SubTotal")),
+            2,
+            MidpointRounding.AwayFromZero);
+
+        transaction.Subtotal = totalBeforeTax;
+        transaction.Tax = totalTax;
+        transaction.Discount = Math.Round(
+            activeLines.Sum(line => Number(line, "Discount")),
+            2,
+            MidpointRounding.AwayFromZero);
+        transaction.Amount = Math.Round(
+            totalAfterTaxBeforeRounding + transaction.RoundingAmount,
+            2,
+            MidpointRounding.AwayFromZero);
+        transaction.ItemCount = transaction.Items.Sum(item => Math.Max(1, item.Quantity));
     }
 
     private async Task<(bool Success, string ErrorMessage, JsonArray RootCredits)> BuildMemberCreditGrantCollectionsAsync(
@@ -3010,7 +3395,12 @@ public sealed class CashSalesService : ICashSalesService
         return 1;
     }
 
-    private static void ApplyHeader(JsonObject header, Transaction transaction, bool isNew)
+    private static void ApplyHeader(
+        JsonObject header,
+        Transaction transaction,
+        bool isNew,
+        string? currencyId = null,
+        string? gstTypeId = null)
     {
         var now = DateTime.Now;
         var documentTypeId = transaction.DocumentTypeId == 52 ? 52 : 5;
@@ -3022,10 +3412,20 @@ public sealed class CashSalesService : ICashSalesService
         header["FinancialDate"] = transaction.Date;
         header["AccountID"] = transaction.AccountId;
         header["AccountName"] = transaction.CustomerName;
+        if (!string.IsNullOrWhiteSpace(gstTypeId))
+        {
+            header["TaxTypeID"] = gstTypeId;
+        }
         header["ReferenceNumber"] = transaction.ReferenceNumber;
         header["TotalBeforeTax"] = transaction.Subtotal;
+        header["TotalBeforeTax_NonServiceCharge"] = Math.Max(
+            0m,
+            transaction.Subtotal - transaction.ServiceChargeAmount);
+        header["TotalBeforeTax_ServiceCharge"] = transaction.ServiceChargeAmount;
         header["TaxableAmount"] = transaction.Subtotal;
         header["TaxAmount"] = transaction.Tax;
+        header["TourismTax"] = 0m;
+        header["HeritageTax"] = 0m;
         header["RoundingAmount"] = transaction.RoundingAmount;
         header["TotalAfterTax"] = transaction.Amount;
         header["ExchangeRate"] = 1;
@@ -3034,15 +3434,24 @@ public sealed class CashSalesService : ICashSalesService
         header["LocalTaxAmount"] = transaction.Tax;
         header["LocalRoundingAmount"] = transaction.RoundingAmount;
         header["LocalTotalAfterTax"] = transaction.Amount;
-        header["TransactionCurrencyID"] = "MYR";
-        header["LocalCurrencyID"] = "MYR";
-        header["TransactionCurrencyName"] = "MYR";
-        header["LocalCurrencyName"] = "MYR";
+        var resolvedCurrencyId = First(
+            currencyId,
+            Text(header, "TransactionCurrencyID"),
+            Text(header, "LocalCurrencyID"),
+            "MYR")!;
+        header["TransactionCurrencyID"] = resolvedCurrencyId;
+        header["LocalCurrencyID"] = resolvedCurrencyId;
+        var currencyName = string.IsNullOrWhiteSpace(transaction.CurrencyName)
+            ? "MYR"
+            : transaction.CurrencyName;
+        header["TransactionCurrencyName"] = currencyName;
+        header["LocalCurrencyName"] = currencyName;
         header["Remarks"] = transaction.Notes;
         header["Phone"] = transaction.CustomerContact;
         header["CashierName"] = transaction.CreatedBy;
         header["ModifiedDateTime"] = now;
         header["UpdateTimeStamp"] = now;
+        header["TablePaidTime"] = now;
         header["IsVoid"] = string.Equals(transaction.Status, "Cancelled", StringComparison.OrdinalIgnoreCase);
         header["IsDirty"] = true;
         header["SaveAction"] = isNew ? 1 : 0;
@@ -3075,6 +3484,51 @@ public sealed class CashSalesService : ICashSalesService
         }
 
         return string.Empty;
+    }
+
+    private static string? FindTextIgnoreCase(JsonNode? node, params string[] names)
+    {
+        if (node is JsonObject obj)
+        {
+            foreach (var item in obj)
+            {
+                if (names.Any(name =>
+                        string.Equals(item.Key, name, StringComparison.OrdinalIgnoreCase)) &&
+                    item.Value is JsonValue value)
+                {
+                    if (value.TryGetValue<string>(out var text) &&
+                        !string.IsNullOrWhiteSpace(text))
+                    {
+                        return text;
+                    }
+
+                    var rendered = item.Value?.ToJsonString().Trim('"');
+                    if (!string.IsNullOrWhiteSpace(rendered) && rendered != "null")
+                    {
+                        return rendered;
+                    }
+                }
+
+                var nested = FindTextIgnoreCase(item.Value, names);
+                if (!string.IsNullOrWhiteSpace(nested))
+                {
+                    return nested;
+                }
+            }
+        }
+        else if (node is JsonArray array)
+        {
+            foreach (var item in array)
+            {
+                var nested = FindTextIgnoreCase(item, names);
+                if (!string.IsNullOrWhiteSpace(nested))
+                {
+                    return nested;
+                }
+            }
+        }
+
+        return null;
     }
 
     private static DateTime? DateValueIgnoreCase(JsonObject? source, string name)
@@ -3142,6 +3596,23 @@ public sealed class CashSalesService : ICashSalesService
     }
 
     private static decimal Number(JsonObject? source, string name) => source?[name] is JsonValue value && value.TryGetValue<decimal>(out var number) ? number : 0;
+    private static bool SetDecimalIfDifferent(
+        JsonObject target,
+        string name,
+        decimal value)
+    {
+        var rounded = Math.Round(value, 2, MidpointRounding.AwayFromZero);
+        if (target[name] is JsonValue currentValue &&
+            currentValue.TryGetValue<decimal>(out var current) &&
+            Math.Abs(current - rounded) < 0.005m)
+        {
+            return false;
+        }
+
+        target[name] = rounded;
+        return true;
+    }
+
     private static int Integer(JsonObject? source, string name) => source?[name] is JsonValue value && value.TryGetValue<int>(out var number) ? number : 0;
     private static int IntegerIgnoreCase(JsonObject? source, string name)
     {
