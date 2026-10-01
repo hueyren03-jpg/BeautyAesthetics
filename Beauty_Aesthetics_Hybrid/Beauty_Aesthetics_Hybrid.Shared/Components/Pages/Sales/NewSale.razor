@@ -15,6 +15,7 @@
 @inject IPendingOrderService PendingOrderService
 @inject IBranchSessionService BranchSession
 @inject ICustomerService CustomerService
+@inject IMemberCreditWalletService MemberCreditWalletService
 @inject IProductInventoryService ProductInventoryService
 @inject ProductImageService ProductImageService
 @inject IServiceItemService ServiceItemService
@@ -2141,7 +2142,11 @@
         {
             var memberBalanceTask = CustomerService.GetBalanceSummaryAsync(customerId);
             var otherBalanceTask = CustomerService.GetOtherBalanceSummaryAsync(customerId, DateTime.UtcNow);
-            var redeemableCreditTask = CustomerService.GetRedeemableCreditsAsync(customerId, DateTime.Today);
+            var redeemableCreditTask = MemberCreditWalletService.LoadWalletAsync(
+                customerId,
+                DateTime.Today,
+                BranchSession.CurrentBranch?.Id,
+                BranchSession.CurrentBranch?.GroupId);
 
             await Task.WhenAll(memberBalanceTask, otherBalanceTask, redeemableCreditTask);
 
@@ -2168,12 +2173,8 @@
 
             if (redeemableCredit.Success && redeemableCredit.Value is not null)
             {
-                redeemableCredits =
-                    FilterRedeemableCreditsForWorkingBranch(redeemableCredit.Value);
-                selectedCustomerCreditBalance = Math.Round(
-                    redeemableCredits.Sum(credit => credit.NetBalanceAfterUtilised),
-                    2,
-                    MidpointRounding.AwayFromZero);
+                redeemableCredits = redeemableCredit.Value.Accounts.ToList();
+                selectedCustomerCreditBalance = redeemableCredit.Value.TotalAvailable;
                 redeemableCreditsError = null;
             }
             else
@@ -2809,7 +2810,7 @@
 
         try
         {
-            var result = await CustomerService.GetCreditRedemptionHistoryAsync(accountId);
+            var result = await MemberCreditWalletService.LoadHistoryAsync(accountId);
             if (!result.Success || result.Value is null)
             {
                 creditHistoryError = result.ErrorMessage ?? "Unable to load redemption history.";
@@ -2851,9 +2852,11 @@
 
         try
         {
-            var result = await CustomerService.GetRedeemableCreditsAsync(
+            var result = await MemberCreditWalletService.LoadWalletAsync(
                 customerId,
-                DateTime.Today);
+                DateTime.Today,
+                BranchSession.CurrentBranch?.Id,
+                BranchSession.CurrentBranch?.GroupId);
 
             // Step 37: never let an old customer's async response replace the
             // currently selected customer's credit accounts.
@@ -2879,12 +2882,8 @@
                 return;
             }
 
-            redeemableCredits =
-                FilterRedeemableCreditsForWorkingBranch(result.Value);
-            selectedCustomerCreditBalance = Math.Round(
-                redeemableCredits.Sum(credit => credit.NetBalanceAfterUtilised),
-                2,
-                MidpointRounding.AwayFromZero);
+            redeemableCredits = result.Value.Accounts.ToList();
+            selectedCustomerCreditBalance = result.Value.TotalAvailable;
         }
         catch (Exception ex)
         {
