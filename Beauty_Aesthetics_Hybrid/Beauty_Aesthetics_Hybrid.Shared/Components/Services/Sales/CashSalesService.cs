@@ -24,6 +24,7 @@ public sealed class CashSalesService : ICashSalesService
     private readonly IFileDownloadService fileDownloadService;
     private readonly IMemberCreditService memberCreditService;
     private readonly ICustomerService customerService;
+    private readonly IMemberCreditWalletService memberCreditWalletService;
     private readonly IJSRuntime jsRuntime;
 
     public CashSalesService(
@@ -34,6 +35,7 @@ public sealed class CashSalesService : ICashSalesService
         IFileDownloadService fileDownloadService,
         IMemberCreditService memberCreditService,
         ICustomerService customerService,
+        IMemberCreditWalletService memberCreditWalletService,
         IJSRuntime jsRuntime)
     {
         this.cashSalesAC = cashSalesAC;
@@ -43,6 +45,7 @@ public sealed class CashSalesService : ICashSalesService
         this.fileDownloadService = fileDownloadService;
         this.memberCreditService = memberCreditService;
         this.customerService = customerService;
+        this.memberCreditWalletService = memberCreditWalletService;
         this.jsRuntime = jsRuntime;
     }
 
@@ -2898,21 +2901,27 @@ public sealed class CashSalesService : ICashSalesService
                 $"Expected RM {expectedRedemptionTotal:N2}, but RM {allocatedRedemptionTotal:N2} is allocated.");
         }
 
-        var latestResult = await customerService.GetRedeemableCreditsAsync(
+        // Step 40: use the same shared Member Credit wallet service used by
+        // New Sales and Case Note Billing for the final pre-save revalidation.
+        var latestResult = await memberCreditWalletService.RevalidateAsync(
             transaction.AccountId,
+            allocatedByAccount,
             DateTime.Now,
+            transaction.BranchId,
+            transaction.GroupId,
             cancellationToken);
 
         if (!latestResult.Success || latestResult.Value is null)
         {
             return (
                 false,
-                HttpStatusCode.ServiceUnavailable,
+                HttpStatusCode.Conflict,
+                latestResult.ErrorMessage ??
                 "Member Credit balances could not be refreshed before saving. " +
                 "No redemption was created. Refresh the customer's credits and try again.");
         }
 
-        var latestByAccount = latestResult.Value
+        var latestByAccount = latestResult.Value.Accounts
             .Where(credit => !string.IsNullOrWhiteSpace(credit.ARAPOutstandingID))
             .GroupBy(
                 credit => credit.ARAPOutstandingID!.Trim(),
