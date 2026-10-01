@@ -47,17 +47,14 @@ public sealed class CashSalesAC
                 "Working branch is required before sales history can be loaded.");
         }
 
-        var payload = new CashSalesHistoryRequestDTO
-        {
-            Branches = branchId,
-            StartDate = request.StartDate,
-            EndDate = request.EndDate
-        };
+        // Keep the exact request contract used by the working master
+        // implementation. CashSalesLoadRequestDTO serializes Id as "strBranches".
+        request.Id = branchId;
 
         return await SendAsync<List<CashSalesProxyDTO>>(
             HttpMethod.Post,
             "/api/Doc_CashSales/GetAppSalesList",
-            payload,
+            request,
             "Cash sales history response was invalid.",
             cancellationToken);
     }
