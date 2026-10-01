@@ -859,8 +859,9 @@ public sealed class CashSalesService : ICashSalesService
                     transaction.CurrencyName,
                     "MYR")!;
                 transaction.GroupId = First(
-                    transaction.GroupId,
                     FindTextIgnoreCase(branchResult.Value, "BranchGroupID", "GroupID"),
+                    transaction.GroupId,
+                    transaction.BranchId,
                     string.Empty)!;
                 transaction.CurrencyName = First(
                     FindTextIgnoreCase(branchResult.Value, "CurrencyName"),
@@ -1195,6 +1196,7 @@ public sealed class CashSalesService : ICashSalesService
             DocumentTypeId = Integer(header, "DocumentTypeID") == 0 ? 5 : Integer(header, "DocumentTypeID"),
             AccountId = Text(header, "AccountID"),
             BranchId = Text(header, "BranchID"),
+            GroupId = Text(header, "GroupID"),
             InvoiceNumber = First(Text(header, "DisplayCode"), Text(header, "DocumentID"), "-")!,
             Date = DateValue(header, "FinancialDate") ?? DateTime.Today,
             CustomerName = First(Text(header, "AccountName"), "Walk-in Customer")!,
@@ -2680,6 +2682,82 @@ public sealed class CashSalesService : ICashSalesService
         return (true, string.Empty);
     }
 
+    private static bool CreditScopeAllows(string? scope, string currentValue)
+    {
+        if (string.IsNullOrWhiteSpace(scope))
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(currentValue))
+        {
+            return false;
+        }
+
+        return scope
+            .Split([',', ';', '|'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(value =>
+                value == "*" ||
+                value.Equals("ALL", StringComparison.OrdinalIgnoreCase) ||
+                value.Equals(currentValue, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static (bool Success, string ErrorMessage) ValidateMemberCreditBranchEligibility(
+        RedeemableCreditDTO credit,
+        Transaction transaction)
+    {
+        var accountId = credit.ARAPOutstandingID?.Trim() ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(transaction.BranchId) ||
+            string.IsNullOrWhiteSpace(transaction.GroupId))
+        {
+            return (
+                false,
+                "The working branch/group is missing. Select the working branch again before redeeming Member Credit.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(credit.AccountID) &&
+            !string.Equals(
+                credit.AccountID,
+                transaction.AccountId,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return (
+                false,
+                $"Member Credit {accountId} belongs to another customer and cannot be redeemed.");
+        }
+
+        if (!CreditScopeAllows(credit.RedeemableAtBranch, transaction.BranchId))
+        {
+            return (
+                false,
+                $"Member Credit {accountId} is not redeemable at branch {transaction.BranchId}.");
+        }
+
+        if (!CreditScopeAllows(credit.RedeemableAtGroup, transaction.GroupId))
+        {
+            return (
+                false,
+                $"Member Credit {accountId} is not redeemable for branch group {transaction.GroupId}.");
+        }
+
+        var isCrossBranch =
+            !string.IsNullOrWhiteSpace(credit.BranchID) &&
+            !string.Equals(
+                credit.BranchID,
+                transaction.BranchId,
+                StringComparison.OrdinalIgnoreCase);
+
+        if (isCrossBranch && credit.InterOutletRatio <= 0m)
+        {
+            return (
+                false,
+                $"Member Credit {accountId} has no valid inter-outlet settlement ratio for redemption at branch {transaction.BranchId}.");
+        }
+
+        return (true, string.Empty);
+    }
+
     private async Task<(bool Success, HttpStatusCode StatusCode, string ErrorMessage)> ValidateMemberCreditRedemptionBeforeCreateAsync(
         Transaction transaction,
         CancellationToken cancellationToken)
@@ -2855,6 +2933,23 @@ public sealed class CashSalesService : ICashSalesService
                     "The customer's credit balances were refreshed and the redemption was not saved.");
             }
 
+            var branchEligibility =
+                ValidateMemberCreditBranchEligibility(latestCredit, transaction);
+
+            if (!branchEligibility.Success)
+            {
+                Console.WriteLine(
+                    $"[Member Credit Step 38] BLOCKED | Account={allocation.Key} | " +
+                    $"RedeemBranch={transaction.BranchId} | RedeemGroup={transaction.GroupId} | " +
+                    $"CreditBranch={latestCredit.BranchID} | CreditGroup={latestCredit.GroupID} | " +
+                    $"InterOutletRatio={latestCredit.InterOutletRatio:N4} | {branchEligibility.ErrorMessage}");
+
+                return (
+                    false,
+                    HttpStatusCode.Conflict,
+                    branchEligibility.ErrorMessage);
+            }
+
             if (!latestCredit.IsRedeemable)
             {
                 return (
@@ -2903,6 +2998,11 @@ public sealed class CashSalesService : ICashSalesService
                     "The redemption was not saved.");
             }
         }
+
+        Console.WriteLine(
+            $"[Member Credit Step 38] PASS | Customer={transaction.AccountId} | " +
+            $"Branch={transaction.BranchId} | Group={transaction.GroupId} | " +
+            $"Accounts={allocatedByAccount.Count} | BranchEligibility=True | SettlementRatioValidated=True");
 
         Console.WriteLine(
             $"[Member Credit Step 28] PASS | Customer={transaction.AccountId} | " +
