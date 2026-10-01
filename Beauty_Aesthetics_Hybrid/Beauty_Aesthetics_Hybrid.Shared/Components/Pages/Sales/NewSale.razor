@@ -514,6 +514,17 @@
                                         <small>@item.Type</small>
                                         <strong>@item.Name</strong>
                                         <span>@item.Sku</span>
+                                        @if (!string.IsNullOrWhiteSpace(item.TaxCodeId))
+                                        {
+                                            <small>
+                                                Tax @item.TaxCodeId
+                                                @if (item.TaxPercentage > 0m)
+                                                {
+                                                    <text> · @item.TaxPercentage.ToString("0.##")%</text>
+                                                }
+                                                · @(item.IsTaxInclusive ? "Inclusive" : "Exclusive")
+                                            </small>
+                                        }
                                         <b>MYR @item.Price.ToString("N2")</b>
                                     </span>
                                     <span class="catalog-add" title="Add to cart"><i class="bi bi-plus-lg"></i></span>
@@ -574,6 +585,18 @@
                                     @if (item.Discount > 0)
                                     {
                                         <small class="discount-badge">- MYR @item.Discount.ToString("N2") disc.</small>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(item.TaxCodeId))
+                                    {
+                                        <small class="discount-badge">
+                                            Tax @item.TaxCodeId
+                                            @if (item.TaxPercentage > 0m)
+                                            {
+                                                <text> · @item.TaxPercentage.ToString("0.##")%</text>
+                                            }
+                                            · @(item.IsTaxInclusive ? "Inclusive" : "Exclusive")
+                                            · MYR @item.TaxAmount.ToString("N2")
+                                        </small>
                                     }
                                     @if (currentOrder.IsRedemptionMode)
                                     {
@@ -1215,6 +1238,21 @@
             <strong>MYR @editingCatalogItem.Price.ToString("N2")</strong>
         </div>
 
+        @if (!string.IsNullOrWhiteSpace(editingCatalogItem.TaxCodeId))
+        {
+            <div class="item-dialog-price">
+                <span>Tax</span>
+                <strong>
+                    @editingCatalogItem.TaxCodeId
+                    @if (editingCatalogItem.TaxPercentage > 0m)
+                    {
+                        <text> · @editingCatalogItem.TaxPercentage.ToString("0.##")%</text>
+                    }
+                    · @(editingCatalogItem.IsTaxInclusive ? "Inclusive" : "Exclusive")
+                </strong>
+            </div>
+        }
+
         <div class="item-fields">
             <label>
                 <span>Quantity</span>
@@ -1572,25 +1610,53 @@
             defaultCustomers = customers.ToList();
         }
 
+        var products = productResult.Success && productResult.Value is not null
+            ? productResult.Value
+                .Where(x => !string.IsNullOrWhiteSpace(x.MasterAccountId))
+                .ToList()
+            : new List<InventoryViewModel.InventoryItem>();
+
         var services = serviceResult.Success && serviceResult.Value is not null
-            ? serviceResult.Value.Where(x => !string.Equals(x.Status, "Inactive", StringComparison.OrdinalIgnoreCase)).ToList()
+            ? serviceResult.Value
+                .Where(x => !string.Equals(x.Status, "Inactive", StringComparison.OrdinalIgnoreCase))
+                .ToList()
             : new List<ServiceViewModel.ServiceItem>();
+
+        IReadOnlyList<InventoryPackageSummary> packages = Array.Empty<InventoryPackageSummary>();
+        if (services.Count > 0)
+        {
+            var packageResult = await PackageService.LoadPackagesAsync(services, branchId);
+            if (packageResult.Success && packageResult.Value is not null)
+            {
+                packages = packageResult.Value
+                    .Where(x =>
+                        !string.IsNullOrWhiteSpace(x.MasterAccountId) &&
+                        !string.Equals(x.Status, "Inactive", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+            }
+        }
+
+        // Product, Service and Package proxy records already carry their TaxCode
+        // and IsTaxInclusive values. Resolve the configured rate once per unique
+        // tax code before building the Sales catalog.
+        var taxRates = await LoadCatalogTaxRatesAsync(
+            products.Select(x => x.TaxCode)
+                .Concat(services.Select(x => x.TaxCode))
+                .Concat(packages.Select(x => x.TaxCode)));
 
         catalog.Clear();
 
-        if (productResult.Success && productResult.Value is not null)
-        {
-            catalog.AddRange(productResult.Value
-                .Where(x => !string.IsNullOrWhiteSpace(x.MasterAccountId))
-                .Select(x => new CatalogItem(
-                    x.MasterAccountId,
-                    x.Type,
-                    x.Sku,
-                    "Product",
-                    x.Price,
-                    ProductImageService.ResolveImageUrl(x.MasterAccountId, x.ImagePath, x.ImageFileName),
-                    InventoryTypeId: 1)));
-        }
+        catalog.AddRange(products.Select(x => new CatalogItem(
+            x.MasterAccountId,
+            x.Type,
+            x.Sku,
+            "Product",
+            x.Price,
+            ProductImageService.ResolveImageUrl(x.MasterAccountId, x.ImagePath, x.ImageFileName),
+            InventoryTypeId: 1,
+            TaxCodeId: x.TaxCode,
+            IsTaxInclusive: x.IsTaxInclusive,
+            TaxPercentage: CatalogTaxRate(taxRates, x.TaxCode))));
 
         catalog.AddRange(services
             .Where(x => !string.IsNullOrWhiteSpace(x.MasterAccountId))
@@ -1601,27 +1667,22 @@
                 "Service",
                 x.Price,
                 ProductImageService.ResolveImageUrl(x.MasterAccountId, x.ImagePath, x.ImageFileName),
-                InventoryTypeId: 3)));
+                InventoryTypeId: 3,
+                TaxCodeId: x.TaxCode,
+                IsTaxInclusive: x.IsTaxInclusive,
+                TaxPercentage: CatalogTaxRate(taxRates, x.TaxCode))));
 
-        if (services.Count > 0)
-        {
-            var packageResult = await PackageService.LoadPackagesAsync(services, branchId);
-            if (packageResult.Success && packageResult.Value is not null)
-            {
-                catalog.AddRange(packageResult.Value
-                    .Where(x => !string.IsNullOrWhiteSpace(x.MasterAccountId) && !string.Equals(x.Status, "Inactive", StringComparison.OrdinalIgnoreCase))
-                    .Select(x => new CatalogItem(
-                        x.MasterAccountId,
-                        x.Name,
-                        x.Sku,
-                        "Package",
-                        x.Price,
-                        ProductImageService.ResolveImageUrl(x.MasterAccountId, x.ImagePath, x.ImageFileName),
-                        InventoryTypeId: 5,
-                        TaxCodeId: x.TaxCode,
-                        IsTaxInclusive: x.IsTaxInclusive)));
-            }
-        }
+        catalog.AddRange(packages.Select(x => new CatalogItem(
+            x.MasterAccountId,
+            x.Name,
+            x.Sku,
+            "Package",
+            x.Price,
+            ProductImageService.ResolveImageUrl(x.MasterAccountId, x.ImagePath, x.ImageFileName),
+            InventoryTypeId: 5,
+            TaxCodeId: x.TaxCode,
+            IsTaxInclusive: x.IsTaxInclusive,
+            TaxPercentage: CatalogTaxRate(taxRates, x.TaxCode))));
 
         if (memberCreditResult.Success && memberCreditResult.Value is not null)
         {
@@ -1637,6 +1698,45 @@
             .OrderBy(x => x.Type)
             .ThenBy(x => x.Name)
             .ToList();
+    }
+
+    private async Task<IReadOnlyDictionary<string, decimal>> LoadCatalogTaxRatesAsync(
+        IEnumerable<string?> taxCodes)
+    {
+        var codes = taxCodes
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => code!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (codes.Count == 0)
+        {
+            return new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var resolved = await Task.WhenAll(codes.Select(async code =>
+            new KeyValuePair<string, decimal>(
+                code,
+                await GstTaxRateService.GetRateForTaxCodeAsync(code))));
+
+        return resolved.ToDictionary(
+            item => item.Key,
+            item => item.Value,
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static decimal CatalogTaxRate(
+        IReadOnlyDictionary<string, decimal> taxRates,
+        string? taxCode)
+    {
+        if (string.IsNullOrWhiteSpace(taxCode))
+        {
+            return 0m;
+        }
+
+        return taxRates.TryGetValue(taxCode.Trim(), out var rate)
+            ? Math.Max(0m, rate)
+            : 0m;
     }
 
     private async Task<IReadOnlyList<CatalogItem>> LoadMemberCreditCatalogAsync(
