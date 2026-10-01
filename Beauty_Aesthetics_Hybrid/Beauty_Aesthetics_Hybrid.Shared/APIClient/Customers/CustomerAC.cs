@@ -73,15 +73,17 @@ public sealed class CustomerAC
         CancellationToken cancellationToken = default)
     {
         // Match Senang Retails exactly: POST application/json with { "id": customerId }.
+        const string endpoint = "/api/Customer/GetMemberBalanceSummary";
         var requestJson = JsonSerializer.Serialize(new { id = customerId }, JsonOptions);
-        using var request = new HttpRequestMessage(
-            HttpMethod.Post,
-            "/api/Customer/GetMemberBalanceSummary")
+        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
         {
             Content = new StringContent(requestJson, Encoding.UTF8, "application/json")
         };
 
+        LogCriticalRequest(request.Method, endpoint, requestJson);
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+        await LogCriticalResponseAsync(request.Method, endpoint, response, cancellationToken);
+
         return await ReadApiResponseAsync<MemberBalanceSummaryDTO>(
             response,
             "Member balance summary response was invalid.",
@@ -122,15 +124,26 @@ public sealed class CustomerAC
         string customerId,
         CancellationToken cancellationToken = default)
     {
-        using var request = CreatePostRequest("/api/Customer/GetCreditBalanceDetails", new CustomerLookupDTO { Id = customerId });
+        const string endpoint = "/api/Customer/GetCreditBalanceDetails";
+        var payload = new CustomerLookupDTO { Id = customerId };
+        using var request = CreatePostRequest(endpoint, payload);
+        var requestBody = JsonSerializer.Serialize(payload, JsonOptions);
+
+        LogCriticalRequest(request.Method, endpoint, requestBody);
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
-        return await ReadApiResponseAsync<List<CreditBalanceDetailDTO>>(response, "Credit balance response was invalid.", cancellationToken);
+        await LogCriticalResponseAsync(request.Method, endpoint, response, cancellationToken);
+
+        return await ReadApiResponseAsync<List<CreditBalanceDetailDTO>>(
+            response,
+            "Credit balance response was invalid.",
+            cancellationToken);
     }
     public async Task<ApiCallResult<List<RedeemableCreditDTO>>> GetRedeemableCreditsAsync(
         string customerId,
         DateTime purchaseCutOffDate,
         CancellationToken cancellationToken = default)
     {
+        const string endpoint = "/api/Customer/GetRedeemableCredits";
         var payload = new RedeemableCreditRequestDTO
         {
             CustomerId = customerId,
@@ -138,14 +151,15 @@ public sealed class CustomerAC
         };
 
         var requestJson = JsonSerializer.Serialize(payload, JsonOptions);
-        using var request = new HttpRequestMessage(
-            HttpMethod.Post,
-            "/api/Customer/GetRedeemableCredits")
+        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
         {
             Content = new StringContent(requestJson, Encoding.UTF8, "application/json")
         };
 
+        LogCriticalRequest(request.Method, endpoint, requestJson);
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+        await LogCriticalResponseAsync(request.Method, endpoint, response, cancellationToken);
+
         return await ReadApiResponseAsync<List<RedeemableCreditDTO>>(
             response,
             "Redeemable member credit response was invalid.",
@@ -156,11 +170,15 @@ public sealed class CustomerAC
         string arapOutstandingId,
         CancellationToken cancellationToken = default)
     {
-        using var request = CreatePostRequest(
-            "/api/ARAPOutstanding_MemberCredit/GetRedemptionHistory",
-            new CustomerLookupDTO { Id = arapOutstandingId });
+        const string endpoint = "/api/ARAPOutstanding_MemberCredit/GetRedemptionHistory";
+        var payload = new CustomerLookupDTO { Id = arapOutstandingId };
+        using var request = CreatePostRequest(endpoint, payload);
+        var requestBody = JsonSerializer.Serialize(payload, JsonOptions);
 
+        LogCriticalRequest(request.Method, endpoint, requestBody);
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+        await LogCriticalResponseAsync(request.Method, endpoint, response, cancellationToken);
+
         return await ReadApiResponseAsync<List<CreditRedemptionHistoryDTO>>(
             response,
             "Member Credit redemption history response was invalid.",
@@ -192,6 +210,94 @@ public sealed class CustomerAC
             "Update customer response was invalid.",
             cancellationToken);
     }
+
+    private static void LogCriticalRequest(
+        HttpMethod method,
+        string endpoint,
+        string? requestBody)
+    {
+        Console.WriteLine(
+            $"[API {method.Method} {endpoint}] URL: {endpoint}");
+        Console.WriteLine(
+            $"[API {method.Method} {endpoint}] Request Body: {SanitizeLogBody(requestBody)}");
+    }
+
+    private static async Task LogCriticalResponseAsync(
+        HttpMethod method,
+        string endpoint,
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        var responseBody = response.Content is null
+            ? string.Empty
+            : await response.Content.ReadAsStringAsync(cancellationToken);
+
+        Console.WriteLine(
+            $"[API {method.Method} {endpoint}] HTTP {(int)response.StatusCode} {response.StatusCode}");
+        Console.WriteLine(
+            $"[API {method.Method} {endpoint}] Response Body: {SanitizeLogBody(responseBody)}");
+    }
+
+    private static string SanitizeLogBody(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return "<empty>";
+        }
+
+        try
+        {
+            var node = System.Text.Json.Nodes.JsonNode.Parse(body);
+            if (node is null)
+            {
+                return body;
+            }
+
+            RedactSensitiveJson(node);
+            return node.ToJsonString(JsonOptions);
+        }
+        catch (JsonException)
+        {
+            return body;
+        }
+    }
+
+    private static void RedactSensitiveJson(System.Text.Json.Nodes.JsonNode node)
+    {
+        if (node is System.Text.Json.Nodes.JsonObject obj)
+        {
+            foreach (var property in obj.ToList())
+            {
+                if (IsSensitiveLogField(property.Key))
+                {
+                    obj[property.Key] = "***REDACTED***";
+                }
+                else if (property.Value is not null)
+                {
+                    RedactSensitiveJson(property.Value);
+                }
+            }
+
+            return;
+        }
+
+        if (node is System.Text.Json.Nodes.JsonArray array)
+        {
+            foreach (var item in array)
+            {
+                if (item is not null)
+                {
+                    RedactSensitiveJson(item);
+                }
+            }
+        }
+    }
+
+    private static bool IsSensitiveLogField(string name) =>
+        name.Contains("token", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("authorization", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("password", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("secret", StringComparison.OrdinalIgnoreCase);
 
     private static HttpRequestMessage CreatePostRequest<T>(string uri, T payload)
     {
