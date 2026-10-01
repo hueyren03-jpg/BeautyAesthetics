@@ -4296,7 +4296,13 @@
             var fileId = string.IsNullOrWhiteSpace(savedSale.DocumentId)
                 ? ReceiptNumber
                 : savedSale.DocumentId;
-            var downloaded = await CashSalesService.DownloadReceiptPdfAsync(fileId);
+            var receiptDocumentTypeId =
+                currentOrder.IsRedemptionMode || isReopenedRedemption
+                    ? 52
+                    : 5;
+            var downloaded = await CashSalesService.DownloadReceiptPdfAsync(
+                fileId,
+                receiptDocumentTypeId);
 
             if (!downloaded)
             {
