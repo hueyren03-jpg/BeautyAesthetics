@@ -12,7 +12,7 @@
 @using Beauty_Aesthetics_WebPos.Models.DTOs
 @inject ICashSalesService CashSalesService
 @inject IPendingOrderService PendingOrderService
-@inject IBranchLookupService BranchLookupService
+@inject Beauty_Aesthetics_WebPos.Components.Services.Branches.IBranchSessionService BranchSession
 @inject ICustomerService CustomerService
 @inject IProductInventoryService ProductInventoryService
 @inject ProductImageService ProductImageService
@@ -1245,13 +1245,10 @@
         <input type="date" @bind="startDate" class="input date-input" max="@endDate.ToString("yyyy-MM-dd")" onclick="this.showPicker()" />
         <span class="date-separator">@L["Label_To"]</span>
         <input type="date" @bind="endDate" class="input date-input" min="@startDate.ToString("yyyy-MM-dd")" onclick="this.showPicker()" />
-        <select @bind="selectedOutlet" @bind:after="FilterByBranch" class="input outlet-select">
-            <option value="">@L["Opt_AllOutlets"]</option>
-            @foreach (var branch in branches)
-            {
-                <option value="@branch.Id">@branch.Name</option>
-            }
-        </select>
+        <input class="input outlet-select"
+               value="@WorkingBranchDisplay"
+               readonly
+               title="Working branch is selected at login and locked for this session." />
         <button class="btn apply-btn" @onclick="ApplyFilters">@L["Btn_Apply"]</button>
         <button class="btn new-sale-btn" @onclick="OpenNewSalePage">
             <i class="bi bi-plus-lg"></i> @L["Btn_NewSale"]
@@ -2257,6 +2254,10 @@
     }
 
     private string selectedOutlet = "";
+    private string WorkingBranchDisplay =>
+        BranchSession.CurrentBranch is null
+            ? "No branch selected"
+            : BranchSession.CurrentBranch.DisplayName;
     private List<BranchLookupItem> branches = new();
     private List<CashSalesPaymentTypeDTO> paymentTypes = new();
     private List<Customer> customerOptions = new();
@@ -2376,11 +2377,19 @@
 
     private async Task LoadLookupsAsync()
     {
-        var branchResult = await BranchLookupService.LoadBranchesAsync();
-        if (branchResult.Success && branchResult.Value is not null)
-            branches = branchResult.Value.ToList();
+        var workingBranch = BranchSession.CurrentBranch;
+        if (workingBranch is null || string.IsNullOrWhiteSpace(workingBranch.Id))
+        {
+            branches = new();
+            selectedOutlet = string.Empty;
+            apiError = "No working branch is selected. Log out and sign in again to select a branch.";
+        }
         else
-            apiError = branchResult.ErrorMessage ?? "Unable to load branches.";
+        {
+            // Branch is selected during login and remains locked for this session.
+            selectedOutlet = workingBranch.Id.Trim();
+            branches = new List<BranchLookupItem> { workingBranch };
+        }
 
         var paymentResult = await CashSalesService.LoadPaymentTypesAsync();
         if (paymentResult.Success && paymentResult.Value is not null)
@@ -2406,8 +2415,15 @@
         isCatalogLoading = true;
         try
         {
-            var productTask = ProductInventoryService.LoadProductsAsync("HQ");
-            var serviceTask = ServiceItemService.LoadServiceItemsAsync("hq");
+            var workingBranchId = selectedOutlet;
+            if (string.IsNullOrWhiteSpace(workingBranchId))
+            {
+                apiError = "A working branch is required before sales items can be loaded.";
+                return;
+            }
+
+            var productTask = ProductInventoryService.LoadProductsAsync(workingBranchId);
+            var serviceTask = ServiceItemService.LoadServiceItemsAsync(workingBranchId);
             var taxTask = GstTaxRateService.LoadActiveTaxCodesAsync();
             await Task.WhenAll(productTask, serviceTask, taxTask);
 
@@ -2472,7 +2488,7 @@
 
             if (services.Count > 0)
             {
-                var packageResult = await PackageService.LoadPackagesAsync(services, "hq");
+                var packageResult = await PackageService.LoadPackagesAsync(services, workingBranchId);
                 if (packageResult.Success && packageResult.Value is not null)
                 {
                     catalog.AddRange(packageResult.Value
@@ -2543,39 +2559,25 @@
     {
         var effectiveStart = rangeStart ?? startDate;
         var effectiveEnd = rangeEnd ?? endDate;
+        var workingBranchId =
+            BranchSession.CurrentBranch?.Id?.Trim() ??
+            selectedOutlet?.Trim() ??
+            string.Empty;
 
-        if (!string.IsNullOrWhiteSpace(selectedOutlet) || branches.Count == 0)
-            return await CashSalesService.LoadTransactionsAsync(effectiveStart, effectiveEnd, selectedOutlet, resolvePaymentMethods);
-
-        var branchIds = branches
-            .Select(branch => branch.Id)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        if (branchIds.Count == 0)
-            return await CashSalesService.LoadTransactionsAsync(effectiveStart, effectiveEnd, string.Empty, resolvePaymentMethods);
-
-        var results = await Task.WhenAll(branchIds.Select(branchId =>
-            CashSalesService.LoadTransactionsAsync(effectiveStart, effectiveEnd, branchId, resolvePaymentMethods)));
-        var successfulResults = results.Where(result => result.Success && result.Value is not null).ToList();
-
-        if (successfulResults.Count == 0)
+        if (string.IsNullOrWhiteSpace(workingBranchId))
         {
-            var firstFailure = results.FirstOrDefault(result => !result.Success);
             return ApiCallResult<IReadOnlyList<Transaction>>.Failure(
-                firstFailure?.StatusCode ?? System.Net.HttpStatusCode.BadGateway,
-                firstFailure?.ErrorMessage ?? "Unable to load sales for any outlet.");
+                System.Net.HttpStatusCode.BadRequest,
+                "Working branch is required. Log out and sign in again to select a branch.");
         }
 
-        var transactions = successfulResults
-            .SelectMany(result => result.Value!)
-            .GroupBy(TransactionIdentity, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.First())
-            .OrderByDescending(transaction => transaction.Date)
-            .ToList();
+        selectedOutlet = workingBranchId;
 
-        return ApiCallResult<IReadOnlyList<Transaction>>.Ok(successfulResults[0].StatusCode, transactions);
+        return await CashSalesService.LoadTransactionsAsync(
+            effectiveStart,
+            effectiveEnd,
+            workingBranchId,
+            resolvePaymentMethods);
     }
 
     private static string TransactionIdentity(Transaction transaction) =>
@@ -2718,15 +2720,14 @@
         current > previous ? "positive" : current < previous ? "negative" : "neutral";
     private IReadOnlyList<string> GetAnalyticsBranchIds()
     {
-        if (!string.IsNullOrWhiteSpace(selectedOutlet))
-            return new[] { selectedOutlet };
+        var workingBranchId =
+            BranchSession.CurrentBranch?.Id?.Trim() ??
+            selectedOutlet?.Trim() ??
+            string.Empty;
 
-        var branchIds = branches
-            .Select(branch => branch.Id)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        return branchIds.Count > 0 ? branchIds : new[] { "HQ" };
+        return string.IsNullOrWhiteSpace(workingBranchId)
+            ? Array.Empty<string>()
+            : new[] { workingBranchId };
     }
 
     private static string PercentageOf(decimal amount, decimal total) =>
