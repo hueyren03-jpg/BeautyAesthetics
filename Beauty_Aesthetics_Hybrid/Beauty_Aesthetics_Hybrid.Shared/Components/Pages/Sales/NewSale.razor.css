@@ -108,7 +108,7 @@ button, input, select, textarea { font: inherit; }
    never moves the switch itself. Only the circle moves inside the pill. */
 .cart-stage-header {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 82px auto;
+    grid-template-columns: minmax(0, 1fr) 82px;
     align-items: center;
 }
 
@@ -2128,7 +2128,7 @@ textarea:focus {
         font-size: 20px;
     }
     .cart-stage-header {
-        grid-template-columns: minmax(0, 1fr) 76px auto;
+        grid-template-columns: minmax(0, 1fr) 76px;
     }
     .sale-mode-slot {
         width: 76px;
@@ -2387,21 +2387,16 @@ textarea:focus {
     }
     .cart-stage-header {
         grid-template-columns: minmax(0, 1fr) auto;
-        grid-template-rows: auto auto;
+        grid-template-rows: auto;
         align-items: center;
     }
     .cart-stage-header > div:first-child {
-        grid-column: 1 / -1;
+        grid-column: 1;
         grid-row: 1;
     }
     .cart-stage-header .sale-mode-slot {
-        grid-column: 1;
-        grid-row: 2;
-        justify-self: start;
-    }
-    .cart-stage-header .sale-progress {
         grid-column: 2;
-        grid-row: 2;
+        grid-row: 1;
         justify-self: end;
     }
     .sale-page-icon {
@@ -3549,7 +3544,7 @@ textarea:focus {
 .credit-auto-allocation-bar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: 16px;
     padding: 11px 18px;
     border-bottom: 1px solid #e5e7eb;
@@ -3609,6 +3604,38 @@ textarea:focus {
 
 .credit-allocation-selected {
     background: #f0f7ff;
+}
+
+.credit-selectable-row,
+.credit-selectable-card {
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(8, 102, 199, .10);
+}
+
+.credit-selectable-row:hover:not(.credit-selection-disabled) {
+    background: #f4f9ff;
+}
+
+.credit-selectable-row:focus-visible,
+.credit-selectable-card:focus-visible {
+    outline: 3px solid rgba(8, 102, 199, .24);
+    outline-offset: -3px;
+}
+
+.credit-selectable-row.credit-allocation-selected,
+.credit-selectable-card.credit-allocation-selected {
+    background: #eef6ff;
+    box-shadow: inset 4px 0 0 #0866c7;
+}
+
+.credit-selection-disabled {
+    cursor: not-allowed;
+    opacity: .58;
+}
+
+.credit-selectable-row td {
+    min-height: 56px;
 }
 
 .credit-allocation-input {
@@ -3698,6 +3725,10 @@ textarea:focus {
     min-height: 36px;
     padding: 6px 8px;
     gap: 5px;
+}
+
+.credit-viewer-footer {
+    justify-content: flex-end !important;
 }
 
 @media (max-width: 600px) {
@@ -4031,5 +4062,67 @@ textarea:focus {
 
     .credit-mobile-values.three-column dd {
         font-size: 10.5px;
+    }
+}
+
+/* Reliable off-canvas cart state for touch layouts. */
+@media (max-width: 1024px) {
+    .sale-workspace .cart-panel {
+        position: fixed !important;
+        inset: 0 0 0 auto !important;
+        right: 0 !important;
+        width: min(420px, 92vw) !important;
+        max-width: 100vw;
+        height: 100dvh !important;
+        max-height: 100dvh !important;
+        margin: 0 !important;
+        display: flex !important;
+        flex-direction: column;
+        overflow: hidden;
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transform: translate3d(105%, 0, 0);
+        transition: transform .22s ease, opacity .16s ease, visibility 0s linear .22s;
+        z-index: 1300 !important;
+    }
+
+    .sale-workspace .cart-panel.mobile-open,
+    .sale-workspace .cart-panel[data-mobile-open="true"] {
+        opacity: 1 !important;
+        visibility: visible !important;
+        pointer-events: auto !important;
+        transform: translate3d(0, 0, 0) !important;
+        transition: transform .22s ease, opacity .16s ease, visibility 0s;
+    }
+
+    .sale-workspace .mobile-cart-backdrop {
+        display: block !important;
+        position: fixed !important;
+        inset: 0 !important;
+        background: rgba(15, 23, 42, .52) !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        z-index: 2147482000 !important;
+    }
+
+    .sale-workspace .cart-panel > header,
+    .sale-workspace .cart-panel > footer {
+        flex: 0 0 auto;
+    }
+
+    .sale-workspace .cart-panel .cart-list,
+    .sale-workspace .cart-panel .cart-empty {
+        min-height: 0;
+        flex: 1 1 auto;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+}
+
+@media (max-width: 600px) {
+    .sale-workspace .cart-panel {
+        width: 100vw !important;
     }
 }

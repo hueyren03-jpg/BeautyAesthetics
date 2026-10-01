@@ -47,7 +47,6 @@
                 <span class="sale-page-icon"><i class="bi bi-clock-history"></i></span>
                 <div>
                     <h1>Pending Orders</h1>
-                    <p>Resume a held order or select a customer to create a new order.</p>
                 </div>
             }
             else if (stage == SaleStage.CustomerSelection)
@@ -58,7 +57,6 @@
                 <span class="sale-page-icon"><i class="bi bi-person-plus"></i></span>
                 <div>
                     <h1>Select Customer</h1>
-                    <p>Choose a customer to create and build the order.</p>
                 </div>
             }
             else if (stage == SaleStage.Cart)
@@ -69,7 +67,7 @@
                 <span class="sale-page-icon"><i class="bi bi-bag-plus"></i></span>
                 <div class="sale-title-copy">
                     <h1>@(currentOrder.IsRedemptionMode ? "Select Redemption Items" : "Select Items")</h1>
-                    <p>@(currentOrder.IsRedemptionMode ? "Member Credit Redemption" : "Sales") · @(string.IsNullOrWhiteSpace(currentOrder.CustomerName) ? "Customer" : currentOrder.CustomerName) (@currentOrder.OrderNumber)</p>
+                    <p>@(string.IsNullOrWhiteSpace(currentOrder.CustomerName) ? "Customer" : currentOrder.CustomerName) · @currentOrder.OrderNumber</p>
                 </div>
 
             }
@@ -81,7 +79,6 @@
                 <span class="sale-page-icon"><i class="bi bi-credit-card"></i></span>
                 <div>
                     <h1>Payment</h1>
-                    <p>Choose a payment method and collect payment.</p>
                 </div>
             }
         </div>
@@ -104,24 +101,6 @@
             </div>
         }
 
-        <div class="sale-progress" aria-label="Sale progress">
-            @if (stage == SaleStage.PendingOrders)
-            {
-                <span class="active"><i class="bi bi-clock-history"></i> Pending Orders</span>
-            }
-            else if (stage == SaleStage.CustomerSelection)
-            {
-                <span class="active"><i class="bi bi-person-check"></i> Step 1: Customer</span>
-            }
-            else if (stage == SaleStage.Cart)
-            {
-                <span class="active"><i class="bi bi-cart3"></i> Step 2: Items</span>
-            }
-            else if (stage == SaleStage.Payment)
-            {
-                <span class="active"><i class="bi bi-credit-card"></i> Step 3: Payment</span>
-            }
-        </div>
     </header>
     }
 
@@ -130,7 +109,7 @@
     {
         <section class="sale-loading">
             <span class="spinner-border"></span>
-            <strong>Preparing sale workspace...</strong>
+            <strong>Loading</strong>
         </section>
     }
     @* ========================================= 3. STAGE 1: PENDING ORDERS ========================================= *@
@@ -143,7 +122,7 @@
                     <input type="text"
                            value="@pendingSearchText"
                            @oninput="UpdatePendingSearch"
-                           placeholder="Search pending orders by customer, phone, or order #..." />
+                           placeholder="Search orders" />
                     @if (!string.IsNullOrWhiteSpace(pendingSearchText))
                     {
                         <button type="button" class="clear-search-btn" @onclick="() => pendingSearchText = string.Empty">
@@ -178,16 +157,14 @@
                     @if (string.IsNullOrWhiteSpace(pendingSearchText))
                     {
                         <h3>No Pending Orders</h3>
-                        <p>There are no held orders at this time. Click below to select a customer and create a new order.</p>
                         <button type="button" class="primary-action big-action-btn" @onclick="StartNewOrderCustomerSelection">
                             <i class="bi bi-person-plus-fill"></i>
-                            <span>Select Customer & Create Order</span>
+                            <span>New Order</span>
                         </button>
                     }
                     else
                     {
                         <h3>No Matching Pending Orders</h3>
-                        <p>No held orders matched "<strong>@pendingSearchText</strong>". Try another keyword.</p>
                         <button type="button" class="secondary-action" @onclick="() => pendingSearchText = string.Empty">
                             <span>Clear Search</span>
                         </button>
@@ -282,21 +259,13 @@
         else
         {
             <section class="customer-selection-page">
-                <div class="customer-selection-heading">
-                    <div>
-                        <span>Customer Selection</span>
-                        <h2>Who is this order for?</h2>
-                        <p>Search customer by name, contact number, email, or membership type.</p>
-                    </div>
-                </div>
-
                 <div class="customer-selection-controls">
                     <div class="customer-search">
                         <i class="bi bi-search"></i>
                         <input type="text"
                                value="@customerSearchText"
                                @oninput="UpdateCustomerSearch"
-                               placeholder="Search customer by name, contact number, email, or membership..."
+                               placeholder="Search customers"
                                autofocus />
                         @if (!string.IsNullOrWhiteSpace(customerSearchText))
                         {
@@ -313,7 +282,7 @@
                         </button>
                         <button type="button" class="walkin-customer-btn" @onclick="SelectWalkInCustomer" title="Fast walk-in order">
                             <i class="bi bi-person-walking"></i>
-                            <span>Select Walk-in Customer</span>
+                            <span>Walk-in</span>
                         </button>
                     </div>
                 </div>
@@ -322,7 +291,7 @@
                 {
                     <div class="customer-empty">
                         <span class="spinner-border spinner-border-sm"></span>
-                        <strong>Searching customers...</strong>
+                        <strong>Loading</strong>
                     </div>
                 }
                 else if (!FilteredCustomers.Any())
@@ -330,10 +299,9 @@
                     <div class="customer-empty">
                         <i class="bi bi-person-x"></i>
                         <strong>No customers found</strong>
-                        <span>Try another name, phone number, email, or select Walk-in Customer.</span>
                         <button type="button" class="secondary-action" style="margin-top: 10px;" @onclick="SelectWalkInCustomer">
                             <i class="bi bi-person-walking"></i>
-                            <span>Continue as Walk-in Customer</span>
+                            <span>Walk-in</span>
                         </button>
                     </div>
                 }
@@ -480,7 +448,7 @@
                             <input type="text"
                                    value="@searchText"
                                    @oninput="UpdateSearch"
-                                   placeholder="Search item name or SKU..." />
+                                   placeholder="Search items" />
                             @if (!string.IsNullOrWhiteSpace(searchText))
                             {
                                 <button type="button" class="clear-search-btn" @onclick="() => searchText = string.Empty" title="Clear search">
@@ -495,7 +463,6 @@
                         <div class="empty-state">
                             <i class="bi bi-search"></i>
                             <strong>No matching items</strong>
-                            <span>Try another name, SKU, or item category tab.</span>
                         </div>
                     }
                     else
@@ -535,13 +502,15 @@
             {
                 <button type="button" class="mobile-cart-backdrop" aria-label="Close cart" @onclick="CloseMobileCart"></button>
             }
-            <aside class="cart-panel @(mobileCartOpen ? "mobile-open" : null)" aria-label="Shopping cart">
+            <aside class="cart-panel @(mobileCartOpen ? "mobile-open" : null)"
+                   data-mobile-open="@(mobileCartOpen ? "true" : "false")"
+                   style="@(mobileCartOpen ? "position:fixed !important;top:0 !important;right:0 !important;bottom:0 !important;left:auto !important;width:min(420px, 100vw) !important;height:100dvh !important;max-height:100dvh !important;display:flex !important;opacity:1 !important;visibility:visible !important;pointer-events:auto !important;transform:none !important;background:#fff !important;z-index:2147483000 !important;" : null)"
+                   aria-label="Shopping cart">
                 <header>
                     <div>
                         <span class="panel-icon"><i class="bi bi-cart3"></i></span>
                         <div>
                             <h2>Cart</h2>
-                            <p>@currentOrder.Items.Count item line(s)</p>
                         </div>
                     </div>
                     <div class="cart-header-actions">
@@ -563,8 +532,7 @@
                 {
                     <div class="cart-empty">
                         <i class="bi bi-basket"></i>
-                        <strong>Your cart is empty</strong>
-                        <span>Select an item from the catalog to build this order.</span>
+                        <strong>Empty Cart</strong>
                     </div>
                 }
                 else
@@ -710,8 +678,7 @@
             <div class="payment-column">
                 <div class="section-heading">
                     <div>
-                        <span>Payment Collection</span>
-                        <h2>How is the customer paying?</h2>
+                        <h2>Payment Method</h2>
                     </div>
                 </div>
 
@@ -723,7 +690,10 @@
                             <span class="payment-method-icon"><i class="bi @PaymentIcon(method.POSPaymentTypeName)"></i></span>
                             <span class="payment-method-copy">
                                 <strong>@method.POSPaymentTypeName</strong>
-                                <small>@(allocation is not null ? $"MYR {allocation.Amount:N2}" : "Add payment")</small>
+                                @if (allocation is not null)
+                                {
+                                    <small>MYR @allocation.Amount.ToString("N2")</small>
+                                }
                             </span>
                             @if (allocation is not null)
                             {
@@ -739,7 +709,6 @@
                         <header>
                             <div>
                                 <span>Payment Breakdown</span>
-                                <strong>@currentOrder.Payments.Count method(s) applied</strong>
                             </div>
                             <b>MYR @PaidAmount.ToString("N2") collected</b>
                         </header>
@@ -760,8 +729,8 @@
                 }
 
                 <label class="notes-field">
-                    <span>Receipt Notes (Optional)</span>
-                    <textarea @bind="currentOrder.Notes" placeholder="Enter notes or remarks for this receipt..."></textarea>
+                    <span>Receipt Notes</span>
+                    <textarea @bind="currentOrder.Notes" placeholder="Notes"></textarea>
                 </label>
             </div>
 
@@ -825,7 +794,7 @@
                     @if (isSaving)
                     {
                         <span class="spinner-border spinner-border-sm"></span>
-                        <span>Saving transaction...</span>
+                        <span>Saving</span>
                     }
                     else
                     {
@@ -843,9 +812,7 @@
             <header class="receipt-heading">
                 <span class="receipt-success"><i class="bi bi-check2"></i></span>
                 <div>
-                    <span>@(isReopenedRedemption ? "Saved Redemption" : "Payment Successful")</span>
                     <h2>@(isReopenedRedemption ? "Redemption Reopened" : currentOrder.IsRedemptionMode ? "Redemption Completed" : "Sale Completed")</h2>
-                    <p>@(isReopenedRedemption ? "Loaded from the official saved redemption record." : "The transaction has been saved successfully and is ready to print.")</p>
                 </div>
             </header>
 
@@ -946,7 +913,6 @@
                 <span class="credit-dialog-icon"><i class="bi bi-wallet2"></i></span>
                 <div>
                     <h2>Member Credit Accounts</h2>
-                    <p>@currentOrder.CustomerName · available credit accounts ordered by expiry</p>
                 </div>
             </div>
             <button type="button" class="icon-button" title="Close" @onclick="CloseRedeemableCredits">
@@ -960,7 +926,6 @@
                 <span>
                     <small>Total Credit</small>
                     <strong>@FormatCreditModalAmount(CreditModalTotalAmount)</strong>
-                    <em>Backend-available for this branch</em>
                 </span>
             </div>
             <div class="credit-wallet-metric selected">
@@ -968,7 +933,6 @@
                 <span>
                     <small>Selected This Bill</small>
                     <strong>RM @CreditModalSelectedAmount.ToString("N2")</strong>
-                    <em>Allocated on the current bill</em>
                 </span>
             </div>
             <div class="credit-wallet-metric remaining">
@@ -976,7 +940,6 @@
                 <span>
                     <small>Remaining After Bill</small>
                     <strong>@FormatCreditModalAmount(CreditModalRemainingAmount)</strong>
-                    <em>Available after current allocations</em>
                 </span>
             </div>
         </div>
@@ -985,7 +948,7 @@
         {
             <div class="credit-dialog-state">
                 <span class="spinner-border spinner-border-sm"></span>
-                <span>Loading redeemable credit accounts...</span>
+                <span>Loading</span>
             </div>
         }
         else if (!string.IsNullOrWhiteSpace(redeemableCreditsError))
@@ -1001,15 +964,10 @@
             <div class="credit-dialog-state">
                 <i class="bi bi-wallet"></i>
                 <strong>No redeemable Member Credit</strong>
-                <span>This customer has no available Member Credit account for the current date.</span>
             </div>
         }
         else
         {
-            <div class="credit-account-summary">
-                <span><strong>@redeemableCredits.Count</strong> redeemable account@(redeemableCredits.Count == 1 ? "" : "s")</span>
-                <span>Accounts are ordered by earliest expiry first.</span>
-            </div>
             <div class="credit-account-table-wrap credit-account-desktop">
                 <table class="credit-account-table">
                     <thead>
@@ -1032,13 +990,13 @@
                                 <td class="credit-account-identity" data-label="Credit Account">
                                     <strong>@credit.ARAPOutstandingID</strong>
                                     <small>
-                                        @(string.IsNullOrWhiteSpace(credit.DisplayCode) ? "No document" : credit.DisplayCode)
+                                        @(string.IsNullOrWhiteSpace(credit.DisplayCode) ? "—" : credit.DisplayCode)
                                         · @FormatCreditDate(credit.FinancialDate)
                                     </small>
                                 </td>
                                 <td class="credit-account-source" data-label="Member Credit">
-                                    <strong>@(string.IsNullOrWhiteSpace(credit.MemberTypeID) ? "No member type" : credit.MemberTypeID)</strong>
-                                    <small>@(string.IsNullOrWhiteSpace(credit.ItemDescription) ? "No purchase description" : credit.ItemDescription)</small>
+                                    <strong>@(string.IsNullOrWhiteSpace(credit.MemberTypeID) ? "—" : credit.MemberTypeID)</strong>
+                                    <small>@(string.IsNullOrWhiteSpace(credit.ItemDescription) ? "—" : credit.ItemDescription)</small>
                                 </td>
                                 <td data-label="Expiry">@FormatCreditDate(credit.DueDate)</td>
                                 <td class="amount-cell" data-label="Original">RM @credit.TotalAmount.ToString("N2")</td>
@@ -1072,7 +1030,7 @@
                         <div class="credit-mobile-card-heading">
                             <div>
                                 <strong>@credit.ARAPOutstandingID</strong>
-                                <small>@(string.IsNullOrWhiteSpace(credit.DisplayCode) ? "No document" : credit.DisplayCode) · @FormatCreditDate(credit.FinancialDate)</small>
+                                <small>@(string.IsNullOrWhiteSpace(credit.DisplayCode) ? "—" : credit.DisplayCode) · @FormatCreditDate(credit.FinancialDate)</small>
                             </div>
                             <span class="credit-status-badge @(credit.IsRedeemable ? "is-redeemable" : "is-unavailable")">
                                 @(credit.IsRedeemable ? "Redeemable" : "Unavailable")
@@ -1080,8 +1038,8 @@
                         </div>
                         <div class="credit-mobile-source">
                             <span>Member Credit</span>
-                            <strong>@(string.IsNullOrWhiteSpace(credit.MemberTypeID) ? "No member type" : credit.MemberTypeID)</strong>
-                            <small>@(string.IsNullOrWhiteSpace(credit.ItemDescription) ? "No purchase description" : credit.ItemDescription)</small>
+                            <strong>@(string.IsNullOrWhiteSpace(credit.MemberTypeID) ? "—" : credit.MemberTypeID)</strong>
+                            <small>@(string.IsNullOrWhiteSpace(credit.ItemDescription) ? "—" : credit.ItemDescription)</small>
                         </div>
                         <dl class="credit-mobile-values">
                             <div><dt>Expiry</dt><dd>@FormatCreditDate(credit.DueDate)</dd></div>
@@ -1095,7 +1053,7 @@
                                 aria-label="View redemption history for @credit.ARAPOutstandingID"
                                 @onclick="() => LoadCreditRedemptionHistoryAsync(credit)">
                             <i class="bi bi-clock-history"></i>
-                            <span>View History</span>
+                            <span>History</span>
                         </button>
                     </article>
                 }
@@ -1122,7 +1080,7 @@
                     {
                         <div class="credit-dialog-state">
                             <span class="spinner-border spinner-border-sm"></span>
-                            <span>Loading redemption history...</span>
+                            <span>Loading</span>
                         </div>
                     }
                     else if (!string.IsNullOrWhiteSpace(creditHistoryError))
@@ -1135,7 +1093,7 @@
                     else if (creditRedemptionHistory.Count == 0)
                     {
                         <div class="credit-dialog-state">
-                            <span>No redemption history found for this Member Credit account.</span>
+                            <span>No history</span>
                         </div>
                     }
                     else
@@ -1171,7 +1129,7 @@
                             {
                                 <article class="credit-history-mobile-card">
                                     <div class="credit-history-mobile-heading">
-                                        <strong>@(string.IsNullOrWhiteSpace(history.DisplayCode) ? "No document" : history.DisplayCode)</strong>
+                                        <strong>@(string.IsNullOrWhiteSpace(history.DisplayCode) ? "—" : history.DisplayCode)</strong>
                                         <span>RM @Math.Abs(history.TotalAmount).ToString("N2")</span>
                                     </div>
                                     <dl>
@@ -1188,10 +1146,6 @@
         }
 
         <footer class="credit-viewer-footer">
-            <span class="credit-dialog-note">
-                <i class="bi bi-info-circle"></i>
-                In Redemption Mode, use the wallet button on a cart line to assign one of these accounts.
-            </span>
             <button type="button" class="secondary-action" @onclick="CloseRedeemableCredits">Close</button>
         </footer>
     </section>
@@ -1218,7 +1172,7 @@
         {
             <div class="credit-dialog-state">
                 <span class="spinner-border spinner-border-sm"></span>
-                <span>Loading redeemable credit accounts...</span>
+                <span>Loading</span>
             </div>
         }
         else if (!string.IsNullOrWhiteSpace(redeemableCreditsError))
@@ -1256,10 +1210,6 @@
             </div>
 
             <div class="credit-auto-allocation-bar">
-                <div>
-                    <strong>Automatic allocation</strong>
-                    <span>Uses credit by earliest expiry, then Credit Account ID. You can edit the amounts afterward.</span>
-                </div>
                 <button type="button"
                         class="credit-auto-allocate-button"
                         disabled="@(creditTargetItem.TotalPrice <= 0m || !HasFifoCreditAvailable)"
@@ -1287,11 +1237,19 @@
                             var accountId = credit.ARAPOutstandingID ?? string.Empty;
                             var available = CreditAvailableForLine(credit, creditTargetItem);
                             var selected = draftLineCreditAllocations.ContainsKey(accountId);
-                            <tr class="@(selected ? "credit-allocation-selected" : string.Empty)">
+                            var canToggle = selected || (available > 0m && DraftLineCreditRemaining > 0m);
+                            <tr class="credit-selectable-row @(selected ? "credit-allocation-selected" : string.Empty) @(!canToggle ? "credit-selection-disabled" : string.Empty)"
+                                role="button"
+                                tabindex="@(canToggle ? "0" : "-1")"
+                                aria-pressed="@selected"
+                                aria-disabled="@(!canToggle)"
+                                @onclick="() => ToggleLineCreditAllocationFromSurface(credit, selected)"
+                                @onkeydown="(KeyboardEventArgs e) => HandleLineCreditSelectionKeyDown(credit, selected, e)">
                                 <td class="credit-selection-toggle" data-label="Select">
                                     <input type="checkbox"
                                            checked="@selected"
                                            disabled="@(!selected && (available <= 0m || DraftLineCreditRemaining <= 0m))"
+                                           @onclick:stopPropagation="true"
                                            @onchange="(ChangeEventArgs e) => ToggleLineCreditAllocation(credit, e.Value is bool isChecked && isChecked)" />
                                 </td>
                                 <td class="credit-account-identity" data-label="Credit Account">
@@ -1301,7 +1259,7 @@
                                 <td data-label="Member Type">@(string.IsNullOrWhiteSpace(credit.MemberTypeID) ? "—" : credit.MemberTypeID)</td>
                                 <td data-label="Expiry">@FormatCreditDate(credit.DueDate)</td>
                                 <td class="amount-cell" data-label="Available">RM @available.ToString("N2")</td>
-                                <td class="amount-cell credit-use-cell" data-label="Use">
+                                <td class="amount-cell credit-use-cell" data-label="Use" @onclick:stopPropagation="true">
                                     <input type="number"
                                            class="credit-allocation-input"
                                            min="0"
@@ -1323,9 +1281,16 @@
                     var accountId = credit.ARAPOutstandingID ?? string.Empty;
                     var available = CreditAvailableForLine(credit, creditTargetItem);
                     var selected = draftLineCreditAllocations.ContainsKey(accountId);
-                    <article class="credit-mobile-card credit-allocation-mobile-card @(selected ? "credit-allocation-selected" : string.Empty)">
+                    var canToggle = selected || (available > 0m && DraftLineCreditRemaining > 0m);
+                    <article class="credit-mobile-card credit-allocation-mobile-card credit-selectable-card @(selected ? "credit-allocation-selected" : string.Empty) @(!canToggle ? "credit-selection-disabled" : string.Empty)"
+                             role="button"
+                             tabindex="@(canToggle ? "0" : "-1")"
+                             aria-pressed="@selected"
+                             aria-disabled="@(!canToggle)"
+                             @onclick="() => ToggleLineCreditAllocationFromSurface(credit, selected)"
+                             @onkeydown="(KeyboardEventArgs e) => HandleLineCreditSelectionKeyDown(credit, selected, e)">
                         <div class="credit-mobile-card-heading">
-                            <label class="credit-mobile-check">
+                            <label class="credit-mobile-check" @onclick:stopPropagation="true">
                                 <input type="checkbox"
                                        checked="@selected"
                                        disabled="@(!selected && (available <= 0m || DraftLineCreditRemaining <= 0m))"
@@ -1341,7 +1306,7 @@
                             <div><dt>Expiry</dt><dd>@FormatCreditDate(credit.DueDate)</dd></div>
                             <div><dt>Available</dt><dd class="credit-balance-value">RM @available.ToString("N2")</dd></div>
                         </dl>
-                        <label class="credit-mobile-use">
+                        <label class="credit-mobile-use" @onclick:stopPropagation="true">
                             <span>Amount to use</span>
                             <input type="number"
                                    class="credit-allocation-input"
@@ -1423,7 +1388,7 @@
         </div>
 
         <div class="item-dialog-total">
-            <span>Line Total Including Tax</span>
+            <span>Line Total</span>
             <strong>MYR @DraftTotal.ToString("N2")</strong>
         </div>
 
@@ -1445,7 +1410,6 @@
             <div>
                 <span class="payment-symbol"><i class="bi @PaymentIcon(calculatorMethod.POSPaymentTypeName)"></i></span>
                 <div>
-                    <span>Payment Method</span>
                     <h2>@calculatorMethod.POSPaymentTypeName</h2>
                 </div>
             </div>
@@ -2475,6 +2439,35 @@
         if (amount > 0m)
         {
             draftLineCreditAllocations[accountId] = Math.Round(amount, 2, MidpointRounding.AwayFromZero);
+        }
+    }
+
+    private void ToggleLineCreditAllocationFromSurface(RedeemableCreditDTO credit, bool selected)
+    {
+        if (selected)
+        {
+            ToggleLineCreditAllocation(credit, false);
+            return;
+        }
+
+        if (creditTargetItem is null ||
+            CreditAvailableForLine(credit, creditTargetItem) <= 0m ||
+            DraftLineCreditRemaining <= 0m)
+        {
+            return;
+        }
+
+        ToggleLineCreditAllocation(credit, true);
+    }
+
+    private void HandleLineCreditSelectionKeyDown(
+        RedeemableCreditDTO credit,
+        bool selected,
+        KeyboardEventArgs args)
+    {
+        if (args.Key is "Enter" or " ")
+        {
+            ToggleLineCreditAllocationFromSurface(credit, selected);
         }
     }
 
@@ -4373,8 +4366,17 @@
         currentOrder.Payments.FirstOrDefault(payment => payment.PaymentTypeId == paymentTypeId);
 
     private void CloseCalculator() => calculatorMethod = null;
-    private void OpenMobileCart() => mobileCartOpen = true;
-    private void CloseMobileCart() => mobileCartOpen = false;
+    private void OpenMobileCart()
+    {
+        mobileCartOpen = true;
+        StateHasChanged();
+    }
+
+    private void CloseMobileCart()
+    {
+        mobileCartOpen = false;
+        StateHasChanged();
+    }
 
     private void PressKey(string key)
     {

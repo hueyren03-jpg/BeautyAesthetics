@@ -108,7 +108,6 @@
                                 <span>Outstanding Balance</span>
                             </div>
                             <div class="wallet-amount">@FormatMoneyBalance(CustomerOutstandingBalance)</div>
-                            <div class="wallet-footer">@BalanceFooter(CustomerOutstandingBalance, "Amount outstanding")</div>
                         </div>
 
                         <div class="wallet-card points-balance">
@@ -117,7 +116,6 @@
                                 <span>Point</span>
                             </div>
                             <div class="wallet-amount">@FormatPointBalance(CustomerPointBalance)</div>
-                            <div class="wallet-footer">@BalanceFooter(CustomerPointBalance, "Available points")</div>
                         </div>
 
                         <div class="wallet-card package-balance">
@@ -126,7 +124,6 @@
                                 <span>Package</span>
                             </div>
                             <div class="wallet-amount">@FormatPackageBalance(CustomerPackageBalance)</div>
-                            <div class="wallet-footer">@BalanceFooter(CustomerPackageBalance, "Package balance")</div>
                         </div>
 
                         <div class="wallet-card credit-balance"
@@ -139,7 +136,6 @@
                                 <span>Credit</span>
                             </div>
                             <div class="wallet-amount">@FormatNumericBalance(CustomerCreditBalance)</div>
-                            <div class="wallet-footer">@BalanceFooter(CustomerCreditBalance, "View individual credit accounts")</div>
                         </div>
                     </div>
                 </div>
@@ -445,7 +441,6 @@
                                 <h3>MC / Medical Certificate</h3>
                             </div>
                             <div class="mc-body">
-                                <p class="mc-description">Prepare and share the medical certificate based on the services above.</p>
                                 <div class="mc-actions">
                                     <button class="btn-mc-action btn-mc-print" type="button">
                                         <i class="bi bi-printer"></i>
@@ -548,11 +543,6 @@
                                     <i class="bi bi-arrow-left"></i>
                                     <span>Back to Billing</span>
                                 </button>
-                                <div class="payment-step-heading">
-                                    <span class="payment-step-kicker">Step 2 of 2</span>
-                                    <h3>Complete Payment</h3>
-                                    <p>Select how the customer is paying, apply available balances if needed, then confirm the amount received.</p>
-                                </div>
                             </div>
 
                             <div class="payment-checkout-grid">
@@ -562,7 +552,6 @@
                                             <div class="payment-panel-icon"><i class="bi bi-credit-card-2-front"></i></div>
                                             <div>
                                                 <h4>Payment Method</h4>
-                                                <p>Choose the primary payment method.</p>
                                             </div>
                                         </div>
 
@@ -599,7 +588,10 @@
                                                         <span class="payment-method-card__icon"><i class="@GetPaymentMethodIcon(methodName)"></i></span>
                                                         <span class="payment-method-card__copy">
                                                             <strong>@methodName</strong>
-                                                            <small>@(allocation is not null ? $"RM {allocation.Amount:N2}" : "Add payment")</small>
+                                                            @if (allocation is not null)
+                                                            {
+                                                                <small>RM @allocation.Amount.ToString("N2")</small>
+                                                            }
                                                         </span>
                                                         <span class="payment-method-card__check"><i class="bi bi-check-lg"></i></span>
                                                     </button>
@@ -642,7 +634,6 @@
                                             <div class="payment-panel-icon"><i class="bi bi-person-check"></i></div>
                                             <div>
                                                 <h4>Collected By</h4>
-                                                <p>Assign the staff member receiving this payment.</p>
                                             </div>
                                         </div>
                                         <div class="payment-field-block">
@@ -696,60 +687,6 @@
                                                     </div>
                                                 }
                                             </div>
-                                            @if (!string.IsNullOrWhiteSpace(SelectedCollectorId))
-                                            {
-                                                <small class="payment-field-help">Employee ID: @SelectedCollectorId</small>
-                                            }
-                                        </div>
-                                    </section>
-
-                                    <section class="payment-panel">
-                                        <div class="payment-panel-heading payment-panel-heading--spread">
-                                            <div class="payment-panel-heading__main">
-                                                <div class="payment-panel-icon"><i class="bi bi-wallet2"></i></div>
-                                                <div>
-                                                    <h4>Customer Balances</h4>
-                                                    <p>Current outstanding, point, package and credit balances.</p>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div class="payment-balance-grid">
-                                            <div class="payment-balance-card balance-display-card">
-                                                <span class="payment-balance-card__icon"><i class="bi bi-currency-exchange"></i></span>
-                                                <span class="payment-balance-card__copy">
-                                                    <strong>Outstanding Balance</strong>
-                                                    <small>@FormatMoneyBalance(CustomerOutstandingBalance)</small>
-                                                </span>
-                                            </div>
-
-                                            <div class="payment-balance-card balance-display-card">
-                                                <span class="payment-balance-card__icon"><i class="bi bi-gift"></i></span>
-                                                <span class="payment-balance-card__copy">
-                                                    <strong>Point</strong>
-                                                    <small>@FormatPointBalance(CustomerPointBalance)</small>
-                                                </span>
-                                            </div>
-
-                                            <div class="payment-balance-card balance-display-card">
-                                                <span class="payment-balance-card__icon"><i class="bi bi-box2-heart"></i></span>
-                                                <span class="payment-balance-card__copy">
-                                                    <strong>Package</strong>
-                                                    <small>@FormatPackageBalance(CustomerPackageBalance)</small>
-                                                </span>
-                                            </div>
-
-                                            <button type="button"
-                                                    class="payment-balance-card balance-display-card"
-                                                    title="View redeemable Member Credit accounts"
-                                                    @onclick="OpenRedeemableCredits">
-                                                <span class="payment-balance-card__icon"><i class="bi bi-credit-card-2-front"></i></span>
-                                                <span class="payment-balance-card__copy">
-                                                    <strong>Credit</strong>
-                                                    <small>@FormatNumericBalance(CustomerCreditBalance)</small>
-                                                </span>
-                                                <i class="bi bi-chevron-right"></i>
-                                            </button>
                                         </div>
                                     </section>
                                 </div>
@@ -758,7 +695,6 @@
                                     <div class="payment-review-card__header">
                                         <div>
                                             <span>Payment Summary</span>
-                                            <small>Review before confirming</small>
                                         </div>
                                         <span class="payment-review-status @BillingStatusCss">@BillingStatusText</span>
                                     </div>
@@ -828,18 +764,12 @@
                                     <button type="button"
                                             class="payment-confirm-button"
                                             disabled="@(_isProcessingPayment || IsAppointmentPaymentLocked || BillingPayments.Count == 0 || BillingPaidAmount < TotalPayable)"
-                                            @onclick="OnConfirmPaymentClicked">
+                                        @onclick="OnConfirmPaymentClicked">
                                         <span>
-                                            <small>Confirm payment</small>
-                                            <strong>RM @TotalPayable.ToString("N2")</strong>
+                                            <strong>Pay RM @TotalPayable.ToString("N2")</strong>
                                         </span>
                                         <i class="bi bi-arrow-right-circle-fill"></i>
                                     </button>
-
-                                    <div class="payment-security-note">
-                                        <i class="bi bi-shield-check"></i>
-                                        <span>Confirm only after the payment amount has been received.</span>
-                                    </div>
                                 </aside>
                             </div>
                         </div>
@@ -1125,7 +1055,6 @@
                             <div class="prescription-placeholder">
                                 <div class="placeholder-content">
                                     <i class="bi bi-capsule-pill"></i>
-                                    <p>Select an inventory item to enter prescription details</p>
                                 </div>
                             </div>
                         }
@@ -1277,8 +1206,6 @@
                 <h3>Payment Successful</h3>
             </div>
             <div class="modal-body">
-                <p>Payment has been completed successfully!</p>
-                
                 <div class="payment-summary-box">
                     <div class="summary-detail-row">
                         <span class="summary-label">Total Payable:</span>
@@ -1298,7 +1225,6 @@
                 </div>
 
                 <div class="receipt-options">
-                    <p class="receipt-options-label">Would you like a receipt?</p>
                     <div class="receipt-buttons">
                         <button class="btn-receipt-option" @onclick="PrintReceiptAndClose" disabled="@_isProcessingPayment">
                             <i class="bi bi-printer"></i>
@@ -1342,7 +1268,6 @@
                 <h3>Insufficient Amount</h3>
             </div>
             <div class="modal-body">
-                <p>The amount received is not enough to complete this payment.</p>
                 <div class="amount-comparison">
                     <div class="amount-row">
                         <span>Total Payable:</span>
@@ -1378,8 +1303,6 @@
                 <h3>Payment Options</h3>
             </div>
             <div class="modal-body">
-                <p>The payment has been recorded. What would you like to do next?</p>
-
                 <div class="post-payment-options">
                     <button class="btn-modal-secondary" @onclick="PrintInvoiceAsync" disabled="@_isProcessingPayment">
                         <i class="bi bi-printer"></i>
@@ -1683,7 +1606,6 @@
                     <span class="billing-credit-dialog__icon"><i class="bi bi-wallet2"></i></span>
                     <div>
                         <h3>Member Credit Accounts</h3>
-                        <p>@PatientName · available credit accounts ordered by expiry</p>
                     </div>
                 </div>
                 <button type="button"
@@ -1728,16 +1650,8 @@
                             <small>Available Accounts</small>
                             <strong>@_redeemableCredits.Count</strong>
                         </div>
-                        <div>
-                            <small>Source</small>
-                            <strong>Live Backend</strong>
-                        </div>
                     </div>
-                    <div class="billing-credit-account-summary">
-                        <span><strong>@_redeemableCredits.Count</strong> redeemable account@(_redeemableCredits.Count == 1 ? "" : "s")</span>
-                        <span>Accounts are ordered by earliest expiry first.</span>
-                    </div>
-                    <div class="table-wrapper billing-credit-table-wrap">
+                    <div class="table-wrapper billing-credit-table-wrap billing-credit-desktop">
                         <table class="billing-table billing-credit-table">
                             <thead>
                                 <tr>
@@ -1779,6 +1693,35 @@
                         </table>
                     </div>
 
+                    <div class="billing-credit-mobile-list" aria-label="Member Credit accounts">
+                        @foreach (var credit in _redeemableCredits)
+                        {
+                            <article class="billing-credit-mobile-card">
+                                <div class="billing-credit-mobile-card__header">
+                                    <div>
+                                        <strong>@credit.ARAPOutstandingID</strong>
+                                        <span>@(string.IsNullOrWhiteSpace(credit.DisplayCode) ? "No document" : credit.DisplayCode)</span>
+                                    </div>
+                                    <span class="billing-credit-status">Redeemable</span>
+                                </div>
+                                <dl>
+                                    <div><dt>Purchase</dt><dd>@FormatRedeemableCreditDate(credit.FinancialDate)</dd></div>
+                                    <div><dt>Expiry</dt><dd>@FormatRedeemableCreditDate(credit.DueDate)</dd></div>
+                                    <div><dt>Member Type</dt><dd>@(string.IsNullOrWhiteSpace(credit.MemberTypeID) ? "—" : credit.MemberTypeID)</dd></div>
+                                    <div><dt>Purchased Via</dt><dd>@(string.IsNullOrWhiteSpace(credit.ItemDescription) ? "—" : credit.ItemDescription)</dd></div>
+                                    <div><dt>Original</dt><dd>RM @credit.TotalAmount.ToString("N2")</dd></div>
+                                    <div><dt>Balance</dt><dd class="billing-credit-mobile-balance">RM @credit.NetBalanceAfterUtilised.ToString("N2")</dd></div>
+                                </dl>
+                                <button type="button"
+                                        class="billing-credit-history-btn"
+                                        @onclick="() => LoadCreditRedemptionHistoryAsync(credit)">
+                                    <i class="bi bi-clock-history"></i>
+                                    <span>History</span>
+                                </button>
+                            </article>
+                        }
+                    </div>
+
                     @if (!string.IsNullOrWhiteSpace(_selectedHistoryCreditId))
                     {
                         <section class="billing-credit-history">
@@ -1787,6 +1730,13 @@
                                     <strong>Redemption History</strong>
                                     <span>@_selectedHistoryCreditId</span>
                                 </div>
+                                <button type="button"
+                                        class="billing-credit-history__close"
+                                        title="Back to Member Credit accounts"
+                                        aria-label="Back to Member Credit accounts"
+                                        @onclick="CloseCreditRedemptionHistory">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
                             </div>
 
                             @if (_isCreditHistoryLoading)
@@ -1811,7 +1761,7 @@
                             }
                             else
                             {
-                                <div class="table-wrapper billing-credit-history__table">
+                                <div class="table-wrapper billing-credit-history__table billing-credit-history-desktop">
                                     <table class="billing-table">
                                         <thead>
                                             <tr>
@@ -1836,16 +1786,29 @@
                                         </tbody>
                                     </table>
                                 </div>
+
+                                <div class="billing-credit-history-mobile-list" aria-label="Redemption history">
+                                    @foreach (var history in _creditRedemptionHistory)
+                                    {
+                                        <article class="billing-credit-history-mobile-card">
+                                            <div>
+                                                <strong>@(string.IsNullOrWhiteSpace(history.DisplayCode) ? "No document" : history.DisplayCode)</strong>
+                                                <span>RM @Math.Abs(history.TotalAmount).ToString("N2")</span>
+                                            </div>
+                                            <dl>
+                                                <div><dt>Member Credit</dt><dd>@history.SourceARAPOutstandingID</dd></div>
+                                                <div><dt>Date</dt><dd>@FormatRedeemableCreditDate(history.FinancialDate)</dd></div>
+                                                <div><dt>Branch</dt><dd>@(string.IsNullOrWhiteSpace(history.BranchID) ? "—" : history.BranchID)</dd></div>
+                                            </dl>
+                                        </article>
+                                    }
+                                </div>
                             }
                         </section>
                     }
                 }
             </div>
             <div class="modal-footer billing-credit-dialog__footer">
-                <span class="billing-credit-dialog__note">
-                    <i class="bi bi-info-circle"></i>
-                    Uses the same live Member Credit wallet service as New Sales.
-                </span>
                 <button class="btn-modal-cancel" @onclick="CloseRedeemableCredits">Close</button>
             </div>
         </div>
@@ -1974,10 +1937,6 @@
             : value.HasValue
                 ? value.Value.ToString("0.##")
                 : "—";
-
-    private string BalanceFooter(decimal? value, string loadedText) => _isCustomerBalanceLoading
-        ? "Loading..."
-        : value.HasValue ? loadedText : "Unavailable";
 
     private List<BillingItem> PrescriptionItems { get; set; } = new();
     private List<BillingService> ServiceItems { get; set; } = new();
@@ -3455,6 +3414,15 @@
     private void CloseRedeemableCredits()
     {
         _showRedeemableCredits = false;
+        _creditHistoryRequestVersion++;
+        _selectedHistoryCreditId = string.Empty;
+        _creditRedemptionHistory.Clear();
+        _creditHistoryError = null;
+        _isCreditHistoryLoading = false;
+    }
+
+    private void CloseCreditRedemptionHistory()
+    {
         _creditHistoryRequestVersion++;
         _selectedHistoryCreditId = string.Empty;
         _creditRedemptionHistory.Clear();
