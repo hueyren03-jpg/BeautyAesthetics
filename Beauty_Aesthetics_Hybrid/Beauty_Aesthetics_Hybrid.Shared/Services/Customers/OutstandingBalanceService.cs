@@ -1,3 +1,4 @@
+using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.Customers;
