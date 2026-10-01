@@ -868,6 +868,20 @@ public sealed class CashSalesService : ICashSalesService
                 redemptionTaxValidation.ErrorMessage);
         }
 
+        var redemptionDiscountValidation = ValidateRedemptionDiscountInteraction(
+            transaction,
+            documentLines);
+
+        if (!redemptionDiscountValidation.Success)
+        {
+            Console.WriteLine(
+                $"[Member Credit Step 36] BLOCKED | Customer={transaction.AccountId} | {redemptionDiscountValidation.ErrorMessage}");
+
+            return ApiCallResult<Transaction>.Failure(
+                HttpStatusCode.BadRequest,
+                redemptionDiscountValidation.ErrorMessage);
+        }
+
         document["lstReceiptLines"] = BuildReceiptLines(transaction);
 
         var memberCreditBuild = await BuildMemberCreditGrantCollectionsAsync(
@@ -1290,6 +1304,184 @@ public sealed class CashSalesService : ICashSalesService
             MembershipCredit = membershipCredit,
             MemberCreditAllocations = memberCreditAllocations
         };
+    }
+
+    private static (bool Success, string ErrorMessage) ValidateRedemptionDiscountInteraction(
+        Transaction transaction,
+        JsonArray documentLines)
+    {
+        if (transaction.DocumentTypeId != 52)
+        {
+            return (true, string.Empty);
+        }
+
+        if (documentLines.Count != transaction.Items.Count)
+        {
+            return (
+                false,
+                "Redemption discount validation failed because the generated document lines do not match the cart lines.");
+        }
+
+        decimal grossTotal = 0m;
+        decimal discountTotal = 0m;
+        decimal eligibleTotal = 0m;
+        decimal creditTotal = 0m;
+        var discountedLines = 0;
+        var ruleDiscountLines = 0;
+        var manualDiscountLines = 0;
+
+        for (var index = 0; index < transaction.Items.Count; index++)
+        {
+            var item = transaction.Items[index];
+            if (documentLines[index] is not JsonObject line)
+            {
+                return (
+                    false,
+                    $"Redemption discount validation failed for '{First(item.Name, item.InventoryId, "Item")}': generated line is missing.");
+            }
+
+            var quantity = Math.Max(1, item.Quantity);
+            var gross = Math.Round(
+                Math.Max(0m, quantity * item.UnitPrice),
+                2,
+                MidpointRounding.AwayFromZero);
+
+            if (item.Discount < -0.009m || item.Discount - gross > 0.009m)
+            {
+                return (
+                    false,
+                    $"Discount for '{First(item.Name, item.InventoryId, "Item")}' is outside the valid line range. " +
+                    $"Gross RM {gross:N2}, discount RM {item.Discount:N2}.");
+            }
+
+            var resolvedDiscount = Math.Round(
+                Math.Clamp(item.Discount, 0m, gross),
+                2,
+                MidpointRounding.AwayFromZero);
+
+            var requestDiscount = Math.Round(
+                Number(line, "DiscountAmount"),
+                2,
+                MidpointRounding.AwayFromZero);
+
+            if (Math.Abs(requestDiscount - resolvedDiscount) >= 0.01m)
+            {
+                return (
+                    false,
+                    $"Discount for '{First(item.Name, item.InventoryId, "Item")}' changed while building the redemption request. " +
+                    $"Expected RM {resolvedDiscount:N2}, request contains RM {requestDiscount:N2}.");
+            }
+
+            var itemCashDiscountId = item.CashDiscountId?.Trim() ?? string.Empty;
+            var requestCashDiscountId = Text(line, "CashDiscountID").Trim();
+            if (!string.Equals(
+                    itemCashDiscountId,
+                    requestCashDiscountId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return (
+                    false,
+                    $"Discount rule for '{First(item.Name, item.InventoryId, "Item")}' changed while building the redemption request.");
+            }
+
+            var eligibleSubTotal = RedeemableLineSubTotal(item);
+            var requestSubTotal = Math.Round(
+                Number(line, "SubTotal"),
+                2,
+                MidpointRounding.AwayFromZero);
+
+            if (eligibleSubTotal < -0.009m ||
+                Math.Abs(requestSubTotal - eligibleSubTotal) >= 0.01m)
+            {
+                return (
+                    false,
+                    $"Discounted redeemable subtotal for '{First(item.Name, item.InventoryId, "Item")}' is invalid. " +
+                    $"Expected RM {eligibleSubTotal:N2}, request contains RM {requestSubTotal:N2}.");
+            }
+
+            if (resolvedDiscount > 0.009m)
+            {
+                discountedLines++;
+                if (string.IsNullOrWhiteSpace(itemCashDiscountId))
+                {
+                    manualDiscountLines++;
+                }
+                else
+                {
+                    // Open, percentage, fixed and compound rules all reach this point
+                    // only after Beauty has resolved them to the final line discount.
+                    ruleDiscountLines++;
+                }
+            }
+
+            grossTotal += gross;
+            discountTotal += resolvedDiscount;
+            eligibleTotal += eligibleSubTotal;
+
+            if (item.ActivityTypeId != 6)
+            {
+                continue;
+            }
+
+            if (item.MemberCreditAllocations.Any(allocation => allocation.Amount < -0.009m))
+            {
+                return (
+                    false,
+                    $"Member Credit for '{First(item.Name, item.InventoryId, "Item")}' contains a negative allocation after discount.");
+            }
+
+            var allocated = Math.Round(
+                EffectiveMemberCreditAllocations(item)
+                    .Sum(allocation => Math.Max(0m, allocation.Amount)),
+                2,
+                MidpointRounding.AwayFromZero);
+
+            if (eligibleSubTotal <= 0m)
+            {
+                return (
+                    false,
+                    $"'{First(item.Name, item.InventoryId, "Item")}' is fully discounted and no longer has a redeemable amount. " +
+                    "Remove Member Credit from this line.");
+            }
+
+            if (allocated - eligibleSubTotal > 0.009m)
+            {
+                return (
+                    false,
+                    $"Discount caused Member Credit over-allocation for '{First(item.Name, item.InventoryId, "Item")}'. " +
+                    $"Credit RM {allocated:N2}, discounted subtotal RM {eligibleSubTotal:N2}.");
+            }
+
+            if (Math.Abs(allocated - eligibleSubTotal) > 0.009m)
+            {
+                return (
+                    false,
+                    $"Member Credit for '{First(item.Name, item.InventoryId, "Item")}' does not match the discounted subtotal. " +
+                    $"Credit RM {allocated:N2}, discounted subtotal RM {eligibleSubTotal:N2}.");
+            }
+
+            creditTotal += allocated;
+        }
+
+        grossTotal = Math.Round(grossTotal, 2, MidpointRounding.AwayFromZero);
+        discountTotal = Math.Round(discountTotal, 2, MidpointRounding.AwayFromZero);
+        eligibleTotal = Math.Round(eligibleTotal, 2, MidpointRounding.AwayFromZero);
+        creditTotal = Math.Round(creditTotal, 2, MidpointRounding.AwayFromZero);
+
+        if (discountTotal < 0m || eligibleTotal < 0m || creditTotal < 0m)
+        {
+            return (
+                false,
+                "Redemption discount validation produced a negative total.");
+        }
+
+        Console.WriteLine(
+            $"[Member Credit Step 36] PASS | DiscountedLines={discountedLines} | " +
+            $"RuleDiscountLines={ruleDiscountLines} | ManualDiscountLines={manualDiscountLines} | " +
+            $"Gross={grossTotal:N2} | Discount={discountTotal:N2} | " +
+            $"EligibleSubtotal={eligibleTotal:N2} | MemberCredit={creditTotal:N2}");
+
+        return (true, string.Empty);
     }
 
     private static (bool Success, string ErrorMessage) ValidateAndApplyRedemptionTaxBasis(
