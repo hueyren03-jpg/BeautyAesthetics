@@ -1714,15 +1714,13 @@
             return new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
         }
 
-        var resolved = await Task.WhenAll(codes.Select(async code =>
-            new KeyValuePair<string, decimal>(
-                code,
-                await GstTaxRateService.GetRateForTaxCodeAsync(code))));
+        var resolved = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var code in codes)
+        {
+            resolved[code] = await GstTaxRateService.GetRateForTaxCodeAsync(code);
+        }
 
-        return resolved.ToDictionary(
-            item => item.Key,
-            item => item.Value,
-            StringComparer.OrdinalIgnoreCase);
+        return resolved;
     }
 
     private static decimal CatalogTaxRate(
