@@ -8,7 +8,7 @@
 @using Beauty_Aesthetics_WebPos.Components.Services.Feedback
 @using Beauty_Aesthetics_WebPos.Models.DTOs
 @inject ICashSalesService CashSalesService
-@inject IBranchLookupService BranchLookupService
+@inject Beauty_Aesthetics_WebPos.Components.Services.Branches.IBranchSessionService BranchSession
 @inject ICustomerService CustomerService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
@@ -55,13 +55,9 @@
 
             <label class="filter-field">
                 <span>Outlet</span>
-                <select @bind="selectedBranch">
-                    <option value="">All outlets</option>
-                    @foreach (var branch in branches)
-                    {
-                        <option value="@branch.Id">@branch.DisplayName</option>
-                    }
-                </select>
+                <input value="@WorkingBranchDisplay"
+                       readonly
+                       title="Working branch is selected at login and locked for this session." />
             </label>
 
             <label class="filter-field">
@@ -348,6 +344,10 @@
     private DateTime endDate = DateTime.Today;
     private string searchText = string.Empty;
     private string selectedBranch = string.Empty;
+    private string WorkingBranchDisplay =>
+        BranchSession.CurrentBranch is null
+            ? "No branch selected"
+            : BranchSession.CurrentBranch.DisplayName;
     private string selectedPayment = string.Empty;
     private string selectedStatus = string.Empty;
     private decimal? minimumAmount;
@@ -400,11 +400,19 @@
 
     private async Task LoadLookupsAsync()
     {
-        var branchResult = await BranchLookupService.LoadBranchesAsync();
-        if (branchResult.Success && branchResult.Value is not null)
-            branches.AddRange(branchResult.Value);
+        var workingBranch = BranchSession.CurrentBranch;
+        if (workingBranch is null || string.IsNullOrWhiteSpace(workingBranch.Id))
+        {
+            branches.Clear();
+            selectedBranch = string.Empty;
+            errorMessage = "No working branch is selected. Log out and sign in again to select a branch.";
+        }
         else
-            errorMessage = branchResult.ErrorMessage ?? "Unable to load outlets.";
+        {
+            selectedBranch = workingBranch.Id.Trim();
+            branches.Clear();
+            branches.Add(workingBranch);
+        }
 
         var paymentResult = await CashSalesService.LoadPaymentTypesAsync();
         if (paymentResult.Success && paymentResult.Value is not null)
@@ -453,32 +461,23 @@
 
     private async Task<ApiCallResult<IReadOnlyList<Transaction>>> LoadSelectedOutletTransactionsAsync()
     {
-        if (!string.IsNullOrWhiteSpace(selectedBranch) || branches.Count == 0)
-            return await CashSalesService.LoadTransactionsAsync(startDate, endDate, selectedBranch);
+        var workingBranchId =
+            BranchSession.CurrentBranch?.Id?.Trim() ??
+            selectedBranch?.Trim() ??
+            string.Empty;
 
-        var branchIds = branches.Select(branch => branch.Id)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        var results = await Task.WhenAll(branchIds.Select(branchId =>
-            CashSalesService.LoadTransactionsAsync(startDate, endDate, branchId)));
-        var successfulResults = results.Where(result => result.Success && result.Value is not null).ToList();
-
-        if (successfulResults.Count == 0)
+        if (string.IsNullOrWhiteSpace(workingBranchId))
         {
-            var failure = results.FirstOrDefault(result => !result.Success);
             return ApiCallResult<IReadOnlyList<Transaction>>.Failure(
-                failure?.StatusCode ?? System.Net.HttpStatusCode.BadGateway,
-                failure?.ErrorMessage ?? "Unable to load sales for any outlet.");
+                System.Net.HttpStatusCode.BadRequest,
+                "Working branch is required. Log out and sign in again to select a branch.");
         }
 
-        var merged = successfulResults.SelectMany(result => result.Value!)
-            .GroupBy(TransactionIdentity, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.First())
-            .OrderByDescending(transaction => transaction.Date)
-            .ToList();
-        return ApiCallResult<IReadOnlyList<Transaction>>.Ok(successfulResults[0].StatusCode, merged);
+        selectedBranch = workingBranchId;
+        return await CashSalesService.LoadTransactionsAsync(
+            startDate,
+            endDate,
+            workingBranchId);
     }
 
     private bool MatchesFilters(Transaction transaction)
@@ -508,7 +507,7 @@
         startDate = DateTime.Today.AddDays(-30);
         endDate = DateTime.Today;
         searchText = string.Empty;
-        selectedBranch = string.Empty;
+        selectedBranch = BranchSession.CurrentBranch?.Id ?? selectedBranch;
         selectedPayment = string.Empty;
         selectedStatus = string.Empty;
         minimumAmount = null;
