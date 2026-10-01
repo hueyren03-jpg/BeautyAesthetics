@@ -1067,20 +1067,27 @@ public sealed class CashSalesService : ICashSalesService
         // while preventing header/line drift in redemption requests.
         transaction.Subtotal = canonicalBeforeTax;
         transaction.Tax = canonicalTax;
+        transaction.RoundingAmount = 0m;
         transaction.Amount = canonicalAfterTax;
 
         header["TotalBeforeTax"] = canonicalBeforeTax;
         header["TaxableAmount"] = canonicalBeforeTax;
         header["TaxAmount"] = canonicalTax;
+
+        // Senang explicitly disables rounding for DocumentTypeID 52 redemption.
+        // Keep Beauty's line tax rounding, but do not apply an additional
+        // cash-sale/header rounding adjustment to Member Credit redemption.
+        header["RoundingAmount"] = 0m;
         header["TotalAfterTax"] = canonicalAfterTax;
         header["LocalTotalBeforeTax"] = canonicalBeforeTax;
         header["LocalTaxableAmount"] = canonicalBeforeTax;
         header["LocalTaxAmount"] = canonicalTax;
+        header["LocalRoundingAmount"] = 0m;
         header["LocalTotalAfterTax"] = canonicalAfterTax;
 
         Console.WriteLine(
             $"[Member Credit Step 35] PASS | RedemptionLines={redemptionLineCount} | " +
-            $"TotalBeforeGST={canonicalBeforeTax:N2} | Tax={canonicalTax:N2} | TotalAfterTax={canonicalAfterTax:N2} | " +
+            $"TotalBeforeGST={canonicalBeforeTax:N2} | Tax={canonicalTax:N2} | Rounding=0.00 | TotalAfterTax={canonicalAfterTax:N2} | " +
             $"CreditBasis=DocumentLine.SubTotal");
 
         return (true, string.Empty);
