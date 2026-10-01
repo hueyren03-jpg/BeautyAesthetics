@@ -1871,6 +1871,122 @@
         isSelectedCustomerBalanceLoading = false;
     }
 
+    private static bool CreditScopeAllows(string? scope, string currentValue)
+    {
+        if (string.IsNullOrWhiteSpace(scope))
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(currentValue))
+        {
+            return false;
+        }
+
+        return scope
+            .Split([',', ';', '|'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(value =>
+                value == "*" ||
+                value.Equals("ALL", StringComparison.OrdinalIgnoreCase) ||
+                value.Equals(currentValue, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private bool IsCreditEligibleForWorkingBranch(RedeemableCreditDTO credit)
+    {
+        var branch = BranchSession.CurrentBranch;
+        if (branch is null)
+        {
+            return false;
+        }
+
+        var currentGroupId = string.IsNullOrWhiteSpace(branch.GroupId)
+            ? branch.Id
+            : branch.GroupId;
+
+        if (!CreditScopeAllows(credit.RedeemableAtBranch, branch.Id) ||
+            !CreditScopeAllows(credit.RedeemableAtGroup, currentGroupId))
+        {
+            return false;
+        }
+
+        var isCrossBranch =
+            !string.IsNullOrWhiteSpace(credit.BranchID) &&
+            !string.Equals(
+                credit.BranchID,
+                branch.Id,
+                StringComparison.OrdinalIgnoreCase);
+
+        // Cross-branch redemption is supported, but it needs the backend
+        // settlement ratio used for inter-outlet accounting.
+        return !isCrossBranch || credit.InterOutletRatio > 0m;
+    }
+
+    private List<RedeemableCreditDTO> FilterRedeemableCreditsForWorkingBranch(
+        IEnumerable<RedeemableCreditDTO> credits) =>
+        credits
+            .Where(credit =>
+                credit.IsRedeemable &&
+                !string.IsNullOrWhiteSpace(credit.ARAPOutstandingID) &&
+                credit.NetBalanceAfterUtilised > 0m &&
+                (credit.DueDate.Year <= 1900 || credit.DueDate.Date >= DateTime.Today) &&
+                IsCreditEligibleForWorkingBranch(credit))
+            .OrderBy(credit => credit.DueDate)
+            .ThenBy(credit => credit.ARAPOutstandingID)
+            .ToList();
+
+    private bool RebindCurrentOrderToWorkingBranch(out bool branchChanged)
+    {
+        branchChanged = false;
+        var branch = BranchSession.CurrentBranch;
+        if (branch is null || string.IsNullOrWhiteSpace(branch.Id))
+        {
+            return false;
+        }
+
+        var currentGroupId = string.IsNullOrWhiteSpace(branch.GroupId)
+            ? branch.Id
+            : branch.GroupId;
+
+        branchChanged =
+            !string.Equals(
+                currentOrder.BranchId,
+                branch.Id,
+                StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(
+                currentOrder.GroupId,
+                currentGroupId,
+                StringComparison.OrdinalIgnoreCase);
+
+        if (!branchChanged)
+        {
+            return true;
+        }
+
+        var previousBranchId = currentOrder.BranchId;
+        var previousGroupId = currentOrder.GroupId;
+
+        currentOrder.BranchId = branch.Id;
+        currentOrder.BranchName = branch.DisplayName;
+        currentOrder.GroupId = currentGroupId;
+
+        // Payment and credit selections are branch-scoped accounting state.
+        // Payment rows are always rebuilt; Member Credit is refreshed/revalidated
+        // immediately after this method when a redemption is active.
+        currentOrder.Payments.Clear();
+        CloseLineCreditSelector();
+
+        selectedCustomerBalanceRequestVersion++;
+        redeemableCreditRequestVersion++;
+        ResetSelectedCustomerBalances();
+
+        Console.WriteLine(
+            $"[Member Credit Step 38] BRANCH SWITCH | " +
+            $"FromBranch={previousBranchId} | ToBranch={currentOrder.BranchId} | " +
+            $"FromGroup={previousGroupId} | ToGroup={currentOrder.GroupId}");
+
+        return true;
+    }
+
     private decimal ResetMemberCreditForCustomerSwitch(
         string? previousCustomerId,
         string? nextCustomerId)
@@ -1960,15 +2076,8 @@
 
             if (redeemableCredit.Success && redeemableCredit.Value is not null)
             {
-                redeemableCredits = redeemableCredit.Value
-                    .Where(credit =>
-                        credit.IsRedeemable &&
-                        !string.IsNullOrWhiteSpace(credit.ARAPOutstandingID) &&
-                        credit.NetBalanceAfterUtilised > 0m &&
-                        (credit.DueDate.Year <= 1900 || credit.DueDate.Date >= DateTime.Today))
-                    .OrderBy(credit => credit.DueDate)
-                    .ThenBy(credit => credit.ARAPOutstandingID)
-                    .ToList();
+                redeemableCredits =
+                    FilterRedeemableCreditsForWorkingBranch(redeemableCredit.Value);
                 redeemableCreditsError = null;
             }
             else
@@ -2665,15 +2774,8 @@
                 return;
             }
 
-            redeemableCredits = result.Value
-                .Where(credit =>
-                    credit.IsRedeemable &&
-                    !string.IsNullOrWhiteSpace(credit.ARAPOutstandingID) &&
-                    credit.NetBalanceAfterUtilised > 0m &&
-                    (credit.DueDate.Year <= 1900 || credit.DueDate.Date >= DateTime.Today))
-                .OrderBy(credit => credit.DueDate)
-                .ThenBy(credit => credit.ARAPOutstandingID)
-                .ToList();
+            redeemableCredits =
+                FilterRedeemableCreditsForWorkingBranch(result.Value);
         }
         catch (Exception ex)
         {
@@ -2867,6 +2969,7 @@
             BranchName = string.IsNullOrWhiteSpace(transaction.Branch)
                 ? transaction.BranchId
                 : transaction.Branch,
+            GroupId = transaction.GroupId,
             Notes = transaction.Notes,
             Items = transaction.Items.Select(item => new TransactionItem
             {
@@ -2994,6 +3097,9 @@
         else
         {
             currentOrder = PendingOrderService.Create(customer, branchId, branchName);
+            currentOrder.GroupId = string.IsNullOrWhiteSpace(branch?.GroupId)
+                ? branchId
+                : branch.GroupId;
         }
 
         stage = SaleStage.Cart;
@@ -3053,6 +3159,9 @@
         else
         {
             currentOrder = PendingOrderService.Create(null, branchId, branchName);
+            currentOrder.GroupId = string.IsNullOrWhiteSpace(branch?.GroupId)
+                ? branchId
+                : branch.GroupId;
             selectedCustomerBalanceRequestVersion++;
             redeemableCreditRequestVersion++;
             ResetSelectedCustomerBalances();
@@ -3354,6 +3463,15 @@
         isReopenedRedemption = false;
         stage = SaleStage.Cart;
 
+        if (!RebindCurrentOrderToWorkingBranch(out var branchChanged))
+        {
+            Feedback.Error(
+                "The working branch is unavailable. Select a branch before resuming this order.",
+                "Branch required");
+            stage = SaleStage.PendingOrders;
+            return;
+        }
+
         var hasHeldCreditSelections = currentOrder.IsRedemptionMode &&
             currentOrder.Items.Any(item =>
                 item.ActivityTypeId == 6 &&
@@ -3369,6 +3487,26 @@
         else
         {
             await LoadSelectedCustomerBalancesAsync(currentOrder.AccountId);
+            PendingOrderService.SaveOrUpdate(currentOrder);
+        }
+
+        if (branchChanged)
+        {
+            var validAllocations = currentOrder.Items
+                .Where(item => item.ActivityTypeId == 6)
+                .SelectMany(EffectiveLineCreditAllocations)
+                .ToList();
+
+            Console.WriteLine(
+                $"[Member Credit Step 38] PASS | Order={currentOrder.OrderNumber} | " +
+                $"Branch={currentOrder.BranchId} | Group={currentOrder.GroupId} | " +
+                $"ValidAccounts={validAllocations.Select(x => x.MemberCreditAccountId).Distinct(StringComparer.OrdinalIgnoreCase).Count()} | " +
+                $"SettlementRatiosValidated=True");
+
+            Feedback.Info(
+                $"Order moved to {currentOrder.BranchName}. Member Credit was refreshed for the new branch and any ineligible credit was removed.",
+                "Branch credit revalidated",
+                3000);
         }
     }
 
@@ -4012,6 +4150,46 @@
     private async Task SaveSale()
     {
         if (isSaving) return;
+
+        if (!RebindCurrentOrderToWorkingBranch(out var branchChanged))
+        {
+            Feedback.Error(
+                "The working branch is unavailable. Select a branch before completing the sale.",
+                "Branch required");
+            return;
+        }
+
+        if (branchChanged)
+        {
+            if (currentOrder.IsRedemptionMode &&
+                currentOrder.Items.Any(item =>
+                    item.ActivityTypeId == 6 ||
+                    EffectiveLineCreditAllocations(item).Count > 0))
+            {
+                var valid = await RefreshAndRevalidateHeldRedemptionCreditsAsync(showFeedback: true);
+                if (!valid)
+                {
+                    return;
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(currentOrder.AccountId))
+            {
+                await LoadSelectedCustomerBalancesAsync(currentOrder.AccountId);
+            }
+
+            if (currentOrder.IsHeld)
+            {
+                PendingOrderService.SaveOrUpdate(currentOrder);
+            }
+
+            Console.WriteLine(
+                $"[Member Credit Step 38] SAVE PREFLIGHT | " +
+                $"Branch={currentOrder.BranchId} | Group={currentOrder.GroupId} | " +
+                $"CreditRevalidated={currentOrder.IsRedemptionMode}");
+        }
+
+        // Branch rebinding clears stale payment rows, so validate payment only after
+        // the Step 38 branch/credit preflight has finished.
         if (Remaining > 0)
         {
             Feedback.Warning($"Add MYR {Remaining:N2} more before completing the sale.", "Payment incomplete");
@@ -4029,7 +4207,7 @@
                 CustomerContact = currentOrder.CustomerContact,
                 CustomerEmail = currentOrder.CustomerEmail,
                 BranchId = currentOrder.BranchId,
-                GroupId = BranchSession.CurrentBranch?.GroupId ?? string.Empty,
+                GroupId = currentOrder.GroupId,
                 Branch = currentOrder.BranchName,
                 Date = DateTime.Today,
                 Status = "Paid",
