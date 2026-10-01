@@ -14,6 +14,7 @@
 @inject AppFeedbackService Feedback
 @inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext PatientContext
 @inject Beauty_Aesthetics_WebPos.Components.Services.Customers.ICustomerService CustomerService
+@inject Beauty_Aesthetics_WebPos.Components.Services.Customers.IMemberCreditWalletService MemberCreditWalletService
 @inject Beauty_Aesthetics_WebPos.Components.Services.AppointmentService AppointmentService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.IProductInventoryService ProductInventoryService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.IServiceItemService ServiceItemService
@@ -1704,22 +1705,34 @@
                 }
                 else
                 {
-                    <div style="display:flex;justify-content:space-between;gap:16px;margin-bottom:12px;">
-                        <span><strong>@_redeemableCredits.Count</strong> account@(_redeemableCredits.Count == 1 ? "" : "s")</span>
-                        <span>Total available: <strong>RM @_redeemableCredits.Sum(x => x.NetBalanceAfterUtilised).ToString("N2")</strong></span>
+                    <div class="billing-credit-summary">
+                        <div>
+                            <small>Total Credit</small>
+                            <strong>RM @(_redeemableCredits.Sum(x => x.NetBalanceAfterUtilised).ToString("N2"))</strong>
+                        </div>
+                        <div>
+                            <small>Available Accounts</small>
+                            <strong>@_redeemableCredits.Count</strong>
+                        </div>
+                        <div>
+                            <small>Source</small>
+                            <strong>Live Backend</strong>
+                        </div>
                     </div>
-                    <div class="table-wrapper">
-                        <table class="billing-table">
+                    <div class="table-wrapper billing-credit-table-wrap">
+                        <table class="billing-table billing-credit-table">
                             <thead>
                                 <tr>
                                     <th>Credit Account</th>
                                     <th>Purchase Date</th>
                                     <th>Document</th>
                                     <th>Member Type</th>
-                                    <th>Credit</th>
+                                    <th>Purchased Via</th>
                                     <th>Expiry</th>
                                     <th>Original</th>
                                     <th>Balance</th>
+                                    <th>Status</th>
+                                    <th>History</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1734,16 +1747,85 @@
                                         <td>@FormatRedeemableCreditDate(credit.DueDate)</td>
                                         <td>RM @credit.TotalAmount.ToString("N2")</td>
                                         <td><strong>RM @credit.NetBalanceAfterUtilised.ToString("N2")</strong></td>
+                                        <td><span class="billing-credit-status">Redeemable</span></td>
+                                        <td>
+                                            <button type="button"
+                                                    class="billing-credit-history-btn"
+                                                    @onclick="() => LoadCreditRedemptionHistoryAsync(credit)">
+                                                History
+                                            </button>
+                                        </td>
                                     </tr>
                                 }
                             </tbody>
                         </table>
                     </div>
+
+                    @if (!string.IsNullOrWhiteSpace(_selectedHistoryCreditId))
+                    {
+                        <section class="billing-credit-history">
+                            <div class="billing-credit-history__header">
+                                <div>
+                                    <strong>Redemption History</strong>
+                                    <span>@_selectedHistoryCreditId</span>
+                                </div>
+                            </div>
+
+                            @if (_isCreditHistoryLoading)
+                            {
+                                <div class="catalog-state">
+                                    <span class="spinner-border spinner-border-sm"></span>
+                                    <span>Loading redemption history...</span>
+                                </div>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(_creditHistoryError))
+                            {
+                                <div class="catalog-state catalog-state-error">
+                                    <i class="bi bi-exclamation-circle"></i>
+                                    <span>@_creditHistoryError</span>
+                                </div>
+                            }
+                            else if (_creditRedemptionHistory.Count == 0)
+                            {
+                                <div class="catalog-state">
+                                    <span>No redemption history found for this Member Credit account.</span>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="table-wrapper billing-credit-history__table">
+                                    <table class="billing-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Credit Account</th>
+                                                <th>Redeem Date</th>
+                                                <th>Document</th>
+                                                <th>Redeemed Amount</th>
+                                                <th>Branch</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var history in _creditRedemptionHistory)
+                                            {
+                                                <tr>
+                                                    <td>@history.SourceARAPOutstandingID</td>
+                                                    <td>@FormatRedeemableCreditDate(history.FinancialDate)</td>
+                                                    <td>@(string.IsNullOrWhiteSpace(history.DisplayCode) ? "—" : history.DisplayCode)</td>
+                                                    <td>RM @Math.Abs(history.TotalAmount).ToString("N2")</td>
+                                                    <td>@(string.IsNullOrWhiteSpace(history.BranchID) ? "—" : history.BranchID)</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                        </section>
+                    }
                 }
             </div>
             <div class="modal-footer">
                 <span style="margin-right:auto;color:#64748b;font-size:0.875rem;">
-                    Individual accounts are loaded from GetRedeemableCredits and ordered by expiry.
+                    Uses the same live Member Credit wallet service as New Sales. Accounts are refreshed and ordered by expiry.
                 </span>
                 <button class="btn-modal-cancel" @onclick="CloseRedeemableCredits">Close</button>
             </div>
@@ -1852,6 +1934,10 @@
     private bool _isRedeemableCreditsLoading;
     private string? _redeemableCreditsError;
     private bool _showRedeemableCredits;
+    private List<CreditRedemptionHistoryDTO> _creditRedemptionHistory = new();
+    private string _selectedHistoryCreditId = string.Empty;
+    private bool _isCreditHistoryLoading;
+    private string? _creditHistoryError;
 
     private string FormatMoneyBalance(decimal? value) =>
         _isCustomerBalanceLoading ? "Loading..." : value.HasValue ? $"RM {value.Value:N2}" : "—";
@@ -3260,9 +3346,11 @@
             var otherBalanceTask = CustomerService.GetOtherBalanceSummaryAsync(
                 customerId,
                 DateTime.UtcNow);
-            var redeemableCreditTask = CustomerService.GetRedeemableCreditsAsync(
+            var redeemableCreditTask = MemberCreditWalletService.LoadWalletAsync(
                 customerId,
-                DateTime.Today);
+                DateTime.Today,
+                AppState.SelectedBranchID,
+                AppState.CurrentBranch?.GroupId);
 
             await Task.WhenAll(memberBalanceTask, otherBalanceTask, redeemableCreditTask);
 
@@ -3284,12 +3372,14 @@
 
             if (redeemableCredit.Success && redeemableCredit.Value is not null)
             {
-                _redeemableCredits = NormalizeRedeemableCredits(redeemableCredit.Value);
+                _redeemableCredits = redeemableCredit.Value.Accounts.ToList();
+                CustomerCreditBalance = redeemableCredit.Value.TotalAvailable;
                 _redeemableCreditsError = null;
             }
             else
             {
                 _redeemableCredits.Clear();
+                CustomerCreditBalance = null;
                 _redeemableCreditsError =
                     redeemableCredit.ErrorMessage ??
                     "Redeemable Member Credit accounts are unavailable.";
@@ -3333,16 +3423,21 @@
         }
 
         _showRedeemableCredits = true;
+        _selectedHistoryCreditId = string.Empty;
+        _creditRedemptionHistory.Clear();
+        _creditHistoryError = null;
 
-        if (_redeemableCredits.Count == 0 && !_isRedeemableCreditsLoading)
-        {
-            await ReloadRedeemableCreditsAsync();
-        }
+        // Step 40: Case Note Billing uses the same shared Member Credit wallet
+        // loader as New Sales and always refreshes from the backend when opened.
+        await ReloadRedeemableCreditsAsync();
     }
 
     private void CloseRedeemableCredits()
     {
         _showRedeemableCredits = false;
+        _selectedHistoryCreditId = string.Empty;
+        _creditRedemptionHistory.Clear();
+        _creditHistoryError = null;
     }
 
     private async Task ReloadRedeemableCreditsAsync()
@@ -3358,24 +3453,29 @@
 
         try
         {
-            var result = await CustomerService.GetRedeemableCreditsAsync(
+            var result = await MemberCreditWalletService.LoadWalletAsync(
                 _billingCustomerId,
-                DateTime.Today);
+                DateTime.Today,
+                AppState.SelectedBranchID,
+                AppState.CurrentBranch?.GroupId);
 
             if (!result.Success || result.Value is null)
             {
                 _redeemableCredits.Clear();
+                CustomerCreditBalance = null;
                 _redeemableCreditsError =
                     result.ErrorMessage ??
                     "Unable to load redeemable Member Credit accounts.";
                 return;
             }
 
-            _redeemableCredits = NormalizeRedeemableCredits(result.Value);
+            _redeemableCredits = result.Value.Accounts.ToList();
+            CustomerCreditBalance = result.Value.TotalAvailable;
         }
         catch (Exception ex)
         {
             _redeemableCredits.Clear();
+            CustomerCreditBalance = null;
             _redeemableCreditsError =
                 $"Unable to load redeemable Member Credit accounts: {ex.Message}";
         }
@@ -3386,17 +3486,42 @@
         }
     }
 
-    private static List<RedeemableCreditDTO> NormalizeRedeemableCredits(
-        IEnumerable<RedeemableCreditDTO> credits)
+    private async Task LoadCreditRedemptionHistoryAsync(RedeemableCreditDTO credit)
     {
-        return credits
-            .Where(credit =>
-                credit.IsRedeemable &&
-                !string.IsNullOrWhiteSpace(credit.ARAPOutstandingID) &&
-                credit.NetBalanceAfterUtilised > 0m)
-            .OrderBy(credit => credit.DueDate)
-            .ThenBy(credit => credit.ARAPOutstandingID)
-            .ToList();
+        var accountId = credit.ARAPOutstandingID?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(accountId))
+        {
+            return;
+        }
+
+        _selectedHistoryCreditId = accountId;
+        _creditRedemptionHistory.Clear();
+        _creditHistoryError = null;
+        _isCreditHistoryLoading = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var result = await MemberCreditWalletService.LoadHistoryAsync(accountId);
+            if (!result.Success || result.Value is null)
+            {
+                _creditHistoryError =
+                    result.ErrorMessage ?? "Unable to load redemption history.";
+                return;
+            }
+
+            _creditRedemptionHistory = result.Value.ToList();
+        }
+        catch (Exception ex)
+        {
+            _creditHistoryError =
+                $"Unable to load redemption history: {ex.Message}";
+        }
+        finally
+        {
+            _isCreditHistoryLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private static string FormatRedeemableCreditDate(DateTime value)
