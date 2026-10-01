@@ -57,9 +57,13 @@
         if (!string.IsNullOrWhiteSpace(BranchSession.ErrorMessage))
         {
             Feedback.Error(BranchSession.ErrorMessage, "Branches unavailable");
+            return;
         }
 
-        if (BranchSession.CurrentBranch is not null && BranchSession.AvailableBranches.Count == 1)
+        // Branch selection is a login-time decision only. Once a branch exists
+        // for this authenticated session, navigating back here must not allow
+        // an in-app branch switch.
+        if (BranchSession.CurrentBranch is not null)
         {
             Navigation.NavigateTo(GetSafeReturnUrl(), replace: true);
         }
@@ -73,7 +77,7 @@
         if (await BranchSession.SelectAsync(branchId))
         {
             Feedback.Success(
-                $"Working branch changed to {branch?.DisplayName ?? branchId}.",
+                $"Branch selected: {branch?.DisplayName ?? branchId}.",
                 "Branch selected",
                 3000);
             Navigation.NavigateTo(GetSafeReturnUrl(), replace: true);
