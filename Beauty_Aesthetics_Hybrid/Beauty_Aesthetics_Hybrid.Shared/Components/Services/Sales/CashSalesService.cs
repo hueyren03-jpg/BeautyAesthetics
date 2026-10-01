@@ -406,11 +406,21 @@ public sealed class CashSalesService : ICashSalesService
             }
         }
 
-        // The official thermal receipt prints directly from the persisted cash-sale
-        // header and document lines. Repair legacy records whose receipt fields were
-        // saved as zero before asking the API to render the Senang receipt.
-        if (loadResult?.Success == true && loadResult.Value is not null)
+        // Receipt generation must be read-only for redemption documents.
+        // A saved redemption (DocumentTypeID 52) is already the accounting source
+        // of truth, so never run the legacy cash-sale repair/save path against it.
+        if (resolvedDocumentTypeId == 52)
         {
+            if (loadResult?.Success != true || loadResult.Value is null)
+            {
+                return ApiCallResult<string>.Failure(
+                    loadResult?.StatusCode ?? HttpStatusCode.BadRequest,
+                    loadResult?.ErrorMessage ?? "Unable to load the completed redemption.");
+            }
+        }
+        else if (loadResult?.Success == true && loadResult.Value is not null)
+        {
+            // Keep the existing repair behavior for legacy normal cash-sale receipts only.
             var repairResult = await RepairReceiptAmountsAsync(
                 loadResult.Value,
                 documentId,
@@ -425,13 +435,29 @@ public sealed class CashSalesService : ICashSalesService
             }
         }
 
-        var receiptResult = await cashSalesAC.GetThermalReceiptPdfAsync(
-            documentId,
-            resolvedDocumentTypeId,
-            cancellationToken);
+        ApiCallResult<string> receiptResult;
+        try
+        {
+            receiptResult = await cashSalesAC.GetThermalReceiptPdfAsync(
+                documentId,
+                resolvedDocumentTypeId,
+                cancellationToken);
+        }
+        catch (JsonException ex)
+        {
+            Console.WriteLine(
+                $"[Receipt PDF] Invalid response from thermal receipt API | DocumentID={documentId} | DocumentTypeID={resolvedDocumentTypeId} | {ex.Message}");
+
+            return ApiCallResult<string>.Failure(
+                HttpStatusCode.BadGateway,
+                "The receipt API returned an empty or invalid response.");
+        }
 
         if (!receiptResult.Success || string.IsNullOrWhiteSpace(receiptResult.Value))
         {
+            Console.WriteLine(
+                $"[Receipt PDF] Thermal receipt API failed | DocumentID={documentId} | DocumentTypeID={resolvedDocumentTypeId} | Status={receiptResult.StatusCode} | Error={receiptResult.ErrorMessage}");
+
             return ApiCallResult<string>.Failure(
                 receiptResult.StatusCode,
                 receiptResult.ErrorMessage ?? "The receipt PDF was empty.");
