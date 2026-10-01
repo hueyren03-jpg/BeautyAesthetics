@@ -67,6 +67,8 @@ public sealed class RedeemableCreditDTO
     public decimal NetBalanceAfterUtilised { get; set; }
     public string? BranchID { get; set; }
     public string? GroupID { get; set; }
+    public string? RedeemableAtBranch { get; set; }
+    public string? RedeemableAtGroup { get; set; }
     public string? LineItemID { get; set; }
     public string? MemberTypeID { get; set; }
     public bool IsRedeemable { get; set; }
