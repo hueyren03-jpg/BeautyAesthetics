@@ -32,20 +32,35 @@ public sealed class CashSalesAC
         SendAsync<List<CashSalesProxyDTO>>(HttpMethod.Post, "/api/Doc_CashSales/LoadProxy", request,
             "Cash sales list response was invalid.", cancellationToken);
 
-    public Task<ApiCallResult<List<CashSalesProxyDTO>>> GetAppSalesListAsync(
+    public async Task<ApiCallResult<List<CashSalesProxyDTO>>> GetAppSalesListAsync(
         CashSalesLoadRequestDTO request,
-        CancellationToken cancellationToken = default) =>
-        SendAsync<List<CashSalesProxyDTO>>(
+        CancellationToken cancellationToken = default)
+    {
+        var branchId = request.Id?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(branchId))
+        {
+            Console.WriteLine(
+                "[API POST /api/Doc_CashSales/GetAppSalesList] BLOCKED | strBranches is empty.");
+
+            return ApiCallResult<List<CashSalesProxyDTO>>.Failure(
+                HttpStatusCode.BadRequest,
+                "Working branch is required before sales history can be loaded.");
+        }
+
+        var payload = new CashSalesHistoryRequestDTO
+        {
+            Branches = branchId,
+            StartDate = request.StartDate,
+            EndDate = request.EndDate
+        };
+
+        return await SendAsync<List<CashSalesProxyDTO>>(
             HttpMethod.Post,
             "/api/Doc_CashSales/GetAppSalesList",
-            new CashSalesHistoryRequestDTO
-            {
-                Branches = request.Id,
-                StartDate = request.StartDate,
-                EndDate = request.EndDate
-            },
+            payload,
             "Cash sales history response was invalid.",
             cancellationToken);
+    }
 
     public Task<ApiCallResult<List<CashSalesProxyDTO>>> LoadRedemptionProxyAsync(
         RedemptionLoadRequestDTO request,
