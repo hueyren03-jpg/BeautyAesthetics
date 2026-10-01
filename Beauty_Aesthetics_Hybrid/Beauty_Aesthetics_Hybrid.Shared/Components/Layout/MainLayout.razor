@@ -89,28 +89,6 @@
                     <i class="fa-solid fa-bars"></i>
                 </button>
                 <div class="header">
-                    <button type="button"
-                            class="HeaderBranchSwitch"
-                            @onclick="ToggleBranchPicker"
-                            disabled="@(BranchSession.AvailableBranches.Count <= 1)"
-                            aria-expanded="@isBranchPickerOpen"
-                            title="@(BranchSession.AvailableBranches.Count > 1 ? "Switch working branch" : "Current working branch")"
-                            aria-label="@(BranchSession.AvailableBranches.Count > 1 ? $"Switch branch. Current branch: {BranchSession.CurrentBranch?.DisplayName ?? "Not selected"}" : $"Current branch: {BranchSession.CurrentBranch?.DisplayName ?? "Not selected"}")">
-                        <span class="HeaderBranchSwitch__icon">
-                            <i class="fa-solid fa-building"></i>
-                        </span>
-                        <span class="HeaderBranchSwitch__copy">
-                            <small>Working branch</small>
-                            <strong>@(BranchSession.CurrentBranch?.DisplayName ?? "Not selected")</strong>
-                        </span>
-                        @if (BranchSession.AvailableBranches.Count > 1)
-                        {
-                            <span class="HeaderBranchSwitch__action" aria-hidden="true">
-                                <i class="fa-solid fa-arrow-right-arrow-left"></i>
-                            </span>
-                        }
-                    </button>
-
                     <div @onclick="ToggleProfile" class="profile">
                         <i class="fa-solid fa-user ProfileIcon"></i>
                         <i class="fa-solid fa-caret-down ProfileDropdown"></i>
@@ -126,64 +104,6 @@
                     </div>
                 </div>
 
-                @if (isBranchPickerOpen)
-                {
-                    <div class="HeaderBranchPickerBackdrop" @onclick="CloseBranchPicker"></div>
-                    <section class="HeaderBranchPicker" @onclick:stopPropagation="true" aria-label="Switch working branch">
-                        <div class="HeaderBranchPicker__header">
-                            <div>
-                                <small>WORKING BRANCH</small>
-                                <strong>Switch branch</strong>
-                            </div>
-                            <button type="button"
-                                    class="HeaderBranchPicker__close"
-                                    @onclick="CloseBranchPicker"
-                                    aria-label="Close branch picker">
-                                <i class="bi bi-x-lg"></i>
-                            </button>
-                        </div>
-
-                        @if (!string.IsNullOrWhiteSpace(branchSwitchError))
-                        {
-                            <div class="HeaderBranchPicker__error" role="alert">@branchSwitchError</div>
-                        }
-
-                        <div class="HeaderBranchPicker__list">
-                            @foreach (var branch in BranchSession.AvailableBranches)
-                            {
-                                var isCurrent = string.Equals(
-                                    branch.Id,
-                                    BranchSession.CurrentBranch?.Id,
-                                    StringComparison.OrdinalIgnoreCase);
-
-                                <button type="button"
-                                        class="HeaderBranchPicker__item @(isCurrent ? "is-current" : string.Empty)"
-                                        disabled="@(isSwitchingBranch || isCurrent)"
-                                        @onclick="() => ChooseHeaderBranchAsync(branch.Id)">
-                                    <span class="HeaderBranchPicker__itemIcon">
-                                        <i class="bi bi-building"></i>
-                                    </span>
-                                    <span class="HeaderBranchPicker__itemCopy">
-                                        <strong>@branch.DisplayName</strong>
-                                        <small>@branch.Id</small>
-                                    </span>
-                                    @if (isCurrent)
-                                    {
-                                        <span class="HeaderBranchPicker__current">Current</span>
-                                    }
-                                    else if (isSwitchingBranch)
-                                    {
-                                        <i class="bi bi-arrow-repeat"></i>
-                                    }
-                                    else
-                                    {
-                                        <i class="bi bi-chevron-right"></i>
-                                    }
-                                </button>
-                            }
-                        </div>
-                    </section>
-                }
             </div>
             <div class="content">
                 @Body
@@ -200,9 +120,6 @@
 
 @code {
     private bool isProfileOpen = false;
-    private bool isBranchPickerOpen = false;
-    private bool isSwitchingBranch = false;
-    private string? branchSwitchError;
     private bool isSidebarOpen = false;
     private bool isMobileLayout = true;
     private bool isPhoneLayout = false;
@@ -211,7 +128,6 @@
     protected override void OnInitialized()
     {
         AppState.AuthenticationChanged += HandleAuthenticationChanged;
-        AppState.BranchChanged += HandleBranchChanged;
 
         try
         {
@@ -284,7 +200,6 @@
     public void Dispose()
     {
         AppState.AuthenticationChanged -= HandleAuthenticationChanged;
-        AppState.BranchChanged -= HandleBranchChanged;
     }
 
     private void HandleAuthenticationChanged()
@@ -306,64 +221,6 @@
     private void ToggleSideBar()
     {
         isSidebarOpen = !isSidebarOpen;
-    }
-
-    private void HandleBranchChanged()
-    {
-        _ = InvokeAsync(StateHasChanged);
-    }
-
-    private void ToggleBranchPicker()
-    {
-        isProfileOpen = false;
-        branchSwitchError = null;
-        isBranchPickerOpen = !isBranchPickerOpen;
-    }
-
-    private void CloseBranchPicker()
-    {
-        if (isSwitchingBranch)
-        {
-            return;
-        }
-
-        isBranchPickerOpen = false;
-        branchSwitchError = null;
-    }
-
-    private async Task ChooseHeaderBranchAsync(string branchId)
-    {
-        if (isSwitchingBranch ||
-            string.IsNullOrWhiteSpace(branchId) ||
-            string.Equals(branchId, BranchSession.CurrentBranch?.Id, StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        isSwitchingBranch = true;
-        branchSwitchError = null;
-
-        try
-        {
-            var selected = await BranchSession.SelectAsync(branchId);
-            if (!selected)
-            {
-                branchSwitchError = "The selected branch could not be activated.";
-                return;
-            }
-
-            // Reload the exact same route after persisting the branch. This gives every
-            // branch-scoped page a clean state and avoids hot-swapping live components.
-            NavigationManager.NavigateTo(NavigationManager.Uri, forceLoad: true);
-        }
-        catch (Exception ex)
-        {
-            branchSwitchError = $"Unable to switch branch. {ex.Message}";
-        }
-        finally
-        {
-            isSwitchingBranch = false;
-        }
     }
 
     private void CloseSidebar()
