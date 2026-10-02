@@ -185,6 +185,192 @@ public sealed class ARReceiptAC
         }
     }
 
+    public async Task<ApiCallResult<List<OutstandingARReceiptHistoryDTO>>> LoadHistoryAsync(
+        OutstandingARReceiptHistoryRequestDTO historyRequest,
+        CancellationToken cancellationToken = default)
+    {
+        const string endpoint = "/api/Doc_ARReceipt/LoadProxy";
+        var requestBody = JsonSerializer.Serialize(historyRequest, JsonOptions);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
+        {
+            Content = new StringContent(requestBody, Encoding.UTF8, "application/json")
+        };
+
+        Console.WriteLine($"[API POST {endpoint}] URL: {endpoint}");
+        Console.WriteLine($"[API POST {endpoint}] Request Body: {requestBody}");
+
+        using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        Console.WriteLine($"[API POST {endpoint}] HTTP {(int)response.StatusCode} {response.StatusCode}");
+        Console.WriteLine(
+            $"[API POST {endpoint}] Response Body: {(string.IsNullOrWhiteSpace(responseBody) ? "<empty>" : responseBody)}");
+
+        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            return ApiCallResult<List<OutstandingARReceiptHistoryDTO>>.Unauthorized(response.StatusCode);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return ApiCallResult<List<OutstandingARReceiptHistoryDTO>>.Failure(
+                response.StatusCode,
+                ReadError(responseBody, "Unable to load Outstanding payment history."));
+        }
+
+        if (string.IsNullOrWhiteSpace(responseBody))
+        {
+            return ApiCallResult<List<OutstandingARReceiptHistoryDTO>>.Failure(
+                response.StatusCode,
+                "Outstanding payment history response was empty.");
+        }
+
+        try
+        {
+            var wrapper = JsonSerializer.Deserialize<ApiResponse<List<OutstandingARReceiptHistoryDTO>>>(
+                responseBody,
+                JsonOptions);
+
+            if (wrapper?.StatusCode > 0)
+            {
+                if (!wrapper.IsSuccess)
+                {
+                    return ApiCallResult<List<OutstandingARReceiptHistoryDTO>>.Failure(
+                        response.StatusCode,
+                        string.IsNullOrWhiteSpace(wrapper.Message)
+                            ? "Unable to load Outstanding payment history."
+                            : wrapper.Message);
+                }
+
+                return ApiCallResult<List<OutstandingARReceiptHistoryDTO>>.Ok(
+                    response.StatusCode,
+                    wrapper.Result ?? new List<OutstandingARReceiptHistoryDTO>());
+            }
+
+            var direct = JsonSerializer.Deserialize<List<OutstandingARReceiptHistoryDTO>>(
+                responseBody,
+                JsonOptions);
+
+            return ApiCallResult<List<OutstandingARReceiptHistoryDTO>>.Ok(
+                response.StatusCode,
+                direct ?? new List<OutstandingARReceiptHistoryDTO>());
+        }
+        catch (JsonException)
+        {
+            return ApiCallResult<List<OutstandingARReceiptHistoryDTO>>.Failure(
+                response.StatusCode,
+                "Outstanding payment history response was invalid.");
+        }
+    }
+
+    public async Task<ApiCallResult<OutstandingARReceiptDetailDTO>> LoadRecordAsync(
+        string documentId,
+        CancellationToken cancellationToken = default)
+    {
+        const string endpoint = "/api/Doc_ARReceipt/LoadRecord";
+        var requestBody = JsonSerializer.Serialize(
+            new { id = documentId?.Trim() ?? string.Empty },
+            JsonOptions);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
+        {
+            Content = new StringContent(requestBody, Encoding.UTF8, "application/json")
+        };
+
+        Console.WriteLine($"[API POST {endpoint}] URL: {endpoint}");
+        Console.WriteLine($"[API POST {endpoint}] Request Body: {requestBody}");
+
+        using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        Console.WriteLine($"[API POST {endpoint}] HTTP {(int)response.StatusCode} {response.StatusCode}");
+        Console.WriteLine(
+            $"[API POST {endpoint}] Response Body: {(string.IsNullOrWhiteSpace(responseBody) ? "<empty>" : responseBody)}");
+
+        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            return ApiCallResult<OutstandingARReceiptDetailDTO>.Unauthorized(response.StatusCode);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return ApiCallResult<OutstandingARReceiptDetailDTO>.Failure(
+                response.StatusCode,
+                ReadError(responseBody, "Unable to load Outstanding payment receipt."));
+        }
+
+        if (string.IsNullOrWhiteSpace(responseBody))
+        {
+            return ApiCallResult<OutstandingARReceiptDetailDTO>.Failure(
+                response.StatusCode,
+                "Outstanding payment receipt response was empty.");
+        }
+
+        try
+        {
+            using var json = JsonDocument.Parse(responseBody);
+            var root = json.RootElement;
+
+            var apiStatus = TryGetInt(root, "statusCode");
+            if (apiStatus.HasValue && (apiStatus.Value < 200 || apiStatus.Value >= 300))
+            {
+                return ApiCallResult<OutstandingARReceiptDetailDTO>.Failure(
+                    response.StatusCode,
+                    FindString(root, "message") ?? "Unable to load Outstanding payment receipt.");
+            }
+
+            var resultNode = TryGetProperty(root, "result") ?? root;
+            if (resultNode.ValueKind != JsonValueKind.Object)
+            {
+                return ApiCallResult<OutstandingARReceiptDetailDTO>.Failure(
+                    response.StatusCode,
+                    "Outstanding payment receipt response did not contain a valid record.");
+            }
+
+            var receiptNode =
+                TryGetProperty(resultNode, "objDoc_ARReceipt")
+                ?? TryGetProperty(resultNode, "ObjDoc_ARReceipt")
+                ?? TryGetProperty(resultNode, "receipt")
+                ?? resultNode;
+
+            var receipt = JsonSerializer.Deserialize<OutstandingARReceiptHistoryDTO>(
+                receiptNode.GetRawText(),
+                JsonOptions) ?? new OutstandingARReceiptHistoryDTO();
+
+            var settlementNode =
+                TryGetProperty(resultNode, "lstud_ARAPPaymentOffSetLineDM")
+                ?? TryGetProperty(resultNode, "lstARAPPaymentOffSetLineDM")
+                ?? TryGetProperty(resultNode, "settlementLines");
+
+            var settlementLines = settlementNode.HasValue &&
+                                  settlementNode.Value.ValueKind == JsonValueKind.Array
+                ? JsonSerializer.Deserialize<List<ud_ARAPPaymentOffSetLineDM>>(
+                      settlementNode.Value.GetRawText(),
+                      JsonOptions) ?? new List<ud_ARAPPaymentOffSetLineDM>()
+                : new List<ud_ARAPPaymentOffSetLineDM>();
+
+            if (string.IsNullOrWhiteSpace(receipt.DocumentID))
+            {
+                receipt.DocumentID = documentId?.Trim() ?? string.Empty;
+            }
+
+            return ApiCallResult<OutstandingARReceiptDetailDTO>.Ok(
+                response.StatusCode,
+                new OutstandingARReceiptDetailDTO
+                {
+                    Receipt = receipt,
+                    SettlementLines = settlementLines
+                });
+        }
+        catch (JsonException)
+        {
+            return ApiCallResult<OutstandingARReceiptDetailDTO>.Failure(
+                response.StatusCode,
+                "Outstanding payment receipt response was invalid.");
+        }
+    }
+
     public async Task<ApiCallResult<OutstandingSettlementSaveResultDTO>> CreateRecordAsync(
         OutstandingARReceiptCreateDTO receipt,
         decimal totalAllocatedAmount,
