@@ -114,11 +114,18 @@
                             var selected = _selections.ContainsKey(key);
                             var selectedAmount = SelectedAmount(document);
 
-                            <tr class="@(selected ? "outstanding-row-selected" : string.Empty)">
+                            <tr class="outstanding-document-row @(selected ? "outstanding-row-selected" : string.Empty)"
+                                role="button"
+                                tabindex="0"
+                                aria-pressed="@selected"
+                                title="@(selected ? "Click row to deselect this outstanding document" : "Click row to select this outstanding document")"
+                                @onclick="() => ToggleDocument(document, !selected)"
+                                @onkeydown="(KeyboardEventArgs e) => HandleRowKeyDown(document, selected, e)">
                                 <td class="outstanding-select-cell" data-label="Select">
                                     <input type="checkbox"
                                            checked="@selected"
                                            disabled="@(document.RemainingAmount <= 0m)"
+                                           @onclick:stopPropagation="true"
                                            @onchange="(ChangeEventArgs e) => ToggleDocument(document, IsChecked(e))" />
                                 </td>
                                 <td class="outstanding-document-cell" data-label="Document">
@@ -133,14 +140,17 @@
                                 <td class="amount-cell outstanding-remaining" data-label="Outstanding">
                                     RM @DisplayAmount(document.RemainingAmount)
                                 </td>
-                                <td class="outstanding-settle-cell" data-label="Settle Amount">
+                                <td class="outstanding-settle-cell"
+                                    data-label="Settle Amount"
+                                    @onclick:stopPropagation="true"
+                                    @onclick="() => HandleSettlementCellClick(document, selected)">
                                     <div class="outstanding-amount-input">
                                         <span>RM</span>
                                         <input type="number"
                                                min="0"
                                                step="0.01"
                                                max="@FormatInputAmount(MaxSelectableFor(document))"
-                                               disabled="@(!selected)"
+                                               readonly="@(!selected)"
                                                value="@FormatInputAmount(selectedAmount)"
                                                @onchange="(ChangeEventArgs e) => UpdateAmount(document, e.Value?.ToString())" />
                                     </div>
@@ -148,6 +158,7 @@
                                     {
                                         <button type="button"
                                                 class="outstanding-full-button"
+                                                @onclick:stopPropagation="true"
                                                 @onclick="() => SetMaximumAmount(document)">
                                             Full
                                         </button>
@@ -317,6 +328,27 @@
         }
 
         EnforceTotalCap();
+    }
+
+    private void HandleSettlementCellClick(
+        OutstandingDocumentDTO document,
+        bool selected)
+    {
+        if (!selected)
+        {
+            ToggleDocument(document, true);
+        }
+    }
+
+    private void HandleRowKeyDown(
+        OutstandingDocumentDTO document,
+        bool selected,
+        KeyboardEventArgs args)
+    {
+        if (args.Key is "Enter" or " ")
+        {
+            ToggleDocument(document, !selected);
+        }
     }
 
     private void ToggleDocument(OutstandingDocumentDTO document, bool isChecked)
