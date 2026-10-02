@@ -16,7 +16,6 @@
 @inject IPendingOrderService PendingOrderService
 @inject IBranchSessionService BranchSession
 @inject ICustomerService CustomerService
-@inject OutstandingPaymentHistoryService OutstandingHistoryService
 @inject IMemberCreditWalletService MemberCreditWalletService
 @inject IOutstandingBalanceService OutstandingBalanceService
 @inject IProductInventoryService ProductInventoryService
@@ -4981,26 +4980,6 @@
 
                 // Match Senang Retail: preserve the AR Receipt completion
                 // details, then show the common Payment Successful receipt screen.
-                var historyStored = true;
-                if (saved.HistoryRecords.Count == 0)
-                {
-                    historyStored = false;
-                    Console.WriteLine(
-                        $"[Outstanding Step 12] UI HISTORY MISSING | Receipt={saved.DisplayCode} | " +
-                        "No prepared history records were returned.");
-                }
-                else
-                {
-                    foreach (var historyRecord in saved.HistoryRecords)
-                    {
-                        historyStored &= await OutstandingHistoryService.RecordAsync(historyRecord);
-                    }
-                }
-
-                Console.WriteLine(
-                    $"[Outstanding Step 12] UI HISTORY PERSIST | Receipt={saved.DisplayCode} | " +
-                    $"Records={saved.HistoryRecords.Count} | Stored={historyStored}");
-
                 var paymentMethodDisplay = string.Join(
                     ", ",
                     outstandingPayments.Select(payment => payment.PaymentMethod));
@@ -5075,14 +5054,6 @@
                 calculatorMethod = null;
                 calculatorDigits = string.Empty;
                 stage = SaleStage.Cart;
-
-                if (!historyStored)
-                {
-                    Feedback.Warning(
-                        "The Outstanding payment was saved, but its local history could not be stored. Do not retry the payment.",
-                        "Outstanding history not stored",
-                        6000);
-                }
 
                 if (saved.VerificationPassed)
                 {
