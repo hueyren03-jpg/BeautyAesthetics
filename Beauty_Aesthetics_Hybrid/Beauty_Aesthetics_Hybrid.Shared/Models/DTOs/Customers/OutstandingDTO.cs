@@ -111,6 +111,12 @@ public sealed class OutstandingSettlementSaveRequestDTO
     // configured payment method when more than one allocation is supplied.
     public List<OutstandingSettlementPaymentDTO> Payments { get; set; } = new();
 
+    // Step 9 stale-data snapshot captured when the customer confirms
+    // the Outstanding dialog. Key uses the same source/document identifier
+    // as SelectedAmounts; value is the balance visible at selection time.
+    public Dictionary<string, decimal> ExpectedOutstandingAmounts { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
+
     // Key = outstanding source/document identifier from Step 3.
     // Value = amount to settle against that source.
     public Dictionary<string, decimal> SelectedAmounts { get; set; } =
