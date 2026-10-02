@@ -1769,9 +1769,14 @@ public sealed class CashSalesService : ICashSalesService
 
         foreach (var item in pointLines)
         {
+            var expectedLinePoints = Math.Round(
+                Math.Max(0m, item.PointToRedeem) * Math.Max(1, item.Quantity),
+                2,
+                MidpointRounding.AwayFromZero);
+
             if (!item.AllowPointRedemption ||
                 item.PointToRedeem <= 0m ||
-                Math.Abs(item.PointToRedeem - item.Points) > 0.009m)
+                Math.Abs(expectedLinePoints - item.Points) > 0.009m)
             {
                 return ApiCallResult<bool>.Failure(
                     HttpStatusCode.BadRequest,
@@ -1798,9 +1803,10 @@ public sealed class CashSalesService : ICashSalesService
                 "Unable to verify the latest customer point balance.");
         }
 
+        // DocumentLine.Points already contains the full deduction for the line.
+        // Do not multiply by Quantity again here.
         var totalPoints = Math.Round(
-            pointLines.Sum(item =>
-                Math.Max(0m, item.Points) * Math.Max(1, item.Quantity)),
+            pointLines.Sum(item => Math.Max(0m, item.Points)),
             2,
             MidpointRounding.AwayFromZero);
         var latestBalance = Math.Max(
