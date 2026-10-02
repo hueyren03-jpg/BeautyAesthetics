@@ -21,6 +21,11 @@ public sealed class AppState
     public string LastPaymentMethod { get; set; } = string.Empty;
     public Transaction? LastCompletedTransaction { get; set; }
     public string LastPaymentReturnUrl { get; set; } = "/case-notes";
+
+    // Outstanding settlement completion state. Senang Retail routes a
+    // successful AR Receipt payment through the same complete-sales screen,
+    // but only exposes receipt printing and Close for Outstanding.
+    public bool IsOutstandingPaymentMode { get; set; }
     public event Action? AuthenticationChanged;
     public event Action? BranchChanged;
     public event Action? CustomerChanged;
@@ -85,6 +90,7 @@ public sealed class AppState
         LastPaymentMethod = string.Empty;
         LastCompletedTransaction = null;
         LastPaymentReturnUrl = "/case-notes";
+        IsOutstandingPaymentMode = false;
     }
 
     public void ClearBranchSession()
