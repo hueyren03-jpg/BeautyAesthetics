@@ -4175,12 +4175,36 @@
                 _billingStep = "summary";
                 SynchronizeBillingPaymentTotals();
 
-                Feedback.Resolve(
-                    feedbackId,
-                    string.IsNullOrWhiteSpace(saved.DisplayCode)
-                        ? $"Outstanding payment of RM {saved.TotalAllocatedAmount:N2} completed successfully."
-                        : $"Outstanding payment {saved.DisplayCode} completed successfully.",
-                    "Outstanding payment successful");
+                if (saved.VerificationPassed)
+                {
+                    Feedback.Resolve(
+                        feedbackId,
+                        string.IsNullOrWhiteSpace(saved.DisplayCode)
+                            ? $"Outstanding payment of RM {saved.TotalAllocatedAmount:N2} completed and verified successfully."
+                            : $"Outstanding payment {saved.DisplayCode} completed and verified successfully.",
+                        "Outstanding payment successful");
+                }
+                else
+                {
+                    Feedback.Resolve(
+                        feedbackId,
+                        string.IsNullOrWhiteSpace(saved.DisplayCode)
+                            ? $"Outstanding payment of RM {saved.TotalAllocatedAmount:N2} was saved."
+                            : $"Outstanding payment {saved.DisplayCode} was saved.",
+                        "Outstanding payment saved");
+
+                    Feedback.Warning(
+                        string.IsNullOrWhiteSpace(saved.VerificationMessage)
+                            ? "The AR Receipt was saved, but the latest Outstanding balance could not be fully verified. Refresh Outstanding before taking any further action."
+                            : saved.VerificationMessage,
+                        "Outstanding verification pending",
+                        6000);
+                }
+
+                Console.WriteLine(
+                    $"[Outstanding Step 11] BILLING UI RESULT | Receipt={saved.DisplayCode} | " +
+                    $"Verified={saved.VerificationPassed} | " +
+                    $"CustomerOutstanding={(saved.VerifiedCustomerOutstanding.HasValue ? saved.VerifiedCustomerOutstanding.Value.ToString("N2") : "unavailable")}");
 
                 NavigationManager.NavigateTo("/complete-sales");
             }
