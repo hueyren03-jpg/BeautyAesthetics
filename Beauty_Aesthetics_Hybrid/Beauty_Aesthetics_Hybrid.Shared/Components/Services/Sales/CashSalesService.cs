@@ -979,7 +979,8 @@ public sealed class CashSalesService : ICashSalesService
                 redemptionDiscountValidation.ErrorMessage);
         }
 
-        document["lstReceiptLines"] = BuildReceiptLines(transaction);
+        var receiptLines = BuildReceiptLines(transaction);
+        document["lstReceiptLines"] = receiptLines;
 
         var memberCreditBuild = await BuildMemberCreditGrantCollectionsAsync(
             transaction,
@@ -1055,6 +1056,22 @@ public sealed class CashSalesService : ICashSalesService
             return ApiCallResult<Transaction>.Failure(
                 preSavePointValidation.StatusCode,
                 preSavePointValidation.ErrorMessage);
+        }
+
+        var pointSaveValidation = ValidatePointSavePayload(
+            transaction,
+            documentLines,
+            receiptLines);
+
+        if (!pointSaveValidation.Success)
+        {
+            Console.WriteLine(
+                $"[Point Step 11] BLOCKED | Source=CashSalesService | Customer={transaction.AccountId} | " +
+                $"{pointSaveValidation.ErrorMessage}");
+
+            return ApiCallResult<Transaction>.Failure(
+                HttpStatusCode.BadRequest,
+                pointSaveValidation.ErrorMessage);
         }
 
         var createResult = await cashSalesAC.CreateRecordAsync(document, cancellationToken);
@@ -1946,6 +1963,93 @@ public sealed class CashSalesService : ICashSalesService
             $"RemainingAfterSave={Math.Max(0m, latestBalance - totalPoints):0.##} | Lines={pointLines.Count}");
 
         return ApiCallResult<bool>.Ok(HttpStatusCode.OK, true);
+    }
+
+    private static (bool Success, string ErrorMessage) ValidatePointSavePayload(
+        Transaction transaction,
+        JsonArray documentLines,
+        JsonArray receiptLines)
+    {
+        var pointItems = transaction.Items
+            .Where(item => item.Points > 0m)
+            .ToList();
+
+        if (pointItems.Count == 0)
+        {
+            return (true, string.Empty);
+        }
+
+        if (transaction.DocumentTypeId != 5)
+        {
+            return (
+                false,
+                "Point redemption must be saved as a normal Cash Sale (DocumentTypeID = 5).");
+        }
+
+        var savedPointLines = documentLines
+            .OfType<JsonObject>()
+            .Where(line => Number(line, "Points") > 0m)
+            .ToList();
+
+        var expectedPoints = Math.Round(
+            pointItems.Sum(item => Math.Max(0m, item.Points)),
+            2,
+            MidpointRounding.AwayFromZero);
+        var payloadPoints = Math.Round(
+            savedPointLines.Sum(line => Number(line, "Points")),
+            2,
+            MidpointRounding.AwayFromZero);
+
+        if (savedPointLines.Count != pointItems.Count ||
+            Math.Abs(payloadPoints - expectedPoints) > 0.009m)
+        {
+            return (
+                false,
+                $"Point document-line payload mismatch. Expected {pointItems.Count} line(s) / {expectedPoints:0.##} pts, but payload has {savedPointLines.Count} line(s) / {payloadPoints:0.##} pts.");
+        }
+
+        if (savedPointLines.Any(line =>
+                Integer(line, "OwnerDocumentTypeID") != 5 ||
+                Math.Abs(Number(line, "UnitPrice")) > 0.009m))
+        {
+            return (
+                false,
+                "Point-redeemed document lines must use OwnerDocumentTypeID = 5 and UnitPrice = 0.");
+        }
+
+        if (receiptLines
+            .OfType<JsonObject>()
+            .Any(line => Integer(line, "POSPaymentTypeID") == -10))
+        {
+            return (
+                false,
+                "Point redemption cannot create a Member Credit receipt line.");
+        }
+
+        var expectedTenderCount = transaction.Payments.Count > 0
+            ? transaction.Payments.Count(payment =>
+                payment.PaymentTypeId != 0 &&
+                payment.PaymentTypeId != -10 &&
+                payment.Amount > 0m)
+            : transaction.PaymentTypeId != 0 &&
+              transaction.PaymentTypeId != -10 &&
+              transaction.Amount > 0m
+                ? 1
+                : 0;
+
+        if (receiptLines.Count != expectedTenderCount)
+        {
+            return (
+                false,
+                $"Point redemption must not create a special point receipt line. Expected {expectedTenderCount} regular tender row(s), but payload contains {receiptLines.Count} receipt row(s).");
+        }
+
+        Console.WriteLine(
+            $"[Point Step 11] SAVE PAYLOAD PASS | Customer={transaction.AccountId} | " +
+            $"DocumentType=5 | PointLines={savedPointLines.Count} | TotalPoints={payloadPoints:0.##} | " +
+            $"ReceiptLines={receiptLines.Count} | PointReceiptLines=0 | Storage=DocumentLine.Points");
+
+        return (true, string.Empty);
     }
 
     private static JsonArray BuildDocumentLines(
