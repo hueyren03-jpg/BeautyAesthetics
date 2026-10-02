@@ -140,6 +140,16 @@ public sealed class OutstandingSettlementSaveResultDTO
     public int SettledDocumentCount { get; set; }
     public List<string> ReceiptIds { get; set; } = new();
     public List<string> ReceiptCodes { get; set; } = new();
+
+    // Step 11: post-save verification. A false value never means the AR Receipt
+    // was rolled back; it means the receipt saved but the follow-up balance check
+    // could not be confirmed exactly, so the UI must not encourage a blind retry.
+    public bool VerificationCompleted { get; set; }
+    public bool VerificationPassed { get; set; }
+    public string VerificationMessage { get; set; } = string.Empty;
+    public decimal? VerifiedCustomerOutstanding { get; set; }
+    public Dictionary<string, decimal> VerifiedRemainingAmounts { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
 }
 
 
