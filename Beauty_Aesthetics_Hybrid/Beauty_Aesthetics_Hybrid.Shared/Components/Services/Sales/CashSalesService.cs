@@ -9,6 +9,7 @@ using Beauty_Aesthetics_WebPos.Components.Services.Files;
 using Beauty_Aesthetics_WebPos.Components.Services.Inventory;
 using Beauty_Aesthetics_WebPos.Components.Services.Customers;
 using Beauty_Aesthetics_WebPos.Components.Services.Printing;
+using Beauty_Aesthetics_WebPos.Components.Services.PointConversions;
 using Beauty_Aesthetics_WebPos.Components.Services.Tax;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 using Microsoft.JSInterop;
@@ -25,6 +26,7 @@ public sealed class CashSalesService : ICashSalesService
     private readonly IFileDownloadService fileDownloadService;
     private readonly IMemberCreditService memberCreditService;
     private readonly ICustomerService customerService;
+    private readonly IPointConversionService pointConversionService;
     private readonly IMemberCreditWalletService memberCreditWalletService;
     private readonly IJSRuntime jsRuntime;
     private Transaction? lastCreatedTransaction;
@@ -38,6 +40,7 @@ public sealed class CashSalesService : ICashSalesService
         IFileDownloadService fileDownloadService,
         IMemberCreditService memberCreditService,
         ICustomerService customerService,
+        IPointConversionService pointConversionService,
         IMemberCreditWalletService memberCreditWalletService,
         IJSRuntime jsRuntime)
     {
@@ -49,6 +52,7 @@ public sealed class CashSalesService : ICashSalesService
         this.fileDownloadService = fileDownloadService;
         this.memberCreditService = memberCreditService;
         this.customerService = customerService;
+        this.pointConversionService = pointConversionService;
         this.memberCreditWalletService = memberCreditWalletService;
         this.jsRuntime = jsRuntime;
     }
@@ -1172,6 +1176,14 @@ public sealed class CashSalesService : ICashSalesService
             transaction,
             cancellationToken);
 
+        // Point Step 13 — Senang leaves point earning to the backend
+        // Cash Sale save. Capture the current balance + applicable configured
+        // rule so the post-save result can be verified without changing the
+        // CreateRecord payload or awarding points twice on the client.
+        var pointStep13Snapshot = await CapturePointStep13SnapshotAsync(
+            transaction,
+            cancellationToken);
+
         var createResult = await cashSalesAC.CreateRecordAsync(document, cancellationToken);
         if (!createResult.Success)
         {
@@ -1224,6 +1236,11 @@ public sealed class CashSalesService : ICashSalesService
         await VerifyPointStep12AfterSaveAsync(
             transaction,
             pointStep12Snapshot,
+            cancellationToken);
+
+        await VerifyPointStep13EarningAfterSaveAsync(
+            transaction,
+            pointStep13Snapshot,
             cancellationToken);
 
         // Keep the values submitted by the completed sale available to receipt
@@ -2066,6 +2083,250 @@ public sealed class CashSalesService : ICashSalesService
             $"RemainingAfterSave={Math.Max(0m, latestBalance - totalPoints):0.##} | Lines={pointLines.Count}");
 
         return ApiCallResult<bool>.Ok(HttpStatusCode.OK, true);
+    }
+
+    private sealed class PointStep13Snapshot
+    {
+        public decimal BeforeBalance { get; init; }
+        public decimal RedeemedPoints { get; init; }
+        public string MembershipTypeId { get; init; } = string.Empty;
+        public PointConversionDM? Rule { get; init; }
+        public bool MultipleRulesMatched { get; init; }
+    }
+
+    private async Task<PointStep13Snapshot?> CapturePointStep13SnapshotAsync(
+        Transaction transaction,
+        CancellationToken cancellationToken)
+    {
+        if (transaction.DocumentTypeId != 5 ||
+            string.IsNullOrWhiteSpace(transaction.AccountId))
+        {
+            return null;
+        }
+
+        var balanceResult = await customerService.GetBalanceSummaryAsync(
+            transaction.AccountId,
+            cancellationToken);
+
+        if (!balanceResult.Success || balanceResult.Value is null)
+        {
+            Console.WriteLine(
+                $"[Point Step 13] BEFORE WARNING | Customer={transaction.AccountId} | " +
+                $"Unable to capture PointBalance: {balanceResult.ErrorMessage}");
+            return null;
+        }
+
+        var customerResult = await customerService.LoadCustomerAsync(
+            transaction.AccountId,
+            cancellationToken);
+        var membershipTypeId =
+            customerResult.Success && customerResult.Value is not null
+                ? customerResult.Value.MembershipTypeId?.Trim() ?? string.Empty
+                : string.Empty;
+
+        PointConversionDM? matchedRule = null;
+        var multipleRulesMatched = false;
+
+        if (!string.IsNullOrWhiteSpace(membershipTypeId))
+        {
+            var ruleResult = await pointConversionService.GetAllAsync(cancellationToken);
+            if (ruleResult.Success && ruleResult.Value is not null)
+            {
+                var matchingRules = ruleResult.Value
+                    .Where(rule =>
+                        string.Equals(
+                            rule.MemberTypeID?.Trim(),
+                            membershipTypeId,
+                            StringComparison.OrdinalIgnoreCase) &&
+                        PointRuleDateMatches(rule, transaction.Date) &&
+                        PointRuleBranchMatches(rule, transaction.BranchId))
+                    .OrderByDescending(rule => rule.FromDate)
+                    .ThenByDescending(rule => rule.PointID)
+                    .ToList();
+
+                matchedRule = matchingRules.FirstOrDefault();
+                multipleRulesMatched = matchingRules.Count > 1;
+            }
+            else
+            {
+                Console.WriteLine(
+                    $"[Point Step 13] RULE WARNING | Customer={transaction.AccountId} | " +
+                    $"MemberType={membershipTypeId} | Unable to load Point Setup: {ruleResult.ErrorMessage}");
+            }
+        }
+
+        var redeemedPoints = Math.Round(
+            transaction.Items.Sum(item => Math.Max(0m, item.Points)),
+            2,
+            MidpointRounding.AwayFromZero);
+
+        Console.WriteLine(
+            $"[Point Step 13] BEFORE | Customer={transaction.AccountId} | " +
+            $"PointBalance={Math.Max(0m, balanceResult.Value.PointBalance):0.##} | " +
+            $"MemberType={membershipTypeId} | Redeemed={redeemedPoints:0.##} | " +
+            $"Rule={(matchedRule?.PointID ?? "none")} | BackendManaged=True");
+
+        if (matchedRule is not null)
+        {
+            Console.WriteLine(
+                $"[Point Step 13] RULE | PointID={matchedRule.PointID} | " +
+                $"MemberType={matchedRule.MemberTypeID} | MinimumSpend={matchedRule.MinimumSpend:N2} | " +
+                $"ForEvery={matchedRule.ForEveryXDollar:N2} | EqualPoints={matchedRule.EqualToXPoint:0.##} | " +
+                $"ExcludeTax={matchedRule.ExcludeTaxAmount} | RoundDown={matchedRule.RoundDownToInteger} | " +
+                $"MultipleMatches={multipleRulesMatched}");
+        }
+
+        return new PointStep13Snapshot
+        {
+            BeforeBalance = Math.Max(0m, balanceResult.Value.PointBalance),
+            RedeemedPoints = redeemedPoints,
+            MembershipTypeId = membershipTypeId,
+            Rule = matchedRule,
+            MultipleRulesMatched = multipleRulesMatched
+        };
+    }
+
+    private async Task VerifyPointStep13EarningAfterSaveAsync(
+        Transaction transaction,
+        PointStep13Snapshot? snapshot,
+        CancellationToken cancellationToken)
+    {
+        if (snapshot is null ||
+            string.IsNullOrWhiteSpace(transaction.AccountId) ||
+            string.IsNullOrWhiteSpace(transaction.DocumentId))
+        {
+            return;
+        }
+
+        var afterResult = await customerService.GetBalanceSummaryAsync(
+            transaction.AccountId,
+            cancellationToken);
+
+        if (!afterResult.Success || afterResult.Value is null)
+        {
+            Console.WriteLine(
+                $"[Point Step 13] WARNING | Document={transaction.DocumentId} | " +
+                $"Customer={transaction.AccountId} | Unable to reload PointBalance: {afterResult.ErrorMessage}");
+            return;
+        }
+
+        var afterBalance = Math.Max(0m, afterResult.Value.PointBalance);
+        var netChange = Math.Round(
+            afterBalance - snapshot.BeforeBalance,
+            2,
+            MidpointRounding.AwayFromZero);
+
+        // The backend may deduct redeemed points and award earned points in the
+        // same Cash Sale. Add the known redemption back to the net balance
+        // movement to isolate the points that the backend appears to have earned.
+        var observedEarned = Math.Round(
+            netChange + snapshot.RedeemedPoints,
+            2,
+            MidpointRounding.AwayFromZero);
+
+        var rule = snapshot.Rule;
+        decimal? configuredFormulaEstimate = null;
+        decimal spendBasis = 0m;
+
+        if (rule is not null &&
+            rule.ForEveryXDollar > 0m &&
+            rule.EqualToXPoint > 0m)
+        {
+            // This estimate is diagnostic only. Senang does not calculate or
+            // submit earned points from Orders; the backend remains authoritative.
+            spendBasis = Math.Max(
+                0m,
+                rule.ExcludeTaxAmount
+                    ? transaction.Amount - transaction.Tax
+                    : transaction.Amount);
+
+            if (spendBasis + 0.009m >= Math.Max(0m, rule.MinimumSpend))
+            {
+                var estimate =
+                    (spendBasis / rule.ForEveryXDollar) *
+                    rule.EqualToXPoint;
+
+                configuredFormulaEstimate = rule.RoundDownToInteger
+                    ? decimal.Floor(estimate)
+                    : Math.Round(
+                        estimate,
+                        2,
+                        MidpointRounding.AwayFromZero);
+            }
+            else
+            {
+                configuredFormulaEstimate = 0m;
+            }
+        }
+
+        var estimateText = configuredFormulaEstimate.HasValue
+            ? configuredFormulaEstimate.Value.ToString("0.##")
+            : "unavailable";
+
+        Console.WriteLine(
+            $"[Point Step 13] AFTER | Document={transaction.DocumentId} | Customer={transaction.AccountId} | " +
+            $"Before={snapshot.BeforeBalance:0.##} | After={afterBalance:0.##} | " +
+            $"Redeemed={snapshot.RedeemedPoints:0.##} | NetChange={netChange:0.##} | " +
+            $"ObservedEarned={observedEarned:0.##} | FormulaEstimate={estimateText} | " +
+            $"SpendBasis={spendBasis:N2} | BackendManaged=True");
+
+        if (configuredFormulaEstimate.HasValue &&
+            !snapshot.MultipleRulesMatched)
+        {
+            var formulaMatches =
+                Math.Abs(observedEarned - configuredFormulaEstimate.Value) <= 0.009m;
+
+            Console.WriteLine(
+                $"[Point Step 13] {(formulaMatches ? "PASS" : "WARNING")} | " +
+                $"Document={transaction.DocumentId} | Customer={transaction.AccountId} | " +
+                $"ObservedEarned={observedEarned:0.##} | " +
+                $"ConfiguredFormulaEstimate={configuredFormulaEstimate.Value:0.##} | " +
+                $"BackendAuthoritative=True");
+        }
+        else
+        {
+            Console.WriteLine(
+                $"[Point Step 13] OBSERVED | Document={transaction.DocumentId} | " +
+                $"Customer={transaction.AccountId} | ObservedEarned={observedEarned:0.##} | " +
+                $"Rule={(rule?.PointID ?? "none")} | MultipleRulesMatched={snapshot.MultipleRulesMatched} | " +
+                $"BackendAuthoritative=True");
+        }
+    }
+
+    private static bool PointRuleDateMatches(
+        PointConversionDM rule,
+        DateTime saleDate)
+    {
+        var date = saleDate.Date;
+        var fromMatches =
+            rule.FromDate.Year <= 1900 ||
+            date >= rule.FromDate.Date;
+        var toMatches =
+            rule.ToDate.Year <= 1900 ||
+            date <= rule.ToDate.Date;
+        return fromMatches && toMatches;
+    }
+
+    private static bool PointRuleBranchMatches(
+        PointConversionDM rule,
+        string branchId)
+    {
+        if (string.IsNullOrWhiteSpace(rule.VisibleToBranchID) ||
+            string.IsNullOrWhiteSpace(branchId))
+        {
+            return true;
+        }
+
+        var branches = rule.VisibleToBranchID
+            .Split(
+                new[] { ',', ';', '|' },
+                StringSplitOptions.RemoveEmptyEntries |
+                StringSplitOptions.TrimEntries);
+
+        return branches.Length == 0 ||
+               branches.Any(value =>
+                   string.Equals(value, "ALL", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(value, branchId, StringComparison.OrdinalIgnoreCase));
     }
 
     private sealed class PointStep12Snapshot
