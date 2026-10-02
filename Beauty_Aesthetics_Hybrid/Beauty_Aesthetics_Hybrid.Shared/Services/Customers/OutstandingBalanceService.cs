@@ -28,16 +28,13 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
 {
     private readonly ICustomerService customerService;
     private readonly ARReceiptAC arReceiptAC;
-    private readonly OutstandingPaymentHistoryService historyService;
 
     public OutstandingBalanceService(
         ICustomerService customerService,
-        ARReceiptAC arReceiptAC,
-        OutstandingPaymentHistoryService historyService)
+        ARReceiptAC arReceiptAC)
     {
         this.customerService = customerService;
         this.arReceiptAC = arReceiptAC;
-        this.historyService = historyService;
     }
 
     public async Task<CustomerOperationResult<MemberOtherBalanceSummaryDTO>> LoadSummaryAsync(
@@ -537,11 +534,11 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
             saveResult.Value,
             cancellationToken);
 
-        await RecordOutstandingHistoryAsync(
-            request,
-            offsetLines,
-            saveResult.Value,
-            cancellationToken);
+        saveResult.Value.HistoryRecords.Add(
+            BuildOutstandingHistoryRecord(
+                request,
+                offsetLines,
+                saveResult.Value));
 
         Console.WriteLine(
             $"[Outstanding Step 10] SAVE COMPLETE | Id={saveResult.Value.Id} | " +
@@ -759,6 +756,7 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
 
         var receiptIds = new List<string>();
         var receiptCodes = new List<string>();
+        var historyRecords = new List<OutstandingPaymentHistoryDTO>();
         var verifiedRemaining = new Dictionary<string, decimal>(
             StringComparer.OrdinalIgnoreCase);
         var verificationMessages = new List<string>();
@@ -824,6 +822,8 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
             {
                 verificationMessages.Add(saveResult.Value.VerificationMessage);
             }
+
+            historyRecords.AddRange(saveResult.Value.HistoryRecords);
 
             foreach (var pair in saveResult.Value.VerifiedRemainingAmounts)
             {
@@ -894,15 +894,15 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
                     ? $"All {receiptCodes.Count} Outstanding receipt(s) were verified against the latest backend balances."
                     : string.Join(" ", verificationMessages.Distinct(StringComparer.OrdinalIgnoreCase)),
                 VerifiedCustomerOutstanding = verifiedCustomerOutstanding,
-                VerifiedRemainingAmounts = verifiedRemaining
+                VerifiedRemainingAmounts = verifiedRemaining,
+                HistoryRecords = historyRecords
             });
     }
 
-    private async Task RecordOutstandingHistoryAsync(
+    private static OutstandingPaymentHistoryDTO BuildOutstandingHistoryRecord(
         OutstandingSettlementSaveRequestDTO request,
         IReadOnlyCollection<ud_ARAPPaymentOffSetLineDM> savedLines,
-        OutstandingSettlementSaveResultDTO saveResult,
-        CancellationToken cancellationToken)
+        OutstandingSettlementSaveResultDTO saveResult)
     {
         var paymentMethods = request.Payments
             .Where(payment => payment.Amount > 0m)
@@ -970,16 +970,11 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
                 .ToList()
         };
 
-        var stored = await historyService.RecordAsync(
-            record,
-            cancellationToken);
+        Console.WriteLine(
+            $"[Outstanding Step 12] HISTORY PREPARED | Receipt={record.ReceiptNo} | " +
+            $"Id={record.ReceiptID} | Amount={record.PaidAmount:N2} | Documents={record.Documents.Count}");
 
-        if (!stored)
-        {
-            Console.WriteLine(
-                $"[Outstanding Step 12] HISTORY NOT STORED | Receipt={saveResult.DisplayCode} | " +
-                "The AR Receipt is already saved; payment must not be retried.");
-        }
+        return record;
     }
 
     private async Task VerifySettlementAfterSaveAsync(
