@@ -534,12 +534,6 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
             saveResult.Value,
             cancellationToken);
 
-        saveResult.Value.HistoryRecords.Add(
-            BuildOutstandingHistoryRecord(
-                request,
-                offsetLines,
-                saveResult.Value));
-
         Console.WriteLine(
             $"[Outstanding Step 10] SAVE COMPLETE | Id={saveResult.Value.Id} | " +
             $"DisplayCode={saveResult.Value.DisplayCode} | " +
@@ -756,7 +750,6 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
 
         var receiptIds = new List<string>();
         var receiptCodes = new List<string>();
-        var historyRecords = new List<OutstandingPaymentHistoryDTO>();
         var verifiedRemaining = new Dictionary<string, decimal>(
             StringComparer.OrdinalIgnoreCase);
         var verificationMessages = new List<string>();
@@ -778,17 +771,6 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
                     CurrencyName = request.CurrencyName,
                     FinancialAccountID = plan.Payment.FinancialAccountID,
                     FinancialAccountName = plan.Payment.FinancialAccountName,
-                    Payments = new List<OutstandingSettlementPaymentDTO>
-                    {
-                        new()
-                        {
-                            PaymentTypeID = plan.Payment.PaymentTypeID,
-                            PaymentMethod = plan.Payment.PaymentMethod,
-                            FinancialAccountID = plan.Payment.FinancialAccountID,
-                            FinancialAccountName = plan.Payment.FinancialAccountName,
-                            Amount = plan.Payment.Amount
-                        }
-                    },
                     ExpectedOutstandingAmounts = plan.Allocations.Keys
                         .Where(expectedOutstanding.ContainsKey)
                         .ToDictionary(
@@ -822,8 +804,6 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
             {
                 verificationMessages.Add(saveResult.Value.VerificationMessage);
             }
-
-            historyRecords.AddRange(saveResult.Value.HistoryRecords);
 
             foreach (var pair in saveResult.Value.VerifiedRemainingAmounts)
             {
@@ -894,87 +874,8 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
                     ? $"All {receiptCodes.Count} Outstanding receipt(s) were verified against the latest backend balances."
                     : string.Join(" ", verificationMessages.Distinct(StringComparer.OrdinalIgnoreCase)),
                 VerifiedCustomerOutstanding = verifiedCustomerOutstanding,
-                VerifiedRemainingAmounts = verifiedRemaining,
-                HistoryRecords = historyRecords
+                VerifiedRemainingAmounts = verifiedRemaining
             });
-    }
-
-    private static OutstandingPaymentHistoryDTO BuildOutstandingHistoryRecord(
-        OutstandingSettlementSaveRequestDTO request,
-        IReadOnlyCollection<ud_ARAPPaymentOffSetLineDM> savedLines,
-        OutstandingSettlementSaveResultDTO saveResult)
-    {
-        var paymentMethods = request.Payments
-            .Where(payment => payment.Amount > 0m)
-            .Select(payment => payment.PaymentMethod?.Trim())
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        var primaryPayment = request.Payments.FirstOrDefault(payment => payment.Amount > 0m);
-
-        var record = new OutstandingPaymentHistoryDTO
-        {
-            ReceiptID = saveResult.Id,
-            ReceiptNo = saveResult.DisplayCode,
-            PaymentDate = DateTime.Now,
-            CustomerID = request.CustomerID?.Trim() ?? string.Empty,
-            CustomerName = request.CustomerName?.Trim() ?? string.Empty,
-            BranchID = request.BranchID?.Trim() ?? string.Empty,
-            GroupID = request.GroupID?.Trim() ?? string.Empty,
-            PaidAmount = saveResult.TotalAllocatedAmount,
-            PaymentMethod = paymentMethods.Count > 0
-                ? string.Join(", ", paymentMethods)
-                : request.FinancialAccountName?.Trim() ?? string.Empty,
-            FinancialAccountID =
-                primaryPayment?.FinancialAccountID?.Trim()
-                ?? request.FinancialAccountID?.Trim()
-                ?? string.Empty,
-            FinancialAccountName =
-                primaryPayment?.FinancialAccountName?.Trim()
-                ?? request.FinancialAccountName?.Trim()
-                ?? string.Empty,
-            VerificationPassed = saveResult.VerificationPassed,
-            VerificationMessage = saveResult.VerificationMessage,
-            CustomerOutstandingAfterPayment = saveResult.VerifiedCustomerOutstanding,
-            Documents = savedLines
-                .Select(line =>
-                {
-                    var key = line.DocumentID?.Trim() ?? string.Empty;
-                    var fallbackRemaining = Math.Round(
-                        Math.Max(0m, line.Outstanding - line.AllocatedAmount),
-                        2,
-                        MidpointRounding.AwayFromZero);
-
-                    var remaining = !string.IsNullOrWhiteSpace(key) &&
-                                    saveResult.VerifiedRemainingAmounts.TryGetValue(
-                                        key,
-                                        out var verifiedRemaining)
-                        ? verifiedRemaining
-                        : fallbackRemaining;
-
-                    return new OutstandingPaymentHistoryLineDTO
-                    {
-                        SourceDocumentID = key,
-                        DocumentNo = line.DisplayCode?.Trim() ?? string.Empty,
-                        AmountPaid = Math.Round(
-                            line.AllocatedAmount,
-                            2,
-                            MidpointRounding.AwayFromZero),
-                        RemainingAfterPayment = Math.Round(
-                            Math.Max(0m, remaining),
-                            2,
-                            MidpointRounding.AwayFromZero)
-                    };
-                })
-                .ToList()
-        };
-
-        Console.WriteLine(
-            $"[Outstanding Step 12] HISTORY PREPARED | Receipt={record.ReceiptNo} | " +
-            $"Id={record.ReceiptID} | Amount={record.PaidAmount:N2} | Documents={record.Documents.Count}");
-
-        return record;
     }
 
     private async Task VerifySettlementAfterSaveAsync(
