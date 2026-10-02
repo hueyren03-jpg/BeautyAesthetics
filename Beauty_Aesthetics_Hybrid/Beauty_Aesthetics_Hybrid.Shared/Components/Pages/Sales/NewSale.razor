@@ -2268,6 +2268,18 @@
 
     private async Task TogglePointRedemptionAsync(TransactionItem item)
     {
+        if (item.InventoryTypeId != 1 && item.InventoryTypeId != 3)
+        {
+            Console.WriteLine(
+                $"[Point Step 9] BLOCKED | Source=Sales | Inventory={item.InventoryId} | " +
+                $"Type={item.InventoryTypeId} | Reason=PointRedemptionProductServiceOnly");
+
+            Feedback.Warning(
+                "Point redemption is currently supported only for Product and Service items. Package point redemption is postponed.",
+                "Points unavailable");
+            return;
+        }
+
         if (item.Points > 0m)
         {
             var released = item.Points;
