@@ -2271,6 +2271,12 @@
                 UnitPrice = item.OriginalUnitPrice
             };
             ClearBillingTenderAfterPointChange();
+
+            Console.WriteLine(
+                $"[Point Step 7] RELEASE | Source=Billing | Customer={_billingCustomerId} | " +
+                $"Inventory={item.SourceId} | Type=1 | Released={released:0.##} | " +
+                $"RemainingAllocated={BillingPointsAllocated():0.##}");
+
             Feedback.Info($"{released:0.##} points were released from {item.Name}.", "Points removed", 2200);
             return;
         }
@@ -2381,6 +2387,13 @@
             $"UnitPrice={assignedProduct.UnitPrice:N2} | OriginalUnitPrice={assignedProduct.OriginalUnitPrice:N2}");
 
         ClearBillingTenderAfterPointChange();
+
+        Console.WriteLine(
+            $"[Point Step 7] TOTAL ALLOCATION | Source=Billing | Customer={_billingCustomerId} | " +
+            $"Lines={PrescriptionItems.Count(candidate => candidate.Points > 0m) + ServiceItems.Count(candidate => candidate.Points > 0m)} | " +
+            $"Allocated={BillingPointsAllocated():0.##} | LatestBalance={latestBalance:0.##} | " +
+            $"AvailableRemaining={Math.Max(0m, latestBalance - BillingPointsAllocated()):0.##}");
+
         Feedback.Success(
             $"{required:0.##} points applied to {item.Name}.",
             "Points applied",
@@ -2404,6 +2417,12 @@
                 UnitPrice = item.OriginalUnitPrice
             };
             ClearBillingTenderAfterPointChange();
+
+            Console.WriteLine(
+                $"[Point Step 7] RELEASE | Source=Billing | Customer={_billingCustomerId} | " +
+                $"Inventory={item.SourceId} | Type=3 | Released={released:0.##} | " +
+                $"RemainingAllocated={BillingPointsAllocated():0.##}");
+
             Feedback.Info($"{released:0.##} points were released from {item.Name}.", "Points removed", 2200);
             return;
         }
@@ -2513,6 +2532,13 @@
             $"UnitPrice={assignedService.UnitPrice:N2} | OriginalUnitPrice={assignedService.OriginalUnitPrice:N2}");
 
         ClearBillingTenderAfterPointChange();
+
+        Console.WriteLine(
+            $"[Point Step 7] TOTAL ALLOCATION | Source=Billing | Customer={_billingCustomerId} | " +
+            $"Lines={PrescriptionItems.Count(candidate => candidate.Points > 0m) + ServiceItems.Count(candidate => candidate.Points > 0m)} | " +
+            $"Allocated={BillingPointsAllocated():0.##} | LatestBalance={latestBalance:0.##} | " +
+            $"AvailableRemaining={Math.Max(0m, latestBalance - BillingPointsAllocated()):0.##}");
+
         Feedback.Success(
             $"{required:0.##} points applied to {item.Name}.",
             "Points applied",
@@ -3020,6 +3046,13 @@
 
     private void ConfirmDeleteItems()
     {
+        var releasedPoints = Math.Round(
+            _pendingDeleteIsService
+                ? _selectedServiceItemsToDelete.Sum(item => Math.Max(0m, item.Points))
+                : _selectedItemsToDelete.Sum(item => Math.Max(0m, item.Points)),
+            2,
+            MidpointRounding.AwayFromZero);
+
         if (_pendingDeleteIsService)
         {
             foreach (var item in _selectedServiceItemsToDelete)
@@ -3035,6 +3068,14 @@
                 PrescriptionItems.Remove(item);
             }
             ToggleDeleteMode();
+        }
+
+        if (releasedPoints > 0m)
+        {
+            ClearBillingTenderAfterPointChange();
+            Console.WriteLine(
+                $"[Point Step 7] RELEASE | Source=Billing | Customer={_billingCustomerId} | " +
+                $"DeletedLines=true | Released={releasedPoints:0.##} | RemainingAllocated={BillingPointsAllocated():0.##}");
         }
         
         var deletedCount = _pendingDeleteItems.Sum(item => item.Quantity);
@@ -3239,6 +3280,14 @@
 
             if (existing != null)
             {
+                if (existing.Points > 0m)
+                {
+                    Feedback.Warning(
+                        $"Remove points from {existing.Name} before adding more quantity of the same item.",
+                        "Points in use");
+                    continue;
+                }
+
                 var index = PrescriptionItems.IndexOf(existing);
                 PrescriptionItems[index] = existing with { Quantity = existing.Quantity + qty };
             }
