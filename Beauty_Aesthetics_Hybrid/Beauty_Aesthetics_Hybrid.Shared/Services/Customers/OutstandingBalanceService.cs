@@ -1,6 +1,7 @@
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 using EBI.DM;
+using EBI.UC;
 using EBI.Enum;
 using System.Collections.ObjectModel;
 using System.Text.Json;
