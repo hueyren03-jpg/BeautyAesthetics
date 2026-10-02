@@ -1670,6 +1670,13 @@
     private bool HasPointRedemption =>
         currentOrder.Items.Any(item => item.Points > 0m);
 
+    private bool HasMemberCreditRedemptionState =>
+        currentOrder.IsRedemptionMode ||
+        currentOrder.Items.Any(item =>
+            item.ActivityTypeId == 6 ||
+            !string.IsNullOrWhiteSpace(item.MemberCreditAccountId) ||
+            item.MemberCreditAllocations.Count > 0);
+
     private bool IsFullyPointRedeemedSale =>
         !isOutstandingPaymentMode &&
         !currentOrder.IsRedemptionMode &&
@@ -2273,10 +2280,14 @@
             return;
         }
 
-        if (currentOrder.IsRedemptionMode)
+        if (HasMemberCreditRedemptionState)
         {
+            Console.WriteLine(
+                $"[Point Step 8] BLOCKED | Source=Sales | Customer={currentOrder.AccountId} | " +
+                $"Reason=MemberCreditRedemptionState | RedemptionMode={currentOrder.IsRedemptionMode}");
+
             Feedback.Warning(
-                "Point redemption is only available in normal Sales mode.",
+                "Point redemption cannot be combined with Member Credit redemption. Switch back to normal Sales mode first.",
                 "Points unavailable");
             return;
         }
@@ -2843,6 +2854,10 @@
             var releasedPoints = ClearAllPointRedemptions();
             var removedCount = currentOrder.Items.RemoveAll(item =>
                 IsRedemptionRestrictedPurchaseType(item.InventoryTypeId));
+
+            Console.WriteLine(
+                $"[Point Step 8] MODE SWITCH | Source=Sales | Target=Redemption | " +
+                $"ReleasedPoints={releasedPoints:0.##} | Customer={currentOrder.AccountId}");
             currentOrder.IsRedemptionMode = true;
             currentOrder.Payments.Clear();
             ClearAllLineCreditSelections();
@@ -2865,9 +2880,18 @@
         }
         else
         {
+            var clearedCreditLines = currentOrder.Items.Count(item =>
+                item.ActivityTypeId == 6 ||
+                !string.IsNullOrWhiteSpace(item.MemberCreditAccountId) ||
+                item.MemberCreditAllocations.Count > 0);
+
             currentOrder.IsRedemptionMode = false;
             currentOrder.Payments.Clear();
             ClearAllLineCreditSelections();
+
+            Console.WriteLine(
+                $"[Point Step 8] MODE SWITCH | Source=Sales | Target=Sales | " +
+                $"ClearedMemberCreditLines={clearedCreditLines} | Customer={currentOrder.AccountId}");
         }
 
         selectedType = string.Empty;
@@ -3126,6 +3150,18 @@
     {
         if (creditTargetItem is null)
         {
+            return;
+        }
+
+        if (HasPointRedemption)
+        {
+            Console.WriteLine(
+                $"[Point Step 8] BLOCKED | Source=Sales | Customer={currentOrder.AccountId} | " +
+                $"Reason=PointRedemptionActiveWhileApplyingMemberCredit");
+
+            Feedback.Warning(
+                "Member Credit redemption cannot be combined with point redemption. Switch modes to clear the point redemption first.",
+                "Member Credit unavailable");
             return;
         }
 
