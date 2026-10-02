@@ -18,6 +18,7 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.Sales;
 public sealed class CashSalesService : ICashSalesService
 {
     private readonly CashSalesAC cashSalesAC;
+    private readonly InventoryAC inventoryAC;
     private readonly BranchAC branchAC;
     private readonly WebDashboardAC dashboardAC;
     private readonly AppFeedbackService feedback;
@@ -30,6 +31,7 @@ public sealed class CashSalesService : ICashSalesService
 
     public CashSalesService(
         CashSalesAC cashSalesAC,
+        InventoryAC inventoryAC,
         BranchAC branchAC,
         WebDashboardAC dashboardAC,
         AppFeedbackService feedback,
@@ -40,6 +42,7 @@ public sealed class CashSalesService : ICashSalesService
         IJSRuntime jsRuntime)
     {
         this.cashSalesAC = cashSalesAC;
+        this.inventoryAC = inventoryAC;
         this.branchAC = branchAC;
         this.dashboardAC = dashboardAC;
         this.feedback = feedback;
@@ -562,6 +565,14 @@ public sealed class CashSalesService : ICashSalesService
             Math.Max(0m, Number(header, "TotalAfterTax")),
             2,
             MidpointRounding.AwayFromZero);
+        var headerBeforeTax = Math.Max(0m, Number(header, "TotalBeforeTax"));
+        var headerTaxAmount = Math.Max(0m, Number(header, "TaxAmount"));
+        var headerTaxRate = headerBeforeTax > 0m && headerTaxAmount > 0m
+            ? Math.Round(
+                headerTaxAmount / headerBeforeTax,
+                4,
+                MidpointRounding.AwayFromZero)
+            : 0m;
         if (headerTotal <= 0m && fallbackTransaction is not null)
         {
             headerTotal = Math.Round(
@@ -573,6 +584,8 @@ public sealed class CashSalesService : ICashSalesService
             ? Math.Max(headerTotal, receiptTotal)
             : 0m;
         var repairedAnyLine = false;
+        var inventoryPricingById =
+            new Dictionary<string, ReceiptInventoryPricing?>(StringComparer.OrdinalIgnoreCase);
 
         for (var lineIndex = 0; lineIndex < activeLines.Count; lineIndex++)
         {
@@ -581,6 +594,30 @@ public sealed class CashSalesService : ICashSalesService
                 line,
                 lineIndex,
                 fallbackTransaction?.Items);
+            var inventoryId = First(
+                TextIgnoreCase(line, "InventoryID"),
+                TextIgnoreCase(line, "LineItemID"),
+                TextIgnoreCase(line, "InventoryItemAccountID"));
+            ReceiptInventoryPricing? inventoryPricing = null;
+            if (!string.IsNullOrWhiteSpace(inventoryId))
+            {
+                if (!inventoryPricingById.TryGetValue(inventoryId, out inventoryPricing))
+                {
+                    var inventoryResult = await inventoryAC.LoadRecordAsync(
+                        inventoryId,
+                        cancellationToken);
+                    if (inventoryResult.Success && inventoryResult.Value is not null)
+                    {
+                        inventoryPricing = new ReceiptInventoryPricing(
+                            Math.Max(0m, inventoryResult.Value.SalesPrice),
+                            inventoryResult.Value.IsTaxInclusive,
+                            inventoryResult.Value.TaxCodeID ?? string.Empty,
+                            inventoryResult.Value.UnitOfMeasureID ?? string.Empty);
+                    }
+
+                    inventoryPricingById[inventoryId] = inventoryPricing;
+                }
+            }
             var quantity = Number(line, "Quantity");
             if (quantity <= 0m)
             {
@@ -602,6 +639,10 @@ public sealed class CashSalesService : ICashSalesService
             if (unitPrice <= 0m && fallbackItem is not null)
             {
                 unitPrice = Math.Max(0m, fallbackItem.UnitPrice);
+            }
+            if (unitPrice <= 0m && inventoryPricing is not null)
+            {
+                unitPrice = inventoryPricing.UnitPrice;
             }
             var beforeTax = Math.Max(
                 0m,
@@ -633,11 +674,19 @@ public sealed class CashSalesService : ICashSalesService
             {
                 storedTaxRate = Math.Max(0m, fallbackItem.TaxPercentage);
             }
+            if (storedTaxRate <= 0m &&
+                headerTaxRate > 0m &&
+                (!string.IsNullOrWhiteSpace(TextIgnoreCase(line, "TaxCodeID")) ||
+                 !string.IsNullOrWhiteSpace(inventoryPricing?.TaxCodeId)))
+            {
+                storedTaxRate = headerTaxRate;
+            }
             var calculationTaxRate = storedTaxRate > 1m
                 ? storedTaxRate / 100m
                 : storedTaxRate;
             var isTaxInclusive = Bool(line, "IsTaxInclusive") ||
-                                 fallbackItem?.IsTaxInclusive == true;
+                                 fallbackItem?.IsTaxInclusive == true ||
+                                 inventoryPricing?.IsTaxInclusive == true;
 
             if (beforeTax <= 0m && fallbackItem is not null && lineTotal > 0m)
             {
@@ -735,9 +784,26 @@ public sealed class CashSalesService : ICashSalesService
             changed |= SetDecimalIfDifferent(line, "ConvertedTaxableAmount", beforeTax);
             changed |= SetDecimalIfDifferent(line, "TaxAmount", taxAmount);
             changed |= SetDecimalIfDifferent(line, "ConvertedTaxAmount", taxAmount);
+            changed |= SetDecimalIfDifferent(line, "TaxPercentage", storedTaxRate);
             changed |= SetDecimalIfDifferent(line, "SubTotal", lineTotal);
             changed |= SetDecimalIfDifferent(line, "Amount", lineTotal);
             changed |= SetDecimalIfDifferent(line, "ConvertedAmount", lineTotal);
+            changed |= SetBoolIfDifferent(line, "IsTaxInclusive", isTaxInclusive);
+
+            if (string.IsNullOrWhiteSpace(TextIgnoreCase(line, "TaxCodeID")) &&
+                !string.IsNullOrWhiteSpace(inventoryPricing?.TaxCodeId))
+            {
+                line["TaxCodeID"] = inventoryPricing.TaxCodeId;
+                changed = true;
+            }
+
+            if (string.IsNullOrWhiteSpace(TextIgnoreCase(line, "UnitOfMeasureID")) &&
+                !string.IsNullOrWhiteSpace(inventoryPricing?.UnitOfMeasureId))
+            {
+                line["UnitOfMeasureID"] = inventoryPricing.UnitOfMeasureId;
+                line["UnitOfMeasurementID"] = inventoryPricing.UnitOfMeasureId;
+                changed = true;
+            }
 
             if (!changed)
             {
@@ -1098,6 +1164,14 @@ public sealed class CashSalesService : ICashSalesService
                 pointSaveValidation.ErrorMessage);
         }
 
+        // Point Step 12 — capture the exact backend balance and expected
+        // document-line point state immediately before CreateRecord. After the
+        // save succeeds, reload both the Cash Sale and PointBalance and verify
+        // that the backend persisted/deducted exactly what was submitted.
+        var pointStep12Snapshot = await CapturePointStep12SnapshotAsync(
+            transaction,
+            cancellationToken);
+
         var createResult = await cashSalesAC.CreateRecordAsync(document, cancellationToken);
         if (!createResult.Success)
         {
@@ -1145,6 +1219,11 @@ public sealed class CashSalesService : ICashSalesService
             singleCreditVerification,
             multiCreditVerification,
             step30TotalCreditBefore,
+            cancellationToken);
+
+        await VerifyPointStep12AfterSaveAsync(
+            transaction,
+            pointStep12Snapshot,
             cancellationToken);
 
         // Keep the values submitted by the completed sale available to receipt
@@ -1987,6 +2066,184 @@ public sealed class CashSalesService : ICashSalesService
             $"RemainingAfterSave={Math.Max(0m, latestBalance - totalPoints):0.##} | Lines={pointLines.Count}");
 
         return ApiCallResult<bool>.Ok(HttpStatusCode.OK, true);
+    }
+
+    private sealed class PointStep12Snapshot
+    {
+        public decimal BeforeBalance { get; init; }
+        public decimal ExpectedPoints { get; init; }
+        public int ExpectedLineCount { get; init; }
+        public Dictionary<string, decimal> ExpectedPointsByInventory { get; init; } =
+            new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task<PointStep12Snapshot?> CapturePointStep12SnapshotAsync(
+        Transaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var pointLines = transaction.Items
+            .Where(item => item.Points > 0m)
+            .ToList();
+
+        if (pointLines.Count == 0 ||
+            transaction.DocumentTypeId != 5 ||
+            string.IsNullOrWhiteSpace(transaction.AccountId))
+        {
+            return null;
+        }
+
+        var balanceResult = await customerService.GetBalanceSummaryAsync(
+            transaction.AccountId,
+            cancellationToken);
+
+        if (!balanceResult.Success || balanceResult.Value is null)
+        {
+            Console.WriteLine(
+                $"[Point Step 12] BEFORE WARNING | Customer={transaction.AccountId} | " +
+                $"Unable to capture PointBalance before save: {balanceResult.ErrorMessage}");
+            return null;
+        }
+
+        var expectedByInventory = pointLines
+            .GroupBy(
+                item => item.InventoryId ?? string.Empty,
+                StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => Math.Round(
+                    group.Sum(item => Math.Max(0m, item.Points)),
+                    2,
+                    MidpointRounding.AwayFromZero),
+                StringComparer.OrdinalIgnoreCase);
+
+        var snapshot = new PointStep12Snapshot
+        {
+            BeforeBalance = Math.Max(0m, balanceResult.Value.PointBalance),
+            ExpectedPoints = Math.Round(
+                pointLines.Sum(item => Math.Max(0m, item.Points)),
+                2,
+                MidpointRounding.AwayFromZero),
+            ExpectedLineCount = pointLines.Count,
+            ExpectedPointsByInventory = expectedByInventory
+        };
+
+        Console.WriteLine(
+            $"[Point Step 12] BEFORE | Customer={transaction.AccountId} | " +
+            $"PointBalance={snapshot.BeforeBalance:0.##} | " +
+            $"ExpectedDeduction={snapshot.ExpectedPoints:0.##} | " +
+            $"PointLines={snapshot.ExpectedLineCount}");
+
+        return snapshot;
+    }
+
+    private async Task VerifyPointStep12AfterSaveAsync(
+        Transaction transaction,
+        PointStep12Snapshot? snapshot,
+        CancellationToken cancellationToken)
+    {
+        if (snapshot is null ||
+            string.IsNullOrWhiteSpace(transaction.DocumentId) ||
+            string.IsNullOrWhiteSpace(transaction.AccountId))
+        {
+            return;
+        }
+
+        var savedRecordResult = await cashSalesAC.LoadRecordAsync(
+            transaction.DocumentId,
+            cancellationToken);
+
+        var savedLinesPassed = false;
+        decimal savedPointTotal = 0m;
+        var savedPointLineCount = 0;
+
+        if (!savedRecordResult.Success || savedRecordResult.Value is null)
+        {
+            Console.WriteLine(
+                $"[Point Step 12] SAVED LINES WARNING | Document={transaction.DocumentId} | " +
+                $"Unable to reload Cash Sale: {savedRecordResult.ErrorMessage}");
+        }
+        else
+        {
+            var savedTransaction = ToTransaction(savedRecordResult.Value);
+            var savedPointLines = savedTransaction.Items
+                .Where(item => item.Points > 0m)
+                .ToList();
+
+            savedPointLineCount = savedPointLines.Count;
+            savedPointTotal = Math.Round(
+                savedPointLines.Sum(item => Math.Max(0m, item.Points)),
+                2,
+                MidpointRounding.AwayFromZero);
+
+            var savedByInventory = savedPointLines
+                .GroupBy(
+                    item => item.InventoryId ?? string.Empty,
+                    StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => Math.Round(
+                        group.Sum(item => Math.Max(0m, item.Points)),
+                        2,
+                        MidpointRounding.AwayFromZero),
+                    StringComparer.OrdinalIgnoreCase);
+
+            var inventoryPointsMatch =
+                savedByInventory.Count == snapshot.ExpectedPointsByInventory.Count &&
+                snapshot.ExpectedPointsByInventory.All(expected =>
+                    savedByInventory.TryGetValue(expected.Key, out var actual) &&
+                    Math.Abs(actual - expected.Value) <= 0.009m);
+
+            savedLinesPassed =
+                savedPointLineCount == snapshot.ExpectedLineCount &&
+                Math.Abs(savedPointTotal - snapshot.ExpectedPoints) <= 0.009m &&
+                inventoryPointsMatch;
+
+            Console.WriteLine(
+                $"[Point Step 12] SAVED LINES {(savedLinesPassed ? "PASS" : "FAIL")} | " +
+                $"Document={transaction.DocumentId} | ExpectedLines={snapshot.ExpectedLineCount} | " +
+                $"SavedLines={savedPointLineCount} | ExpectedPoints={snapshot.ExpectedPoints:0.##} | " +
+                $"SavedPoints={savedPointTotal:0.##}");
+        }
+
+        var afterBalanceResult = await customerService.GetBalanceSummaryAsync(
+            transaction.AccountId,
+            cancellationToken);
+
+        if (!afterBalanceResult.Success || afterBalanceResult.Value is null)
+        {
+            Console.WriteLine(
+                $"[Point Step 12] BALANCE WARNING | Customer={transaction.AccountId} | " +
+                $"Unable to reload PointBalance after save: {afterBalanceResult.ErrorMessage}");
+
+            Console.WriteLine(
+                $"[Point Step 12] {(savedLinesPassed ? "PARTIAL PASS" : "FAIL")} | " +
+                $"Document={transaction.DocumentId} | SavedLinesVerified={savedLinesPassed} | " +
+                $"BalanceVerified=False");
+            return;
+        }
+
+        var afterBalance = Math.Max(0m, afterBalanceResult.Value.PointBalance);
+        var actualDeduction = Math.Round(
+            snapshot.BeforeBalance - afterBalance,
+            2,
+            MidpointRounding.AwayFromZero);
+        var expectedAfter = Math.Max(
+            0m,
+            snapshot.BeforeBalance - snapshot.ExpectedPoints);
+        var balancePassed =
+            Math.Abs(afterBalance - expectedAfter) <= 0.009m &&
+            Math.Abs(actualDeduction - snapshot.ExpectedPoints) <= 0.009m;
+
+        Console.WriteLine(
+            $"[Point Step 12] BALANCE {(balancePassed ? "PASS" : "FAIL")} | " +
+            $"Customer={transaction.AccountId} | Before={snapshot.BeforeBalance:0.##} | " +
+            $"ExpectedDeduction={snapshot.ExpectedPoints:0.##} | ActualDeduction={actualDeduction:0.##} | " +
+            $"ExpectedAfter={expectedAfter:0.##} | ActualAfter={afterBalance:0.##}");
+
+        Console.WriteLine(
+            $"[Point Step 12] {(savedLinesPassed && balancePassed ? "PASS" : "FAIL")} | " +
+            $"Document={transaction.DocumentId} | Customer={transaction.AccountId} | " +
+            $"SavedLinesVerified={savedLinesPassed} | BalanceVerified={balancePassed}");
     }
 
     private static (bool Success, string ErrorMessage) ValidatePointSavePayload(
@@ -4431,6 +4688,22 @@ public sealed class CashSalesService : ICashSalesService
     }
 
     private static decimal Number(JsonObject? source, string name) => source?[name] is JsonValue value && value.TryGetValue<decimal>(out var number) ? number : 0;
+    private static bool SetBoolIfDifferent(
+        JsonObject target,
+        string name,
+        bool value)
+    {
+        if (target[name] is JsonValue currentValue &&
+            currentValue.TryGetValue<bool>(out var current) &&
+            current == value)
+        {
+            return false;
+        }
+
+        target[name] = value;
+        return true;
+    }
+
     private static bool SetDecimalIfDifferent(
         JsonObject target,
         string name,
@@ -4481,6 +4754,12 @@ public sealed class CashSalesService : ICashSalesService
 
     private static bool Bool(JsonObject? source, string name) => source?[name] is JsonValue value && value.TryGetValue<bool>(out var result) && result;
     private static DateTime? DateValue(JsonObject? source, string name) => source?[name] is JsonValue value && value.TryGetValue<DateTime>(out var result) ? result : null;
+
+    private sealed record ReceiptInventoryPricing(
+        decimal UnitPrice,
+        bool IsTaxInclusive,
+        string TaxCodeId,
+        string UnitOfMeasureId);
 
     private static string? GetString(Dictionary<string, JsonElement>? values, params string[] names)
     {
