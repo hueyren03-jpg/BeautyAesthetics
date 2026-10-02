@@ -87,3 +87,33 @@ public sealed class OutstandingDocumentDTO
             ? PaidAmount
             : Math.Max(0m, EffectiveOriginalAmount - RemainingAmount);
 }
+
+
+public sealed class OutstandingSettlementSaveRequestDTO
+{
+    public string CustomerID { get; set; } = string.Empty;
+    public string CustomerName { get; set; } = string.Empty;
+    public string BranchID { get; set; } = string.Empty;
+    public string GroupID { get; set; } = string.Empty;
+
+    // Optional branch currency fallback. The service prefers the live
+    // settlement-line currency returned by RetrieveSettlementLines.
+    public string CurrencyID { get; set; } = string.Empty;
+    public string CurrencyName { get; set; } = string.Empty;
+
+    public string FinancialAccountID { get; set; } = string.Empty;
+    public string FinancialAccountName { get; set; } = string.Empty;
+
+    // Key = outstanding source/document identifier from Step 3.
+    // Value = amount to settle against that source.
+    public Dictionary<string, decimal> SelectedAmounts { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
+}
+
+public sealed class OutstandingSettlementSaveResultDTO
+{
+    public string Id { get; set; } = string.Empty;
+    public string DisplayCode { get; set; } = string.Empty;
+    public decimal TotalAllocatedAmount { get; set; }
+    public int SettledDocumentCount { get; set; }
+}
