@@ -1,7 +1,6 @@
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 using EBI.DM;
-using EBI.UC;
 using EBI.Enum;
 using System.Collections.ObjectModel;
 using System.Text.Json;
@@ -283,9 +282,9 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
             }
         }
 
-        var receipt = new Doc_ARReceipt
+        var receipt = new OutstandingARReceiptCreateDTO
         {
-            objDoc_ARReceipt = new Doc_ARReceiptDM
+            Header = new OutstandingARReceiptHeaderDTO
             {
                 BranchID = branchId,
                 EditBranchID = branchId,
@@ -307,13 +306,13 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
                 BankAmountReceived = totalAllocated,
                 BankCharges = 0m,
                 TotalAllocatedAmount = totalAllocated,
-                SaveAction = EntityState.Added,
+                SaveAction = 1,
                 FinancialAccountID = bankAccountId,
                 IsDirty = true,
                 blnIsPeriodClosed = true,
                 blnIsBankReconciliationDone = true
             },
-            lstud_ARAPPaymentOffSetLineDM = offsetLines
+            SettlementLines = offsetLines
         };
 
         Console.WriteLine(
