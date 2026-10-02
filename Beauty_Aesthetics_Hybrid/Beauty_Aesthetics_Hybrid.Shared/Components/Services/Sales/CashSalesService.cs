@@ -1792,6 +1792,26 @@ public sealed class CashSalesService : ICashSalesService
                 "A customer is required before points can be redeemed.");
         }
 
+        var unsupportedPointLine = pointLines.FirstOrDefault(item =>
+            item.InventoryTypeId != 1 &&
+            item.InventoryTypeId != 3);
+
+        if (unsupportedPointLine is not null)
+        {
+            Console.WriteLine(
+                $"[Point Step 9] BLOCKED | Source=CashSalesService | " +
+                $"Inventory={unsupportedPointLine.InventoryId} | Type={unsupportedPointLine.InventoryTypeId} | " +
+                $"Reason=PointRedemptionProductServiceOnly");
+
+            return ApiCallResult<bool>.Failure(
+                HttpStatusCode.BadRequest,
+                "Point redemption is currently supported only for Product and Service items. Package point redemption is postponed.");
+        }
+
+        Console.WriteLine(
+            $"[Point Step 9] PASS | Source=CashSalesService | Customer={transaction.AccountId} | " +
+            $"PointLines={pointLines.Count} | SupportedTypes=1,3 | PackageCoupled=False");
+
         foreach (var item in pointLines)
         {
             var expectedLinePoints = Math.Round(
