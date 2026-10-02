@@ -526,6 +526,30 @@ public sealed class CashSalesService : ICashSalesService
                 MidpointRounding.AwayFromZero);
         }
 
+        // LoadRecord does not consistently include lstReceiptLines. The thermal
+        // receipt endpoint loads those payment rows separately, which is why it
+        // can show Cash while the document header and item amounts are still 0.
+        // Use the same saved payment rows as the reliable total for repairing a
+        // legacy one-line receipt before requesting its PDF.
+        if (receiptTotal <= 0m)
+        {
+            var receiptLinesResult = await cashSalesAC.LoadReceiptLinesAsync(
+                documentId,
+                cancellationToken);
+
+            if (receiptLinesResult.Success && receiptLinesResult.Value is not null)
+            {
+                receiptTotal = Math.Round(
+                    receiptLinesResult.Value.Sum(receipt =>
+                        Math.Max(
+                            0m,
+                            receipt.POSReceiptLineAmount -
+                            Math.Abs(receipt.POSReceiptChangeAmount))),
+                    2,
+                    MidpointRounding.AwayFromZero);
+            }
+        }
+
         if (receiptTotal <= 0m && fallbackTransaction is not null)
         {
             receiptTotal = Math.Round(
