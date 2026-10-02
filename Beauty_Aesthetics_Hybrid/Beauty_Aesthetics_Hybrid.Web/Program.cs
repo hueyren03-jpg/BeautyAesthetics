@@ -82,6 +82,7 @@ builder.Services.AddScoped<CustomerRatingAC>();
 builder.Services.AddScoped<CustomerService>();
 builder.Services.AddScoped<ICustomerService>(sp => sp.GetRequiredService<CustomerService>());
 builder.Services.AddScoped<IMemberCreditWalletService, MemberCreditWalletService>();
+builder.Services.AddScoped<OutstandingPaymentHistoryService>();
 builder.Services.AddScoped<IOutstandingBalanceService, OutstandingBalanceService>();
 builder.Services.AddScoped<WebDashboardAC>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
