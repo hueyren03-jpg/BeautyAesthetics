@@ -74,12 +74,12 @@
             }
             else if (stage == SaleStage.Payment)
             {
-                <button type="button" class="icon-button" title="Back to cart" @onclick="BackToCart">
+                <button type="button" class="icon-button" title="@(isOutstandingPaymentMode ? "Back to outstanding selection" : "Back to cart")" @onclick="BackToCart">
                     <i class="bi bi-arrow-left"></i>
                 </button>
                 <span class="sale-page-icon"><i class="bi bi-credit-card"></i></span>
                 <div>
-                    <h1>Payment</h1>
+                    <h1>@(isOutstandingPaymentMode ? "Outstanding Payment" : "Payment")</h1>
                 </div>
             }
         </div>
@@ -688,12 +688,12 @@
             <div class="payment-column">
                 <div class="section-heading">
                     <div>
-                        <h2>Payment Method</h2>
+                        <h2>@(isOutstandingPaymentMode ? "Outstanding Payment Method" : "Payment Method")</h2>
                     </div>
                 </div>
 
                 <div class="payment-method-grid">
-                    @foreach (var method in paymentTypes)
+                    @foreach (var method in VisiblePaymentTypes)
                     {
                         var allocation = PaymentFor(method.POSPaymentTypeID);
                         <button type="button" class="payment-method @(allocation is not null ? "selected" : null)" @onclick="() => OpenCalculator(method)">
@@ -713,7 +713,7 @@
                     }
                 </div>
 
-                @if (currentOrder.Payments.Count > 0)
+                @if (ActivePaymentLines.Count > 0)
                 {
                     <section class="split-payments" aria-label="Added payments">
                         <header>
@@ -722,7 +722,7 @@
                             </div>
                             <b>MYR @PaidAmount.ToString("N2") collected</b>
                         </header>
-                        @foreach (var payment in currentOrder.Payments)
+                        @foreach (var payment in ActivePaymentLines)
                         {
                             <div class="split-payment-row">
                                 <span class="payment-symbol"><i class="bi @PaymentIcon(payment.PaymentMethod)"></i></span>
@@ -748,8 +748,8 @@
                 <header>
                     <span class="panel-icon"><i class="bi bi-receipt"></i></span>
                     <div>
-                        <h2>Order Summary</h2>
-                        <p>@currentOrder.OrderNumber</p>
+                        <h2>@(isOutstandingPaymentMode ? "Outstanding Settlement" : "Order Summary")</h2>
+                        <p>@(isOutstandingPaymentMode ? $"{outstandingSettlementSelections.Count} selected document(s)" : currentOrder.OrderNumber)</p>
                     </div>
                 </header>
 
@@ -763,31 +763,60 @@
                 </div>
 
                 <div class="order-list">
-                    @foreach (var item in currentOrder.Items)
+                    @if (isOutstandingPaymentMode)
                     {
-                        <div>
-                            <img src="@ItemImage(item.Category, item.ImageUrl)" alt="" />
-                            <span>
-                                <strong>@item.Name</strong>
-                                <small>@item.Category | Qty @item.Quantity</small>
-                            </span>
-                            <b>MYR @item.TotalPrice.ToString("N2")</b>
-                        </div>
+                        @foreach (var document in outstandingDocuments)
+                        {
+                            var key = OutstandingDocumentSelectionKey(document);
+                            if (outstandingSettlementSelections.TryGetValue(key, out var settlementAmount))
+                            {
+                                <div>
+                                    <span class="payment-symbol"><i class="bi bi-receipt"></i></span>
+                                    <span>
+                                        <strong>@(string.IsNullOrWhiteSpace(document.DocumentNumber) ? "Outstanding document" : document.DocumentNumber)</strong>
+                                        <small>@(document.FinancialDate.Year <= 1900 ? "Date unavailable" : document.FinancialDate.ToString("dd/MM/yyyy")) · Outstanding MYR @document.RemainingAmount.ToString("N2")</small>
+                                    </span>
+                                    <b>MYR @settlementAmount.ToString("N2")</b>
+                                </div>
+                            }
+                        }
+                    }
+                    else
+                    {
+                        @foreach (var item in currentOrder.Items)
+                        {
+                            <div>
+                                <img src="@ItemImage(item.Category, item.ImageUrl)" alt="" />
+                                <span>
+                                    <strong>@item.Name</strong>
+                                    <small>@item.Category | Qty @item.Quantity</small>
+                                </span>
+                                <b>MYR @item.TotalPrice.ToString("N2")</b>
+                            </div>
+                        }
                     }
                 </div>
 
                 <div class="order-totals">
-                    <div><span>Gross Subtotal</span><strong>MYR @currentOrder.Subtotal.ToString("N2")</strong></div>
-                    <div><span>Discount</span><strong>- MYR @currentOrder.Discount.ToString("N2")</strong></div>
-                    <div><span>Subtotal Before Tax</span><strong>MYR @currentOrder.SubtotalBeforeTax.ToString("N2")</strong></div>
-                    @if (currentOrder.Tax > 0m)
+                    @if (isOutstandingPaymentMode)
                     {
-                        <div><span>Tax</span><strong>MYR @currentOrder.Tax.ToString("N2")</strong></div>
+                        <div><span>Selected Documents</span><strong>@outstandingSettlementSelections.Count</strong></div>
+                        <div class="grand-total"><span>Total to Settle</span><strong>MYR @PaymentTargetAmount.ToString("N2")</strong></div>
                     }
-                    <div class="grand-total"><span>Total Payable</span><strong>MYR @currentOrder.Total.ToString("N2")</strong></div>
-                    @if (currentOrder.IsRedemptionMode && RedeemedCreditAmount > 0m)
+                    else
                     {
-                        <div><span>Member Credit</span><strong>- MYR @RedeemedCreditAmount.ToString("N2")</strong></div>
+                        <div><span>Gross Subtotal</span><strong>MYR @currentOrder.Subtotal.ToString("N2")</strong></div>
+                        <div><span>Discount</span><strong>- MYR @currentOrder.Discount.ToString("N2")</strong></div>
+                        <div><span>Subtotal Before Tax</span><strong>MYR @currentOrder.SubtotalBeforeTax.ToString("N2")</strong></div>
+                        @if (currentOrder.Tax > 0m)
+                        {
+                            <div><span>Tax</span><strong>MYR @currentOrder.Tax.ToString("N2")</strong></div>
+                        }
+                        <div class="grand-total"><span>Total Payable</span><strong>MYR @currentOrder.Total.ToString("N2")</strong></div>
+                        @if (currentOrder.IsRedemptionMode && RedeemedCreditAmount > 0m)
+                        {
+                            <div><span>Member Credit</span><strong>- MYR @RedeemedCreditAmount.ToString("N2")</strong></div>
+                        }
                     }
                     <div><span>Amount Received</span><strong>MYR @PaidAmount.ToString("N2")</strong></div>
                     <div class="remaining @(Remaining > 0 ? "due" : "covered")">
@@ -799,7 +828,7 @@
 
                 <button type="button"
                         class="primary-action"
-                        disabled="@(isSaving || Remaining > 0 || (!currentOrder.IsRedemptionMode && currentOrder.Payments.Count == 0))"
+                        disabled="@(isSaving || Remaining > 0 || (!currentOrder.IsRedemptionMode && ActivePaymentLines.Count == 0))"
                         @onclick="SaveSale">
                     @if (isSaving)
                     {
@@ -809,7 +838,7 @@
                     else
                     {
                         <i class="bi bi-check2-circle"></i>
-                        <span>Complete Sale</span>
+                        <span>@(isOutstandingPaymentMode ? "Continue Outstanding Payment" : "Complete Sale")</span>
                     }
                 </button>
             </aside>
@@ -1440,7 +1469,7 @@
         </header>
 
         <div class="calculator-summary">
-            <div><span>Total Payable</span><strong>MYR @currentOrder.Total.ToString("N2")</strong></div>
+            <div><span>@(isOutstandingPaymentMode ? "Total to Settle" : "Total Payable")</span><strong>MYR @PaymentTargetAmount.ToString("N2")</strong></div>
             <div><span>Already Paid</span><strong>MYR @PaidExcludingCalculatorMethod.ToString("N2")</strong></div>
             <div><span>Remaining</span><strong>MYR @CalculatorRemaining.ToString("N2")</strong></div>
         </div>
@@ -1544,6 +1573,8 @@
     private bool showOutstandingSettlement;
     private Dictionary<string, decimal> outstandingSettlementSelections =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<TransactionPayment> outstandingSettlementPayments = new();
+    private bool isOutstandingPaymentMode;
     private decimal? selectedCustomerPointBalance;
     private decimal? selectedCustomerPackageBalance;
     private decimal? selectedCustomerCreditBalance;
@@ -1583,7 +1614,28 @@
     private bool mobileCartOpen;
     private string calculatorDigits = string.Empty;
 
-    private decimal PaidAmount => currentOrder.Payments.Sum(payment => payment.Amount);
+    private List<TransactionPayment> ActivePaymentLines =>
+        isOutstandingPaymentMode
+            ? outstandingSettlementPayments
+            : currentOrder.Payments;
+
+    private IEnumerable<CashSalesPaymentTypeDTO> VisiblePaymentTypes =>
+        isOutstandingPaymentMode
+            ? paymentTypes.Where(method => method.POSPaymentTypeID != -10)
+            : paymentTypes;
+
+    private decimal OutstandingSettlementAmount =>
+        Math.Round(
+            outstandingSettlementSelections.Values.Sum(),
+            2,
+            MidpointRounding.AwayFromZero);
+
+    private decimal PaymentTargetAmount =>
+        isOutstandingPaymentMode
+            ? OutstandingSettlementAmount
+            : AmountDueAfterCredit;
+
+    private decimal PaidAmount => ActivePaymentLines.Sum(payment => payment.Amount);
     private decimal RedeemedCreditAmount => currentOrder.IsRedemptionMode
         ? currentOrder.Items
             .Where(item => item.ActivityTypeId == 6)
@@ -1655,12 +1707,14 @@
                 CreditSelectedOnCurrentBill(credit.ARAPOutstandingID)),
             2,
             MidpointRounding.AwayFromZero);
-    private decimal Remaining => Math.Max(0, AmountDueAfterCredit - PaidAmount);
-    private decimal Change => Math.Max(0, PaidAmount - AmountDueAfterCredit);
+    private decimal Remaining => Math.Max(0, PaymentTargetAmount - PaidAmount);
+    private decimal Change => Math.Max(0, PaidAmount - PaymentTargetAmount);
     private decimal PaidExcludingCalculatorMethod => calculatorMethod is null
         ? PaidAmount
-        : currentOrder.Payments.Where(payment => payment.PaymentTypeId != calculatorMethod.POSPaymentTypeID).Sum(payment => payment.Amount);
-    private decimal CalculatorRemaining => Math.Max(0, AmountDueAfterCredit - PaidExcludingCalculatorMethod);
+        : ActivePaymentLines
+            .Where(payment => payment.PaymentTypeId != calculatorMethod.POSPaymentTypeID)
+            .Sum(payment => payment.Amount);
+    private decimal CalculatorRemaining => Math.Max(0, PaymentTargetAmount - PaidExcludingCalculatorMethod);
     private CashDiscountRuleDTO? SelectedDraftDiscountRule =>
         discountRules.FirstOrDefault(rule =>
             rule.Id.Equals(draftCashDiscountId, StringComparison.OrdinalIgnoreCase));
@@ -2055,6 +2109,8 @@
         isOutstandingDocumentsLoading = false;
         showOutstandingSettlement = false;
         outstandingSettlementSelections.Clear();
+        outstandingSettlementPayments.Clear();
+        isOutstandingPaymentMode = false;
         selectedCustomerPointBalance = null;
         selectedCustomerPackageBalance = null;
         selectedCustomerCreditBalance = null;
@@ -2948,6 +3004,21 @@
         }
     }
 
+    private static string OutstandingDocumentSelectionKey(
+        OutstandingDocumentDTO document)
+    {
+        if (!string.IsNullOrWhiteSpace(document.SourceId))
+        {
+            return document.SourceId.Trim();
+        }
+
+        return string.Join(
+            "|",
+            document.DocumentNumber?.Trim() ?? string.Empty,
+            document.FinancialDate.ToString("O"),
+            document.RemainingAmount.ToString("0.00"));
+    }
+
     private async Task OpenOutstandingSettlementAsync()
     {
         if (string.IsNullOrWhiteSpace(currentOrder.AccountId))
@@ -3039,20 +3110,73 @@
         showOutstandingSettlement = false;
     }
 
-    private void ConfirmOutstandingSelection(
+    private async Task ConfirmOutstandingSelection(
         IReadOnlyDictionary<string, decimal> selections)
     {
+        var selectedTotal = Math.Round(
+            selections.Values.Sum(),
+            2,
+            MidpointRounding.AwayFromZero);
+
+        if (selectedTotal <= 0m)
+        {
+            Feedback.Warning(
+                "Select at least one outstanding document and settlement amount.",
+                "Outstanding required");
+            return;
+        }
+
+        var branch = BranchSession.CurrentBranch;
+        var branchId = string.IsNullOrWhiteSpace(currentOrder.BranchId)
+            ? branch?.Id ?? "HQ"
+            : currentOrder.BranchId;
+        var groupId = string.IsNullOrWhiteSpace(branch?.GroupId)
+            ? branchId
+            : branch.GroupId;
+
+        var paymentResult = await CashSalesService.LoadPaymentTypesAsync(
+            branchId,
+            groupId,
+            currentOrder.AccountId);
+
+        if (!paymentResult.Success || paymentResult.Value is null)
+        {
+            Feedback.Error(
+                paymentResult.ErrorMessage ?? "Unable to load payment methods.",
+                "Payment methods not loaded");
+            return;
+        }
+
         outstandingSettlementSelections = new Dictionary<string, decimal>(
             selections,
             StringComparer.OrdinalIgnoreCase);
+        outstandingSettlementPayments.Clear();
+        calculatorMethod = null;
+        calculatorDigits = string.Empty;
+        isOutstandingPaymentMode = true;
+
+        paymentTypes = paymentResult.Value.ToList();
+
+        if (!VisiblePaymentTypes.Any())
+        {
+            isOutstandingPaymentMode = false;
+            Feedback.Error(
+                "No regular payment methods are available for Outstanding settlement.",
+                "Payment method unavailable");
+            return;
+        }
 
         showOutstandingSettlement = false;
+        stage = SaleStage.Payment;
 
-        var selectedTotal = outstandingSettlementSelections.Values.Sum();
+        Console.WriteLine(
+            $"[Outstanding Step 4] PAYMENT MODE | Customer={currentOrder.AccountId} | " +
+            $"Documents={outstandingSettlementSelections.Count} | Amount={selectedTotal:N2} | " +
+            $"RegularMethods={VisiblePaymentTypes.Count()} | MemberCreditExcluded=True");
+
         Feedback.Info(
-            $"RM {selectedTotal:N2} selected across " +
-            $"{outstandingSettlementSelections.Count} outstanding document(s).",
-            "Outstanding selected",
+            $"RM {selectedTotal:N2} selected. Choose one payment method.",
+            "Outstanding payment",
             2800);
     }
 
@@ -4515,13 +4639,46 @@
         stage = SaleStage.Payment;
     }
 
-    private void BackToCart() => stage = SaleStage.Cart;
+    private void BackToCart()
+    {
+        if (isOutstandingPaymentMode)
+        {
+            outstandingSettlementPayments.Clear();
+            calculatorMethod = null;
+            calculatorDigits = string.Empty;
+            isOutstandingPaymentMode = false;
+        }
+
+        stage = SaleStage.Cart;
+    }
 
     private void OpenCalculator(CashSalesPaymentTypeDTO method)
     {
+        if (isOutstandingPaymentMode)
+        {
+            if (method.POSPaymentTypeID == -10)
+            {
+                Feedback.Warning(
+                    "Member Credit cannot be used as an Outstanding settlement payment method.",
+                    "Payment method not allowed");
+                return;
+            }
+
+            if (ActivePaymentLines.Any(payment =>
+                    payment.PaymentTypeId != method.POSPaymentTypeID))
+            {
+                Feedback.Warning(
+                    "Outstanding settlement follows Senang Retail and allows one payment method only.",
+                    "One payment method");
+                return;
+            }
+        }
+
         calculatorMethod = method;
         var existing = PaymentFor(method.POSPaymentTypeID);
-        calculatorDigits = existing is null ? string.Empty : ((long)Math.Round(existing.Amount * 100)).ToString();
+        calculatorDigits = existing is null
+            ? string.Empty
+            : ((long)Math.Round(existing.Amount * 100)).ToString();
     }
 
     private void EditPayment(TransactionPayment payment)
@@ -4532,12 +4689,15 @@
 
     private void RemovePayment(TransactionPayment payment)
     {
-        currentOrder.Payments.Remove(payment);
-        PendingOrderService.SaveOrUpdate(currentOrder);
+        ActivePaymentLines.Remove(payment);
+        if (!isOutstandingPaymentMode)
+        {
+            PendingOrderService.SaveOrUpdate(currentOrder);
+        }
     }
 
     private TransactionPayment? PaymentFor(int paymentTypeId) =>
-        currentOrder.Payments.FirstOrDefault(payment => payment.PaymentTypeId == paymentTypeId);
+        ActivePaymentLines.FirstOrDefault(payment => payment.PaymentTypeId == paymentTypeId);
 
     private void CloseCalculator() => calculatorMethod = null;
     private void OpenMobileCart()
@@ -4569,22 +4729,99 @@
 
     private void ConfirmPaymentAmount()
     {
-        if (calculatorMethod is null || CalculatorAmount <= 0) return;
+        if (calculatorMethod is null || CalculatorAmount <= 0m)
+        {
+            return;
+        }
+
+        if (isOutstandingPaymentMode)
+        {
+            if (calculatorMethod.POSPaymentTypeID == -10)
+            {
+                Feedback.Warning(
+                    "Member Credit cannot be used for Outstanding settlement.",
+                    "Payment method not allowed");
+                return;
+            }
+
+            if (CalculatorAmount > PaymentTargetAmount + 0.009m)
+            {
+                Feedback.Warning(
+                    $"Outstanding payment cannot exceed MYR {PaymentTargetAmount:N2}.",
+                    "Amount too high");
+                return;
+            }
+
+            if (ActivePaymentLines.Any(payment =>
+                    payment.PaymentTypeId != calculatorMethod.POSPaymentTypeID))
+            {
+                Feedback.Warning(
+                    "Outstanding settlement allows one payment method only.",
+                    "One payment method");
+                return;
+            }
+        }
+
         var payment = PaymentFor(calculatorMethod.POSPaymentTypeID);
         if (payment is null)
         {
-            payment = new TransactionPayment { PaymentTypeId = calculatorMethod.POSPaymentTypeID };
-            currentOrder.Payments.Add(payment);
+            payment = new TransactionPayment
+            {
+                PaymentTypeId = calculatorMethod.POSPaymentTypeID
+            };
+            ActivePaymentLines.Add(payment);
         }
-        payment.PaymentMethod = calculatorMethod.POSPaymentTypeName ?? "Payment";
+
+        payment.PaymentMethod =
+            calculatorMethod.POSPaymentTypeName ?? "Payment";
         payment.Amount = CalculatorAmount;
-        PendingOrderService.SaveOrUpdate(currentOrder);
+        payment.FinancialAccountId =
+            calculatorMethod.FinancialAccountID ?? string.Empty;
+        payment.BankName =
+            calculatorMethod.FinancialAccountName ?? string.Empty;
+
+        if (!isOutstandingPaymentMode)
+        {
+            PendingOrderService.SaveOrUpdate(currentOrder);
+        }
+
         calculatorMethod = null;
     }
 
     private async Task SaveSale()
     {
         if (isSaving) return;
+
+        if (isOutstandingPaymentMode)
+        {
+            if (Remaining > 0m || ActivePaymentLines.Count == 0)
+            {
+                Feedback.Warning(
+                    $"Add MYR {Remaining:N2} more before continuing.",
+                    "Payment incomplete");
+                return;
+            }
+
+            if (ActivePaymentLines.Count != 1 ||
+                ActivePaymentLines.Any(payment => payment.PaymentTypeId == -10))
+            {
+                Feedback.Warning(
+                    "Choose one regular payment method for Outstanding settlement.",
+                    "Payment method required");
+                return;
+            }
+
+            Console.WriteLine(
+                $"[Outstanding Step 4] PAYMENT READY | Customer={currentOrder.AccountId} | " +
+                $"Amount={PaymentTargetAmount:N2} | Method={ActivePaymentLines[0].PaymentMethod} | " +
+                $"PaymentTypeID={ActivePaymentLines[0].PaymentTypeId} | ARReceiptSavePendingStep5=True");
+
+            Feedback.Info(
+                "Outstanding payment method is ready. AR Receipt saving is handled in Step 5.",
+                "Outstanding payment ready",
+                3200);
+            return;
+        }
 
         if (!RebindCurrentOrderToWorkingBranch(out var branchChanged))
         {
