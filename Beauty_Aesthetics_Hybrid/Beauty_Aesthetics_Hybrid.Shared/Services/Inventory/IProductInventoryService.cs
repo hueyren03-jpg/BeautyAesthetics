@@ -13,6 +13,10 @@ public interface IProductInventoryService
         string masterAccountId,
         CancellationToken cancellationToken = default);
 
+    Task<ApiCallResult<InventoryViewModel.InventoryItem>> LoadProductPointConfigurationAsync(
+        string masterAccountId,
+        CancellationToken cancellationToken = default);
+
     Task<ApiCallResult<bool>> CreateProductAsync(
         InventoryViewModel.InventoryItem product,
         string branchId = "HQ",
