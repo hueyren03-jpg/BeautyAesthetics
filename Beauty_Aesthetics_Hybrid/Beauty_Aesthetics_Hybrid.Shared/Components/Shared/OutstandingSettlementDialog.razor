@@ -1,0 +1,566 @@
+@using System.Globalization
+@using Beauty_Aesthetics_WebPos.Models.DTOs
+@using Microsoft.AspNetCore.Components
+
+@if (IsOpen)
+{
+    <div class="outstanding-dialog-backdrop" @onclick="CloseAsync"></div>
+    <section class="outstanding-dialog"
+             role="dialog"
+             aria-modal="true"
+             aria-label="Outstanding settlement">
+        <header>
+            <div class="outstanding-dialog-title">
+                <span class="outstanding-dialog-icon">
+                    <i class="bi bi-receipt-cutoff"></i>
+                </span>
+                <div>
+                    <h2>Outstanding Settlement</h2>
+                    <p>@CustomerName · select one or multiple unpaid documents</p>
+                </div>
+            </div>
+            <button type="button"
+                    class="outstanding-icon-button"
+                    title="Close"
+                    aria-label="Close"
+                    @onclick="CloseAsync">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </header>
+
+        <div class="outstanding-summary">
+            <div class="outstanding-summary-card">
+                <small>Total Outstanding</small>
+                <strong>RM @DisplayAmount(SummaryOutstanding ?? DocumentOutstandingTotal)</strong>
+            </div>
+            <div class="outstanding-summary-card">
+                <small>Selected Documents</small>
+                <strong>@SelectedDocumentCount</strong>
+            </div>
+            <div class="outstanding-summary-card">
+                <small>Amount to Settle</small>
+                <strong>RM @DisplayAmount(SelectedTotal)</strong>
+            </div>
+            <div class="outstanding-summary-card">
+                <small>Remaining After Selection</small>
+                <strong>RM @DisplayAmount(RemainingAfterSelection)</strong>
+            </div>
+        </div>
+
+        @if (IsLoading)
+        {
+            <div class="outstanding-dialog-state">
+                <span class="spinner-border spinner-border-sm"></span>
+                <span>Loading outstanding documents...</span>
+            </div>
+        }
+        else if (!string.IsNullOrWhiteSpace(ErrorMessage))
+        {
+            <div class="outstanding-dialog-state outstanding-dialog-error">
+                <i class="bi bi-exclamation-circle"></i>
+                <span>@ErrorMessage</span>
+                <button type="button"
+                        class="outstanding-secondary-action"
+                        @onclick="RefreshAsync">
+                    Retry
+                </button>
+            </div>
+        }
+        else if (Documents.Count == 0)
+        {
+            <div class="outstanding-dialog-state">
+                <i class="bi bi-check-circle"></i>
+                <strong>No unpaid outstanding documents</strong>
+                <span>This customer currently has no settlement lines with an outstanding amount.</span>
+            </div>
+        }
+        else
+        {
+            <div class="outstanding-account-summary">
+                <span>
+                    <strong>@Documents.Count</strong>
+                    unpaid document@(Documents.Count == 1 ? "" : "s")
+                </span>
+                <span>Oldest financial date is shown first.</span>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_validationMessage))
+            {
+                <div class="outstanding-inline-warning">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <span>@_validationMessage</span>
+                </div>
+            }
+
+            <div class="outstanding-table-wrap">
+                <table class="outstanding-table">
+                    <thead>
+                        <tr>
+                            <th class="outstanding-select-col"></th>
+                            <th>Document</th>
+                            <th>Date</th>
+                            <th>Due Date</th>
+                            <th>Branch</th>
+                            <th class="amount-cell">Original</th>
+                            <th class="amount-cell">Paid</th>
+                            <th class="amount-cell">Outstanding</th>
+                            <th class="outstanding-settle-col">Settle Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var document in Documents)
+                        {
+                            var key = DocumentKey(document);
+                            var selected = _selections.ContainsKey(key);
+                            var selectedAmount = SelectedAmount(document);
+
+                            <tr class="@(selected ? "outstanding-row-selected" : string.Empty)">
+                                <td class="outstanding-select-cell" data-label="Select">
+                                    <input type="checkbox"
+                                           checked="@selected"
+                                           disabled="@(document.RemainingAmount <= 0m)"
+                                           @onchange="(ChangeEventArgs e) => ToggleDocument(document, IsChecked(e))" />
+                                </td>
+                                <td class="outstanding-document-cell" data-label="Document">
+                                    <strong>@DisplayDocumentNumber(document)</strong>
+                                    <small>@DisplaySourceId(document)</small>
+                                </td>
+                                <td data-label="Date">@DisplayDate(document.FinancialDate)</td>
+                                <td data-label="Due Date">@DisplayDate(document.DueDate)</td>
+                                <td data-label="Branch">@(string.IsNullOrWhiteSpace(document.BranchID) ? "—" : document.BranchID)</td>
+                                <td class="amount-cell" data-label="Original">RM @DisplayAmount(document.EffectiveOriginalAmount)</td>
+                                <td class="amount-cell" data-label="Paid">RM @DisplayAmount(document.EffectivePaidAmount)</td>
+                                <td class="amount-cell outstanding-remaining" data-label="Outstanding">
+                                    RM @DisplayAmount(document.RemainingAmount)
+                                </td>
+                                <td class="outstanding-settle-cell" data-label="Settle Amount">
+                                    <div class="outstanding-amount-input">
+                                        <span>RM</span>
+                                        <input type="number"
+                                               min="0"
+                                               step="0.01"
+                                               max="@FormatInputAmount(MaxSelectableFor(document))"
+                                               disabled="@(!selected)"
+                                               value="@FormatInputAmount(selectedAmount)"
+                                               @onchange="(ChangeEventArgs e) => UpdateAmount(document, e.Value?.ToString())" />
+                                    </div>
+                                    @if (selected)
+                                    {
+                                        <button type="button"
+                                                class="outstanding-full-button"
+                                                @onclick="() => SetMaximumAmount(document)">
+                                            Full
+                                        </button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <footer>
+            <div class="outstanding-dialog-note">
+                <i class="bi bi-info-circle"></i>
+                <span>Step 3 only selects outstanding documents and amounts. Payment is handled in the next step.</span>
+            </div>
+            <div class="outstanding-dialog-actions">
+                <button type="button"
+                        class="outstanding-secondary-action"
+                        @onclick="ClearSelection"
+                        disabled="@(_selections.Count == 0)">
+                    Clear
+                </button>
+                <button type="button"
+                        class="outstanding-secondary-action"
+                        @onclick="CloseAsync">
+                    Cancel
+                </button>
+                <button type="button"
+                        class="outstanding-primary-action"
+                        disabled="@(Documents.Count == 0 || SelectedTotal <= 0m || SelectedTotal > SelectionCap)"
+                        @onclick="ConfirmAsync">
+                    Confirm Selection
+                    <strong>RM @DisplayAmount(SelectedTotal)</strong>
+                </button>
+            </div>
+        </footer>
+    </section>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public string CustomerId { get; set; } = string.Empty;
+    [Parameter] public string CustomerName { get; set; } = string.Empty;
+    [Parameter] public decimal? SummaryOutstanding { get; set; }
+    [Parameter] public IReadOnlyList<OutstandingDocumentDTO> Documents { get; set; } =
+        Array.Empty<OutstandingDocumentDTO>();
+    [Parameter] public IReadOnlyDictionary<string, decimal>? InitialSelections { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnRefresh { get; set; }
+    [Parameter] public EventCallback<IReadOnlyDictionary<string, decimal>> OnConfirm { get; set; }
+
+    private readonly Dictionary<string, decimal> _selections =
+        new(StringComparer.OrdinalIgnoreCase);
+    private string _lastCustomerId = string.Empty;
+    private bool _wasOpen;
+    private string? _validationMessage;
+
+    private decimal DocumentOutstandingTotal =>
+        Math.Round(
+            Documents.Sum(document => Math.Max(0m, document.RemainingAmount)),
+            2,
+            MidpointRounding.AwayFromZero);
+
+    private decimal SelectionCap
+    {
+        get
+        {
+            var documentTotal = DocumentOutstandingTotal;
+            if (!SummaryOutstanding.HasValue)
+            {
+                return documentTotal;
+            }
+
+            return Math.Round(
+                Math.Max(0m, Math.Min(documentTotal, SummaryOutstanding.Value)),
+                2,
+                MidpointRounding.AwayFromZero);
+        }
+    }
+
+    private decimal SelectedTotal =>
+        Math.Round(
+            _selections.Values.Sum(),
+            2,
+            MidpointRounding.AwayFromZero);
+
+    private int SelectedDocumentCount =>
+        _selections.Count(pair => pair.Value > 0m);
+
+    private decimal RemainingAfterSelection =>
+        Math.Max(0m, SelectionCap - SelectedTotal);
+
+    protected override void OnParametersSet()
+    {
+        var customerChanged = !string.Equals(
+            _lastCustomerId,
+            CustomerId,
+            StringComparison.OrdinalIgnoreCase);
+
+        if (customerChanged)
+        {
+            _lastCustomerId = CustomerId;
+            _selections.Clear();
+            _validationMessage = null;
+        }
+
+        if (IsOpen && !_wasOpen)
+        {
+            RestoreInitialSelections();
+        }
+
+        PruneAndClampSelections();
+        _wasOpen = IsOpen;
+    }
+
+    private void RestoreInitialSelections()
+    {
+        _selections.Clear();
+        _validationMessage = null;
+
+        if (InitialSelections is null)
+        {
+            return;
+        }
+
+        foreach (var document in Documents)
+        {
+            var key = DocumentKey(document);
+            if (InitialSelections.TryGetValue(key, out var amount) && amount > 0m)
+            {
+                _selections[key] = Math.Min(
+                    Math.Max(0m, amount),
+                    Math.Max(0m, document.RemainingAmount));
+            }
+        }
+
+        EnforceTotalCap();
+    }
+
+    private void PruneAndClampSelections()
+    {
+        var validDocuments = Documents.ToDictionary(
+            DocumentKey,
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var key in _selections.Keys.ToList())
+        {
+            if (!validDocuments.TryGetValue(key, out var document) ||
+                document.RemainingAmount <= 0m)
+            {
+                _selections.Remove(key);
+                continue;
+            }
+
+            _selections[key] = Math.Min(
+                Math.Max(0m, _selections[key]),
+                document.RemainingAmount);
+        }
+
+        EnforceTotalCap();
+    }
+
+    private void ToggleDocument(OutstandingDocumentDTO document, bool isChecked)
+    {
+        _validationMessage = null;
+        var key = DocumentKey(document);
+
+        if (!isChecked)
+        {
+            _selections.Remove(key);
+            return;
+        }
+
+        var remainingCap = Math.Max(
+            0m,
+            SelectionCap - SelectedTotalExcluding(key));
+
+        var amount = Math.Min(
+            Math.Max(0m, document.RemainingAmount),
+            remainingCap);
+
+        if (amount <= 0m)
+        {
+            _validationMessage =
+                "The selected settlement total already reaches the customer's outstanding balance.";
+            _selections.Remove(key);
+            return;
+        }
+
+        _selections[key] = amount;
+    }
+
+    private void UpdateAmount(OutstandingDocumentDTO document, string? rawValue)
+    {
+        _validationMessage = null;
+        var key = DocumentKey(document);
+
+        if (!_selections.ContainsKey(key))
+        {
+            return;
+        }
+
+        if (!TryParseAmount(rawValue, out var requested))
+        {
+            _validationMessage = "Enter a valid settlement amount.";
+            return;
+        }
+
+        requested = Math.Max(0m, requested);
+        var invoiceMaximum = Math.Max(0m, document.RemainingAmount);
+        var totalMaximum = Math.Max(
+            0m,
+            SelectionCap - SelectedTotalExcluding(key));
+        var allowed = Math.Min(invoiceMaximum, totalMaximum);
+
+        if (requested > allowed)
+        {
+            _validationMessage =
+                $"Settlement cannot exceed RM {allowed:N2} for this selection.";
+            requested = allowed;
+        }
+
+        if (requested <= 0m)
+        {
+            _selections.Remove(key);
+            return;
+        }
+
+        _selections[key] = Math.Round(
+            requested,
+            2,
+            MidpointRounding.AwayFromZero);
+    }
+
+    private void SetMaximumAmount(OutstandingDocumentDTO document)
+    {
+        _validationMessage = null;
+        var key = DocumentKey(document);
+        var allowed = Math.Min(
+            Math.Max(0m, document.RemainingAmount),
+            Math.Max(0m, SelectionCap - SelectedTotalExcluding(key)));
+
+        if (allowed <= 0m)
+        {
+            _selections.Remove(key);
+            return;
+        }
+
+        _selections[key] = Math.Round(
+            allowed,
+            2,
+            MidpointRounding.AwayFromZero);
+    }
+
+    private decimal MaxSelectableFor(OutstandingDocumentDTO document)
+    {
+        var key = DocumentKey(document);
+        return Math.Min(
+            Math.Max(0m, document.RemainingAmount),
+            Math.Max(0m, SelectionCap - SelectedTotalExcluding(key)));
+    }
+
+    private decimal SelectedTotalExcluding(string key) =>
+        Math.Round(
+            _selections
+                .Where(pair => !string.Equals(
+                    pair.Key,
+                    key,
+                    StringComparison.OrdinalIgnoreCase))
+                .Sum(pair => pair.Value),
+            2,
+            MidpointRounding.AwayFromZero);
+
+    private decimal SelectedAmount(OutstandingDocumentDTO document)
+    {
+        var key = DocumentKey(document);
+        return _selections.TryGetValue(key, out var amount)
+            ? amount
+            : 0m;
+    }
+
+    private void EnforceTotalCap()
+    {
+        var excess = SelectedTotal - SelectionCap;
+        if (excess <= 0m)
+        {
+            return;
+        }
+
+        foreach (var document in Documents.Reverse())
+        {
+            var key = DocumentKey(document);
+            if (!_selections.TryGetValue(key, out var amount))
+            {
+                continue;
+            }
+
+            var reduction = Math.Min(amount, excess);
+            amount -= reduction;
+            excess -= reduction;
+
+            if (amount <= 0m)
+            {
+                _selections.Remove(key);
+            }
+            else
+            {
+                _selections[key] = Math.Round(
+                    amount,
+                    2,
+                    MidpointRounding.AwayFromZero);
+            }
+
+            if (excess <= 0m)
+            {
+                break;
+            }
+        }
+    }
+
+    private void ClearSelection()
+    {
+        _selections.Clear();
+        _validationMessage = null;
+    }
+
+    private async Task ConfirmAsync()
+    {
+        _validationMessage = null;
+
+        if (SelectedTotal <= 0m)
+        {
+            _validationMessage =
+                "Select at least one outstanding document and enter an amount to settle.";
+            return;
+        }
+
+        if (SelectedTotal > SelectionCap)
+        {
+            _validationMessage =
+                $"Settlement cannot exceed the outstanding balance of RM {SelectionCap:N2}.";
+            EnforceTotalCap();
+            return;
+        }
+
+        var confirmed = new Dictionary<string, decimal>(
+            _selections,
+            StringComparer.OrdinalIgnoreCase);
+
+        await OnConfirm.InvokeAsync(confirmed);
+    }
+
+    private Task CloseAsync() =>
+        OnClose.InvokeAsync();
+
+    private Task RefreshAsync() =>
+        OnRefresh.InvokeAsync();
+
+    private static bool IsChecked(ChangeEventArgs args) =>
+        args.Value is bool value
+            ? value
+            : bool.TryParse(args.Value?.ToString(), out var parsed) && parsed;
+
+    private static bool TryParseAmount(string? value, out decimal amount) =>
+        decimal.TryParse(
+            value,
+            NumberStyles.Number,
+            CultureInfo.CurrentCulture,
+            out amount) ||
+        decimal.TryParse(
+            value,
+            NumberStyles.Number,
+            CultureInfo.InvariantCulture,
+            out amount);
+
+    private static string DocumentKey(OutstandingDocumentDTO document)
+    {
+        if (!string.IsNullOrWhiteSpace(document.SourceId))
+        {
+            return document.SourceId.Trim();
+        }
+
+        return string.Join(
+            "|",
+            document.DocumentNumber?.Trim() ?? string.Empty,
+            document.FinancialDate.ToString("O", CultureInfo.InvariantCulture),
+            document.RemainingAmount.ToString("0.00", CultureInfo.InvariantCulture));
+    }
+
+    private static string DisplayDocumentNumber(OutstandingDocumentDTO document) =>
+        string.IsNullOrWhiteSpace(document.DocumentNumber)
+            ? "Outstanding document"
+            : document.DocumentNumber;
+
+    private static string DisplaySourceId(OutstandingDocumentDTO document) =>
+        string.IsNullOrWhiteSpace(document.SourceId)
+            ? "Source ID unavailable"
+            : document.SourceId;
+
+    private static string DisplayDate(DateTime value) =>
+        value.Year <= 1900
+            ? "—"
+            : value.ToString("dd/MM/yyyy");
+
+    private static string DisplayAmount(decimal value) =>
+        Math.Max(0m, value).ToString("N2");
+
+    private static string FormatInputAmount(decimal value) =>
+        Math.Max(0m, value).ToString(
+            "0.00",
+            CultureInfo.InvariantCulture);
+}
