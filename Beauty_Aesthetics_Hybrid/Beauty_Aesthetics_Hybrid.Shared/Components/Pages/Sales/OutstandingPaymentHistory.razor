@@ -412,7 +412,13 @@
         selectedDetail?.Receipt ?? selectedSummary ?? new OutstandingARReceiptHistoryDTO();
 
     private IReadOnlyList<EBI.DM.ud_ARAPPaymentOffSetLineDM> SettlementLines =>
-        selectedDetail?.SettlementLines ?? new List<EBI.DM.ud_ARAPPaymentOffSetLineDM>();
+        selectedDetail?.SettlementLines
+            .Where(line =>
+                line.AllocatedAmount > 0m ||
+                line.LocalAllocatedAmount > 0m ||
+                line.ActualLocalSettlement > 0m)
+            .ToList()
+        ?? new List<EBI.DM.ud_ARAPPaymentOffSetLineDM>();
 
     protected override async Task OnInitializedAsync()
     {
