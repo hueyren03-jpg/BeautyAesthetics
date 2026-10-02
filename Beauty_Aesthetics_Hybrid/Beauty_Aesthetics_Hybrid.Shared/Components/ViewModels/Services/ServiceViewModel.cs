@@ -61,7 +61,9 @@ public sealed class ServiceViewModel
         string UnitOfMeasure = "unit",
         string Description = "",
         string SectionId = "",
-        string UnitOfMeasureId = ""
+        string UnitOfMeasureId = "",
+        decimal RedeemPoint = 0m,
+        bool AllowPointRedemption = false
     );
 }
 
