@@ -122,7 +122,10 @@ public sealed class ProductInventoryService : IProductInventoryService
             {
                 RedeemPoint = full.PointToRedeem
                     ?? fullRecord?.PointToRedeem
-                    ?? 0m,
+                    ?? product.RedeemPoint,
+                AllowPointRedemption =
+                    fullRecord?.AllowPointRedemption
+                    ?? product.AllowPointRedemption,
                 VisibleBranchIds = (full.Branches ?? [])
                     .Where(branch => branch.IsEnabled && !string.IsNullOrWhiteSpace(branch.BranchId))
                     .Select(branch => branch.BranchId!.Trim())
@@ -293,6 +296,8 @@ public sealed class ProductInventoryService : IProductInventoryService
             Remarks = record.Remarks ?? string.Empty,
             ItemGroupId = record.ItemGroupID ?? string.Empty,
             ItemGroupName = record.ItemGroupName ?? string.Empty,
+            RedeemPoint = record.PointToRedeem ?? 0m,
+            AllowPointRedemption = record.AllowPointRedemption,
             ImagePath = record.ImagePath ?? string.Empty,
             ImageFileName = record.ImageFileName ?? string.Empty
         };
