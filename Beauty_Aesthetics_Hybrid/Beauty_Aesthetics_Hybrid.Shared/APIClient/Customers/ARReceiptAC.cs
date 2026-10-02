@@ -243,6 +243,24 @@ public sealed class ARReceiptAC
                 ? FindString(resultNode.Value, "DisplayCode") ?? FindString(resultNode.Value, "displayCode") ?? id
                 : id;
 
+            // Step 10: HTTP 200 is not enough. A completed AR Receipt save must
+            // return the persisted receipt Id so Beauty never reports a false success.
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                Console.WriteLine(
+                    $"[Outstanding Step 10] SAVE RESPONSE INVALID | HTTP={(int)response.StatusCode} | " +
+                    $"Reason=Missing Result.Id");
+
+                return ApiCallResult<OutstandingSettlementSaveResultDTO>.Failure(
+                    response.StatusCode,
+                    "Outstanding settlement returned HTTP 200 but no AR Receipt ID. The payment was not confirmed; refresh Outstanding before retrying.");
+            }
+
+            Console.WriteLine(
+                $"[Outstanding Step 10] API SAVE CONFIRMED | Id={id} | " +
+                $"DisplayCode={displayCode} | Amount={totalAllocatedAmount:N2} | " +
+                $"Documents={settledDocumentCount}");
+
             return ApiCallResult<OutstandingSettlementSaveResultDTO>.Ok(
                 response.StatusCode,
                 new OutstandingSettlementSaveResultDTO
