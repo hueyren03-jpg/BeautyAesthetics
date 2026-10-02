@@ -202,13 +202,25 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
                 pair => Math.Round(pair.Value, 2, MidpointRounding.AwayFromZero),
                 StringComparer.OrdinalIgnoreCase);
 
+        var expectedOutstanding = request.ExpectedOutstandingAmounts
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Key) && pair.Value >= 0m)
+            .ToDictionary(
+                pair => pair.Key.Trim(),
+                pair => Math.Round(pair.Value, 2, MidpointRounding.AwayFromZero),
+                StringComparer.OrdinalIgnoreCase);
+
         if (requested.Count == 0)
         {
             return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
                 "Select at least one outstanding document to settle.");
         }
 
-        // Step 5: never save against the stale Step 2/3 display rows.
+        Console.WriteLine(
+            $"[Outstanding Step 9] REVALIDATE START | Customer={customerId} | " +
+            $"Documents={requested.Count} | SnapshotDocuments={expectedOutstanding.Count} | " +
+            $"RequestedTotal={requested.Values.Sum():N2}");
+
+        // Step 9: never save against the stale Step 2/3 display rows.
         // Re-fetch the full EBI settlement objects immediately before CreateRecord.
         var rawResult = await arReceiptAC.RetrieveSettlementLinesRawAsync(
             customerId,
@@ -257,11 +269,33 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
                 2,
                 MidpointRounding.AwayFromZero);
 
+            if (expectedOutstanding.TryGetValue(selection.Key, out var expectedBalance) &&
+                Math.Abs(expectedBalance - liveOutstanding) > 0.009m)
+            {
+                Console.WriteLine(
+                    $"[Outstanding Step 9] STALE BALANCE BLOCKED | Source={selection.Key} | " +
+                    $"Document={line.DisplayCode} | Expected={expectedBalance:N2} | " +
+                    $"Live={liveOutstanding:N2} | Requested={selection.Value:N2}");
+
+                return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
+                    $"Outstanding document {line.DisplayCode} changed from RM {expectedBalance:N2} to RM {liveOutstanding:N2}. " +
+                    "The latest balance has been reloaded. Review the amount and try again.");
+            }
+
             if (selection.Value > liveOutstanding + 0.009m)
             {
+                Console.WriteLine(
+                    $"[Outstanding Step 9] OVERPAYMENT BLOCKED | Source={selection.Key} | " +
+                    $"Document={line.DisplayCode} | Live={liveOutstanding:N2} | Requested={selection.Value:N2}");
+
                 return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
-                    $"Outstanding document {selection.Key} now has only RM {liveOutstanding:N2} available.");
+                    $"Outstanding document {line.DisplayCode} now has only RM {liveOutstanding:N2} available. " +
+                    "The latest balance has been reloaded. Review the amount and try again.");
             }
+
+            Console.WriteLine(
+                $"[Outstanding Step 9] REVALIDATE PASS | Source={selection.Key} | " +
+                $"Document={line.DisplayCode} | Live={liveOutstanding:N2} | Requested={selection.Value:N2}");
 
             var allocated = Math.Round(
                 Math.Min(selection.Value, liveOutstanding),
@@ -454,6 +488,13 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
                     MidpointRounding.AwayFromZero)))
             .ToList();
 
+        var expectedOutstanding = request.ExpectedOutstandingAmounts
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Key) && pair.Value >= 0m)
+            .ToDictionary(
+                pair => pair.Key.Trim(),
+                pair => Math.Round(pair.Value, 2, MidpointRounding.AwayFromZero),
+                StringComparer.OrdinalIgnoreCase);
+
         if (requested.Count == 0)
         {
             return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
@@ -515,11 +556,38 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
                 2,
                 MidpointRounding.AwayFromZero);
 
+            if (expectedOutstanding.TryGetValue(selection.Key, out var expectedBalance) &&
+                Math.Abs(expectedBalance - liveOutstanding) > 0.009m)
+            {
+                Console.WriteLine(
+                    $"[Outstanding Step 9] SPLIT STALE BALANCE BLOCKED | Source={selection.Key} | " +
+                    $"Document={line.DisplayCode} | Expected={expectedBalance:N2} | " +
+                    $"Live={liveOutstanding:N2} | Requested={selection.Value:N2}");
+
+                return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
+                    $"Outstanding document {line.DisplayCode} changed from RM {expectedBalance:N2} to RM {liveOutstanding:N2}. " +
+                    "The latest balance has been reloaded. Review the split payment and try again.");
+            }
+
             if (selection.Value > liveOutstanding + 0.009m)
             {
+                Console.WriteLine(
+                    $"[Outstanding Step 9] SPLIT OVERPAYMENT BLOCKED | Source={selection.Key} | " +
+                    $"Document={line.DisplayCode} | Live={liveOutstanding:N2} | Requested={selection.Value:N2}");
+
                 return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
-                    $"Outstanding document {selection.Key} now has only RM {liveOutstanding:N2} available.");
+                    $"Outstanding document {line.DisplayCode} now has only RM {liveOutstanding:N2} available. " +
+                    "The latest balance has been reloaded. Review the split payment and try again.");
             }
+
+            if (!expectedOutstanding.ContainsKey(selection.Key))
+            {
+                expectedOutstanding[selection.Key] = liveOutstanding;
+            }
+
+            Console.WriteLine(
+                $"[Outstanding Step 9] SPLIT REVALIDATE PASS | Source={selection.Key} | " +
+                $"Document={line.DisplayCode} | Live={liveOutstanding:N2} | Requested={selection.Value:N2}");
 
             usedLines.Add(line);
         }
@@ -616,6 +684,12 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
                     CurrencyName = request.CurrencyName,
                     FinancialAccountID = plan.Payment.FinancialAccountID,
                     FinancialAccountName = plan.Payment.FinancialAccountName,
+                    ExpectedOutstandingAmounts = plan.Allocations.Keys
+                        .Where(expectedOutstanding.ContainsKey)
+                        .ToDictionary(
+                            key => key,
+                            key => expectedOutstanding[key],
+                            StringComparer.OrdinalIgnoreCase),
                     SelectedAmounts = new Dictionary<string, decimal>(
                         plan.Allocations,
                         StringComparer.OrdinalIgnoreCase)
@@ -635,6 +709,17 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
             }
 
             savedTotal += saveResult.Value.TotalAllocatedAmount;
+
+            foreach (var allocation in plan.Allocations)
+            {
+                if (expectedOutstanding.TryGetValue(allocation.Key, out var before))
+                {
+                    expectedOutstanding[allocation.Key] = Math.Round(
+                        Math.Max(0m, before - allocation.Value),
+                        2,
+                        MidpointRounding.AwayFromZero);
+                }
+            }
 
             if (!string.IsNullOrWhiteSpace(saveResult.Value.Id))
             {
