@@ -2364,9 +2364,9 @@
                     string.Equals(candidate.Id, item.InventoryId, StringComparison.OrdinalIgnoreCase))?.Price ?? 0m;
         }
 
-        // Senang stores the per-unit PointToRedeem value on DocumentLine.Points.
-        // Balance usage is PointToRedeem x Quantity.
-        item.Points = item.PointToRedeem;
+        // DocumentLine.Points is the TOTAL point deduction for this line.
+        // Example: PointToRedeem=100 and Quantity=2 => Points=200.
+        item.Points = required;
         item.UnitPrice = 0m;
         RecalculateItemTaxAndTotal(item);
         currentOrder.Payments.Clear();
@@ -2421,7 +2421,7 @@
         {
             if (!item.AllowPointRedemption ||
                 item.PointToRedeem <= 0m ||
-                Math.Abs(item.PointToRedeem - item.Points) > 0.009m ||
+                Math.Abs(RequiredPointsFor(item) - item.Points) > 0.009m ||
                 Math.Abs(item.UnitPrice) > 0.009m)
             {
                 if (showFeedback)
@@ -4882,7 +4882,7 @@
             }
 
             item.Quantity = newQty;
-            item.Points = item.PointToRedeem;
+            item.Points = required;
             RecalculateItemTaxAndTotal(item);
             currentOrder.Payments.Clear();
             PendingOrderService.SaveOrUpdate(currentOrder);
