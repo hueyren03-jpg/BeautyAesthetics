@@ -28,13 +28,16 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
 {
     private readonly ICustomerService customerService;
     private readonly ARReceiptAC arReceiptAC;
+    private readonly OutstandingPaymentHistoryService historyService;
 
     public OutstandingBalanceService(
         ICustomerService customerService,
-        ARReceiptAC arReceiptAC)
+        ARReceiptAC arReceiptAC,
+        OutstandingPaymentHistoryService historyService)
     {
         this.customerService = customerService;
         this.arReceiptAC = arReceiptAC;
+        this.historyService = historyService;
     }
 
     public async Task<CustomerOperationResult<MemberOtherBalanceSummaryDTO>> LoadSummaryAsync(
@@ -534,6 +537,12 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
             saveResult.Value,
             cancellationToken);
 
+        await RecordOutstandingHistoryAsync(
+            request,
+            offsetLines,
+            saveResult.Value,
+            cancellationToken);
+
         Console.WriteLine(
             $"[Outstanding Step 10] SAVE COMPLETE | Id={saveResult.Value.Id} | " +
             $"DisplayCode={saveResult.Value.DisplayCode} | " +
@@ -771,6 +780,17 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
                     CurrencyName = request.CurrencyName,
                     FinancialAccountID = plan.Payment.FinancialAccountID,
                     FinancialAccountName = plan.Payment.FinancialAccountName,
+                    Payments = new List<OutstandingSettlementPaymentDTO>
+                    {
+                        new()
+                        {
+                            PaymentTypeID = plan.Payment.PaymentTypeID,
+                            PaymentMethod = plan.Payment.PaymentMethod,
+                            FinancialAccountID = plan.Payment.FinancialAccountID,
+                            FinancialAccountName = plan.Payment.FinancialAccountName,
+                            Amount = plan.Payment.Amount
+                        }
+                    },
                     ExpectedOutstandingAmounts = plan.Allocations.Keys
                         .Where(expectedOutstanding.ContainsKey)
                         .ToDictionary(
@@ -876,6 +896,90 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
                 VerifiedCustomerOutstanding = verifiedCustomerOutstanding,
                 VerifiedRemainingAmounts = verifiedRemaining
             });
+    }
+
+    private async Task RecordOutstandingHistoryAsync(
+        OutstandingSettlementSaveRequestDTO request,
+        IReadOnlyCollection<ud_ARAPPaymentOffSetLineDM> savedLines,
+        OutstandingSettlementSaveResultDTO saveResult,
+        CancellationToken cancellationToken)
+    {
+        var paymentMethods = request.Payments
+            .Where(payment => payment.Amount > 0m)
+            .Select(payment => payment.PaymentMethod?.Trim())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var primaryPayment = request.Payments.FirstOrDefault(payment => payment.Amount > 0m);
+
+        var record = new OutstandingPaymentHistoryDTO
+        {
+            ReceiptID = saveResult.Id,
+            ReceiptNo = saveResult.DisplayCode,
+            PaymentDate = DateTime.Now,
+            CustomerID = request.CustomerID?.Trim() ?? string.Empty,
+            CustomerName = request.CustomerName?.Trim() ?? string.Empty,
+            BranchID = request.BranchID?.Trim() ?? string.Empty,
+            GroupID = request.GroupID?.Trim() ?? string.Empty,
+            PaidAmount = saveResult.TotalAllocatedAmount,
+            PaymentMethod = paymentMethods.Count > 0
+                ? string.Join(", ", paymentMethods)
+                : request.FinancialAccountName?.Trim() ?? string.Empty,
+            FinancialAccountID =
+                primaryPayment?.FinancialAccountID?.Trim()
+                ?? request.FinancialAccountID?.Trim()
+                ?? string.Empty,
+            FinancialAccountName =
+                primaryPayment?.FinancialAccountName?.Trim()
+                ?? request.FinancialAccountName?.Trim()
+                ?? string.Empty,
+            VerificationPassed = saveResult.VerificationPassed,
+            VerificationMessage = saveResult.VerificationMessage,
+            CustomerOutstandingAfterPayment = saveResult.VerifiedCustomerOutstanding,
+            Documents = savedLines
+                .Select(line =>
+                {
+                    var key = line.DocumentID?.Trim() ?? string.Empty;
+                    var fallbackRemaining = Math.Round(
+                        Math.Max(0m, line.Outstanding - line.AllocatedAmount),
+                        2,
+                        MidpointRounding.AwayFromZero);
+
+                    var remaining = !string.IsNullOrWhiteSpace(key) &&
+                                    saveResult.VerifiedRemainingAmounts.TryGetValue(
+                                        key,
+                                        out var verifiedRemaining)
+                        ? verifiedRemaining
+                        : fallbackRemaining;
+
+                    return new OutstandingPaymentHistoryLineDTO
+                    {
+                        SourceDocumentID = key,
+                        DocumentNo = line.DisplayCode?.Trim() ?? string.Empty,
+                        AmountPaid = Math.Round(
+                            line.AllocatedAmount,
+                            2,
+                            MidpointRounding.AwayFromZero),
+                        RemainingAfterPayment = Math.Round(
+                            Math.Max(0m, remaining),
+                            2,
+                            MidpointRounding.AwayFromZero)
+                    };
+                })
+                .ToList()
+        };
+
+        var stored = await historyService.RecordAsync(
+            record,
+            cancellationToken);
+
+        if (!stored)
+        {
+            Console.WriteLine(
+                $"[Outstanding Step 12] HISTORY NOT STORED | Receipt={saveResult.DisplayCode} | " +
+                "The AR Receipt is already saved; payment must not be retried.");
+        }
     }
 
     private async Task VerifySettlementAfterSaveAsync(
