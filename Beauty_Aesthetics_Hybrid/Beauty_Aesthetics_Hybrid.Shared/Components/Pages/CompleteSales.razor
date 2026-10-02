@@ -29,7 +29,11 @@
             <i class="bi bi-check2"></i>
         </div>
 
-        <h2 class="success-title">Payment Successful!</h2>
+        <h2 class="success-title">
+            @(AppState.IsOutstandingPaymentMode
+                ? "Outstanding Payment Successful!"
+                : "Payment Successful!")
+        </h2>
 
         <p class="transaction-id">
             Transaction ID: @FirstNonEmpty(
@@ -64,32 +68,35 @@
                 @(isPrinting ? "Printing..." : "Print Receipt")
             </button>
 
-            <button class="payment-action-btn"
-                    @onclick="RequestEInvoicePrint"
-                    disabled="@(isPrintingEInvoice || isPrinting || isLoadingRecord)">
-                @(isPrintingEInvoice ? "Printing..." : "Print e-Invoice")
-            </button>
-
-            <div class="whatsapp-box">
-                <div class="input-group">
-                    <i class="bi bi-whatsapp"></i>
-                    <input type="tel"
-                           @bind="whatsappNumber"
-                           placeholder="6012xxxxxxxx"
-                           @bind:event="oninput" />
-                </div>
-                <button class="send-wa-btn"
-                        @onclick="ProcessWhatsApp"
-                        disabled="@(!IsValidPhoneNumber || isProcessingWA || isLoadingRecord)">
-                    @(isProcessingWA ? "Preparing..." : "WhatsApp")
+            @if (!AppState.IsOutstandingPaymentMode)
+            {
+                <button class="payment-action-btn"
+                        @onclick="RequestEInvoicePrint"
+                        disabled="@(isPrintingEInvoice || isPrinting || isLoadingRecord)">
+                    @(isPrintingEInvoice ? "Printing..." : "Print e-Invoice")
                 </button>
-            </div>
 
-            <button class="payment-action-btn"
-                    @onclick="DownloadPDFReceipt"
-                    disabled="@(isDownloading || isLoadingRecord)">
-                @(isDownloading ? "Downloading..." : "Download PDF Receipt")
-            </button>
+                <div class="whatsapp-box">
+                    <div class="input-group">
+                        <i class="bi bi-whatsapp"></i>
+                        <input type="tel"
+                               @bind="whatsappNumber"
+                               placeholder="6012xxxxxxxx"
+                               @bind:event="oninput" />
+                    </div>
+                    <button class="send-wa-btn"
+                            @onclick="ProcessWhatsApp"
+                            disabled="@(!IsValidPhoneNumber || isProcessingWA || isLoadingRecord)">
+                        @(isProcessingWA ? "Preparing..." : "WhatsApp")
+                    </button>
+                </div>
+
+                <button class="payment-action-btn"
+                        @onclick="DownloadPDFReceipt"
+                        disabled="@(isDownloading || isLoadingRecord)">
+                    @(isDownloading ? "Downloading..." : "Download PDF Receipt")
+                </button>
+            }
 
             <button class="payment-action-btn close-btn"
                     @onclick="Finish"
@@ -135,21 +142,38 @@
         {
             isLoadingRecord = true;
 
-            var result = await SalesService.LoadTransactionAsync(AppState.LastSaleDocumentId);
-            if (result.Success && result.Value is not null)
+            if (AppState.IsOutstandingPaymentMode)
             {
-                salesRecord = result.Value;
-                AppState.LastCompletedTransaction = result.Value;
-            }
-            else if (AppState.LastCompletedTransaction is not null)
-            {
+                // AR Receipt IDs are not Cash Sales IDs. Senang constructs the
+                // Outstanding completion receipt from the saved completion state
+                // instead of calling the Cash Sales LoadRecord endpoint.
                 salesRecord = AppState.LastCompletedTransaction;
+
+                if (salesRecord is null)
+                {
+                    Feedback.Error(
+                        "The Outstanding receipt summary is unavailable.",
+                        "Outstanding receipt unavailable");
+                }
             }
             else
             {
-                Feedback.Error(
-                    result.ErrorMessage ?? "Unable to load the completed sales record.",
-                    "Sales details unavailable");
+                var result = await SalesService.LoadTransactionAsync(AppState.LastSaleDocumentId);
+                if (result.Success && result.Value is not null)
+                {
+                    salesRecord = result.Value;
+                    AppState.LastCompletedTransaction = result.Value;
+                }
+                else if (AppState.LastCompletedTransaction is not null)
+                {
+                    salesRecord = AppState.LastCompletedTransaction;
+                }
+                else
+                {
+                    Feedback.Error(
+                        result.ErrorMessage ?? "Unable to load the completed sales record.",
+                        "Sales details unavailable");
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(AppState.SelectedBranchID))
