@@ -250,6 +250,19 @@
                                                             Tax @item.TaxCode · @((item.TaxRate * 100m).ToString("0.##"))% · @(item.IsTaxInclusive ? "Inclusive" : "Exclusive") · RM @item.LineTaxAmount.ToString("N2")
                                                         </small>
                                                     }
+                                                    @if (item.Points > 0m)
+                                                    {
+                                                        <small class="billing-line-code">
+                                                            <i class="bi bi-stars"></i> Points redeemed · @item.Points.ToString("0.##") pts
+                                                        </small>
+                                                    }
+                                                    <button type="button"
+                                                            class="btn-discount-cell"
+                                                            @onclick="() => ToggleBillingProductPointRedemptionAsync(item)"
+                                                            @onclick:stopPropagation="true">
+                                                        <i class="bi bi-stars"></i>
+                                                        @(item.Points > 0m ? "Remove points" : "Use points")
+                                                    </button>
                                                 </td>
                                                 <td>@item.Quantity</td>
                                                 <td>RM @item.UnitPrice.ToString("N2")</td>
@@ -347,6 +360,19 @@
                                                             Tax @service.TaxCode · @((service.TaxRate * 100m).ToString("0.##"))% · @(service.IsTaxInclusive ? "Inclusive" : "Exclusive") · RM @service.LineTaxAmount.ToString("N2")
                                                         </small>
                                                     }
+                                                    @if (service.Points > 0m)
+                                                    {
+                                                        <small class="billing-line-code">
+                                                            <i class="bi bi-stars"></i> Points redeemed · @service.Points.ToString("0.##") pts
+                                                        </small>
+                                                    }
+                                                    <button type="button"
+                                                            class="btn-discount-cell"
+                                                            @onclick="() => ToggleBillingServicePointRedemptionAsync(service)"
+                                                            @onclick:stopPropagation="true">
+                                                        <i class="bi bi-stars"></i>
+                                                        @(service.Points > 0m ? "Remove points" : "Use points")
+                                                    </button>
                                                 </td>
                                                 <td>@service.Staff</td>
                                                 <td>@service.Quantity</td>
@@ -791,7 +817,7 @@
 
                                     <button type="button"
                                             class="payment-confirm-button"
-                                            disabled="@(_isProcessingPayment || (!_isOutstandingPaymentMode && IsAppointmentPaymentLocked) || ActiveBillingPayments.Count == 0 || (_isOutstandingPaymentMode ? Math.Abs(BillingPaidAmount - PaymentTotalPayable) > 0.009m : BillingPaidAmount < PaymentTotalPayable))"
+                                            disabled="@(_isProcessingPayment || (!_isOutstandingPaymentMode && IsAppointmentPaymentLocked) || (ActiveBillingPayments.Count == 0 && !IsFullyPointRedeemedBillingSale) || (_isOutstandingPaymentMode ? Math.Abs(BillingPaidAmount - PaymentTotalPayable) > 0.009m : BillingPaidAmount < PaymentTotalPayable))"
                                         @onclick="OnConfirmPaymentClicked">
                                         <span>
                                             <strong>@(_isOutstandingPaymentMode ? "Continue" : "Pay") RM @PaymentTotalPayable.ToString("N2")</strong>
@@ -2017,6 +2043,38 @@
     private decimal TotalPayable => CurrentBillingTotals.TotalAfterTax;
     private decimal TotalAmount => TotalPayable;
 
+    private bool HasBillingPointRedemption =>
+        PrescriptionItems.Any(item => item.Points > 0m) ||
+        ServiceItems.Any(item => item.Points > 0m);
+
+    private bool IsFullyPointRedeemedBillingSale =>
+        !_isOutstandingPaymentMode &&
+        HasBillingPointRedemption &&
+        TotalPayable <= 0.009m;
+
+    private decimal BillingPointsAllocated(object? except = null) =>
+        Math.Round(
+            PrescriptionItems
+                .Where(item => !ReferenceEquals(item, except) && item.Points > 0m)
+                .Sum(item => item.Points) +
+            ServiceItems
+                .Where(item => !ReferenceEquals(item, except) && item.Points > 0m)
+                .Sum(item => item.Points),
+            2,
+            MidpointRounding.AwayFromZero);
+
+    private static decimal RequiredBillingPointsFor(BillingItem item) =>
+        Math.Round(
+            Math.Max(0m, item.PointToRedeem) * Math.Max(1, item.Quantity),
+            2,
+            MidpointRounding.AwayFromZero);
+
+    private static decimal RequiredBillingPointsFor(BillingService item) =>
+        Math.Round(
+            Math.Max(0m, item.PointToRedeem) * Math.Max(1, item.Quantity),
+            2,
+            MidpointRounding.AwayFromZero);
+
     private decimal OutstandingSettlementPaymentAmount =>
         Math.Round(
             _outstandingSettlementSelections.Values.Sum(),
@@ -2186,6 +2244,233 @@
             LoadProductCatalogAsync(),
             LoadServiceCatalogAsync(),
             LoadMemberCreditCatalogAsync());
+    }
+
+    private void ClearBillingTenderAfterPointChange()
+    {
+        BillingPayments.Clear();
+        _billingCalculatorMethod = null;
+        _billingCalculatorDigits = string.Empty;
+        SynchronizeBillingPaymentTotals();
+    }
+
+    private async Task ToggleBillingProductPointRedemptionAsync(BillingItem item)
+    {
+        var index = PrescriptionItems.IndexOf(item);
+        if (index < 0)
+        {
+            return;
+        }
+
+        if (item.Points > 0m)
+        {
+            var released = item.Points;
+            PrescriptionItems[index] = item with
+            {
+                Points = 0m,
+                UnitPrice = item.OriginalUnitPrice
+            };
+            ClearBillingTenderAfterPointChange();
+            Feedback.Info($"{released:0.##} points were released from {item.Name}.", "Points removed", 2200);
+            return;
+        }
+
+        if (_isOutstandingPaymentMode)
+        {
+            Feedback.Warning("Point redemption is only available for the current Billing sale.", "Points unavailable");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_billingCustomerId))
+        {
+            Feedback.Warning("Select a valid customer before using points.", "Customer required");
+            return;
+        }
+
+        var productResult =
+            await ProductInventoryService.LoadProductPointConfigurationAsync(item.SourceId);
+        if (!productResult.Success || productResult.Value is null)
+        {
+            Feedback.Error(
+                productResult.ErrorMessage ?? "Unable to load the product point configuration.",
+                "Points unavailable");
+            return;
+        }
+
+        var pointToRedeem = Math.Max(0m, productResult.Value.RedeemPoint);
+        var eligible =
+            productResult.Value.AllowPointRedemption &&
+            pointToRedeem > 0m;
+
+        Console.WriteLine(
+            $"[Point Step 3] BILLING ELIGIBILITY | Inventory={item.SourceId} | Type=1 | " +
+            $"Allow={productResult.Value.AllowPointRedemption} | PointToRedeem={pointToRedeem:0.##} | Eligible={eligible}");
+
+        if (!eligible)
+        {
+            Feedback.Warning(
+                $"{item.Name} is not configured for point redemption.",
+                "Points unavailable");
+            return;
+        }
+
+        var balanceResult = await CustomerService.GetBalanceSummaryAsync(_billingCustomerId);
+        if (!balanceResult.Success || balanceResult.Value is null)
+        {
+            Feedback.Error(
+                balanceResult.ErrorMessage ?? "Unable to load the latest point balance.",
+                "Point balance unavailable");
+            return;
+        }
+
+        CustomerPointBalance = balanceResult.Value.PointBalance;
+        var required = Math.Round(
+            pointToRedeem * Math.Max(1, item.Quantity),
+            2,
+            MidpointRounding.AwayFromZero);
+        var allocatedElsewhere = BillingPointsAllocated(item);
+        var latestBalance = Math.Max(0m, balanceResult.Value.PointBalance);
+
+        Console.WriteLine(
+            $"[Point Step 4] BILLING CONVERSION | Inventory={item.SourceId} | " +
+            $"Rule=FixedItemPointToRedeem | PointToRedeem={pointToRedeem:0.##} | " +
+            $"Qty={item.Quantity} | Required={required:0.##} | PriceMode=FullReplacement");
+
+        if (required <= 0m ||
+            allocatedElsewhere + required - latestBalance > 0.009m)
+        {
+            Feedback.Warning(
+                $"Insufficient points. Available: {Math.Max(0m, latestBalance - allocatedElsewhere):0.##} pts, Required: {required:0.##} pts.",
+                "Not enough points");
+            return;
+        }
+
+        PrescriptionItems[index] = item with
+        {
+            PointToRedeem = pointToRedeem,
+            AllowPointRedemption = true,
+            Points = required,
+            OriginalUnitPrice = item.UnitPrice,
+            UnitPrice = 0m,
+            Discount = 0m,
+            CashDiscountId = string.Empty,
+            DiscountMemo = string.Empty
+        };
+
+        ClearBillingTenderAfterPointChange();
+        Feedback.Success(
+            $"{required:0.##} points applied to {item.Name}.",
+            "Points applied",
+            2200);
+    }
+
+    private async Task ToggleBillingServicePointRedemptionAsync(BillingService item)
+    {
+        var index = ServiceItems.IndexOf(item);
+        if (index < 0)
+        {
+            return;
+        }
+
+        if (item.Points > 0m)
+        {
+            var released = item.Points;
+            ServiceItems[index] = item with
+            {
+                Points = 0m,
+                UnitPrice = item.OriginalUnitPrice
+            };
+            ClearBillingTenderAfterPointChange();
+            Feedback.Info($"{released:0.##} points were released from {item.Name}.", "Points removed", 2200);
+            return;
+        }
+
+        if (_isOutstandingPaymentMode)
+        {
+            Feedback.Warning("Point redemption is only available for the current Billing sale.", "Points unavailable");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_billingCustomerId))
+        {
+            Feedback.Warning("Select a valid customer before using points.", "Customer required");
+            return;
+        }
+
+        var serviceResult = await ServiceItemService.LoadServiceAsync(item.SourceId);
+        if (!serviceResult.Success || serviceResult.Value is null)
+        {
+            Feedback.Error(
+                serviceResult.ErrorMessage ?? "Unable to load the service point configuration.",
+                "Points unavailable");
+            return;
+        }
+
+        var pointToRedeem = Math.Max(0m, serviceResult.Value.RedeemPoint);
+        var eligible =
+            serviceResult.Value.AllowPointRedemption &&
+            pointToRedeem > 0m;
+
+        Console.WriteLine(
+            $"[Point Step 3] BILLING ELIGIBILITY | Inventory={item.SourceId} | Type=3 | " +
+            $"Allow={serviceResult.Value.AllowPointRedemption} | PointToRedeem={pointToRedeem:0.##} | Eligible={eligible}");
+
+        if (!eligible)
+        {
+            Feedback.Warning(
+                $"{item.Name} is not configured for point redemption.",
+                "Points unavailable");
+            return;
+        }
+
+        var balanceResult = await CustomerService.GetBalanceSummaryAsync(_billingCustomerId);
+        if (!balanceResult.Success || balanceResult.Value is null)
+        {
+            Feedback.Error(
+                balanceResult.ErrorMessage ?? "Unable to load the latest point balance.",
+                "Point balance unavailable");
+            return;
+        }
+
+        CustomerPointBalance = balanceResult.Value.PointBalance;
+        var required = Math.Round(
+            pointToRedeem * Math.Max(1, item.Quantity),
+            2,
+            MidpointRounding.AwayFromZero);
+        var allocatedElsewhere = BillingPointsAllocated(item);
+        var latestBalance = Math.Max(0m, balanceResult.Value.PointBalance);
+
+        Console.WriteLine(
+            $"[Point Step 4] BILLING CONVERSION | Inventory={item.SourceId} | " +
+            $"Rule=FixedItemPointToRedeem | PointToRedeem={pointToRedeem:0.##} | " +
+            $"Qty={item.Quantity} | Required={required:0.##} | PriceMode=FullReplacement");
+
+        if (required <= 0m ||
+            allocatedElsewhere + required - latestBalance > 0.009m)
+        {
+            Feedback.Warning(
+                $"Insufficient points. Available: {Math.Max(0m, latestBalance - allocatedElsewhere):0.##} pts, Required: {required:0.##} pts.",
+                "Not enough points");
+            return;
+        }
+
+        ServiceItems[index] = item with
+        {
+            PointToRedeem = pointToRedeem,
+            AllowPointRedemption = true,
+            Points = required,
+            OriginalUnitPrice = item.UnitPrice,
+            UnitPrice = 0m,
+            Discount = 0m,
+            CashDiscountId = string.Empty,
+            DiscountMemo = string.Empty
+        };
+
+        ClearBillingTenderAfterPointChange();
+        Feedback.Success(
+            $"{required:0.##} points applied to {item.Name}.",
+            "Points applied",
+            2200);
     }
 
     private async Task LoadProductCatalogAsync()
@@ -2498,6 +2783,14 @@
 
             if (existing is not null)
             {
+                if (existing.Points > 0m)
+                {
+                    Feedback.Warning(
+                        "Remove points from this service before increasing its quantity.",
+                        "Points in use");
+                    return;
+                }
+
                 var idx = ServiceItems.IndexOf(existing);
                 ServiceItems[idx] = existing with { Quantity = existing.Quantity + 1 };
             }
@@ -2741,6 +3034,14 @@
     private void EditPrescriptionItem(BillingItem item)
     {
         if (_isDeleteMode) return; // Disable edit in delete mode
+
+        if (item.Points > 0m)
+        {
+            Feedback.Warning(
+                "Remove points from this item before editing its quantity or prescription details.",
+                "Points in use");
+            return;
+        }
 
         _editingPrescriptionItem = item;
         
@@ -4278,14 +4579,14 @@
             return;
         }
 
-        if (_isPaymentMethodsLoading)
+        if (_isPaymentMethodsLoading && !IsFullyPointRedeemedBillingSale)
         {
             _paymentValidationError = "Payment methods are still loading.";
             Feedback.Warning(_paymentValidationError, "Payment not ready");
             return;
         }
 
-        if (BillingPayments.Count == 0)
+        if (BillingPayments.Count == 0 && !IsFullyPointRedeemedBillingSale)
         {
             _paymentValidationError = "Select a payment method and enter an amount before confirming.";
             Feedback.Warning(_paymentValidationError, "Payment method required");
@@ -4338,7 +4639,8 @@
 
         SynchronizeBillingPaymentTotals();
 
-        if (AmountReceived is null || AmountReceived < TotalPayable)
+        if (!IsFullyPointRedeemedBillingSale &&
+            (AmountReceived is null || AmountReceived < TotalPayable))
         {
             Feedback.Warning(
                 $"Add RM {Math.Max(0m, TotalPayable - (AmountReceived ?? 0m)):N2} more before completing the sale.",
@@ -4513,8 +4815,10 @@
         {
             InventoryId = item.SourceId,
             Name = item.Name,
+            Sku = item.Sku,
             Description = BuildPrescriptionLineDescription(item),
             Category = "Product",
+            InventoryTypeId = 1,
             Quantity = item.Quantity,
             UnitPrice = item.UnitPrice,
             Discount = item.Discount,
@@ -4524,15 +4828,21 @@
             TaxCodeId = item.TaxCode,
             TaxPercentage = item.TaxRate,
             TaxAmount = item.LineTaxAmount,
-            IsTaxInclusive = item.IsTaxInclusive
+            IsTaxInclusive = item.IsTaxInclusive,
+            PointToRedeem = item.PointToRedeem,
+            AllowPointRedemption = item.AllowPointRedemption,
+            Points = item.Points,
+            OriginalUnitPrice = item.OriginalUnitPrice
         }));
 
         items.AddRange(ServiceItems.Select(item => new TransactionItem
         {
             InventoryId = item.SourceId,
             Name = item.Name,
+            Sku = item.Sku,
             Description = string.IsNullOrWhiteSpace(item.Description) ? item.Name : item.Description,
             Category = "Service",
+            InventoryTypeId = 3,
             Quantity = item.Quantity,
             UnitPrice = item.UnitPrice,
             Discount = item.Discount,
@@ -4543,7 +4853,11 @@
             TaxCodeId = item.TaxCode,
             TaxPercentage = item.TaxRate,
             TaxAmount = item.LineTaxAmount,
-            IsTaxInclusive = item.IsTaxInclusive
+            IsTaxInclusive = item.IsTaxInclusive,
+            PointToRedeem = item.PointToRedeem,
+            AllowPointRedemption = item.AllowPointRedemption,
+            Points = item.Points,
+            OriginalUnitPrice = item.OriginalUnitPrice
         }));
 
         items.AddRange(MemberCreditItems.Select(item => new TransactionItem
@@ -5855,7 +6169,9 @@
         string? Frequency = null, string? Duration = null, string? Reason = null, string? Notes = null,
         string SourceId = "", string Sku = "", decimal? AvailableStock = null,
         string TaxCode = "", bool IsTaxInclusive = false, decimal TaxRate = 0m,
-        string CashDiscountId = "", string DiscountMemo = "")
+        string CashDiscountId = "", string DiscountMemo = "",
+        decimal PointToRedeem = 0m, bool AllowPointRedemption = false,
+        decimal Points = 0m, decimal OriginalUnitPrice = 0m)
     {
         public decimal LineTotal => Math.Max(0m, UnitPrice * Quantity - Discount);
         public decimal LineTaxAmount => CalculateBillingLineAmounts(
@@ -5887,7 +6203,11 @@
         bool IsTaxInclusive = false,
         decimal TaxRate = 0m,
         string CashDiscountId = "",
-        string DiscountMemo = "")
+        string DiscountMemo = "",
+        decimal PointToRedeem = 0m,
+        bool AllowPointRedemption = false,
+        decimal Points = 0m,
+        decimal OriginalUnitPrice = 0m)
     {
         public decimal LineTotal => Math.Max(0m, UnitPrice * Quantity - Discount);
         public decimal LineTaxAmount => CalculateBillingLineAmounts(
