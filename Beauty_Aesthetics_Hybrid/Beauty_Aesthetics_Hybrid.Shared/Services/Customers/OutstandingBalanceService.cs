@@ -22,6 +22,18 @@ public interface IOutstandingBalanceService
     Task<CustomerOperationResult<OutstandingSettlementSaveResultDTO>> CreateSettlementAsync(
         OutstandingSettlementSaveRequestDTO request,
         CancellationToken cancellationToken = default);
+
+    Task<CustomerOperationResult<IReadOnlyList<OutstandingARReceiptHistoryDTO>>> LoadPaymentHistoryAsync(
+        string branchId,
+        DateTime startDate,
+        DateTime endDate,
+        int pageNumber = 1,
+        int pageSize = 50,
+        CancellationToken cancellationToken = default);
+
+    Task<CustomerOperationResult<OutstandingARReceiptDetailDTO>> LoadPaymentReceiptAsync(
+        string documentId,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class OutstandingBalanceService : IOutstandingBalanceService
@@ -130,6 +142,100 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
         }
 
         return CustomerOperationResult<IReadOnlyList<OutstandingDocumentDTO>>.Ok(documents);
+    }
+
+    public async Task<CustomerOperationResult<IReadOnlyList<OutstandingARReceiptHistoryDTO>>> LoadPaymentHistoryAsync(
+        string branchId,
+        DateTime startDate,
+        DateTime endDate,
+        int pageNumber = 1,
+        int pageSize = 50,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedBranchId = branchId?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalizedBranchId))
+        {
+            return CustomerOperationResult<IReadOnlyList<OutstandingARReceiptHistoryDTO>>.Fail(
+                "Branch ID is required to load Outstanding payment history.");
+        }
+
+        if (startDate > endDate)
+        {
+            return CustomerOperationResult<IReadOnlyList<OutstandingARReceiptHistoryDTO>>.Fail(
+                "Outstanding history start date cannot be after the end date.");
+        }
+
+        pageNumber = Math.Max(1, pageNumber);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var result = await arReceiptAC.LoadHistoryAsync(
+            new OutstandingARReceiptHistoryRequestDTO
+            {
+                BranchID = normalizedBranchId,
+                StartDate = startDate,
+                EndDate = endDate,
+                PageNumber = pageNumber,
+                PageSize = pageSize
+            },
+            cancellationToken);
+
+        if (!result.Success || result.Value is null)
+        {
+            return CustomerOperationResult<IReadOnlyList<OutstandingARReceiptHistoryDTO>>.Fail(
+                result.ErrorMessage ?? "Unable to load Outstanding payment history.");
+        }
+
+        var receipts = result.Value
+            .Where(receipt =>
+                receipt.DocumentTypeID == 11 ||
+                receipt.FriendlyDocumentName.Equals(
+                    "CustomerReceipt",
+                    StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(receipt =>
+                receipt.FinancialDate.Year <= 1900
+                    ? receipt.CreatedDateTime
+                    : receipt.FinancialDate)
+            .ThenByDescending(receipt => receipt.DisplayCode, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        Console.WriteLine(
+            $"[Outstanding Step 12] HISTORY LOADED | Branch={normalizedBranchId} | " +
+            $"From={startDate:yyyy-MM-dd} | To={endDate:yyyy-MM-dd} | " +
+            $"Page={pageNumber} | PageSize={pageSize} | Records={receipts.Count} | " +
+            $"Total={receipts.Sum(receipt => receipt.EffectiveAmount):N2}");
+
+        return CustomerOperationResult<IReadOnlyList<OutstandingARReceiptHistoryDTO>>.Ok(receipts);
+    }
+
+    public async Task<CustomerOperationResult<OutstandingARReceiptDetailDTO>> LoadPaymentReceiptAsync(
+        string documentId,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedDocumentId = documentId?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalizedDocumentId))
+        {
+            return CustomerOperationResult<OutstandingARReceiptDetailDTO>.Fail(
+                "AR Receipt Document ID is required.");
+        }
+
+        var result = await arReceiptAC.LoadRecordAsync(
+            normalizedDocumentId,
+            cancellationToken);
+
+        if (!result.Success || result.Value is null)
+        {
+            return CustomerOperationResult<OutstandingARReceiptDetailDTO>.Fail(
+                result.ErrorMessage ?? "Unable to load Outstanding payment receipt.");
+        }
+
+        Console.WriteLine(
+            $"[Outstanding Step 12] RECEIPT LOADED | Id={normalizedDocumentId} | " +
+            $"Receipt={result.Value.Receipt.DisplayCode} | " +
+            $"Customer={result.Value.Receipt.AccountID} | " +
+            $"Amount={result.Value.Receipt.EffectiveAmount:N2} | " +
+            $"Documents={result.Value.SettlementLines.Count}");
+
+        return CustomerOperationResult<OutstandingARReceiptDetailDTO>.Ok(result.Value);
     }
 
     public async Task<CustomerOperationResult<OutstandingSettlementSaveResultDTO>> CreateSettlementAsync(
