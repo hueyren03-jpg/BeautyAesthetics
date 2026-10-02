@@ -223,6 +223,17 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
                 2,
                 MidpointRounding.AwayFromZero);
 
+            var remainingAfterSettlement = Math.Round(
+                Math.Max(0m, liveOutstanding - allocated),
+                2,
+                MidpointRounding.AwayFromZero);
+
+            Console.WriteLine(
+                $"[Outstanding Step 6] {(remainingAfterSettlement > 0m ? "PARTIAL" : "FULL")} SETTLEMENT | " +
+                $"Source={selection.Key} | Document={line.DisplayCode} | " +
+                $"Before={liveOutstanding:N2} | Pay={allocated:N2} | " +
+                $"RemainingAfter={remainingAfterSettlement:N2}");
+
             line.AllocatedAmount = allocated;
             line.LocalAllocatedAmount = allocated;
             line.ActualLocalSettlement = allocated;
