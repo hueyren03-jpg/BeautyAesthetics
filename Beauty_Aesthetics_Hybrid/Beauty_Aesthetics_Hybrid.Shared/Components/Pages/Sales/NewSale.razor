@@ -30,6 +30,7 @@
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JS
 @inject AppFeedbackService Feedback
+@inject Beauty_Aesthetics_WebPos.Components.Services.AppState AppState
 @implements IDisposable
 
 <PageTitle>New Sale - Pending Orders</PageTitle>
@@ -4945,6 +4946,12 @@
                         $"[Outstanding Step 9] SAVE BLOCKED / REFRESH | Customer={currentOrder.AccountId} | " +
                         $"Error={errorMessage}");
 
+                    var isStaleOutstanding =
+                        errorMessage.Contains("changed from", StringComparison.OrdinalIgnoreCase) ||
+                        errorMessage.Contains("no longer available", StringComparison.OrdinalIgnoreCase) ||
+                        errorMessage.Contains("now has only", StringComparison.OrdinalIgnoreCase) ||
+                        errorMessage.Contains("latest balance", StringComparison.OrdinalIgnoreCase);
+
                     outstandingSettlementPayments.Clear();
                     calculatorMethod = null;
                     calculatorDigits = string.Empty;
@@ -4957,7 +4964,9 @@
                     Feedback.Fail(
                         feedbackId,
                         errorMessage,
-                        "Outstanding changed — review latest balance");
+                        isStaleOutstanding
+                            ? "Outstanding changed — review latest balance"
+                            : "Outstanding payment failed");
                     return;
                 }
 
@@ -4969,6 +4978,75 @@
                     $"Amount={saved.TotalAllocatedAmount:N2} | " +
                     $"Documents={saved.SettledDocumentCount}");
 
+                // Match Senang Retail: preserve the AR Receipt completion
+                // details, then show the common Payment Successful receipt screen.
+                var paymentMethodDisplay = string.Join(
+                    ", ",
+                    outstandingPayments.Select(payment => payment.PaymentMethod));
+
+                var outstandingReceipt = new Transaction
+                {
+                    DocumentId = saved.Id,
+                    DocumentTypeId = 11,
+                    AccountId = currentOrder.AccountId,
+                    BranchId = branchId,
+                    GroupId = groupId,
+                    Date = DateTime.Now,
+                    InvoiceNumber = saved.DisplayCode,
+                    CustomerName = currentOrder.CustomerName,
+                    CustomerContact = currentOrder.CustomerContact,
+                    Branch = branch?.Name ?? branchId,
+                    Type = "Outstanding Payment",
+                    ItemCount = 1,
+                    Amount = saved.TotalAllocatedAmount,
+                    Subtotal = saved.TotalAllocatedAmount,
+                    Tax = 0m,
+                    Discount = 0m,
+                    CurrencyName = "MYR",
+                    PaymentMethod = paymentMethodDisplay,
+                    Status = "Paid",
+                    Items = new List<TransactionItem>
+                    {
+                        new()
+                        {
+                            Name = "Outstanding Payment",
+                            Description = $"{saved.SettledDocumentCount} outstanding document(s)",
+                            Category = "Outstanding",
+                            Quantity = 1,
+                            UnitPrice = saved.TotalAllocatedAmount,
+                            TotalPrice = saved.TotalAllocatedAmount
+                        }
+                    },
+                    Payments = outstandingPayments
+                        .Select(payment => new TransactionPayment
+                        {
+                            PaymentTypeId = payment.PaymentTypeId,
+                            PaymentMethod = payment.PaymentMethod,
+                            Amount = payment.Amount,
+                            FinancialAccountId = payment.FinancialAccountId,
+                            BankName = payment.BankName
+                        })
+                        .ToList()
+                };
+                outstandingReceipt.ReceiptPayments = outstandingReceipt.Payments
+                    .Select(payment => new TransactionPayment
+                    {
+                        PaymentTypeId = payment.PaymentTypeId,
+                        PaymentMethod = payment.PaymentMethod,
+                        Amount = payment.Amount,
+                        FinancialAccountId = payment.FinancialAccountId,
+                        BankName = payment.BankName
+                    })
+                    .ToList();
+
+                AppState.LastSaleDocumentId = saved.Id;
+                AppState.LastReceiptNo = saved.DisplayCode;
+                AppState.LastPaidAmount = saved.TotalAllocatedAmount;
+                AppState.LastPaymentMethod = paymentMethodDisplay;
+                AppState.LastCompletedTransaction = outstandingReceipt;
+                AppState.LastPaymentReturnUrl = "/sales/new";
+                AppState.IsOutstandingPaymentMode = true;
+
                 outstandingSettlementSelections.Clear();
                 outstandingSettlementExpectedBalances.Clear();
                 outstandingSettlementPayments.Clear();
@@ -4977,14 +5055,14 @@
                 calculatorDigits = string.Empty;
                 stage = SaleStage.Cart;
 
-                await LoadSelectedCustomerBalancesAsync(currentOrder.AccountId);
-
                 Feedback.Resolve(
                     feedbackId,
                     string.IsNullOrWhiteSpace(saved.DisplayCode)
-                        ? $"Outstanding payment of MYR {saved.TotalAllocatedAmount:N2} saved successfully."
-                        : $"Outstanding payment {saved.DisplayCode} saved successfully.",
-                    "Outstanding paid");
+                        ? $"Outstanding payment of MYR {saved.TotalAllocatedAmount:N2} completed successfully."
+                        : $"Outstanding payment {saved.DisplayCode} completed successfully.",
+                    "Outstanding payment successful");
+
+                NavigationManager.NavigateTo("/complete-sales");
             }
             finally
             {
