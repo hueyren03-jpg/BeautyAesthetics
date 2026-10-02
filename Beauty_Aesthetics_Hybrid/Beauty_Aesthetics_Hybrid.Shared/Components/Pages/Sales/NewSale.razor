@@ -628,8 +628,7 @@
                                 <b>MYR @item.TotalPrice.ToString("N2")</b>
                                 <div class="cart-item-actions">
                                     @if (!currentOrder.IsRedemptionMode &&
-                                         item.AllowPointRedemption &&
-                                         item.PointToRedeem > 0m)
+                                         (item.InventoryTypeId == 1 || item.InventoryTypeId == 3))
                                     {
                                         <button type="button"
                                                 class="credit-action"
@@ -2284,6 +2283,47 @@
                 "Customer required");
             return;
         }
+
+        // The product/service proxy list does not always carry point-redemption fields.
+        // Refresh the full inventory record when the cashier actually chooses Use points,
+        // so a valid backend PointToRedeem/AllowPointRedemption configuration is never
+        // hidden by stale catalog data.
+        if (item.InventoryTypeId == 1)
+        {
+            var productResult = await ProductInventoryService.LoadProductAsync(item.InventoryId);
+            if (productResult.Success && productResult.Value is not null)
+            {
+                item.PointToRedeem = Math.Max(0m, productResult.Value.RedeemPoint);
+                item.AllowPointRedemption =
+                    productResult.Value.AllowPointRedemption &&
+                    item.PointToRedeem > 0m;
+            }
+            else
+            {
+                Console.WriteLine(
+                    $"[Point Step 2] Product point refresh failed | Inventory={item.InventoryId} | Error={productResult.ErrorMessage}");
+            }
+        }
+        else if (item.InventoryTypeId == 3)
+        {
+            var serviceResult = await ServiceItemService.LoadServiceAsync(item.InventoryId);
+            if (serviceResult.Success && serviceResult.Value is not null)
+            {
+                item.PointToRedeem = Math.Max(0m, serviceResult.Value.RedeemPoint);
+                item.AllowPointRedemption =
+                    serviceResult.Value.AllowPointRedemption &&
+                    item.PointToRedeem > 0m;
+            }
+            else
+            {
+                Console.WriteLine(
+                    $"[Point Step 2] Service point refresh failed | Inventory={item.InventoryId} | Error={serviceResult.ErrorMessage}");
+            }
+        }
+
+        Console.WriteLine(
+            $"[Point Step 2] CONFIG | Inventory={item.InventoryId} | Type={item.InventoryTypeId} | " +
+            $"Allow={item.AllowPointRedemption} | PointToRedeem={item.PointToRedeem:0.##}");
 
         if (!item.AllowPointRedemption || item.PointToRedeem <= 0m)
         {
