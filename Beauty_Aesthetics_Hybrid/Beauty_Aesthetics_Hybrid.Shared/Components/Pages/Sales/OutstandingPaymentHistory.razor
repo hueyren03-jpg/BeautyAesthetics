@@ -1,0 +1,597 @@
+@page "/sales/outstanding-history"
+@namespace Beauty_Aesthetics_WebPos.Components.Pages
+@using Beauty_Aesthetics_WebPos.Models.DTOs
+@using Beauty_Aesthetics_WebPos.Components.Services.Customers
+@using Beauty_Aesthetics_WebPos.Components.Services.Feedback
+@inject IOutstandingBalanceService OutstandingBalanceService
+@inject Beauty_Aesthetics_WebPos.Components.Services.AppState AppState
+@inject NavigationManager Navigation
+@inject AppFeedbackService Feedback
+
+<main class="outstanding-history-page">
+    <header class="history-header">
+        <div class="history-title-group">
+            <button type="button" class="icon-button" title="Back to Sales" @onclick="BackToSales">
+                <i class="bi bi-arrow-left"></i>
+            </button>
+            <div>
+                <h1>Outstanding Payment History</h1>
+                <p>Customer Receipt records loaded directly from the backend.</p>
+            </div>
+        </div>
+
+        <button type="button" class="refresh-button" disabled="@isLoading" @onclick="RefreshAsync">
+            <i class="bi bi-arrow-clockwise"></i>
+            <span>@(isLoading ? "Loading..." : "Refresh")</span>
+        </button>
+    </header>
+
+    <section class="history-filter-card">
+        <label>
+            <span>From</span>
+            <input type="date" @bind="startDate" @bind:format="yyyy-MM-dd" max="@endDate.ToString("yyyy-MM-dd")" />
+        </label>
+        <label>
+            <span>To</span>
+            <input type="date" @bind="endDate" @bind:format="yyyy-MM-dd" min="@startDate.ToString("yyyy-MM-dd")" />
+        </label>
+        <label class="branch-field">
+            <span>Branch</span>
+            <input value="@BranchDisplay" readonly />
+        </label>
+        <button type="button" class="apply-button" disabled="@isLoading" @onclick="ApplyFiltersAsync">
+            <i class="bi bi-funnel"></i>
+            <span>Apply</span>
+        </button>
+    </section>
+
+    <section class="history-summary" aria-label="Outstanding payment history summary">
+        <article class="summary-card">
+            <span>Receipts on Page</span>
+            <strong>@records.Count</strong>
+        </article>
+        <article class="summary-card">
+            <span>Page Total</span>
+            <strong>MYR @records.Sum(item => item.EffectiveAmount).ToString("N2")</strong>
+        </article>
+        <article class="summary-card">
+            <span>Page</span>
+            <strong>@currentPage</strong>
+        </article>
+        <article class="summary-card">
+            <span>Latest Receipt</span>
+            <strong>@LatestReceiptText</strong>
+        </article>
+    </section>
+
+    <section class="history-panel">
+        <div class="history-toolbar">
+            <label class="search-box">
+                <i class="bi bi-search"></i>
+                <input type="search"
+                       placeholder="Search receipt, customer or payment account"
+                       @bind="searchText"
+                       @bind:event="oninput" />
+            </label>
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="history-state">
+                <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                <span>Loading Customer Receipt history...</span>
+            </div>
+        }
+        else if (!string.IsNullOrWhiteSpace(loadError))
+        {
+            <div class="history-state history-error">
+                <i class="bi bi-exclamation-triangle"></i>
+                <strong>Unable to load Outstanding payment history.</strong>
+                <span>@loadError</span>
+            </div>
+        }
+        else if (FilteredRecords.Count == 0)
+        {
+            <div class="history-state history-empty">
+                <i class="bi bi-receipt"></i>
+                <strong>No Customer Receipt records found.</strong>
+                <span>Try another date range or confirm the selected branch.</span>
+            </div>
+        }
+        else
+        {
+            <div class="history-table-wrap">
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th>Receipt No.</th>
+                            <th>Date</th>
+                            <th>Customer</th>
+                            <th>Payment Account</th>
+                            <th class="amount-column">Amount</th>
+                            <th>Status</th>
+                            <th class="action-column">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var record in FilteredRecords)
+                        {
+                            <tr @key="record.DocumentID">
+                                <td>
+                                    <div class="receipt-cell">
+                                        <strong>@Display(record.DisplayCode)</strong>
+                                        <span>@Display(record.DocumentID)</span>
+                                    </div>
+                                </td>
+                                <td>@FormatDate(record.FinancialDate, record.CreatedDateTime)</td>
+                                <td>
+                                    <div class="customer-cell">
+                                        <strong>@Display(record.AccountName)</strong>
+                                        <span>@Display(record.AccountID)</span>
+                                    </div>
+                                </td>
+                                <td>@Display(record.PaymentMethod)</td>
+                                <td class="amount-column">MYR @record.EffectiveAmount.ToString("N2")</td>
+                                <td>
+                                    <span class="status-pill @(record.IsVoid ? "voided" : "active")">
+                                        @(record.IsVoid ? "Voided" : "Active")
+                                    </span>
+                                </td>
+                                <td class="action-column">
+                                    <button type="button"
+                                            class="view-button"
+                                            disabled="@isLoadingDetails"
+                                            @onclick="() => OpenDetailsAsync(record)">
+                                        <i class="bi bi-eye"></i>
+                                        <span>View</span>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="history-mobile-list">
+                @foreach (var record in FilteredRecords)
+                {
+                    <article class="history-mobile-card" @key="record.DocumentID">
+                        <div class="mobile-card-heading">
+                            <div>
+                                <strong>@Display(record.DisplayCode)</strong>
+                                <span>@FormatDate(record.FinancialDate, record.CreatedDateTime)</span>
+                            </div>
+                            <span class="status-pill @(record.IsVoid ? "voided" : "active")">
+                                @(record.IsVoid ? "Voided" : "Active")
+                            </span>
+                        </div>
+
+                        <div class="mobile-card-grid">
+                            <div>
+                                <span>Customer</span>
+                                <strong>@Display(record.AccountName)</strong>
+                            </div>
+                            <div>
+                                <span>Payment</span>
+                                <strong>@Display(record.PaymentMethod)</strong>
+                            </div>
+                            <div>
+                                <span>Amount</span>
+                                <strong>MYR @record.EffectiveAmount.ToString("N2")</strong>
+                            </div>
+                            <div>
+                                <span>Branch</span>
+                                <strong>@Display(record.BranchID)</strong>
+                            </div>
+                        </div>
+
+                        <button type="button"
+                                class="view-button mobile-view-button"
+                                disabled="@isLoadingDetails"
+                                @onclick="() => OpenDetailsAsync(record)">
+                            <i class="bi bi-eye"></i>
+                            <span>View Details</span>
+                        </button>
+                    </article>
+                }
+            </div>
+        }
+
+        <footer class="history-pagination">
+            <span>Backend page @currentPage · up to @PageSize records per page</span>
+            <div>
+                <button type="button"
+                        class="icon-button"
+                        title="Previous page"
+                        disabled="@(isLoading || currentPage <= 1)"
+                        @onclick="PreviousPageAsync">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <strong>Page @currentPage</strong>
+                <button type="button"
+                        class="icon-button"
+                        title="Next page"
+                        disabled="@(isLoading || !CanLoadNextPage)"
+                        @onclick="NextPageAsync">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+        </footer>
+    </section>
+</main>
+
+@if (selectedSummary is not null)
+{
+    <div class="history-dialog-backdrop" @onclick="CloseDetails"></div>
+    <section class="history-dialog" role="dialog" aria-modal="true" aria-labelledby="outstanding-history-detail-title">
+        <header class="history-dialog-header">
+            <div>
+                <h2 id="outstanding-history-detail-title">
+                    <i class="bi bi-receipt-cutoff"></i>
+                    Customer Receipt Details
+                </h2>
+                <span>@Display(CurrentDetailReceipt.DisplayCode)</span>
+            </div>
+            <button type="button" title="Close" aria-label="Close receipt details" @onclick="CloseDetails">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </header>
+
+        @if (isLoadingDetails)
+        {
+            <div class="detail-loading">
+                <span class="spinner-border spinner-border-sm"></span>
+                <span>Loading receipt from backend...</span>
+            </div>
+        }
+        else if (!string.IsNullOrWhiteSpace(detailError))
+        {
+            <div class="detail-loading history-error">
+                <i class="bi bi-exclamation-triangle"></i>
+                <span>@detailError</span>
+            </div>
+        }
+        else
+        {
+            <div class="history-dialog-content">
+                <section class="detail-section">
+                    <h3>Receipt Information</h3>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <span>Receipt No.</span>
+                            <strong>@Display(CurrentDetailReceipt.DisplayCode)</strong>
+                        </div>
+                        <div class="detail-item">
+                            <span>Document ID</span>
+                            <strong>@Display(CurrentDetailReceipt.DocumentID)</strong>
+                        </div>
+                        <div class="detail-item">
+                            <span>Date</span>
+                            <strong>@FormatDate(CurrentDetailReceipt.FinancialDate, CurrentDetailReceipt.CreatedDateTime)</strong>
+                        </div>
+                        <div class="detail-item">
+                            <span>Branch</span>
+                            <strong>@Display(CurrentDetailReceipt.BranchID)</strong>
+                        </div>
+                        <div class="detail-item">
+                            <span>Customer</span>
+                            <strong>@Display(CurrentDetailReceipt.AccountName)</strong>
+                        </div>
+                        <div class="detail-item">
+                            <span>Customer ID</span>
+                            <strong>@Display(CurrentDetailReceipt.AccountID)</strong>
+                        </div>
+                        <div class="detail-item">
+                            <span>Payment Account</span>
+                            <strong>@Display(CurrentDetailReceipt.PaymentMethod)</strong>
+                        </div>
+                        <div class="detail-item">
+                            <span>Amount Paid</span>
+                            <strong class="detail-amount">MYR @CurrentDetailReceipt.EffectiveAmount.ToString("N2")</strong>
+                        </div>
+                        <div class="detail-item">
+                            <span>Created By</span>
+                            <strong>@Display(CurrentDetailReceipt.CreatedBy)</strong>
+                        </div>
+                        <div class="detail-item">
+                            <span>Status</span>
+                            <strong>@(CurrentDetailReceipt.IsVoid ? "Voided" : "Active")</strong>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="detail-section">
+                    <div class="detail-section-heading">
+                        <h3>Settled Documents</h3>
+                        <span>@SettlementLines.Count document(s)</span>
+                    </div>
+
+                    @if (SettlementLines.Count == 0)
+                    {
+                        <p class="detail-muted">The backend LoadRecord response did not return settlement lines for this receipt.</p>
+                    }
+                    else
+                    {
+                        <div class="document-table-wrap">
+                            <table class="document-table">
+                                <thead>
+                                    <tr>
+                                        <th>Document</th>
+                                        <th>Document ID</th>
+                                        <th>Settlement Date</th>
+                                        <th>Paid</th>
+                                        <th>Remaining After</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var line in SettlementLines)
+                                    {
+                                        <tr>
+                                            <td>@Display(line.DisplayCode)</td>
+                                            <td>@Display(line.DocumentID)</td>
+                                            <td>@FormatDate(line.SettlementDate, DateTime.MinValue)</td>
+                                            <td>MYR @line.AllocatedAmount.ToString("N2")</td>
+                                            <td>MYR @Math.Max(0m, line.Outstanding - line.AllocatedAmount).ToString("N2")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </section>
+            </div>
+        }
+    </section>
+}
+
+@code {
+    private readonly List<OutstandingARReceiptHistoryDTO> records = new();
+    private OutstandingARReceiptHistoryDTO? selectedSummary;
+    private OutstandingARReceiptDetailDTO? selectedDetail;
+
+    private DateTime startDate = DateTime.Today.AddYears(-1);
+    private DateTime endDate = DateTime.Today;
+    private string searchText = string.Empty;
+    private string loadError = string.Empty;
+    private string detailError = string.Empty;
+    private bool isLoading = true;
+    private bool isLoadingDetails;
+    private int currentPage = 1;
+    private const int PageSize = 50;
+
+    private string BranchID => AppState.SelectedBranchID?.Trim() ?? string.Empty;
+    private string BranchDisplay =>
+        !string.IsNullOrWhiteSpace(AppState.CurrentBranch?.Name)
+            ? $"{AppState.CurrentBranch.Name} ({BranchID})"
+            : Display(BranchID);
+
+    private IReadOnlyList<OutstandingARReceiptHistoryDTO> FilteredRecords
+    {
+        get
+        {
+            var search = searchText?.Trim() ?? string.Empty;
+            IEnumerable<OutstandingARReceiptHistoryDTO> query = records;
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                query = query.Where(record =>
+                    Contains(record.DisplayCode, search) ||
+                    Contains(record.DocumentID, search) ||
+                    Contains(record.AccountName, search) ||
+                    Contains(record.AccountID, search) ||
+                    Contains(record.BankAccountName, search) ||
+                    Contains(record.FinancialAccountID, search));
+            }
+
+            return query.ToList();
+        }
+    }
+
+    private bool CanLoadNextPage => records.Count >= PageSize;
+
+    private string LatestReceiptText
+    {
+        get
+        {
+            if (records.Count == 0)
+            {
+                return "-";
+            }
+
+            var latest = records
+                .Select(record => EffectiveDate(record.FinancialDate, record.CreatedDateTime))
+                .Where(date => date.Year > 1900)
+                .DefaultIfEmpty(DateTime.MinValue)
+                .Max();
+
+            return latest == DateTime.MinValue ? "-" : latest.ToString("dd MMM yyyy");
+        }
+    }
+
+    private OutstandingARReceiptHistoryDTO CurrentDetailReceipt =>
+        selectedDetail?.Receipt ?? selectedSummary ?? new OutstandingARReceiptHistoryDTO();
+
+    private IReadOnlyList<EBI.DM.ud_ARAPPaymentOffSetLineDM> SettlementLines =>
+        selectedDetail?.SettlementLines ?? new List<EBI.DM.ud_ARAPPaymentOffSetLineDM>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadHistoryAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        await LoadHistoryAsync();
+    }
+
+    private async Task ApplyFiltersAsync()
+    {
+        currentPage = 1;
+        await LoadHistoryAsync();
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        loadError = string.Empty;
+        isLoading = true;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(BranchID))
+            {
+                loadError = "No working branch is selected.";
+                return;
+            }
+
+            if (startDate.Date > endDate.Date)
+            {
+                loadError = "From date cannot be after To date.";
+                return;
+            }
+
+            var result = await OutstandingBalanceService.LoadPaymentHistoryAsync(
+                BranchID,
+                startDate.Date,
+                endDate.Date.AddDays(1).AddTicks(-1),
+                currentPage,
+                PageSize);
+
+            records.Clear();
+
+            if (!result.Success || result.Value is null)
+            {
+                loadError = result.ErrorMessage ?? "Unable to load Outstanding payment history.";
+                return;
+            }
+
+            records.AddRange(result.Value);
+
+            Console.WriteLine(
+                $"[Outstanding Step 12] HISTORY PAGE LOADED | Branch={BranchID} | " +
+                $"Page={currentPage} | Records={records.Count} | " +
+                $"Total={records.Sum(item => item.EffectiveAmount):N2}");
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+            Feedback.Error(
+                $"Unable to load Outstanding payment history. {ex.Message}",
+                "Outstanding history unavailable");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task OpenDetailsAsync(OutstandingARReceiptHistoryDTO record)
+    {
+        selectedSummary = record;
+        selectedDetail = null;
+        detailError = string.Empty;
+        isLoadingDetails = true;
+
+        try
+        {
+            var result = await OutstandingBalanceService.LoadPaymentReceiptAsync(record.DocumentID);
+            if (!result.Success || result.Value is null)
+            {
+                detailError = result.ErrorMessage ?? "Unable to load Customer Receipt details.";
+                return;
+            }
+
+            MergeReceiptFallback(result.Value.Receipt, record);
+            selectedDetail = result.Value;
+        }
+        catch (Exception ex)
+        {
+            detailError = ex.Message;
+        }
+        finally
+        {
+            isLoadingDetails = false;
+        }
+    }
+
+    private async Task PreviousPageAsync()
+    {
+        if (currentPage <= 1)
+        {
+            return;
+        }
+
+        currentPage--;
+        await LoadHistoryAsync();
+    }
+
+    private async Task NextPageAsync()
+    {
+        if (!CanLoadNextPage)
+        {
+            return;
+        }
+
+        currentPage++;
+        await LoadHistoryAsync();
+
+        if (records.Count == 0)
+        {
+            currentPage--;
+            await LoadHistoryAsync();
+        }
+    }
+
+    private void CloseDetails()
+    {
+        selectedSummary = null;
+        selectedDetail = null;
+        detailError = string.Empty;
+    }
+
+    private void BackToSales() => Navigation.NavigateTo("/sales");
+
+    private static void MergeReceiptFallback(
+        OutstandingARReceiptHistoryDTO target,
+        OutstandingARReceiptHistoryDTO fallback)
+    {
+        if (string.IsNullOrWhiteSpace(target.DocumentID)) target.DocumentID = fallback.DocumentID;
+        if (string.IsNullOrWhiteSpace(target.DisplayCode)) target.DisplayCode = fallback.DisplayCode;
+        if (string.IsNullOrWhiteSpace(target.AccountID)) target.AccountID = fallback.AccountID;
+        if (string.IsNullOrWhiteSpace(target.AccountName)) target.AccountName = fallback.AccountName;
+        if (string.IsNullOrWhiteSpace(target.BranchID)) target.BranchID = fallback.BranchID;
+        if (string.IsNullOrWhiteSpace(target.GroupID)) target.GroupID = fallback.GroupID;
+        if (string.IsNullOrWhiteSpace(target.BankAccountID)) target.BankAccountID = fallback.BankAccountID;
+        if (string.IsNullOrWhiteSpace(target.BankAccountName)) target.BankAccountName = fallback.BankAccountName;
+        if (string.IsNullOrWhiteSpace(target.FinancialAccountID)) target.FinancialAccountID = fallback.FinancialAccountID;
+        if (string.IsNullOrWhiteSpace(target.CreatedBy)) target.CreatedBy = fallback.CreatedBy;
+        if (target.FinancialDate.Year <= 1900) target.FinancialDate = fallback.FinancialDate;
+        if (target.CreatedDateTime.Year <= 1900) target.CreatedDateTime = fallback.CreatedDateTime;
+        if (target.TotalAllocatedAmount == 0m) target.TotalAllocatedAmount = fallback.TotalAllocatedAmount;
+        if (target.ActualLocalSettlement == 0m) target.ActualLocalSettlement = fallback.ActualLocalSettlement;
+        if (target.CustomerAmountReceived == 0m) target.CustomerAmountReceived = fallback.CustomerAmountReceived;
+        if (target.LocalAmountReceived == 0m) target.LocalAmountReceived = fallback.LocalAmountReceived;
+        if (target.BankAmountReceived == 0m) target.BankAmountReceived = fallback.BankAmountReceived;
+        target.IsVoid |= fallback.IsVoid;
+    }
+
+    private static DateTime EffectiveDate(DateTime financialDate, DateTime createdDate) =>
+        financialDate.Year > 1900
+            ? financialDate
+            : createdDate.Year > 1900
+                ? createdDate
+                : DateTime.MinValue;
+
+    private static string FormatDate(DateTime primary, DateTime fallback)
+    {
+        var value = EffectiveDate(primary, fallback);
+        return value == DateTime.MinValue
+            ? "-"
+            : value.ToString("dd MMM yyyy, hh:mm tt");
+    }
+
+    private static bool Contains(string? value, string search) =>
+        value?.Contains(search, StringComparison.OrdinalIgnoreCase) == true;
+
+    private static string Display(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();
+}
