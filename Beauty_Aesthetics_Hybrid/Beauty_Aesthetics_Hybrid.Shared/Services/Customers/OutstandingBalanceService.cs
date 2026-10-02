@@ -193,6 +193,14 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
         var offsetLines = new ObservableCollection<ud_ARAPPaymentOffSetLineDM>();
         var now = DateTime.Now;
 
+        if (requested.Count > 1)
+        {
+            Console.WriteLine(
+                $"[Outstanding Step 7] MULTI-INVOICE START | Customer={customerId} | " +
+                $"Documents={requested.Count} | " +
+                $"RequestedTotal={requested.Values.Sum():N2}");
+        }
+
         foreach (var selection in requested)
         {
             var line = rawLines.FirstOrDefault(candidate =>
@@ -244,12 +252,44 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
 
             usedLines.Add(line);
             offsetLines.Add(line);
+
+            if (requested.Count > 1)
+            {
+                Console.WriteLine(
+                    $"[Outstanding Step 7] LINE | Source={selection.Key} | " +
+                    $"Document={line.DisplayCode} | Allocated={allocated:N2} | " +
+                    $"RemainingAfter={remainingAfterSettlement:N2}");
+            }
         }
+
+        if (offsetLines.Count != requested.Count)
+        {
+            return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
+                "Not all selected outstanding documents could be matched to live settlement lines.");
+        }
+
+        var requestedTotal = Math.Round(
+            requested.Values.Sum(),
+            2,
+            MidpointRounding.AwayFromZero);
 
         var totalAllocated = Math.Round(
             offsetLines.Sum(line => line.AllocatedAmount),
             2,
             MidpointRounding.AwayFromZero);
+
+        if (Math.Abs(totalAllocated - requestedTotal) > 0.009m)
+        {
+            return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
+                $"Outstanding settlement total changed during validation. Requested RM {requestedTotal:N2}, validated RM {totalAllocated:N2}.");
+        }
+
+        if (requested.Count > 1)
+        {
+            Console.WriteLine(
+                $"[Outstanding Step 7] MULTI-INVOICE VALIDATED | Documents={offsetLines.Count} | " +
+                $"TotalAllocated={totalAllocated:N2}");
+        }
 
         if (totalAllocated <= 0m)
         {
@@ -347,6 +387,14 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
             $"[Outstanding Step 5] AR RECEIPT SAVED | Id={saveResult.Value.Id} | " +
             $"DisplayCode={saveResult.Value.DisplayCode} | " +
             $"Amount={saveResult.Value.TotalAllocatedAmount:N2}");
+
+        if (requested.Count > 1)
+        {
+            Console.WriteLine(
+                $"[Outstanding Step 7] MULTI-INVOICE SAVE COMPLETE | " +
+                $"Receipt={saveResult.Value.DisplayCode} | Documents={offsetLines.Count} | " +
+                $"Amount={saveResult.Value.TotalAllocatedAmount:N2}");
+        }
 
         return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Ok(saveResult.Value);
     }
