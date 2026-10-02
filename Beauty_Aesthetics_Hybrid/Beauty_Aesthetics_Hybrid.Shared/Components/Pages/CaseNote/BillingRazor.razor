@@ -2075,6 +2075,112 @@
             2,
             MidpointRounding.AwayFromZero);
 
+    private async Task<bool> RevalidateBillingPointRedemptionsAsync(bool showFeedback = true)
+    {
+        var pointProducts = PrescriptionItems
+            .Where(item => item.Points > 0m)
+            .ToList();
+        var pointServices = ServiceItems
+            .Where(item => item.Points > 0m)
+            .ToList();
+
+        if (pointProducts.Count == 0 && pointServices.Count == 0)
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(_billingCustomerId))
+        {
+            if (showFeedback)
+            {
+                Feedback.Warning("Select a valid customer before using points.", "Customer required");
+            }
+            return false;
+        }
+
+        foreach (var item in pointProducts)
+        {
+            if (!item.AllowPointRedemption ||
+                item.PointToRedeem <= 0m ||
+                Math.Abs(RequiredBillingPointsFor(item) - item.Points) > 0.009m ||
+                Math.Abs(item.UnitPrice) > 0.009m)
+            {
+                if (showFeedback)
+                {
+                    Feedback.Warning(
+                        $"{item.Name} has an invalid point-redemption state. Remove and apply points again.",
+                        "Points need updating");
+                }
+                return false;
+            }
+        }
+
+        foreach (var item in pointServices)
+        {
+            if (!item.AllowPointRedemption ||
+                item.PointToRedeem <= 0m ||
+                Math.Abs(RequiredBillingPointsFor(item) - item.Points) > 0.009m ||
+                Math.Abs(item.UnitPrice) > 0.009m)
+            {
+                if (showFeedback)
+                {
+                    Feedback.Warning(
+                        $"{item.Name} has an invalid point-redemption state. Remove and apply points again.",
+                        "Points need updating");
+                }
+                return false;
+            }
+        }
+
+        var balanceResult = await CustomerService.GetBalanceSummaryAsync(_billingCustomerId);
+        if (!balanceResult.Success || balanceResult.Value is null)
+        {
+            if (showFeedback)
+            {
+                Feedback.Error(
+                    balanceResult.ErrorMessage ?? "Unable to recheck the latest point balance.",
+                    "Point balance unavailable");
+            }
+            return false;
+        }
+
+        CustomerPointBalance = balanceResult.Value.PointBalance;
+
+        var totalRequired = Math.Round(
+            pointProducts.Sum(item => Math.Max(0m, item.Points)) +
+            pointServices.Sum(item => Math.Max(0m, item.Points)),
+            2,
+            MidpointRounding.AwayFromZero);
+        var latestBalance = Math.Max(0m, balanceResult.Value.PointBalance);
+
+        Console.WriteLine(
+            $"[Point Step 10] FINAL REVALIDATION | Source=Billing | Customer={_billingCustomerId} | " +
+            $"LatestBalance={latestBalance:0.##} | Required={totalRequired:0.##} | " +
+            $"Lines={pointProducts.Count + pointServices.Count}");
+
+        if (totalRequired - latestBalance > 0.009m)
+        {
+            Console.WriteLine(
+                $"[Point Step 10] BLOCKED | Source=Billing | Customer={_billingCustomerId} | " +
+                $"LatestBalance={latestBalance:0.##} | Required={totalRequired:0.##}");
+
+            if (showFeedback)
+            {
+                Feedback.Warning(
+                    $"The latest point balance is {latestBalance:0.##} pts, but this bill requires {totalRequired:0.##} pts. Remove or adjust point redemption before continuing.",
+                    "Point balance changed");
+            }
+            return false;
+        }
+
+        Console.WriteLine(
+            $"[Point Step 10] PASS | Source=Billing | Customer={_billingCustomerId} | " +
+            $"LatestBalance={latestBalance:0.##} | Required={totalRequired:0.##} | " +
+            $"RemainingAfterSave={Math.Max(0m, latestBalance - totalRequired):0.##}");
+
+        return true;
+    }
+
     private decimal OutstandingSettlementPaymentAmount =>
         Math.Round(
             _outstandingSettlementSelections.Values.Sum(),
@@ -2153,7 +2259,7 @@
             : BillingPayments;
 
     private IEnumerable<CashSalesPaymentTypeDTO> VisibleBillingPaymentMethods =>
-        _isOutstandingPaymentMode
+        _isOutstandingPaymentMode || HasBillingPointRedemption
             ? AvailablePaymentMethods.Where(method => method.POSPaymentTypeID != -10)
             : AvailablePaymentMethods;
 
@@ -4690,6 +4796,22 @@
 
         SynchronizeBillingPaymentTotals();
 
+        if (HasBillingPointRedemption &&
+            BillingPayments.Any(payment => payment.PaymentTypeId == -10))
+        {
+            BillingPayments.RemoveAll(payment => payment.PaymentTypeId == -10);
+            SynchronizeBillingPaymentTotals();
+
+            Console.WriteLine(
+                $"[Point Step 8] BLOCKED | Source=Billing | Customer={_billingCustomerId} | " +
+                $"Reason=StaleMemberCreditTenderRemoved");
+
+            Feedback.Warning(
+                "Member Credit cannot be combined with point redemption. The Member Credit payment was removed.",
+                "Payment method not allowed");
+            return;
+        }
+
         if (BillingPaidAmount < TotalPayable)
         {
             _showInsufficientAmountModal = true;
@@ -4741,6 +4863,18 @@
                 $"Add RM {Math.Max(0m, TotalPayable - (AmountReceived ?? 0m)):N2} more before completing the sale.",
                 "Payment incomplete");
             return;
+        }
+
+        // Point Step 10 — re-read the latest backend PointBalance immediately
+        // before the Billing transaction is created/saved.
+        if (HasBillingPointRedemption)
+        {
+            var finalPointValid = await RevalidateBillingPointRedemptionsAsync(showFeedback: true);
+            if (!finalPointValid)
+            {
+                _showConfirmPaymentModal = false;
+                return;
+            }
         }
 
         _paymentValidationError = null;
@@ -5736,6 +5870,18 @@
     // Billing payment calculator mirrors Sales > New Sale behavior.
     private void OpenBillingPaymentCalculator(CashSalesPaymentTypeDTO method)
     {
+        if (HasBillingPointRedemption && method.POSPaymentTypeID == -10)
+        {
+            Console.WriteLine(
+                $"[Point Step 8] BLOCKED | Source=Billing | Customer={_billingCustomerId} | " +
+                $"Reason=MemberCreditTenderWithPoints");
+
+            Feedback.Warning(
+                "Member Credit cannot be combined with point redemption on the same bill.",
+                "Payment method not allowed");
+            return;
+        }
+
         if (_isOutstandingPaymentMode)
         {
             if (method.POSPaymentTypeID == -10)
@@ -5867,6 +6013,19 @@
         if (_billingCalculatorMethod is null || BillingCalculatorAmount <= 0m)
         {
             Feedback.Warning("Enter a payment amount first.", "Payment amount required");
+            return;
+        }
+
+        if (HasBillingPointRedemption &&
+            _billingCalculatorMethod.POSPaymentTypeID == -10)
+        {
+            Console.WriteLine(
+                $"[Point Step 8] BLOCKED | Source=Billing | Customer={_billingCustomerId} | " +
+                $"Reason=MemberCreditTenderWithPoints");
+
+            Feedback.Warning(
+                "Member Credit cannot be combined with point redemption on the same bill.",
+                "Payment method not allowed");
             return;
         }
 

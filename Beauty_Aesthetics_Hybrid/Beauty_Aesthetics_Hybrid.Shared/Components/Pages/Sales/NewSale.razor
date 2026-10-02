@@ -1670,6 +1670,13 @@
     private bool HasPointRedemption =>
         currentOrder.Items.Any(item => item.Points > 0m);
 
+    private bool HasMemberCreditRedemptionState =>
+        currentOrder.IsRedemptionMode ||
+        currentOrder.Items.Any(item =>
+            item.ActivityTypeId == 6 ||
+            !string.IsNullOrWhiteSpace(item.MemberCreditAccountId) ||
+            item.MemberCreditAllocations.Count > 0);
+
     private bool IsFullyPointRedeemedSale =>
         !isOutstandingPaymentMode &&
         !currentOrder.IsRedemptionMode &&
@@ -2261,6 +2268,18 @@
 
     private async Task TogglePointRedemptionAsync(TransactionItem item)
     {
+        if (item.InventoryTypeId != 1 && item.InventoryTypeId != 3)
+        {
+            Console.WriteLine(
+                $"[Point Step 9] BLOCKED | Source=Sales | Inventory={item.InventoryId} | " +
+                $"Type={item.InventoryTypeId} | Reason=PointRedemptionProductServiceOnly");
+
+            Feedback.Warning(
+                "Point redemption is currently supported only for Product and Service items. Package point redemption is postponed.",
+                "Points unavailable");
+            return;
+        }
+
         if (item.Points > 0m)
         {
             var released = item.Points;
@@ -2273,10 +2292,14 @@
             return;
         }
 
-        if (currentOrder.IsRedemptionMode)
+        if (HasMemberCreditRedemptionState)
         {
+            Console.WriteLine(
+                $"[Point Step 8] BLOCKED | Source=Sales | Customer={currentOrder.AccountId} | " +
+                $"Reason=MemberCreditRedemptionState | RedemptionMode={currentOrder.IsRedemptionMode}");
+
             Feedback.Warning(
-                "Point redemption is only available in normal Sales mode.",
+                "Point redemption cannot be combined with Member Credit redemption. Switch back to normal Sales mode first.",
                 "Points unavailable");
             return;
         }
@@ -2492,24 +2515,34 @@
 
         selectedCustomerPointBalance = balanceResult.Value.PointBalance;
         var totalRequired = Math.Round(
-            pointLines.Sum(RequiredPointsFor),
+            pointLines.Sum(item => Math.Max(0m, item.Points)),
             2,
             MidpointRounding.AwayFromZero);
+        var latestBalance = Math.Max(0m, balanceResult.Value.PointBalance);
 
-        if (totalRequired - balanceResult.Value.PointBalance > 0.009m)
+        Console.WriteLine(
+            $"[Point Step 10] FINAL REVALIDATION | Source=Sales | Customer={currentOrder.AccountId} | " +
+            $"LatestBalance={latestBalance:0.##} | Required={totalRequired:0.##} | Lines={pointLines.Count}");
+
+        if (totalRequired - latestBalance > 0.009m)
         {
+            Console.WriteLine(
+                $"[Point Step 10] BLOCKED | Source=Sales | Customer={currentOrder.AccountId} | " +
+                $"LatestBalance={latestBalance:0.##} | Required={totalRequired:0.##}");
+
             if (showFeedback)
             {
                 Feedback.Warning(
-                    $"The latest point balance is {balanceResult.Value.PointBalance:0.##} pts, but this sale requires {totalRequired:0.##} pts. Remove or adjust point redemption before continuing.",
+                    $"The latest point balance is {latestBalance:0.##} pts, but this sale requires {totalRequired:0.##} pts. Remove or adjust point redemption before continuing.",
                     "Point balance changed");
             }
             return false;
         }
 
         Console.WriteLine(
-            $"[Point Step 2] REVALIDATED | Customer={currentOrder.AccountId} | " +
-            $"LatestBalance={balanceResult.Value.PointBalance:0.##} | Required={totalRequired:0.##} | Lines={pointLines.Count}");
+            $"[Point Step 10] PASS | Source=Sales | Customer={currentOrder.AccountId} | " +
+            $"LatestBalance={latestBalance:0.##} | Required={totalRequired:0.##} | " +
+            $"RemainingAfterSave={Math.Max(0m, latestBalance - totalRequired):0.##}");
 
         return true;
     }
@@ -2843,6 +2876,10 @@
             var releasedPoints = ClearAllPointRedemptions();
             var removedCount = currentOrder.Items.RemoveAll(item =>
                 IsRedemptionRestrictedPurchaseType(item.InventoryTypeId));
+
+            Console.WriteLine(
+                $"[Point Step 8] MODE SWITCH | Source=Sales | Target=Redemption | " +
+                $"ReleasedPoints={releasedPoints:0.##} | Customer={currentOrder.AccountId}");
             currentOrder.IsRedemptionMode = true;
             currentOrder.Payments.Clear();
             ClearAllLineCreditSelections();
@@ -2865,9 +2902,18 @@
         }
         else
         {
+            var clearedCreditLines = currentOrder.Items.Count(item =>
+                item.ActivityTypeId == 6 ||
+                !string.IsNullOrWhiteSpace(item.MemberCreditAccountId) ||
+                item.MemberCreditAllocations.Count > 0);
+
             currentOrder.IsRedemptionMode = false;
             currentOrder.Payments.Clear();
             ClearAllLineCreditSelections();
+
+            Console.WriteLine(
+                $"[Point Step 8] MODE SWITCH | Source=Sales | Target=Sales | " +
+                $"ClearedMemberCreditLines={clearedCreditLines} | Customer={currentOrder.AccountId}");
         }
 
         selectedType = string.Empty;
@@ -3126,6 +3172,18 @@
     {
         if (creditTargetItem is null)
         {
+            return;
+        }
+
+        if (HasPointRedemption)
+        {
+            Console.WriteLine(
+                $"[Point Step 8] BLOCKED | Source=Sales | Customer={currentOrder.AccountId} | " +
+                $"Reason=PointRedemptionActiveWhileApplyingMemberCredit");
+
+            Feedback.Warning(
+                "Member Credit redemption cannot be combined with point redemption. Switch modes to clear the point redemption first.",
+                "Member Credit unavailable");
             return;
         }
 
@@ -5693,6 +5751,18 @@
         {
             Feedback.Warning($"Add MYR {Remaining:N2} more before completing the sale.", "Payment incomplete");
             return;
+        }
+
+        // Point Step 10 — re-read the customer's latest PointBalance at the
+        // final UI save boundary. This catches points spent by another
+        // terminal after this bill was prepared but before Complete Sale.
+        if (HasPointRedemption)
+        {
+            var finalPointValid = await RevalidatePointRedemptionsAsync(showFeedback: true);
+            if (!finalPointValid)
+            {
+                return;
+            }
         }
 
         isSaving = true;

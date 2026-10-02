@@ -1039,9 +1039,9 @@ public sealed class CashSalesService : ICashSalesService
                 finalRedemptionRequestValidation.ErrorMessage);
         }
 
-        // Point Step 2 — Senang saves point spending on normal Cash Sales lines.
-        // Re-read the latest customer PointBalance immediately before CreateRecord
-        // so another terminal cannot make this request overspend a stale balance.
+        // Point Step 10 — final backend revalidation immediately before CreateRecord.
+        // Re-read the latest customer PointBalance so another terminal cannot make
+        // this request overspend a stale balance between UI confirmation and save.
         var preSavePointValidation = await ValidatePointRedemptionBeforeCreateAsync(
             transaction,
             cancellationToken);
@@ -1049,7 +1049,8 @@ public sealed class CashSalesService : ICashSalesService
         if (!preSavePointValidation.Success)
         {
             Console.WriteLine(
-                $"[Point Step 2] BLOCKED | Customer={transaction.AccountId} | {preSavePointValidation.ErrorMessage}");
+                $"[Point Step 10] BLOCKED | Source=CashSalesService | Customer={transaction.AccountId} | " +
+                $"{preSavePointValidation.ErrorMessage}");
 
             return ApiCallResult<Transaction>.Failure(
                 preSavePointValidation.StatusCode,
@@ -1822,12 +1823,57 @@ public sealed class CashSalesService : ICashSalesService
                 "Point redemption is only supported in normal Sales mode (DocumentTypeID = 5).");
         }
 
+        var hasMemberCreditRedemption =
+            transaction.Items.Any(item =>
+                item.ActivityTypeId == 6 ||
+                !string.IsNullOrWhiteSpace(item.MemberCreditAccountId) ||
+                item.MemberCreditAllocations.Any(allocation =>
+                    !string.IsNullOrWhiteSpace(allocation.MemberCreditAccountId) &&
+                    allocation.Amount > 0m)) ||
+            transaction.Payments.Any(payment => payment.PaymentTypeId == -10) ||
+            transaction.ReceiptPayments.Any(payment => payment.PaymentTypeId == -10);
+
+        if (hasMemberCreditRedemption)
+        {
+            Console.WriteLine(
+                $"[Point Step 8] BLOCKED | Source=CashSalesService | Customer={transaction.AccountId} | " +
+                $"DocumentType={transaction.DocumentTypeId} | Reason=MixedPointAndMemberCredit");
+
+            return ApiCallResult<bool>.Failure(
+                HttpStatusCode.BadRequest,
+                "Point redemption cannot be combined with Member Credit redemption in the same sale.");
+        }
+
+        Console.WriteLine(
+            $"[Point Step 8] PASS | Source=CashSalesService | Customer={transaction.AccountId} | " +
+            $"DocumentType={transaction.DocumentTypeId} | PointLines={pointLines.Count} | MemberCreditMixed=False");
+
         if (string.IsNullOrWhiteSpace(transaction.AccountId))
         {
             return ApiCallResult<bool>.Failure(
                 HttpStatusCode.BadRequest,
                 "A customer is required before points can be redeemed.");
         }
+
+        var unsupportedPointLine = pointLines.FirstOrDefault(item =>
+            item.InventoryTypeId != 1 &&
+            item.InventoryTypeId != 3);
+
+        if (unsupportedPointLine is not null)
+        {
+            Console.WriteLine(
+                $"[Point Step 9] BLOCKED | Source=CashSalesService | " +
+                $"Inventory={unsupportedPointLine.InventoryId} | Type={unsupportedPointLine.InventoryTypeId} | " +
+                $"Reason=PointRedemptionProductServiceOnly");
+
+            return ApiCallResult<bool>.Failure(
+                HttpStatusCode.BadRequest,
+                "Point redemption is currently supported only for Product and Service items. Package point redemption is postponed.");
+        }
+
+        Console.WriteLine(
+            $"[Point Step 9] PASS | Source=CashSalesService | Customer={transaction.AccountId} | " +
+            $"PointLines={pointLines.Count} | SupportedTypes=1,3 | PackageCoupled=False");
 
         foreach (var item in pointLines)
         {
@@ -1879,16 +1925,25 @@ public sealed class CashSalesService : ICashSalesService
             0m,
             latestBalanceResult.Value.PointBalance);
 
+        Console.WriteLine(
+            $"[Point Step 10] PRE-SAVE CHECK | Source=CashSalesService | Customer={transaction.AccountId} | " +
+            $"LatestBalance={latestBalance:0.##} | Required={totalPoints:0.##} | Lines={pointLines.Count}");
+
         if (totalPoints - latestBalance > 0.009m)
         {
+            Console.WriteLine(
+                $"[Point Step 10] BLOCKED | Source=CashSalesService | Customer={transaction.AccountId} | " +
+                $"LatestBalance={latestBalance:0.##} | Required={totalPoints:0.##}");
+
             return ApiCallResult<bool>.Failure(
                 HttpStatusCode.BadRequest,
                 $"Customer point balance changed. Latest balance: {latestBalance:0.##} pts; required: {totalPoints:0.##} pts.");
         }
 
         Console.WriteLine(
-            $"[Point Step 2] PRE-SAVE PASS | Customer={transaction.AccountId} | " +
-            $"LatestBalance={latestBalance:0.##} | Required={totalPoints:0.##} | Lines={pointLines.Count}");
+            $"[Point Step 10] PASS | Source=CashSalesService | Customer={transaction.AccountId} | " +
+            $"LatestBalance={latestBalance:0.##} | Required={totalPoints:0.##} | " +
+            $"RemainingAfterSave={Math.Max(0m, latestBalance - totalPoints):0.##} | Lines={pointLines.Count}");
 
         return ApiCallResult<bool>.Ok(HttpStatusCode.OK, true);
     }
