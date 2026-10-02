@@ -246,7 +246,7 @@ public sealed class ServiceItemService : IServiceItemService
             record.SalesDescription ?? string.Empty,
             record.ItemGroupID ?? string.Empty,
             record.UnitOfMeasureID ?? string.Empty,
-            record.PointToRedeem ?? 0m,
+            GetFirstInventoryDecimal(record, "PointToRedeem", "RedeemPoint"),
             record.AllowPointRedemption);
     }
 
