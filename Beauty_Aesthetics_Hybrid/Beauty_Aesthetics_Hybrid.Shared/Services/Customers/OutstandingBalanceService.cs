@@ -158,6 +158,43 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
                 "Branch group ID is required.");
         }
 
+        var payments = request.Payments
+            .Where(payment =>
+                payment.PaymentTypeID != 0 &&
+                payment.Amount > 0m)
+            .Select(payment => new OutstandingSettlementPaymentDTO
+            {
+                PaymentTypeID = payment.PaymentTypeID,
+                PaymentMethod = payment.PaymentMethod?.Trim() ?? string.Empty,
+                FinancialAccountID = payment.FinancialAccountID?.Trim() ?? string.Empty,
+                FinancialAccountName = payment.FinancialAccountName?.Trim() ?? string.Empty,
+                Amount = Math.Round(
+                    payment.Amount,
+                    2,
+                    MidpointRounding.AwayFromZero)
+            })
+            .ToList();
+
+        if (payments.Any(payment => payment.PaymentTypeID == -10))
+        {
+            return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
+                "Member Credit cannot be used for Outstanding settlement.");
+        }
+
+        if (payments.Count > 1)
+        {
+            return await CreateSplitSettlementAsync(
+                request,
+                payments,
+                cancellationToken);
+        }
+
+        if (payments.Count == 1)
+        {
+            request.FinancialAccountID = payments[0].FinancialAccountID;
+            request.FinancialAccountName = payments[0].FinancialAccountName;
+        }
+
         var requested = request.SelectedAmounts
             .Where(pair => !string.IsNullOrWhiteSpace(pair.Key) && pair.Value > 0m)
             .ToDictionary(
@@ -397,6 +434,250 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
         }
 
         return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Ok(saveResult.Value);
+    }
+
+    private async Task<CustomerOperationResult<OutstandingSettlementSaveResultDTO>> CreateSplitSettlementAsync(
+        OutstandingSettlementSaveRequestDTO request,
+        IReadOnlyList<OutstandingSettlementPaymentDTO> payments,
+        CancellationToken cancellationToken)
+    {
+        var customerId = request.CustomerID?.Trim() ?? string.Empty;
+        var groupId = request.GroupID?.Trim() ?? string.Empty;
+
+        var requested = request.SelectedAmounts
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Key) && pair.Value > 0m)
+            .Select(pair => new KeyValuePair<string, decimal>(
+                pair.Key.Trim(),
+                Math.Round(
+                    pair.Value,
+                    2,
+                    MidpointRounding.AwayFromZero)))
+            .ToList();
+
+        if (requested.Count == 0)
+        {
+            return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
+                "Select at least one outstanding document to settle.");
+        }
+
+        var selectedTotal = Math.Round(
+            requested.Sum(pair => pair.Value),
+            2,
+            MidpointRounding.AwayFromZero);
+
+        var paymentTotal = Math.Round(
+            payments.Sum(payment => payment.Amount),
+            2,
+            MidpointRounding.AwayFromZero);
+
+        if (Math.Abs(selectedTotal - paymentTotal) > 0.009m)
+        {
+            return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
+                $"Split payment total must equal RM {selectedTotal:N2}. Current payment total is RM {paymentTotal:N2}.");
+        }
+
+        // Validate every selected document before the first split receipt is saved.
+        // Each individual receipt is still revalidated again by CreateSettlementAsync.
+        var rawResult = await arReceiptAC.RetrieveSettlementLinesRawAsync(
+            customerId,
+            groupId,
+            cancellationToken);
+
+        if (!rawResult.Success || rawResult.Value is null)
+        {
+            return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
+                rawResult.ErrorMessage ?? "Unable to revalidate outstanding documents.");
+        }
+
+        var rawLines = rawResult.Value
+            .Where(line => line.Outstanding > 0m)
+            .OrderBy(line => line.FinancialDate)
+            .ToList();
+
+        var usedLines = new HashSet<ud_ARAPPaymentOffSetLineDM>();
+
+        foreach (var selection in requested)
+        {
+            var line = rawLines.FirstOrDefault(candidate =>
+                !usedLines.Contains(candidate) &&
+                SettlementLineAliases(candidate).Contains(
+                    selection.Key,
+                    StringComparer.OrdinalIgnoreCase));
+
+            if (line is null)
+            {
+                return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
+                    $"Outstanding document {selection.Key} is no longer available. Refresh and try again.");
+            }
+
+            var liveOutstanding = Math.Round(
+                Math.Max(0m, line.Outstanding),
+                2,
+                MidpointRounding.AwayFromZero);
+
+            if (selection.Value > liveOutstanding + 0.009m)
+            {
+                return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
+                    $"Outstanding document {selection.Key} now has only RM {liveOutstanding:N2} available.");
+            }
+
+            usedLines.Add(line);
+        }
+
+        var remainingByDocument = requested.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value,
+            StringComparer.OrdinalIgnoreCase);
+
+        var plans = new List<(OutstandingSettlementPaymentDTO Payment, Dictionary<string, decimal> Allocations)>();
+
+        foreach (var payment in payments)
+        {
+            var remainingPayment = payment.Amount;
+            var allocations = new Dictionary<string, decimal>(
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (var selection in requested)
+            {
+                if (remainingPayment <= 0.009m)
+                {
+                    break;
+                }
+
+                var remainingTarget = remainingByDocument[selection.Key];
+                if (remainingTarget <= 0.009m)
+                {
+                    continue;
+                }
+
+                var allocated = Math.Round(
+                    Math.Min(remainingTarget, remainingPayment),
+                    2,
+                    MidpointRounding.AwayFromZero);
+
+                if (allocated <= 0m)
+                {
+                    continue;
+                }
+
+                allocations[selection.Key] = allocated;
+                remainingByDocument[selection.Key] = Math.Round(
+                    remainingTarget - allocated,
+                    2,
+                    MidpointRounding.AwayFromZero);
+                remainingPayment = Math.Round(
+                    remainingPayment - allocated,
+                    2,
+                    MidpointRounding.AwayFromZero);
+            }
+
+            if (remainingPayment > 0.009m || allocations.Count == 0)
+            {
+                return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
+                    $"Unable to allocate split payment {payment.PaymentMethod} RM {payment.Amount:N2} to the selected outstanding documents.");
+            }
+
+            plans.Add((payment, allocations));
+        }
+
+        if (remainingByDocument.Values.Any(value => value > 0.009m))
+        {
+            return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
+                "Split payment allocations do not fully cover the selected outstanding amount.");
+        }
+
+        Console.WriteLine(
+            $"[Outstanding Step 8] SPLIT PAYMENT START | Customer={customerId} | " +
+            $"Methods={plans.Count} | Documents={requested.Count} | Total={selectedTotal:N2}");
+
+        foreach (var plan in plans)
+        {
+            Console.WriteLine(
+                $"[Outstanding Step 8] METHOD | Type={plan.Payment.PaymentTypeID} | " +
+                $"Method={plan.Payment.PaymentMethod} | Amount={plan.Payment.Amount:N2} | " +
+                $"FinancialAccount={plan.Payment.FinancialAccountID} | " +
+                $"Documents={plan.Allocations.Count}");
+        }
+
+        var receiptIds = new List<string>();
+        var receiptCodes = new List<string>();
+        decimal savedTotal = 0m;
+
+        foreach (var plan in plans)
+        {
+            var saveResult = await CreateSettlementAsync(
+                new OutstandingSettlementSaveRequestDTO
+                {
+                    CustomerID = request.CustomerID,
+                    CustomerName = request.CustomerName,
+                    BranchID = request.BranchID,
+                    GroupID = request.GroupID,
+                    CurrencyID = request.CurrencyID,
+                    CurrencyName = request.CurrencyName,
+                    FinancialAccountID = plan.Payment.FinancialAccountID,
+                    FinancialAccountName = plan.Payment.FinancialAccountName,
+                    SelectedAmounts = new Dictionary<string, decimal>(
+                        plan.Allocations,
+                        StringComparer.OrdinalIgnoreCase)
+                },
+                cancellationToken);
+
+            if (!saveResult.Success || saveResult.Value is null)
+            {
+                Console.WriteLine(
+                    $"[Outstanding Step 8] SPLIT PAYMENT FAILED | Method={plan.Payment.PaymentMethod} | " +
+                    $"Amount={plan.Payment.Amount:N2} | SavedBeforeFailure={savedTotal:N2}");
+
+                return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
+                    savedTotal > 0m
+                        ? $"Split payment stopped after RM {savedTotal:N2} was already saved. Reload Outstanding before retrying. {saveResult.ErrorMessage}"
+                        : saveResult.ErrorMessage ?? "Unable to save split Outstanding settlement.");
+            }
+
+            savedTotal += saveResult.Value.TotalAllocatedAmount;
+
+            if (!string.IsNullOrWhiteSpace(saveResult.Value.Id))
+            {
+                receiptIds.Add(saveResult.Value.Id);
+            }
+
+            if (!string.IsNullOrWhiteSpace(saveResult.Value.DisplayCode))
+            {
+                receiptCodes.Add(saveResult.Value.DisplayCode);
+            }
+
+            Console.WriteLine(
+                $"[Outstanding Step 8] RECEIPT SAVED | Method={plan.Payment.PaymentMethod} | " +
+                $"Receipt={saveResult.Value.DisplayCode} | Amount={saveResult.Value.TotalAllocatedAmount:N2}");
+        }
+
+        savedTotal = Math.Round(
+            savedTotal,
+            2,
+            MidpointRounding.AwayFromZero);
+
+        if (Math.Abs(savedTotal - selectedTotal) > 0.009m)
+        {
+            return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
+                $"Split Outstanding settlement saved RM {savedTotal:N2}, expected RM {selectedTotal:N2}. Reload Outstanding before retrying.");
+        }
+
+        Console.WriteLine(
+            $"[Outstanding Step 8] SPLIT PAYMENT COMPLETE | Receipts={receiptCodes.Count} | " +
+            $"Methods={plans.Count} | Total={savedTotal:N2}");
+
+        return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Ok(
+            new OutstandingSettlementSaveResultDTO
+            {
+                Id = receiptIds.FirstOrDefault() ?? string.Empty,
+                DisplayCode = receiptCodes.Count > 0
+                    ? string.Join(", ", receiptCodes)
+                    : string.Empty,
+                TotalAllocatedAmount = savedTotal,
+                SettledDocumentCount = requested.Count,
+                ReceiptIds = receiptIds,
+                ReceiptCodes = receiptCodes
+            });
     }
 
     private static IReadOnlyList<string> SettlementLineAliases(
