@@ -26,6 +26,7 @@ public sealed class CashSalesService : ICashSalesService
     private readonly ICustomerService customerService;
     private readonly IMemberCreditWalletService memberCreditWalletService;
     private readonly IJSRuntime jsRuntime;
+    private Transaction? lastCreatedTransaction;
 
     public CashSalesService(
         CashSalesAC cashSalesAC,
@@ -237,6 +238,8 @@ public sealed class CashSalesService : ICashSalesService
             ApplyReceiptLines(transaction, receiptResult.Value, names);
         }
 
+        MergeMissingReceiptAmounts(transaction, MatchingCreatedTransaction(documentId));
+
         return ApiCallResult<Transaction>.Ok(result.StatusCode, transaction);
     }
 
@@ -439,6 +442,7 @@ public sealed class CashSalesService : ICashSalesService
                 loadResult.Value,
                 documentId,
                 resolvedDocumentTypeId,
+                MatchingCreatedTransaction(documentId),
                 cancellationToken);
 
             if (!repairResult.Success)
@@ -484,6 +488,7 @@ public sealed class CashSalesService : ICashSalesService
         JsonObject document,
         string documentId,
         int documentTypeId,
+        Transaction? fallbackTransaction,
         CancellationToken cancellationToken)
     {
         var header = document["objDoc_CashSales"] as JsonObject;
@@ -521,21 +526,43 @@ public sealed class CashSalesService : ICashSalesService
                 MidpointRounding.AwayFromZero);
         }
 
+        if (receiptTotal <= 0m && fallbackTransaction is not null)
+        {
+            receiptTotal = Math.Round(
+                Math.Max(0m, fallbackTransaction.Amount),
+                2,
+                MidpointRounding.AwayFromZero);
+        }
+
         var headerTotal = Math.Round(
             Math.Max(0m, Number(header, "TotalAfterTax")),
             2,
             MidpointRounding.AwayFromZero);
+        if (headerTotal <= 0m && fallbackTransaction is not null)
+        {
+            headerTotal = Math.Round(
+                Math.Max(0m, fallbackTransaction.Amount),
+                2,
+                MidpointRounding.AwayFromZero);
+        }
         var singleLineFallbackTotal = activeLines.Count == 1
             ? Math.Max(headerTotal, receiptTotal)
             : 0m;
         var repairedAnyLine = false;
 
-        foreach (var line in activeLines)
+        for (var lineIndex = 0; lineIndex < activeLines.Count; lineIndex++)
         {
+            var line = activeLines[lineIndex];
+            var fallbackItem = FindMatchingReceiptItem(
+                line,
+                lineIndex,
+                fallbackTransaction?.Items);
             var quantity = Number(line, "Quantity");
             if (quantity <= 0m)
             {
-                quantity = 1m;
+                quantity = Math.Max(
+                    1m,
+                    fallbackItem is null ? 1m : fallbackItem.Quantity);
             }
 
             var discount = Math.Max(
@@ -543,7 +570,15 @@ public sealed class CashSalesService : ICashSalesService
                 Math.Max(
                     Number(line, "Discount"),
                     Number(line, "DiscountAmount")));
+            if (discount <= 0m && fallbackItem is not null)
+            {
+                discount = Math.Max(0m, fallbackItem.Discount);
+            }
             var unitPrice = Math.Max(0m, Number(line, "UnitPrice"));
+            if (unitPrice <= 0m && fallbackItem is not null)
+            {
+                unitPrice = Math.Max(0m, fallbackItem.UnitPrice);
+            }
             var beforeTax = Math.Max(
                 0m,
                 Math.Max(
@@ -554,6 +589,10 @@ public sealed class CashSalesService : ICashSalesService
                 Math.Max(
                     Number(line, "TaxAmount"),
                     Number(line, "ConvertedTaxAmount")));
+            if (taxAmount <= 0m && fallbackItem is not null)
+            {
+                taxAmount = Math.Max(0m, fallbackItem.TaxAmount);
+            }
             var lineTotal = Math.Max(
                 0m,
                 Math.Max(
@@ -561,11 +600,27 @@ public sealed class CashSalesService : ICashSalesService
                     Math.Max(
                         Number(line, "Amount"),
                         Number(line, "ConvertedAmount"))));
+            if (lineTotal <= 0m && fallbackItem is not null)
+            {
+                lineTotal = Math.Max(0m, fallbackItem.TotalPrice);
+            }
             var storedTaxRate = Math.Max(0m, Number(line, "TaxPercentage"));
+            if (storedTaxRate <= 0m && fallbackItem is not null)
+            {
+                storedTaxRate = Math.Max(0m, fallbackItem.TaxPercentage);
+            }
             var calculationTaxRate = storedTaxRate > 1m
                 ? storedTaxRate / 100m
                 : storedTaxRate;
-            var isTaxInclusive = Bool(line, "IsTaxInclusive");
+            var isTaxInclusive = Bool(line, "IsTaxInclusive") ||
+                                 fallbackItem?.IsTaxInclusive == true;
+
+            if (beforeTax <= 0m && fallbackItem is not null && lineTotal > 0m)
+            {
+                beforeTax = Math.Max(
+                    0m,
+                    lineTotal - Math.Max(0m, fallbackItem.TaxAmount));
+            }
 
             if (beforeTax <= 0m && unitPrice > 0m)
             {
@@ -646,6 +701,7 @@ public sealed class CashSalesService : ICashSalesService
             }
 
             var changed = false;
+            changed |= SetDecimalIfDifferent(line, "Quantity", quantity);
             changed |= SetDecimalIfDifferent(line, "UnitPrice", unitPrice);
             changed |= SetDecimalIfDifferent(line, "Discount", discount);
             changed |= SetDecimalIfDifferent(line, "DiscountAmount", discount);
@@ -1048,6 +1104,12 @@ public sealed class CashSalesService : ICashSalesService
             multiCreditVerification,
             step30TotalCreditBefore,
             cancellationToken);
+
+        // Keep the values submitted by the completed sale available to receipt
+        // loading. Some backend LoadRecord responses contain the correct item
+        // identity and quantity but return zero monetary fields, which otherwise
+        // makes the thermal PDF render Price and Amount as dashes.
+        lastCreatedTransaction = transaction;
 
         return ApiCallResult<Transaction>.Ok(createResult.StatusCode, transaction);
     }
@@ -4053,6 +4115,136 @@ public sealed class CashSalesService : ICashSalesService
         }
 
         return null;
+    }
+
+    private Transaction? MatchingCreatedTransaction(string documentId)
+    {
+        if (lastCreatedTransaction is null || string.IsNullOrWhiteSpace(documentId))
+        {
+            return null;
+        }
+
+        return string.Equals(
+                   lastCreatedTransaction.DocumentId,
+                   documentId,
+                   StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(
+                   lastCreatedTransaction.InvoiceNumber,
+                   documentId,
+                   StringComparison.OrdinalIgnoreCase)
+            ? lastCreatedTransaction
+            : null;
+    }
+
+    private static TransactionItem? FindMatchingReceiptItem(
+        JsonObject line,
+        int lineIndex,
+        IReadOnlyList<TransactionItem>? fallbackItems)
+    {
+        if (fallbackItems is null || fallbackItems.Count == 0)
+        {
+            return null;
+        }
+
+        var inventoryId = First(
+            TextIgnoreCase(line, "InventoryID"),
+            TextIgnoreCase(line, "LineItemID"),
+            TextIgnoreCase(line, "InventoryItemAccountID"));
+        if (!string.IsNullOrWhiteSpace(inventoryId))
+        {
+            var byInventory = fallbackItems.FirstOrDefault(item =>
+                string.Equals(
+                    item.InventoryId,
+                    inventoryId,
+                    StringComparison.OrdinalIgnoreCase));
+            if (byInventory is not null)
+            {
+                return byInventory;
+            }
+        }
+
+        var sku = First(
+            TextIgnoreCase(line, "LineItemDisplayCode"),
+            TextIgnoreCase(line, "SKUName"));
+        if (!string.IsNullOrWhiteSpace(sku))
+        {
+            var bySku = fallbackItems.FirstOrDefault(item =>
+                string.Equals(item.Sku, sku, StringComparison.OrdinalIgnoreCase));
+            if (bySku is not null)
+            {
+                return bySku;
+            }
+        }
+
+        return lineIndex < fallbackItems.Count
+            ? fallbackItems[lineIndex]
+            : null;
+    }
+
+    private static void MergeMissingReceiptAmounts(
+        Transaction target,
+        Transaction? fallback)
+    {
+        if (fallback is null)
+        {
+            return;
+        }
+
+        if (target.Amount <= 0m && fallback.Amount > 0m)
+            target.Amount = fallback.Amount;
+        if (target.Subtotal <= 0m && fallback.Subtotal > 0m)
+            target.Subtotal = fallback.Subtotal;
+        if (target.Tax == 0m && fallback.Tax != 0m)
+            target.Tax = fallback.Tax;
+        if (target.Discount == 0m && fallback.Discount != 0m)
+            target.Discount = fallback.Discount;
+        if (target.RoundingAmount == 0m && fallback.RoundingAmount != 0m)
+            target.RoundingAmount = fallback.RoundingAmount;
+        if (target.ServiceChargeAmount == 0m && fallback.ServiceChargeAmount != 0m)
+            target.ServiceChargeAmount = fallback.ServiceChargeAmount;
+
+        for (var index = 0; index < target.Items.Count; index++)
+        {
+            var item = target.Items[index];
+            var source = fallback.Items.FirstOrDefault(candidate =>
+                             !string.IsNullOrWhiteSpace(item.InventoryId) &&
+                             string.Equals(
+                                 candidate.InventoryId,
+                                 item.InventoryId,
+                                 StringComparison.OrdinalIgnoreCase))
+                         ?? fallback.Items.FirstOrDefault(candidate =>
+                             !string.IsNullOrWhiteSpace(item.Sku) &&
+                             string.Equals(
+                                 candidate.Sku,
+                                 item.Sku,
+                                 StringComparison.OrdinalIgnoreCase))
+                         ?? (index < fallback.Items.Count
+                             ? fallback.Items[index]
+                             : null);
+
+            if (source is null)
+            {
+                continue;
+            }
+
+            if (item.Quantity <= 0 && source.Quantity > 0)
+                item.Quantity = source.Quantity;
+            if (item.UnitPrice <= 0m && source.UnitPrice > 0m)
+                item.UnitPrice = source.UnitPrice;
+            if (item.TotalPrice <= 0m && source.TotalPrice > 0m)
+                item.TotalPrice = source.TotalPrice;
+            if (item.Discount == 0m && source.Discount != 0m)
+                item.Discount = source.Discount;
+            if (item.TaxAmount == 0m && source.TaxAmount != 0m)
+                item.TaxAmount = source.TaxAmount;
+            if (item.TaxPercentage == 0m && source.TaxPercentage != 0m)
+                item.TaxPercentage = source.TaxPercentage;
+            if (string.IsNullOrWhiteSpace(item.TaxCodeId))
+                item.TaxCodeId = source.TaxCodeId;
+            if (string.IsNullOrWhiteSpace(item.UnitOfMeasureId))
+                item.UnitOfMeasureId = source.UnitOfMeasureId;
+            item.IsTaxInclusive = item.IsTaxInclusive || source.IsTaxInclusive;
+        }
     }
 
     private static decimal Number(JsonObject? source, string name) => source?[name] is JsonValue value && value.TryGetValue<decimal>(out var number) ? number : 0;
