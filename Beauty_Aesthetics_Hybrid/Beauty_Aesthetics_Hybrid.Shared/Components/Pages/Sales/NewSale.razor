@@ -1573,6 +1573,8 @@
     private bool showOutstandingSettlement;
     private Dictionary<string, decimal> outstandingSettlementSelections =
         new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, decimal> outstandingSettlementExpectedBalances =
+        new(StringComparer.OrdinalIgnoreCase);
     private readonly List<TransactionPayment> outstandingSettlementPayments = new();
     private bool isOutstandingPaymentMode;
     private decimal? selectedCustomerPointBalance;
@@ -2109,6 +2111,7 @@
         isOutstandingDocumentsLoading = false;
         showOutstandingSettlement = false;
         outstandingSettlementSelections.Clear();
+        outstandingSettlementExpectedBalances.Clear();
         outstandingSettlementPayments.Clear();
         isOutstandingPaymentMode = false;
         selectedCustomerPointBalance = null;
@@ -3150,6 +3153,26 @@
         outstandingSettlementSelections = new Dictionary<string, decimal>(
             selections,
             StringComparer.OrdinalIgnoreCase);
+        outstandingSettlementExpectedBalances = new Dictionary<string, decimal>(
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var document in outstandingDocuments)
+        {
+            var key = OutstandingDocumentSelectionKey(document);
+            if (selections.ContainsKey(key))
+            {
+                outstandingSettlementExpectedBalances[key] = Math.Round(
+                    Math.Max(0m, document.RemainingAmount),
+                    2,
+                    MidpointRounding.AwayFromZero);
+            }
+        }
+
+        Console.WriteLine(
+            $"[Outstanding Step 9] SNAPSHOT | Customer={currentOrder.AccountId} | " +
+            $"Documents={outstandingSettlementExpectedBalances.Count} | " +
+            $"Balances={string.Join(", ", outstandingSettlementExpectedBalances.Select(pair => $"{pair.Key}:{pair.Value:N2}"))}");
+
         outstandingSettlementPayments.Clear();
         calculatorMethod = null;
         calculatorDigits = string.Empty;
@@ -4904,6 +4927,9 @@
                                 Amount = payment.Amount
                             })
                             .ToList(),
+                        ExpectedOutstandingAmounts = new Dictionary<string, decimal>(
+                            outstandingSettlementExpectedBalances,
+                            StringComparer.OrdinalIgnoreCase),
                         SelectedAmounts = new Dictionary<string, decimal>(
                             outstandingSettlementSelections,
                             StringComparer.OrdinalIgnoreCase)
@@ -4911,11 +4937,27 @@
 
                 if (!result.Success || result.Value is null)
                 {
+                    var errorMessage =
+                        result.ErrorMessage ??
+                        "Unable to save Outstanding settlement.";
+
+                    Console.WriteLine(
+                        $"[Outstanding Step 9] SAVE BLOCKED / REFRESH | Customer={currentOrder.AccountId} | " +
+                        $"Error={errorMessage}");
+
+                    outstandingSettlementPayments.Clear();
+                    calculatorMethod = null;
+                    calculatorDigits = string.Empty;
+                    isOutstandingPaymentMode = false;
+                    stage = SaleStage.Cart;
+
+                    await LoadSelectedCustomerBalancesAsync(currentOrder.AccountId);
+                    showOutstandingSettlement = true;
+
                     Feedback.Fail(
                         feedbackId,
-                        result.ErrorMessage ??
-                        "Unable to save Outstanding settlement.",
-                        "Outstanding payment failed");
+                        errorMessage,
+                        "Outstanding changed — review latest balance");
                     return;
                 }
 
@@ -4928,6 +4970,7 @@
                     $"Documents={saved.SettledDocumentCount}");
 
                 outstandingSettlementSelections.Clear();
+                outstandingSettlementExpectedBalances.Clear();
                 outstandingSettlementPayments.Clear();
                 isOutstandingPaymentMode = false;
                 calculatorMethod = null;
