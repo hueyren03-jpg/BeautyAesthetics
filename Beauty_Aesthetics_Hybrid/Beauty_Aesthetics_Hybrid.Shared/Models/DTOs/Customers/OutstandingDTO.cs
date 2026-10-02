@@ -106,10 +106,24 @@ public sealed class OutstandingSettlementSaveRequestDTO
     public string FinancialAccountID { get; set; } = string.Empty;
     public string FinancialAccountName { get; set; } = string.Empty;
 
+    // Step 8: use Beauty's existing multi-payment allocations. AR Receipt itself
+    // has one financial account, so the service persists one AR Receipt per
+    // configured payment method when more than one allocation is supplied.
+    public List<OutstandingSettlementPaymentDTO> Payments { get; set; } = new();
+
     // Key = outstanding source/document identifier from Step 3.
     // Value = amount to settle against that source.
     public Dictionary<string, decimal> SelectedAmounts { get; set; } =
         new(StringComparer.OrdinalIgnoreCase);
+}
+
+public sealed class OutstandingSettlementPaymentDTO
+{
+    public int PaymentTypeID { get; set; }
+    public string PaymentMethod { get; set; } = string.Empty;
+    public string FinancialAccountID { get; set; } = string.Empty;
+    public string FinancialAccountName { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
 }
 
 public sealed class OutstandingSettlementSaveResultDTO
@@ -118,6 +132,8 @@ public sealed class OutstandingSettlementSaveResultDTO
     public string DisplayCode { get; set; } = string.Empty;
     public decimal TotalAllocatedAmount { get; set; }
     public int SettledDocumentCount { get; set; }
+    public List<string> ReceiptIds { get; set; } = new();
+    public List<string> ReceiptCodes { get; set; } = new();
 }
 
 
