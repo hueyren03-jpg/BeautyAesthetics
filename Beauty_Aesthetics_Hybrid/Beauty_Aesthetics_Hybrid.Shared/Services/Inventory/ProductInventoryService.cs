@@ -296,7 +296,7 @@ public sealed class ProductInventoryService : IProductInventoryService
             Remarks = record.Remarks ?? string.Empty,
             ItemGroupId = record.ItemGroupID ?? string.Empty,
             ItemGroupName = record.ItemGroupName ?? string.Empty,
-            RedeemPoint = record.PointToRedeem ?? 0m,
+            RedeemPoint = ParseDecimal(record.PointToRedeem ?? string.Empty),
             AllowPointRedemption = record.AllowPointRedemption,
             ImagePath = record.ImagePath ?? string.Empty,
             ImageFileName = record.ImageFileName ?? string.Empty
