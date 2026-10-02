@@ -16,6 +16,78 @@ public sealed class OutstandingSettlementLinesRequestDTO
     public string BranchGroupID { get; set; } = string.Empty;
 }
 
+public sealed class OutstandingARReceiptHistoryRequestDTO
+{
+    [JsonPropertyName("branchID")]
+    public string BranchID { get; set; } = string.Empty;
+
+    [JsonPropertyName("startDate")]
+    public DateTime StartDate { get; set; }
+
+    [JsonPropertyName("endDate")]
+    public DateTime EndDate { get; set; }
+
+    [JsonPropertyName("pageNumber")]
+    public int PageNumber { get; set; } = 1;
+
+    [JsonPropertyName("pageSize")]
+    public int PageSize { get; set; } = 50;
+}
+
+public sealed class OutstandingARReceiptHistoryDTO
+{
+    public string DocumentID { get; set; } = string.Empty;
+    public int DocumentTypeID { get; set; }
+    public string FriendlyDocumentName { get; set; } = string.Empty;
+    public string AlphaCode { get; set; } = string.Empty;
+    public int NumericCode { get; set; }
+    public string BranchID { get; set; } = string.Empty;
+    public string EditBranchID { get; set; } = string.Empty;
+    public string DisplayCode { get; set; } = string.Empty;
+    public DateTime FinancialDate { get; set; }
+    public string AccountID { get; set; } = string.Empty;
+    public string AccountName { get; set; } = string.Empty;
+    public string ReferenceNumber { get; set; } = string.Empty;
+    public string GroupID { get; set; } = string.Empty;
+    public string BankAccountID { get; set; } = string.Empty;
+    public string BankAccountName { get; set; } = string.Empty;
+    public string FinancialAccountID { get; set; } = string.Empty;
+    public decimal BankAmountReceived { get; set; }
+    public decimal CustomerAmountReceived { get; set; }
+    public decimal LocalAmountReceived { get; set; }
+    public decimal ActualLocalSettlement { get; set; }
+    public decimal TotalAllocatedAmount { get; set; }
+    public bool IsVoid { get; set; }
+    public string CreatedBy { get; set; } = string.Empty;
+    public DateTime CreatedDateTime { get; set; }
+
+    [JsonIgnore]
+    public decimal EffectiveAmount =>
+        TotalAllocatedAmount != 0m
+            ? TotalAllocatedAmount
+            : ActualLocalSettlement != 0m
+                ? ActualLocalSettlement
+                : CustomerAmountReceived != 0m
+                    ? CustomerAmountReceived
+                    : LocalAmountReceived != 0m
+                        ? LocalAmountReceived
+                        : BankAmountReceived;
+
+    [JsonIgnore]
+    public string PaymentMethod =>
+        !string.IsNullOrWhiteSpace(BankAccountName)
+            ? BankAccountName
+            : !string.IsNullOrWhiteSpace(FinancialAccountID)
+                ? FinancialAccountID
+                : "-";
+}
+
+public sealed class OutstandingARReceiptDetailDTO
+{
+    public OutstandingARReceiptHistoryDTO Receipt { get; set; } = new();
+    public List<ud_ARAPPaymentOffSetLineDM> SettlementLines { get; set; } = new();
+}
+
 public sealed class OutstandingDocumentDTO
 {
     // Keep the server's source identifiers. RetrieveSettlementLines is the
