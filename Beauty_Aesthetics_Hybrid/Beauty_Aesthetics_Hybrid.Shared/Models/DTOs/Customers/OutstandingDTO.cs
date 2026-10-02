@@ -150,39 +150,6 @@ public sealed class OutstandingSettlementSaveResultDTO
     public decimal? VerifiedCustomerOutstanding { get; set; }
     public Dictionary<string, decimal> VerifiedRemainingAmounts { get; set; } =
         new(StringComparer.OrdinalIgnoreCase);
-
-    // Step 12: real AR Receipt history records prepared by the settlement
-    // service and persisted by the interactive UI layer after save.
-    public List<OutstandingPaymentHistoryDTO> HistoryRecords { get; set; } = new();
-}
-
-
-
-public sealed class OutstandingPaymentHistoryDTO
-{
-    public string ReceiptID { get; set; } = string.Empty;
-    public string ReceiptNo { get; set; } = string.Empty;
-    public DateTime PaymentDate { get; set; }
-    public string CustomerID { get; set; } = string.Empty;
-    public string CustomerName { get; set; } = string.Empty;
-    public string BranchID { get; set; } = string.Empty;
-    public string GroupID { get; set; } = string.Empty;
-    public decimal PaidAmount { get; set; }
-    public string PaymentMethod { get; set; } = string.Empty;
-    public string FinancialAccountID { get; set; } = string.Empty;
-    public string FinancialAccountName { get; set; } = string.Empty;
-    public bool VerificationPassed { get; set; }
-    public string VerificationMessage { get; set; } = string.Empty;
-    public decimal? CustomerOutstandingAfterPayment { get; set; }
-    public List<OutstandingPaymentHistoryLineDTO> Documents { get; set; } = new();
-}
-
-public sealed class OutstandingPaymentHistoryLineDTO
-{
-    public string SourceDocumentID { get; set; } = string.Empty;
-    public string DocumentNo { get; set; } = string.Empty;
-    public decimal AmountPaid { get; set; }
-    public decimal RemainingAfterPayment { get; set; }
 }
 
 
