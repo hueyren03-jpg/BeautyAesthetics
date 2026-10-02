@@ -150,6 +150,10 @@ public sealed class OutstandingSettlementSaveResultDTO
     public decimal? VerifiedCustomerOutstanding { get; set; }
     public Dictionary<string, decimal> VerifiedRemainingAmounts { get; set; } =
         new(StringComparer.OrdinalIgnoreCase);
+
+    // Step 12: real AR Receipt history records prepared by the settlement
+    // service and persisted by the interactive UI layer after save.
+    public List<OutstandingPaymentHistoryDTO> HistoryRecords { get; set; } = new();
 }
 
 
