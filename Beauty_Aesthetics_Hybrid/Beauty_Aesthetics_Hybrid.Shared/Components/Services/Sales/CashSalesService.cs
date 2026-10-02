@@ -1760,6 +1760,31 @@ public sealed class CashSalesService : ICashSalesService
                 "Point redemption is only supported in normal Sales mode (DocumentTypeID = 5).");
         }
 
+        var hasMemberCreditRedemption =
+            transaction.Items.Any(item =>
+                item.ActivityTypeId == 6 ||
+                !string.IsNullOrWhiteSpace(item.MemberCreditAccountId) ||
+                item.MemberCreditAllocations.Any(allocation =>
+                    !string.IsNullOrWhiteSpace(allocation.MemberCreditAccountId) &&
+                    allocation.Amount > 0m)) ||
+            transaction.Payments.Any(payment => payment.PaymentTypeId == -10) ||
+            transaction.ReceiptPayments.Any(payment => payment.PaymentTypeId == -10);
+
+        if (hasMemberCreditRedemption)
+        {
+            Console.WriteLine(
+                $"[Point Step 8] BLOCKED | Source=CashSalesService | Customer={transaction.AccountId} | " +
+                $"DocumentType={transaction.DocumentTypeId} | Reason=MixedPointAndMemberCredit");
+
+            return ApiCallResult<bool>.Failure(
+                HttpStatusCode.BadRequest,
+                "Point redemption cannot be combined with Member Credit redemption in the same sale.");
+        }
+
+        Console.WriteLine(
+            $"[Point Step 8] PASS | Source=CashSalesService | Customer={transaction.AccountId} | " +
+            $"DocumentType={transaction.DocumentTypeId} | PointLines={pointLines.Count} | MemberCreditMixed=False");
+
         if (string.IsNullOrWhiteSpace(transaction.AccountId))
         {
             return ApiCallResult<bool>.Failure(
