@@ -1,6 +1,7 @@
 @page "/billing"
 @using Beauty_Aesthetics_WebPos.APIClient
 @using Beauty_Aesthetics_WebPos.Components.Layout
+@using Beauty_Aesthetics_WebPos.Components.Shared
 @layout EmptyLayout
 @using Microsoft.AspNetCore.Components
 @using Beauty_Aesthetics_WebPos.Components.ViewModels
@@ -102,13 +103,18 @@
 
                     <!-- Customer balances: follows the actual member balance model -->
                     <div class="wallet-strip customer-balance-strip" style="margin-top: 10px;">
-                        <div class="wallet-card outstanding-balance">
+                        <button type="button"
+                                class="wallet-card outstanding-balance billing-outstanding-button"
+                                title="View outstanding documents"
+                                aria-haspopup="dialog"
+                                aria-expanded="@_showOutstandingSettlement"
+                                @onclick="OpenOutstandingSettlementAsync">
                             <div class="wallet-card-header">
                                 <i class="bi bi-currency-exchange"></i>
                                 <span>Outstanding Balance</span>
                             </div>
                             <div class="wallet-amount">@FormatMoneyBalance(CustomerOutstandingBalance)</div>
-                        </div>
+                        </button>
 
                         <div class="wallet-card points-balance">
                             <div class="wallet-card-header">
@@ -1596,6 +1602,18 @@
     </div>
 }
 
+<OutstandingSettlementDialog IsOpen="@_showOutstandingSettlement"
+                             CustomerId="@_billingCustomerId"
+                             CustomerName="@PatientName"
+                             SummaryOutstanding="@CustomerOutstandingBalance"
+                             Documents="@_outstandingDocuments"
+                             InitialSelections="@_outstandingSettlementSelections"
+                             IsLoading="@_isOutstandingDocumentsLoading"
+                             ErrorMessage="@_outstandingDocumentsError"
+                             OnClose="@CloseOutstandingSettlement"
+                             OnRefresh="@ReloadOutstandingDocumentsAsync"
+                             OnConfirm="@ConfirmOutstandingSelection" />
+
 @if (_showRedeemableCredits)
 {
     <div class="modal-overlay" @onclick="CloseRedeemableCredits">
@@ -1910,6 +1928,10 @@
     private decimal? CustomerOutstandingBalance { get; set; }
     private List<OutstandingDocumentDTO> _outstandingDocuments = new();
     private string? _outstandingDocumentsError;
+    private bool _isOutstandingDocumentsLoading;
+    private bool _showOutstandingSettlement;
+    private Dictionary<string, decimal> _outstandingSettlementSelections =
+        new(StringComparer.OrdinalIgnoreCase);
     private decimal? CustomerPointBalance { get; set; }
     private decimal? CustomerPackageBalance { get; set; }
     private decimal? CustomerCreditBalance { get; set; }
@@ -3311,6 +3333,9 @@
         CustomerOutstandingBalance = null;
         _outstandingDocuments.Clear();
         _outstandingDocumentsError = null;
+        _isOutstandingDocumentsLoading = false;
+        _showOutstandingSettlement = false;
+        _outstandingSettlementSelections.Clear();
         CustomerPointBalance = null;
         CustomerPackageBalance = null;
         CustomerCreditBalance = null;
@@ -3425,6 +3450,111 @@
         {
             _isCustomerBalanceLoading = false;
         }
+    }
+
+    private async Task OpenOutstandingSettlementAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_billingCustomerId))
+        {
+            Feedback.Warning(
+                "Select a valid customer before viewing outstanding documents.",
+                "Customer required");
+            return;
+        }
+
+        _showOutstandingSettlement = true;
+        await ReloadOutstandingDocumentsAsync();
+    }
+
+    private async Task ReloadOutstandingDocumentsAsync()
+    {
+        var customerId = _billingCustomerId?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(customerId))
+        {
+            return;
+        }
+
+        var workingBranchId = AppState.SelectedBranchID?.Trim() ?? string.Empty;
+        var workingGroupId = AppState.CurrentBranch?.GroupId?.Trim();
+        if (string.IsNullOrWhiteSpace(workingGroupId))
+        {
+            workingGroupId = workingBranchId;
+        }
+
+        _isOutstandingDocumentsLoading = true;
+        _outstandingDocumentsError = null;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var result = await OutstandingBalanceService.LoadDocumentsAsync(
+                customerId,
+                workingGroupId ?? string.Empty);
+
+            if (!string.Equals(
+                    customerId,
+                    _billingCustomerId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            if (!result.Success || result.Value is null)
+            {
+                _outstandingDocuments.Clear();
+                _outstandingDocumentsError =
+                    result.ErrorMessage ??
+                    "Unable to load outstanding documents.";
+                return;
+            }
+
+            _outstandingDocuments = result.Value.ToList();
+        }
+        catch (Exception ex)
+        {
+            if (string.Equals(
+                    customerId,
+                    _billingCustomerId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                _outstandingDocuments.Clear();
+                _outstandingDocumentsError =
+                    $"Unable to load outstanding documents: {ex.Message}";
+            }
+        }
+        finally
+        {
+            if (string.Equals(
+                    customerId,
+                    _billingCustomerId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                _isOutstandingDocumentsLoading = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private void CloseOutstandingSettlement()
+    {
+        _showOutstandingSettlement = false;
+    }
+
+    private void ConfirmOutstandingSelection(
+        IReadOnlyDictionary<string, decimal> selections)
+    {
+        _outstandingSettlementSelections = new Dictionary<string, decimal>(
+            selections,
+            StringComparer.OrdinalIgnoreCase);
+
+        _showOutstandingSettlement = false;
+
+        var selectedTotal = _outstandingSettlementSelections.Values.Sum();
+        Feedback.Info(
+            $"RM {selectedTotal:N2} selected across " +
+            $"{_outstandingSettlementSelections.Count} outstanding document(s).",
+            "Outstanding selected",
+            2800);
     }
 
     private async Task OpenRedeemableCredits()
