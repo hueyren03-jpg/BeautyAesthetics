@@ -2330,20 +2330,36 @@
             MidpointRounding.AwayFromZero);
         var allocatedElsewhere = BillingPointsAllocated(item);
         var latestBalance = Math.Max(0m, balanceResult.Value.PointBalance);
+        var availableForThisLine = Math.Max(0m, latestBalance - allocatedElsewhere);
 
         Console.WriteLine(
             $"[Point Step 4] BILLING CONVERSION | Inventory={item.SourceId} | " +
             $"Rule=FixedItemPointToRedeem | PointToRedeem={pointToRedeem:0.##} | " +
             $"Qty={item.Quantity} | Required={required:0.##} | PriceMode=FullReplacement");
 
+        Console.WriteLine(
+            $"[Point Step 6] BALANCE CHECK | Source=Billing | Customer={_billingCustomerId} | " +
+            $"Inventory={item.SourceId} | Type=1 | LatestBalance={latestBalance:0.##} | " +
+            $"AllocatedElsewhere={allocatedElsewhere:0.##} | Available={availableForThisLine:0.##} | " +
+            $"Required={required:0.##}");
+
         if (required <= 0m ||
-            allocatedElsewhere + required - latestBalance > 0.009m)
+            required - availableForThisLine > 0.009m)
         {
+            Console.WriteLine(
+                $"[Point Step 6] BLOCKED | Source=Billing | Customer={_billingCustomerId} | " +
+                $"Inventory={item.SourceId} | Type=1 | Available={availableForThisLine:0.##} | Required={required:0.##}");
+
             Feedback.Warning(
-                $"Insufficient points. Available: {Math.Max(0m, latestBalance - allocatedElsewhere):0.##} pts, Required: {required:0.##} pts.",
+                $"Insufficient points. Available: {availableForThisLine:0.##} pts, Required: {required:0.##} pts.",
                 "Not enough points");
             return;
         }
+
+        Console.WriteLine(
+            $"[Point Step 6] PASS | Source=Billing | Customer={_billingCustomerId} | " +
+            $"Inventory={item.SourceId} | Type=1 | AvailableBeforeAssignment={availableForThisLine:0.##} | " +
+            $"Required={required:0.##} | RemainingAfterAssignment={Math.Max(0m, availableForThisLine - required):0.##}");
 
         PrescriptionItems[index] = item with
         {
@@ -2446,20 +2462,36 @@
             MidpointRounding.AwayFromZero);
         var allocatedElsewhere = BillingPointsAllocated(item);
         var latestBalance = Math.Max(0m, balanceResult.Value.PointBalance);
+        var availableForThisLine = Math.Max(0m, latestBalance - allocatedElsewhere);
 
         Console.WriteLine(
             $"[Point Step 4] BILLING CONVERSION | Inventory={item.SourceId} | " +
             $"Rule=FixedItemPointToRedeem | PointToRedeem={pointToRedeem:0.##} | " +
             $"Qty={item.Quantity} | Required={required:0.##} | PriceMode=FullReplacement");
 
+        Console.WriteLine(
+            $"[Point Step 6] BALANCE CHECK | Source=Billing | Customer={_billingCustomerId} | " +
+            $"Inventory={item.SourceId} | Type=3 | LatestBalance={latestBalance:0.##} | " +
+            $"AllocatedElsewhere={allocatedElsewhere:0.##} | Available={availableForThisLine:0.##} | " +
+            $"Required={required:0.##}");
+
         if (required <= 0m ||
-            allocatedElsewhere + required - latestBalance > 0.009m)
+            required - availableForThisLine > 0.009m)
         {
+            Console.WriteLine(
+                $"[Point Step 6] BLOCKED | Source=Billing | Customer={_billingCustomerId} | " +
+                $"Inventory={item.SourceId} | Type=3 | Available={availableForThisLine:0.##} | Required={required:0.##}");
+
             Feedback.Warning(
-                $"Insufficient points. Available: {Math.Max(0m, latestBalance - allocatedElsewhere):0.##} pts, Required: {required:0.##} pts.",
+                $"Insufficient points. Available: {availableForThisLine:0.##} pts, Required: {required:0.##} pts.",
                 "Not enough points");
             return;
         }
+
+        Console.WriteLine(
+            $"[Point Step 6] PASS | Source=Billing | Customer={_billingCustomerId} | " +
+            $"Inventory={item.SourceId} | Type=3 | AvailableBeforeAssignment={availableForThisLine:0.##} | " +
+            $"Required={required:0.##} | RemainingAfterAssignment={Math.Max(0m, availableForThisLine - required):0.##}");
 
         ServiceItems[index] = item with
         {
