@@ -404,6 +404,78 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
             }
         }
 
+        // Step 10: enforce the exact AR Receipt save contract before the API call.
+        // Every settlement row must retain a real source document and belong to
+        // the selected customer; header totals must equal the settlement rows.
+        foreach (var line in offsetLines)
+        {
+            if (string.IsNullOrWhiteSpace(line.DocumentID))
+            {
+                Console.WriteLine(
+                    $"[Outstanding Step 10] SAVE BLOCKED | Reason=Missing source DocumentID | " +
+                    $"DisplayCode={line.DisplayCode}");
+
+                return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
+                    $"Outstanding document {line.DisplayCode} is missing its source document ID. Refresh and try again.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(line.CustomerAccountID) &&
+                !string.Equals(
+                    line.CustomerAccountID.Trim(),
+                    customerId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine(
+                    $"[Outstanding Step 10] SAVE BLOCKED | Reason=Customer mismatch | " +
+                    $"Document={line.DisplayCode} | ExpectedCustomer={customerId} | " +
+                    $"LineCustomer={line.CustomerAccountID}");
+
+                return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
+                    $"Outstanding document {line.DisplayCode} no longer belongs to the selected customer. Refresh and try again.");
+            }
+
+            if (line.AllocatedAmount <= 0m ||
+                Math.Abs(line.AllocatedAmount - line.LocalAllocatedAmount) > 0.009m ||
+                Math.Abs(line.AllocatedAmount - line.ActualLocalSettlement) > 0.009m)
+            {
+                Console.WriteLine(
+                    $"[Outstanding Step 10] SAVE BLOCKED | Reason=Invalid settlement amounts | " +
+                    $"Document={line.DisplayCode} | Allocated={line.AllocatedAmount:N2} | " +
+                    $"Local={line.LocalAllocatedAmount:N2} | Actual={line.ActualLocalSettlement:N2}");
+
+                return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
+                    $"Outstanding settlement values for {line.DisplayCode} are invalid. Refresh and try again.");
+            }
+        }
+
+        var saveLineTotal = Math.Round(
+            offsetLines.Sum(line => line.AllocatedAmount),
+            2,
+            MidpointRounding.AwayFromZero);
+
+        if (Math.Abs(saveLineTotal - totalAllocated) > 0.009m)
+        {
+            Console.WriteLine(
+                $"[Outstanding Step 10] SAVE BLOCKED | Reason=Header/line total mismatch | " +
+                $"Header={totalAllocated:N2} | Lines={saveLineTotal:N2}");
+
+            return CustomerOperationResult<OutstandingSettlementSaveResultDTO>.Fail(
+                $"Outstanding settlement total mismatch. Header RM {totalAllocated:N2}, settlement lines RM {saveLineTotal:N2}.");
+        }
+
+        Console.WriteLine(
+            $"[Outstanding Step 10] SAVE PREFLIGHT PASS | Customer={customerId} | " +
+            $"Documents={offsetLines.Count} | Amount={totalAllocated:N2} | " +
+            $"FinancialAccount={bankAccountId}");
+
+        foreach (var line in offsetLines)
+        {
+            Console.WriteLine(
+                $"[Outstanding Step 10] SOURCE LINE | DocumentID={line.DocumentID} | " +
+                $"DisplayCode={line.DisplayCode} | Allocated={line.AllocatedAmount:N2} | " +
+                $"ActualSettlement={line.ActualLocalSettlement:N2}");
+        }
+
         var receipt = new OutstandingARReceiptCreateDTO
         {
             Header = new OutstandingARReceiptHeaderDTO
@@ -438,9 +510,10 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
         };
 
         Console.WriteLine(
-            $"[Outstanding Step 5] CREATE AR RECEIPT | Customer={customerId} | " +
-            $"Branch={branchId} | Group={groupId} | Documents={offsetLines.Count} | " +
-            $"Amount={totalAllocated:N2} | FinancialAccount={bankAccountId}");
+            $"[Outstanding Step 10] CREATE AR RECEIPT | Endpoint=/api/Doc_ARReceipt/CreateRecord | " +
+            $"Customer={customerId} | Branch={branchId} | Group={groupId} | " +
+            $"Documents={offsetLines.Count} | Amount={totalAllocated:N2} | " +
+            $"FinancialAccount={bankAccountId}");
 
         var saveResult = await arReceiptAC.CreateRecordAsync(
             receipt,
@@ -455,9 +528,10 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
         }
 
         Console.WriteLine(
-            $"[Outstanding Step 5] AR RECEIPT SAVED | Id={saveResult.Value.Id} | " +
+            $"[Outstanding Step 10] SAVE COMPLETE | Id={saveResult.Value.Id} | " +
             $"DisplayCode={saveResult.Value.DisplayCode} | " +
-            $"Amount={saveResult.Value.TotalAllocatedAmount:N2}");
+            $"Amount={saveResult.Value.TotalAllocatedAmount:N2} | " +
+            $"SourceDocuments={offsetLines.Count}");
 
         if (requested.Count > 1)
         {
