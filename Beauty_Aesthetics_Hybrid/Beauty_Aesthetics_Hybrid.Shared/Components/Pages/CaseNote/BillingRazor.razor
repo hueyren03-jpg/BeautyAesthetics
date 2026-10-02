@@ -1953,6 +1953,8 @@
     private bool _showOutstandingSettlement;
     private Dictionary<string, decimal> _outstandingSettlementSelections =
         new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, decimal> _outstandingSettlementExpectedBalances =
+        new(StringComparer.OrdinalIgnoreCase);
     private readonly List<TransactionPayment> _outstandingSettlementPayments = new();
     private bool _isOutstandingPaymentMode;
     private decimal? CustomerPointBalance { get; set; }
@@ -3398,6 +3400,7 @@
         _isOutstandingDocumentsLoading = false;
         _showOutstandingSettlement = false;
         _outstandingSettlementSelections.Clear();
+        _outstandingSettlementExpectedBalances.Clear();
         _outstandingSettlementPayments.Clear();
         _isOutstandingPaymentMode = false;
         CustomerPointBalance = null;
@@ -3645,6 +3648,26 @@
         _outstandingSettlementSelections = new Dictionary<string, decimal>(
             selections,
             StringComparer.OrdinalIgnoreCase);
+        _outstandingSettlementExpectedBalances = new Dictionary<string, decimal>(
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var document in _outstandingDocuments)
+        {
+            var key = BillingOutstandingDocumentSelectionKey(document);
+            if (selections.ContainsKey(key))
+            {
+                _outstandingSettlementExpectedBalances[key] = Math.Round(
+                    Math.Max(0m, document.RemainingAmount),
+                    2,
+                    MidpointRounding.AwayFromZero);
+            }
+        }
+
+        Console.WriteLine(
+            $"[Outstanding Step 9] BILLING SNAPSHOT | Customer={_billingCustomerId} | " +
+            $"Documents={_outstandingSettlementExpectedBalances.Count} | " +
+            $"Balances={string.Join(", ", _outstandingSettlementExpectedBalances.Select(pair => $"{pair.Key}:{pair.Value:N2}"))}");
+
         _outstandingSettlementPayments.Clear();
         _billingCalculatorMethod = null;
         _billingCalculatorDigits = string.Empty;
@@ -4023,6 +4046,9 @@
                                 Amount = payment.Amount
                             })
                             .ToList(),
+                        ExpectedOutstandingAmounts = new Dictionary<string, decimal>(
+                            _outstandingSettlementExpectedBalances,
+                            StringComparer.OrdinalIgnoreCase),
                         SelectedAmounts = new Dictionary<string, decimal>(
                             _outstandingSettlementSelections,
                             StringComparer.OrdinalIgnoreCase)
@@ -4033,10 +4059,25 @@
                     _paymentValidationError =
                         result.ErrorMessage ??
                         "Unable to save Outstanding settlement.";
+
+                    Console.WriteLine(
+                        $"[Outstanding Step 9] BILLING SAVE BLOCKED / REFRESH | Customer={_billingCustomerId} | " +
+                        $"Error={_paymentValidationError}");
+
+                    _outstandingSettlementPayments.Clear();
+                    _billingCalculatorMethod = null;
+                    _billingCalculatorDigits = string.Empty;
+                    _isOutstandingPaymentMode = false;
+                    _billingStep = "summary";
+
+                    await LoadCustomerBalancesAsync(_billingCustomerId);
+                    _showOutstandingSettlement = true;
+                    SynchronizeBillingPaymentTotals();
+
                     Feedback.Fail(
                         feedbackId,
                         _paymentValidationError,
-                        "Outstanding payment failed");
+                        "Outstanding changed — review latest balance");
                     return;
                 }
 
@@ -4049,6 +4090,7 @@
                     $"Documents={saved.SettledDocumentCount}");
 
                 _outstandingSettlementSelections.Clear();
+                _outstandingSettlementExpectedBalances.Clear();
                 _outstandingSettlementPayments.Clear();
                 _isOutstandingPaymentMode = false;
                 _billingCalculatorMethod = null;
