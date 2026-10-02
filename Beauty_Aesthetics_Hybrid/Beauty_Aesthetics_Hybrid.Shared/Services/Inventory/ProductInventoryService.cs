@@ -148,6 +148,33 @@ public sealed class ProductInventoryService : IProductInventoryService
         return ApiCallResult<InventoryViewModel.InventoryItem>.Ok(result.StatusCode, product);
     }
 
+    public async Task<ApiCallResult<InventoryViewModel.InventoryItem>> LoadProductPointConfigurationAsync(
+        string masterAccountId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(masterAccountId))
+        {
+            return ApiCallResult<InventoryViewModel.InventoryItem>.Failure(
+                HttpStatusCode.BadRequest,
+                "Product record ID is missing.");
+        }
+
+        // Point redemption only needs the base Inventory record. The backend already
+        // returns AllowPointRedemption and PointToRedeem here, so avoid loading the
+        // much larger InventoryFull payload (and its unrelated deserialization issues).
+        var result = await inventoryAC.LoadRecordAsync(masterAccountId, cancellationToken);
+        if (!result.Success || result.Value is null)
+        {
+            return ApiCallResult<InventoryViewModel.InventoryItem>.Failure(
+                result.StatusCode,
+                result.ErrorMessage ?? "Unable to load product point configuration.");
+        }
+
+        return ApiCallResult<InventoryViewModel.InventoryItem>.Ok(
+            result.StatusCode,
+            ToProduct(result.Value));
+    }
+
     public async Task<ApiCallResult<bool>> CreateProductAsync(
         InventoryViewModel.InventoryItem product,
         string branchId = "HQ",
