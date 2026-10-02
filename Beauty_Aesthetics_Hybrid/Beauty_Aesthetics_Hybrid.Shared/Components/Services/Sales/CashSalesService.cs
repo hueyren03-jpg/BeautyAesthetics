@@ -2173,6 +2173,9 @@ public sealed class CashSalesService : ICashSalesService
                 $"MemberType={matchedRule.MemberTypeID} | MinimumSpend={matchedRule.MinimumSpend:N2} | " +
                 $"ForEvery={matchedRule.ForEveryXDollar:N2} | EqualPoints={matchedRule.EqualToXPoint:0.##} | " +
                 $"ExcludeTax={matchedRule.ExcludeTaxAmount} | RoundDown={matchedRule.RoundDownToInteger} | " +
+                $"ConvertToVoucher={matchedRule.ConvertRebateIntoCashVoucher} | " +
+                $"RMConversionRatio={matchedRule.RMConversionRatio:0.####} | " +
+                $"ExpiryOption={matchedRule.ExpiryOption} | ExpiryMonth={matchedRule.ExpiryMonth} | " +
                 $"MultipleMatches={multipleRulesMatched}");
         }
 
@@ -2270,8 +2273,18 @@ public sealed class CashSalesService : ICashSalesService
             $"ObservedEarned={observedEarned:0.##} | FormulaEstimate={estimateText} | " +
             $"SpendBasis={spendBasis:N2} | BackendManaged=True");
 
-        if (configuredFormulaEstimate.HasValue &&
-            !snapshot.MultipleRulesMatched)
+        if (rule?.ConvertRebateIntoCashVoucher == true)
+        {
+            // This rule routes the reward into a cash-voucher workflow. A PointBalance
+            // increase is therefore not a valid success criterion for the earning step.
+            Console.WriteLine(
+                $"[Point Step 13] OBSERVED | Document={transaction.DocumentId} | " +
+                $"Customer={transaction.AccountId} | ObservedPointBalanceEarned={observedEarned:0.##} | " +
+                $"ConfiguredFormulaEstimate={estimateText} | ConvertToVoucher=True | " +
+                $"PointBalanceComparisonSkipped=True | BackendAuthoritative=True");
+        }
+        else if (configuredFormulaEstimate.HasValue &&
+                 !snapshot.MultipleRulesMatched)
         {
             var formulaMatches =
                 Math.Abs(observedEarned - configuredFormulaEstimate.Value) <= 0.009m;
