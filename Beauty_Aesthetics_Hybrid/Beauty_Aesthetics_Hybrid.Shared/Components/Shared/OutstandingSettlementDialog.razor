@@ -293,9 +293,14 @@
 
     private void PruneAndClampSelections()
     {
-        var validDocuments = Documents.ToDictionary(
-            DocumentKey,
-            StringComparer.OrdinalIgnoreCase);
+        var validDocuments = Documents
+            .GroupBy(
+                DocumentKey,
+                StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.First(),
+                StringComparer.OrdinalIgnoreCase);
 
         foreach (var key in _selections.Keys.ToList())
         {
