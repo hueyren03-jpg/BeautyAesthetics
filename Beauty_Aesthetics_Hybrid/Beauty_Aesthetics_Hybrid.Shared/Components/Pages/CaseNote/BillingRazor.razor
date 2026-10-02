@@ -4064,6 +4064,12 @@
                         $"[Outstanding Step 9] BILLING SAVE BLOCKED / REFRESH | Customer={_billingCustomerId} | " +
                         $"Error={_paymentValidationError}");
 
+                    var isStaleOutstanding =
+                        _paymentValidationError.Contains("changed from", StringComparison.OrdinalIgnoreCase) ||
+                        _paymentValidationError.Contains("no longer available", StringComparison.OrdinalIgnoreCase) ||
+                        _paymentValidationError.Contains("now has only", StringComparison.OrdinalIgnoreCase) ||
+                        _paymentValidationError.Contains("latest balance", StringComparison.OrdinalIgnoreCase);
+
                     _outstandingSettlementPayments.Clear();
                     _billingCalculatorMethod = null;
                     _billingCalculatorDigits = string.Empty;
@@ -4077,7 +4083,9 @@
                     Feedback.Fail(
                         feedbackId,
                         _paymentValidationError,
-                        "Outstanding changed — review latest balance");
+                        isStaleOutstanding
+                            ? "Outstanding changed — review latest balance"
+                            : "Outstanding payment failed");
                     return;
                 }
 
@@ -4089,6 +4097,75 @@
                     $"Amount={saved.TotalAllocatedAmount:N2} | " +
                     $"Documents={saved.SettledDocumentCount}");
 
+                // Match Senang Retail: route a successful AR Receipt payment
+                // to the common Payment Successful page with receipt printing.
+                var paymentMethodDisplay = string.Join(
+                    ", ",
+                    outstandingPayments.Select(payment => payment.PaymentMethod));
+
+                var outstandingReceipt = new Transaction
+                {
+                    DocumentId = saved.Id,
+                    DocumentTypeId = 11,
+                    AccountId = _billingCustomerId,
+                    BranchId = branchId,
+                    GroupId = groupId,
+                    Date = DateTime.Now,
+                    InvoiceNumber = saved.DisplayCode,
+                    CustomerName = PatientName,
+                    CustomerContact = PatientPhone == "-" ? string.Empty : PatientPhone,
+                    Branch = AppState.CurrentBranch?.Name ?? branchId,
+                    Type = "Outstanding Payment",
+                    ItemCount = 1,
+                    Amount = saved.TotalAllocatedAmount,
+                    Subtotal = saved.TotalAllocatedAmount,
+                    Tax = 0m,
+                    Discount = 0m,
+                    CurrencyName = "MYR",
+                    PaymentMethod = paymentMethodDisplay,
+                    Status = "Paid",
+                    Items = new List<TransactionItem>
+                    {
+                        new()
+                        {
+                            Name = "Outstanding Payment",
+                            Description = $"{saved.SettledDocumentCount} outstanding document(s)",
+                            Category = "Outstanding",
+                            Quantity = 1,
+                            UnitPrice = saved.TotalAllocatedAmount,
+                            TotalPrice = saved.TotalAllocatedAmount
+                        }
+                    },
+                    Payments = outstandingPayments
+                        .Select(payment => new TransactionPayment
+                        {
+                            PaymentTypeId = payment.PaymentTypeId,
+                            PaymentMethod = payment.PaymentMethod,
+                            Amount = payment.Amount,
+                            FinancialAccountId = payment.FinancialAccountId,
+                            BankName = payment.BankName
+                        })
+                        .ToList()
+                };
+                outstandingReceipt.ReceiptPayments = outstandingReceipt.Payments
+                    .Select(payment => new TransactionPayment
+                    {
+                        PaymentTypeId = payment.PaymentTypeId,
+                        PaymentMethod = payment.PaymentMethod,
+                        Amount = payment.Amount,
+                        FinancialAccountId = payment.FinancialAccountId,
+                        BankName = payment.BankName
+                    })
+                    .ToList();
+
+                AppState.LastSaleDocumentId = saved.Id;
+                AppState.LastReceiptNo = saved.DisplayCode;
+                AppState.LastPaidAmount = saved.TotalAllocatedAmount;
+                AppState.LastPaymentMethod = paymentMethodDisplay;
+                AppState.LastCompletedTransaction = outstandingReceipt;
+                AppState.LastPaymentReturnUrl = PatientContext.WithCustomer("/case-notes");
+                AppState.IsOutstandingPaymentMode = true;
+
                 _outstandingSettlementSelections.Clear();
                 _outstandingSettlementExpectedBalances.Clear();
                 _outstandingSettlementPayments.Clear();
@@ -4098,14 +4175,14 @@
                 _billingStep = "summary";
                 SynchronizeBillingPaymentTotals();
 
-                await LoadCustomerBalancesAsync(_billingCustomerId);
-
                 Feedback.Resolve(
                     feedbackId,
                     string.IsNullOrWhiteSpace(saved.DisplayCode)
-                        ? $"Outstanding payment of RM {saved.TotalAllocatedAmount:N2} saved successfully."
-                        : $"Outstanding payment {saved.DisplayCode} saved successfully.",
-                    "Outstanding paid");
+                        ? $"Outstanding payment of RM {saved.TotalAllocatedAmount:N2} completed successfully."
+                        : $"Outstanding payment {saved.DisplayCode} completed successfully.",
+                    "Outstanding payment successful");
+
+                NavigationManager.NavigateTo("/complete-sales");
             }
             finally
             {
