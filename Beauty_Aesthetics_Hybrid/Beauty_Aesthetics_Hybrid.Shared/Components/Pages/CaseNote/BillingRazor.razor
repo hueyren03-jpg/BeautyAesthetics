@@ -4184,6 +4184,19 @@
 
                 NavigationManager.NavigateTo("/complete-sales");
             }
+            catch (Exception ex)
+            {
+                _paymentValidationError =
+                    $"Unable to confirm the Outstanding payment. {ex.Message} Refresh Outstanding before retrying.";
+
+                Console.WriteLine(
+                    $"[Outstanding] BILLING SAVE EXCEPTION | Customer={_billingCustomerId} | Error={ex}");
+
+                Feedback.Fail(
+                    feedbackId,
+                    _paymentValidationError,
+                    "Outstanding payment failed");
+            }
             finally
             {
                 _isProcessingPayment = false;
