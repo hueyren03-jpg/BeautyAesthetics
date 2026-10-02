@@ -2515,24 +2515,34 @@
 
         selectedCustomerPointBalance = balanceResult.Value.PointBalance;
         var totalRequired = Math.Round(
-            pointLines.Sum(RequiredPointsFor),
+            pointLines.Sum(item => Math.Max(0m, item.Points)),
             2,
             MidpointRounding.AwayFromZero);
+        var latestBalance = Math.Max(0m, balanceResult.Value.PointBalance);
 
-        if (totalRequired - balanceResult.Value.PointBalance > 0.009m)
+        Console.WriteLine(
+            $"[Point Step 10] FINAL REVALIDATION | Source=Sales | Customer={currentOrder.AccountId} | " +
+            $"LatestBalance={latestBalance:0.##} | Required={totalRequired:0.##} | Lines={pointLines.Count}");
+
+        if (totalRequired - latestBalance > 0.009m)
         {
+            Console.WriteLine(
+                $"[Point Step 10] BLOCKED | Source=Sales | Customer={currentOrder.AccountId} | " +
+                $"LatestBalance={latestBalance:0.##} | Required={totalRequired:0.##}");
+
             if (showFeedback)
             {
                 Feedback.Warning(
-                    $"The latest point balance is {balanceResult.Value.PointBalance:0.##} pts, but this sale requires {totalRequired:0.##} pts. Remove or adjust point redemption before continuing.",
+                    $"The latest point balance is {latestBalance:0.##} pts, but this sale requires {totalRequired:0.##} pts. Remove or adjust point redemption before continuing.",
                     "Point balance changed");
             }
             return false;
         }
 
         Console.WriteLine(
-            $"[Point Step 2] REVALIDATED | Customer={currentOrder.AccountId} | " +
-            $"LatestBalance={balanceResult.Value.PointBalance:0.##} | Required={totalRequired:0.##} | Lines={pointLines.Count}");
+            $"[Point Step 10] PASS | Source=Sales | Customer={currentOrder.AccountId} | " +
+            $"LatestBalance={latestBalance:0.##} | Required={totalRequired:0.##} | " +
+            $"RemainingAfterSave={Math.Max(0m, latestBalance - totalRequired):0.##}");
 
         return true;
     }
@@ -5741,6 +5751,18 @@
         {
             Feedback.Warning($"Add MYR {Remaining:N2} more before completing the sale.", "Payment incomplete");
             return;
+        }
+
+        // Point Step 10 — re-read the customer's latest PointBalance at the
+        // final UI save boundary. This catches points spent by another
+        // terminal after this bill was prepared but before Complete Sale.
+        if (HasPointRedemption)
+        {
+            var finalPointValid = await RevalidatePointRedemptionsAsync(showFeedback: true);
+            if (!finalPointValid)
+            {
+                return;
+            }
         }
 
         isSaving = true;
