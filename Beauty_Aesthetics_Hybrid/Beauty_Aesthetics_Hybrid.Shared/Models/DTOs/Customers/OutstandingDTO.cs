@@ -1,3 +1,5 @@
+using EBI.DM;
+using System.Collections.ObjectModel;
 using System.Text.Json.Serialization;
 
 namespace Beauty_Aesthetics_WebPos.Models.DTOs;
@@ -116,4 +118,48 @@ public sealed class OutstandingSettlementSaveResultDTO
     public string DisplayCode { get; set; } = string.Empty;
     public decimal TotalAllocatedAmount { get; set; }
     public int SettledDocumentCount { get; set; }
+}
+
+
+/// <summary>
+/// Beauty-owned wire contract for POST /api/Doc_ARReceipt/CreateRecord.
+/// Senang's Doc_ARReceipt wrapper is app-side code and is not present in Beauty's DLLs,
+/// so Beauty keeps the same JSON shape without taking a compile-time dependency on it.
+/// </summary>
+public sealed class OutstandingARReceiptCreateDTO
+{
+    [JsonPropertyName("objDoc_ARReceipt")]
+    public OutstandingARReceiptHeaderDTO Header { get; set; } = new();
+
+    [JsonPropertyName("lstud_ARAPPaymentOffSetLineDM")]
+    public ObservableCollection<ud_ARAPPaymentOffSetLineDM> SettlementLines { get; set; } = new();
+}
+
+public sealed class OutstandingARReceiptHeaderDTO
+{
+    public string BranchID { get; set; } = string.Empty;
+    public string EditBranchID { get; set; } = string.Empty;
+    public string AccountID { get; set; } = string.Empty;
+    public string AccountName { get; set; } = string.Empty;
+    public string ReferenceNumber { get; set; } = string.Empty;
+    public string CustomerCurrencyID { get; set; } = string.Empty;
+    public string CustomerCurrencyName { get; set; } = string.Empty;
+    public string LocalCurrencyID { get; set; } = string.Empty;
+    public string LocalCurrencyName { get; set; } = string.Empty;
+    public decimal ExchangeRate { get; set; } = 1m;
+    public string Remarks { get; set; } = string.Empty;
+    public string GroupID { get; set; } = string.Empty;
+    public decimal BankExchangeRate { get; set; } = 1m;
+    public string BankAccountID { get; set; } = string.Empty;
+    public string BankAccountName { get; set; } = string.Empty;
+    public string BankCurrencyID { get; set; } = string.Empty;
+    public string BankCurrencyName { get; set; } = string.Empty;
+    public decimal BankAmountReceived { get; set; }
+    public decimal BankCharges { get; set; }
+    public decimal TotalAllocatedAmount { get; set; }
+    public int SaveAction { get; set; } = 1;
+    public string FinancialAccountID { get; set; } = string.Empty;
+    public bool IsDirty { get; set; } = true;
+    public bool blnIsPeriodClosed { get; set; } = true;
+    public bool blnIsBankReconciliationDone { get; set; } = true;
 }
