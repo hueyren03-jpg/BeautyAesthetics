@@ -828,7 +828,7 @@
 
                 <button type="button"
                         class="primary-action"
-                        disabled="@(isSaving || PaymentTargetAmount <= 0m || Remaining > 0m || (isOutstandingPaymentMode && ActivePaymentLines.Count != 1) || (!isOutstandingPaymentMode && !currentOrder.IsRedemptionMode && ActivePaymentLines.Count == 0))"
+                        disabled="@(isSaving || PaymentTargetAmount <= 0m || Remaining > 0m || (isOutstandingPaymentMode && (ActivePaymentLines.Count == 0 || Math.Abs(PaidAmount - PaymentTargetAmount) > 0.009m)) || (!isOutstandingPaymentMode && !currentOrder.IsRedemptionMode && ActivePaymentLines.Count == 0))"
                         @onclick="SaveSale">
                     @if (isSaving)
                     {
@@ -3175,7 +3175,7 @@
             $"RegularMethods={VisiblePaymentTypes.Count()} | MemberCreditExcluded=True");
 
         Feedback.Info(
-            $"RM {selectedTotal:N2} selected. Choose one payment method.",
+            $"RM {selectedTotal:N2} selected. Choose one or more payment methods.",
             "Outstanding payment",
             2800);
     }
@@ -4668,27 +4668,19 @@
 
             if (existingOutstandingPayment is null)
             {
-                if (ActivePaymentLines.Any())
-                {
-                    Feedback.Warning(
-                        "Outstanding settlement follows Senang Retail and allows one payment method only.",
-                        "One payment method");
-                    return;
-                }
-
-                // Match Senang Retail: first click on a payment method immediately
-                // allocates the full remaining Outstanding amount. A second click
-                // opens the calculator so the user can edit it if required.
+                // Step 8 keeps Beauty's existing multi-payment workflow:
+                // first click allocates the current remaining amount; click the
+                // selected method again to edit its amount, then add another method.
                 var amount = Math.Round(
-                    Math.Max(0m, PaymentTargetAmount),
+                    Math.Max(0m, Remaining),
                     2,
                     MidpointRounding.AwayFromZero);
 
                 if (amount <= 0m)
                 {
                     Feedback.Warning(
-                        "The Outstanding settlement amount must be greater than zero.",
-                        "Outstanding amount required");
+                        "The Outstanding settlement is already fully allocated. Edit or remove an existing payment before adding another method.",
+                        "Outstanding fully allocated");
                     return;
                 }
 
@@ -4705,9 +4697,10 @@
                 calculatorDigits = string.Empty;
 
                 Console.WriteLine(
-                    $"[Outstanding Step 4] PAYMENT METHOD SELECTED | " +
+                    $"[Outstanding Step 8] PAYMENT METHOD ADDED | " +
                     $"Type={method.POSPaymentTypeID} | Method={method.POSPaymentTypeName} | " +
-                    $"Amount={amount:N2}");
+                    $"Amount={amount:N2} | Methods={ActivePaymentLines.Count} | " +
+                    $"Paid={PaidAmount:N2} | Remaining={Remaining:N2}");
 
                 StateHasChanged();
                 return;
@@ -4784,20 +4777,11 @@
                 return;
             }
 
-            if (CalculatorAmount > PaymentTargetAmount + 0.009m)
+            if (CalculatorAmount > CalculatorRemaining + 0.009m)
             {
                 Feedback.Warning(
-                    $"Outstanding payment cannot exceed MYR {PaymentTargetAmount:N2}.",
+                    $"This payment method cannot exceed MYR {CalculatorRemaining:N2}; the split total must remain MYR {PaymentTargetAmount:N2}.",
                     "Amount too high");
-                return;
-            }
-
-            if (ActivePaymentLines.Any(payment =>
-                    payment.PaymentTypeId != calculatorMethod.POSPaymentTypeID))
-            {
-                Feedback.Warning(
-                    "Outstanding settlement allows one payment method only.",
-                    "One payment method");
                 return;
             }
         }
@@ -4842,16 +4826,32 @@
                 return;
             }
 
-            if (ActivePaymentLines.Count != 1 ||
-                ActivePaymentLines.Any(payment => payment.PaymentTypeId == -10))
+            var outstandingPayments = ActivePaymentLines
+                .Where(payment => payment.Amount > 0m)
+                .ToList();
+
+            if (outstandingPayments.Count == 0 ||
+                outstandingPayments.Any(payment => payment.PaymentTypeId == -10))
             {
                 Feedback.Warning(
-                    "Choose one regular payment method for Outstanding settlement.",
+                    "Choose one or more regular payment methods for Outstanding settlement.",
                     "Payment method required");
                 return;
             }
 
-            var outstandingPayment = ActivePaymentLines[0];
+            if (Math.Abs(PaidAmount - PaymentTargetAmount) > 0.009m)
+            {
+                Feedback.Warning(
+                    PaidAmount > PaymentTargetAmount
+                        ? $"Outstanding payment exceeds the selected amount by MYR {(PaidAmount - PaymentTargetAmount):N2}."
+                        : $"Add MYR {(PaymentTargetAmount - PaidAmount):N2} more before continuing.",
+                    PaidAmount > PaymentTargetAmount
+                        ? "Payment amount too high"
+                        : "Payment incomplete");
+                return;
+            }
+
+            var outstandingPayment = outstandingPayments[0];
             var branch = BranchSession.CurrentBranch;
             var branchId = string.IsNullOrWhiteSpace(currentOrder.BranchId)
                 ? branch?.Id ?? string.Empty
@@ -4880,8 +4880,8 @@
                     $"[Outstanding Step 5] SAVE START | Customer={currentOrder.AccountId} | " +
                     $"Branch={branchId} | Group={groupId} | " +
                     $"Documents={outstandingSettlementSelections.Count} | " +
-                    $"Amount={PaymentTargetAmount:N2} | Method={outstandingPayment.PaymentMethod} | " +
-                    $"PaymentTypeID={outstandingPayment.PaymentTypeId}");
+                    $"Amount={PaymentTargetAmount:N2} | Methods={outstandingPayments.Count} | " +
+                    $"Split={string.Join(" + ", outstandingPayments.Select(payment => $"{payment.PaymentMethod}:{payment.Amount:N2}"))}");
 
                 var result = await OutstandingBalanceService.CreateSettlementAsync(
                     new OutstandingSettlementSaveRequestDTO
@@ -4894,6 +4894,16 @@
                             outstandingPayment.FinancialAccountId,
                         FinancialAccountName =
                             outstandingPayment.BankName,
+                        Payments = outstandingPayments
+                            .Select(payment => new OutstandingSettlementPaymentDTO
+                            {
+                                PaymentTypeID = payment.PaymentTypeId,
+                                PaymentMethod = payment.PaymentMethod,
+                                FinancialAccountID = payment.FinancialAccountId,
+                                FinancialAccountName = payment.BankName,
+                                Amount = payment.Amount
+                            })
+                            .ToList(),
                         SelectedAmounts = new Dictionary<string, decimal>(
                             outstandingSettlementSelections,
                             StringComparer.OrdinalIgnoreCase)
