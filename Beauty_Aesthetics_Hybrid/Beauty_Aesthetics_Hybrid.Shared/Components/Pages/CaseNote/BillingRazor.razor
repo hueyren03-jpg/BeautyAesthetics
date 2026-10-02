@@ -157,7 +157,7 @@
                     <div class="billing-header-left">
                         <div class="billing-title-row">
                             <i class="bi bi-wallet2"></i>
-                            <h2>@(_billingStep == "payment" ? "Payment" : "Billing")</h2>
+                            <h2>@(_billingStep == "payment" ? (_isOutstandingPaymentMode ? "Outstanding Payment" : "Payment") : "Billing")</h2>
                         </div>
                     </div>
                     <div class="billing-header-right">
@@ -585,7 +585,7 @@
                                         else
                                         {
                                             <div class="payment-method-card-grid" role="group" aria-label="Payment method">
-                                                @foreach (var method in AvailablePaymentMethods)
+                                                @foreach (var method in VisibleBillingPaymentMethods)
                                                 {
                                                     var methodName = method.POSPaymentTypeName ?? $"Payment {method.POSPaymentTypeID}";
                                                     var allocation = BillingPaymentFor(method.POSPaymentTypeID);
@@ -608,13 +608,13 @@
                                             </div>
                                         }
 
-                                        @if (BillingPayments.Count > 0)
+                                        @if (ActiveBillingPayments.Count > 0)
                                         {
                                             <div class="payment-split-strip">
                                                 <div>
                                                     <span class="payment-split-strip__label">Payment Breakdown</span>
                                                     <div class="payment-split-badges">
-                                                        @foreach (var payment in BillingPayments)
+                                                        @foreach (var payment in ActiveBillingPayments)
                                                         {
                                                             <span class="payment-multi-badge">
                                                                 <button type="button"
@@ -709,28 +709,46 @@
                                     </div>
 
                                     <div class="payment-review-total">
-                                        <span>Total Payable</span>
-                                        <strong>RM @TotalPayable.ToString("N2")</strong>
+                                        <span>@(_isOutstandingPaymentMode ? "Total to Settle" : "Total Payable")</span>
+                                        <strong>RM @PaymentTotalPayable.ToString("N2")</strong>
                                     </div>
 
                                     <div class="payment-review-breakdown">
-                                        <div><span>Subtotal before discount</span><strong>RM @GrossSubtotal.ToString("N2")</strong></div>
-                                        @if (LineDiscountTotal > 0m)
+                                        @if (_isOutstandingPaymentMode)
                                         {
-                                            <div><span>Item Discounts</span><strong>-RM @LineDiscountTotal.ToString("N2")</strong></div>
+                                            <div><span>Selected Documents</span><strong>@_outstandingSettlementSelections.Count</strong></div>
+                                            @foreach (var document in _outstandingDocuments)
+                                            {
+                                                var key = BillingOutstandingDocumentSelectionKey(document);
+                                                if (_outstandingSettlementSelections.TryGetValue(key, out var settlementAmount))
+                                                {
+                                                    <div>
+                                                        <span>@(string.IsNullOrWhiteSpace(document.DocumentNumber) ? "Outstanding document" : document.DocumentNumber)</span>
+                                                        <strong>RM @settlementAmount.ToString("N2")</strong>
+                                                    </div>
+                                                }
+                                            }
                                         }
-                                        @if (BillDiscount > 0m)
+                                        else
                                         {
-                                            <div><span>Bill Discount</span><strong>-RM @BillDiscount.ToString("N2")</strong></div>
-                                        }
-                                        <div><span>Subtotal before tax</span><strong>RM @SubtotalBeforeTax.ToString("N2")</strong></div>
-                                        @if (TaxAmount > 0m)
-                                        {
-                                            <div><span>Tax</span><strong>RM @TaxAmount.ToString("N2")</strong></div>
-                                        }
-                                        @if (RoundingAmount != 0m)
-                                        {
-                                            <div><span>Rounding</span><strong>@($"{(RoundingAmount >= 0m ? "+" : "-")}RM {Math.Abs(RoundingAmount):N2}")</strong></div>
+                                            <div><span>Subtotal before discount</span><strong>RM @GrossSubtotal.ToString("N2")</strong></div>
+                                            @if (LineDiscountTotal > 0m)
+                                            {
+                                                <div><span>Item Discounts</span><strong>-RM @LineDiscountTotal.ToString("N2")</strong></div>
+                                            }
+                                            @if (BillDiscount > 0m)
+                                            {
+                                                <div><span>Bill Discount</span><strong>-RM @BillDiscount.ToString("N2")</strong></div>
+                                            }
+                                            <div><span>Subtotal before tax</span><strong>RM @SubtotalBeforeTax.ToString("N2")</strong></div>
+                                            @if (TaxAmount > 0m)
+                                            {
+                                                <div><span>Tax</span><strong>RM @TaxAmount.ToString("N2")</strong></div>
+                                            }
+                                            @if (RoundingAmount != 0m)
+                                            {
+                                                <div><span>Rounding</span><strong>@($"{(RoundingAmount >= 0m ? "+" : "-")}RM {Math.Abs(RoundingAmount):N2}")</strong></div>
+                                            }
                                         }
                                     </div>
 
@@ -761,7 +779,7 @@
 
                                     <div class="payment-result-grid">
                                         <div class="payment-result-box">
-                                            <span>Outstanding</span>
+                                            <span>@(_isOutstandingPaymentMode ? "Remaining" : "Outstanding")</span>
                                             <strong class="@(OutstandingAmount > 0 ? "is-due" : string.Empty)">RM @OutstandingAmount.ToString("N2")</strong>
                                         </div>
                                         <div class="payment-result-box">
@@ -772,10 +790,10 @@
 
                                     <button type="button"
                                             class="payment-confirm-button"
-                                            disabled="@(_isProcessingPayment || IsAppointmentPaymentLocked || BillingPayments.Count == 0 || BillingPaidAmount < TotalPayable)"
+                                            disabled="@(_isProcessingPayment || (!_isOutstandingPaymentMode && IsAppointmentPaymentLocked) || ActiveBillingPayments.Count == 0 || BillingPaidAmount < PaymentTotalPayable)"
                                         @onclick="OnConfirmPaymentClicked">
                                         <span>
-                                            <strong>Pay RM @TotalPayable.ToString("N2")</strong>
+                                            <strong>@(_isOutstandingPaymentMode ? "Continue" : "Pay") RM @PaymentTotalPayable.ToString("N2")</strong>
                                         </span>
                                         <i class="bi bi-arrow-right-circle-fill"></i>
                                     </button>
@@ -1116,7 +1134,7 @@
             </div>
 
             <div class="billing-payment-calculator__summary">
-                <div><span>Total Payable</span><strong>RM @TotalPayable.ToString("N2")</strong></div>
+                <div><span>@(_isOutstandingPaymentMode ? "Total to Settle" : "Total Payable")</span><strong>RM @PaymentTotalPayable.ToString("N2")</strong></div>
                 <div><span>Already Paid</span><strong>RM @BillingPaidExcludingCalculatorMethod.ToString("N2")</strong></div>
                 <div><span>Remaining</span><strong>RM @BillingCalculatorRemaining.ToString("N2")</strong></div>
             </div>
@@ -1935,6 +1953,8 @@
     private bool _showOutstandingSettlement;
     private Dictionary<string, decimal> _outstandingSettlementSelections =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<TransactionPayment> _outstandingSettlementPayments = new();
+    private bool _isOutstandingPaymentMode;
     private decimal? CustomerPointBalance { get; set; }
     private decimal? CustomerPackageBalance { get; set; }
     private decimal? CustomerCreditBalance { get; set; }
@@ -1992,7 +2012,20 @@
     private decimal RoundingAmount => CurrentBillingTotals.RoundingAmount;
     private decimal TotalPayable => CurrentBillingTotals.TotalAfterTax;
     private decimal TotalAmount => TotalPayable;
-    private decimal OutstandingAmount => Math.Max(0m, TotalPayable - (AmountReceived ?? 0m));
+
+    private decimal OutstandingSettlementPaymentAmount =>
+        Math.Round(
+            _outstandingSettlementSelections.Values.Sum(),
+            2,
+            MidpointRounding.AwayFromZero);
+
+    private decimal PaymentTotalPayable =>
+        _isOutstandingPaymentMode
+            ? OutstandingSettlementPaymentAmount
+            : TotalPayable;
+
+    private decimal OutstandingAmount =>
+        Math.Max(0m, PaymentTotalPayable - (AmountReceived ?? 0m));
 
     private int SelectedPaymentTypeId { get; set; }
     private string SelectedPaymentMethod { get; set; } = string.Empty;
@@ -2019,7 +2052,7 @@
     private string _billingCalculatorDigits = string.Empty;
     private static readonly string[] BillingKeypadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
-    private decimal ChangeAmount => Math.Max(0m, (AmountReceived ?? 0m) - TotalPayable);
+    private decimal ChangeAmount => Math.Max(0m, (AmountReceived ?? 0m) - PaymentTotalPayable);
 
     // Prescription modal state
     private CaseNotePrescriptionViewModel PrescriptionViewModel { get; set; } = CreateBillingPrescriptionViewModel();
@@ -2052,6 +2085,16 @@
     // Payment allocations follow Sales > New Sale: one TransactionPayment per selected method.
     private List<TransactionPayment> BillingPayments { get; set; } = new();
 
+    private List<TransactionPayment> ActiveBillingPayments =>
+        _isOutstandingPaymentMode
+            ? _outstandingSettlementPayments
+            : BillingPayments;
+
+    private IEnumerable<CashSalesPaymentTypeDTO> VisibleBillingPaymentMethods =>
+        _isOutstandingPaymentMode
+            ? AvailablePaymentMethods.Where(method => method.POSPaymentTypeID != -10)
+            : AvailablePaymentMethods;
+
     // Discount Modal state
     private bool _showDiscountModal;
     private object? _selectedDiscountItem; // BillingItem, BillingService, BillingMemberCredit, or bill total
@@ -2069,21 +2112,24 @@
     // Service picker modal state
     private bool _showServicePickerModal;
 
-    private decimal BillingPaidAmount => BillingPayments.Sum(payment => payment.Amount);
-    private decimal BillingRemaining => Math.Max(0m, TotalPayable - BillingPaidAmount);
+    private decimal BillingPaidAmount =>
+        ActiveBillingPayments.Sum(payment => payment.Amount);
+
+    private decimal BillingRemaining =>
+        Math.Max(0m, PaymentTotalPayable - BillingPaidAmount);
 
     private TransactionPayment? BillingPaymentFor(int paymentTypeId) =>
-        BillingPayments.FirstOrDefault(payment => payment.PaymentTypeId == paymentTypeId);
+        ActiveBillingPayments.FirstOrDefault(payment => payment.PaymentTypeId == paymentTypeId);
 
     private decimal BillingPaidExcludingCalculatorMethod =>
         _billingCalculatorMethod is null
             ? BillingPaidAmount
-            : BillingPayments
+            : ActiveBillingPayments
                 .Where(payment => payment.PaymentTypeId != _billingCalculatorMethod.POSPaymentTypeID)
                 .Sum(payment => payment.Amount);
 
     private decimal BillingCalculatorRemaining =>
-        Math.Max(0m, TotalPayable - BillingPaidExcludingCalculatorMethod);
+        Math.Max(0m, PaymentTotalPayable - BillingPaidExcludingCalculatorMethod);
 
     private decimal BillingCalculatorAmount =>
         decimal.TryParse(_billingCalculatorDigits, out var cents)
@@ -2925,6 +2971,15 @@
 
     private void BackToBilling()
     {
+        if (_isOutstandingPaymentMode)
+        {
+            _outstandingSettlementPayments.Clear();
+            _billingCalculatorMethod = null;
+            _billingCalculatorDigits = string.Empty;
+            _isOutstandingPaymentMode = false;
+            SynchronizeBillingPaymentTotals();
+        }
+
         _billingStep = "summary";
         _isPaymentMethodDropdownOpen = false;
         _isCollectorDropdownOpen = false;
@@ -3256,6 +3311,10 @@
                 .Where(payment => validPaymentIds.Contains(payment.PaymentTypeId))
                 .ToList();
 
+            _outstandingSettlementPayments.RemoveAll(payment =>
+                !validPaymentIds.Contains(payment.PaymentTypeId) ||
+                payment.PaymentTypeId == -10);
+
             SynchronizeBillingPaymentTotals();
         }
         catch (Exception ex)
@@ -3323,11 +3382,11 @@
     }
 
     private string PaymentMethodDisplay =>
-        BillingPayments.Count == 0
+        ActiveBillingPayments.Count == 0
             ? "Not selected"
             : string.Join(
                 " + ",
-                BillingPayments
+                ActiveBillingPayments
                     .Select(payment => payment.PaymentMethod)
                     .Distinct(StringComparer.OrdinalIgnoreCase));
 
@@ -3339,6 +3398,8 @@
         _isOutstandingDocumentsLoading = false;
         _showOutstandingSettlement = false;
         _outstandingSettlementSelections.Clear();
+        _outstandingSettlementPayments.Clear();
+        _isOutstandingPaymentMode = false;
         CustomerPointBalance = null;
         CustomerPackageBalance = null;
         CustomerCreditBalance = null;
@@ -3455,6 +3516,25 @@
         }
     }
 
+    private static string BillingOutstandingDocumentSelectionKey(
+        OutstandingDocumentDTO document)
+    {
+        if (!string.IsNullOrWhiteSpace(document.SourceId))
+        {
+            return document.SourceId.Trim();
+        }
+
+        return string.Join(
+            "|",
+            document.DocumentNumber?.Trim() ?? string.Empty,
+            document.FinancialDate.ToString(
+                "O",
+                System.Globalization.CultureInfo.InvariantCulture),
+            document.RemainingAmount.ToString(
+                "0.00",
+                System.Globalization.CultureInfo.InvariantCulture));
+    }
+
     private async Task OpenOutstandingSettlementAsync()
     {
         if (string.IsNullOrWhiteSpace(_billingCustomerId))
@@ -3546,21 +3626,59 @@
         _showOutstandingSettlement = false;
     }
 
-    private void ConfirmOutstandingSelection(
+    private async Task ConfirmOutstandingSelection(
         IReadOnlyDictionary<string, decimal> selections)
     {
+        var selectedTotal = Math.Round(
+            selections.Values.Sum(),
+            2,
+            MidpointRounding.AwayFromZero);
+
+        if (selectedTotal <= 0m)
+        {
+            Feedback.Warning(
+                "Select at least one outstanding document and settlement amount.",
+                "Outstanding required");
+            return;
+        }
+
         _outstandingSettlementSelections = new Dictionary<string, decimal>(
             selections,
             StringComparer.OrdinalIgnoreCase);
+        _outstandingSettlementPayments.Clear();
+        _billingCalculatorMethod = null;
+        _billingCalculatorDigits = string.Empty;
+        _isOutstandingPaymentMode = true;
+
+        await LoadPaymentMethodsAsync();
+
+        if (!VisibleBillingPaymentMethods.Any())
+        {
+            _isOutstandingPaymentMode = false;
+            Feedback.Error(
+                "No regular payment methods are available for Outstanding settlement.",
+                "Payment method unavailable");
+            return;
+        }
 
         _showOutstandingSettlement = false;
+        _billingStep = "payment";
+        _isPaymentMethodDropdownOpen = false;
+        _isCollectorDropdownOpen = false;
+        _isPatientDrawerOpen = false;
+        SynchronizeBillingPaymentTotals();
 
-        var selectedTotal = _outstandingSettlementSelections.Values.Sum();
+        Console.WriteLine(
+            $"[Outstanding Step 4] BILLING PAYMENT MODE | Customer={_billingCustomerId} | " +
+            $"Documents={_outstandingSettlementSelections.Count} | Amount={selectedTotal:N2} | " +
+            $"RegularMethods={VisibleBillingPaymentMethods.Count()} | MemberCreditExcluded=True");
+
         Feedback.Info(
-            $"RM {selectedTotal:N2} selected across " +
-            $"{_outstandingSettlementSelections.Count} outstanding document(s).",
-            "Outstanding selected",
+            $"RM {selectedTotal:N2} selected. Choose one payment method.",
+            "Outstanding payment",
             2800);
+
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task OpenRedeemableCredits()
@@ -3797,6 +3915,56 @@
     private void OnConfirmPaymentClicked()
     {
         _paymentValidationError = null;
+
+        if (_isOutstandingPaymentMode)
+        {
+            if (_isPaymentMethodsLoading)
+            {
+                _paymentValidationError = "Payment methods are still loading.";
+                Feedback.Warning(_paymentValidationError, "Payment not ready");
+                return;
+            }
+
+            if (ActiveBillingPayments.Count == 0)
+            {
+                _paymentValidationError =
+                    "Select one regular payment method before continuing.";
+                Feedback.Warning(
+                    _paymentValidationError,
+                    "Payment method required");
+                return;
+            }
+
+            SynchronizeBillingPaymentTotals();
+
+            if (BillingPaidAmount < PaymentTotalPayable)
+            {
+                Feedback.Warning(
+                    $"Add RM {(PaymentTotalPayable - BillingPaidAmount):N2} more before continuing.",
+                    "Payment incomplete");
+                return;
+            }
+
+            if (ActiveBillingPayments.Count != 1 ||
+                ActiveBillingPayments.Any(payment => payment.PaymentTypeId == -10))
+            {
+                Feedback.Warning(
+                    "Outstanding settlement requires one regular payment method.",
+                    "Payment method required");
+                return;
+            }
+
+            Console.WriteLine(
+                $"[Outstanding Step 4] BILLING PAYMENT READY | Customer={_billingCustomerId} | " +
+                $"Amount={PaymentTotalPayable:N2} | Method={ActiveBillingPayments[0].PaymentMethod} | " +
+                $"PaymentTypeID={ActiveBillingPayments[0].PaymentTypeId} | ARReceiptSavePendingStep5=True");
+
+            Feedback.Info(
+                "Outstanding payment method is ready. AR Receipt saving is handled in Step 5.",
+                "Outstanding payment ready",
+                3200);
+            return;
+        }
 
         if (IsAppointmentPaymentLocked)
         {
@@ -4855,9 +5023,30 @@
     // Billing payment calculator mirrors Sales > New Sale behavior.
     private void OpenBillingPaymentCalculator(CashSalesPaymentTypeDTO method)
     {
+        if (_isOutstandingPaymentMode)
+        {
+            if (method.POSPaymentTypeID == -10)
+            {
+                Feedback.Warning(
+                    "Member Credit cannot be used as an Outstanding settlement payment method.",
+                    "Payment method not allowed");
+                return;
+            }
+
+            if (ActiveBillingPayments.Any(payment =>
+                    payment.PaymentTypeId != method.POSPaymentTypeID))
+            {
+                Feedback.Warning(
+                    "Outstanding settlement follows Senang Retail and allows one payment method only.",
+                    "One payment method");
+                return;
+            }
+        }
+
         _billingCalculatorMethod = method;
         SelectedPaymentTypeId = method.POSPaymentTypeID;
-        SelectedPaymentMethod = method.POSPaymentTypeName ?? $"Payment {method.POSPaymentTypeID}";
+        SelectedPaymentMethod =
+            method.POSPaymentTypeName ?? $"Payment {method.POSPaymentTypeID}";
 
         var existing = BillingPaymentFor(method.POSPaymentTypeID);
         _billingCalculatorDigits = existing is null
@@ -4878,7 +5067,7 @@
 
     private void RemoveBillingPayment(TransactionPayment payment)
     {
-        BillingPayments.Remove(payment);
+        ActiveBillingPayments.Remove(payment);
         SynchronizeBillingPaymentTotals();
         StateHasChanged();
     }
@@ -4924,6 +5113,34 @@
             return;
         }
 
+        if (_isOutstandingPaymentMode)
+        {
+            if (_billingCalculatorMethod.POSPaymentTypeID == -10)
+            {
+                Feedback.Warning(
+                    "Member Credit cannot be used for Outstanding settlement.",
+                    "Payment method not allowed");
+                return;
+            }
+
+            if (BillingCalculatorAmount > PaymentTotalPayable + 0.009m)
+            {
+                Feedback.Warning(
+                    $"Outstanding payment cannot exceed RM {PaymentTotalPayable:N2}.",
+                    "Amount too high");
+                return;
+            }
+
+            if (ActiveBillingPayments.Any(payment =>
+                    payment.PaymentTypeId != _billingCalculatorMethod.POSPaymentTypeID))
+            {
+                Feedback.Warning(
+                    "Outstanding settlement allows one payment method only.",
+                    "One payment method");
+                return;
+            }
+        }
+
         var payment = BillingPaymentFor(_billingCalculatorMethod.POSPaymentTypeID);
         if (payment is null)
         {
@@ -4931,7 +5148,7 @@
             {
                 PaymentTypeId = _billingCalculatorMethod.POSPaymentTypeID
             };
-            BillingPayments.Add(payment);
+            ActiveBillingPayments.Add(payment);
         }
 
         payment.PaymentMethod =
@@ -4952,7 +5169,7 @@
         AmountReceivedText = total > 0m ? total.ToString("0.00") : string.Empty;
         AmountReceivedError = null;
 
-        var first = BillingPayments.FirstOrDefault();
+        var first = ActiveBillingPayments.FirstOrDefault();
         if (first is null)
         {
             SelectedPaymentTypeId = 0;
