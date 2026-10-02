@@ -2370,8 +2370,17 @@
                     string.Equals(candidate.Id, item.InventoryId, StringComparison.OrdinalIgnoreCase))?.Price ?? 0m;
         }
 
-        // DocumentLine.Points is the TOTAL point deduction for this line.
-        // Example: PointToRedeem=100 and Quantity=2 => Points=200.
+        // Point Step 4 follows Senang's item-specific redemption rule:
+        // PointToRedeem is a fixed point cost per unit and redemption replaces
+        // the full item price. No POS payment PointDeductionRatio/RM conversion
+        // is used for this item-redemption flow.
+        Console.WriteLine(
+            $"[Point Step 4] CONVERSION | Inventory={item.InventoryId} | " +
+            $"Rule=FixedItemPointToRedeem | PointToRedeem={item.PointToRedeem:0.##} | " +
+            $"Qty={item.Quantity} | Required={required:0.##} | PriceMode=FullReplacement");
+
+        // Beauty's backend consumes DocumentLine.Points as the total deduction
+        // for the line, verified by the multi-quantity Step 2 backend test.
         item.Points = required;
         item.UnitPrice = 0m;
         RecalculateItemTaxAndTotal(item);
