@@ -88,6 +88,15 @@ namespace Beauty_Aesthetics_WebPos.Components.Models
         public decimal TaxAmount { get; set; }
         public bool IsTaxInclusive { get; set; }
 
+        // Point redemption (normal Sales / DocumentTypeID 5).
+        // PointToRedeem and AllowPointRedemption come from the selected inventory record.
+        // OriginalUnitPrice is local cart state so removing a point redemption can restore
+        // the normal selling price after UnitPrice is set to 0, matching Senang.
+        public decimal PointToRedeem { get; set; }
+        public bool AllowPointRedemption { get; set; }
+        public decimal Points { get; set; }
+        public decimal OriginalUnitPrice { get; set; }
+
         // Member Credit redemption (Senang single-account structure).
         public int ActivityTypeId { get; set; } = 1;
         public string MemberCreditAccountId { get; set; } = "";
