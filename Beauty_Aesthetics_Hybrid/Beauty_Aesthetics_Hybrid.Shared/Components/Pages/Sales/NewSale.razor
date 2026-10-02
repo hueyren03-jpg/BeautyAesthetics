@@ -2156,6 +2156,11 @@
             2,
             MidpointRounding.AwayFromZero);
 
+    private static bool IsPointRedemptionEligible(TransactionItem item) =>
+        item.InventoryTypeId is 1 or 3 &&
+        item.AllowPointRedemption &&
+        item.PointToRedeem > 0m;
+
     private static decimal RequiredPointsFor(TransactionItem item) =>
         Math.Round(
             Math.Max(0m, item.PointToRedeem) * Math.Max(1, item.Quantity),
@@ -2322,10 +2327,11 @@
         }
 
         Console.WriteLine(
-            $"[Point Step 2] CONFIG | Inventory={item.InventoryId} | Type={item.InventoryTypeId} | " +
-            $"Allow={item.AllowPointRedemption} | PointToRedeem={item.PointToRedeem:0.##}");
+            $"[Point Step 3] ELIGIBILITY | Inventory={item.InventoryId} | Type={item.InventoryTypeId} | " +
+            $"Allow={item.AllowPointRedemption} | PointToRedeem={item.PointToRedeem:0.##} | " +
+            $"Eligible={IsPointRedemptionEligible(item)}");
 
-        if (!item.AllowPointRedemption || item.PointToRedeem <= 0m)
+        if (!IsPointRedemptionEligible(item))
         {
             Feedback.Warning(
                 $"{item.Name} is not configured for point redemption.",
@@ -2419,8 +2425,7 @@
 
         foreach (var item in pointLines)
         {
-            if (!item.AllowPointRedemption ||
-                item.PointToRedeem <= 0m ||
+            if (!IsPointRedemptionEligible(item) ||
                 Math.Abs(RequiredPointsFor(item) - item.Points) > 0.009m ||
                 Math.Abs(item.UnitPrice) > 0.009m)
             {
@@ -4600,6 +4605,11 @@
             {
                 catalog[catalogIndex] = item;
             }
+
+            Console.WriteLine(
+                $"[Point Step 3] CATALOG ELIGIBILITY | Inventory={item.Id} | Type={item.InventoryTypeId} | " +
+                $"Allow={item.AllowPointRedemption} | PointToRedeem={item.PointToRedeem:0.##} | " +
+                $"Eligible={item.AllowPointRedemption && item.PointToRedeem > 0m}");
         }
 
         if (item.InventoryTypeId == 7)
