@@ -1774,8 +1774,12 @@ public sealed class CashSalesService : ICashSalesService
                 2,
                 MidpointRounding.AwayFromZero);
 
-            if (!item.AllowPointRedemption ||
-                item.PointToRedeem <= 0m ||
+            var isEligiblePointItem =
+                item.InventoryTypeId is 1 or 3 &&
+                item.AllowPointRedemption &&
+                item.PointToRedeem > 0m;
+
+            if (!isEligiblePointItem ||
                 Math.Abs(expectedLinePoints - item.Points) > 0.009m)
             {
                 return ApiCallResult<bool>.Failure(
