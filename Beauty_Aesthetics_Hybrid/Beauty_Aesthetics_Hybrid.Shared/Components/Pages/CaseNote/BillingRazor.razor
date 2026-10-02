@@ -17,7 +17,6 @@
 @inject Beauty_Aesthetics_WebPos.Components.Services.Customers.ICustomerService CustomerService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Customers.IMemberCreditWalletService MemberCreditWalletService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Customers.IOutstandingBalanceService OutstandingBalanceService
-@inject Beauty_Aesthetics_WebPos.Components.Services.Customers.OutstandingPaymentHistoryService OutstandingHistoryService
 @inject Beauty_Aesthetics_WebPos.Components.Services.AppointmentService AppointmentService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.IProductInventoryService ProductInventoryService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.IServiceItemService ServiceItemService
@@ -4100,26 +4099,6 @@
 
                 // Match Senang Retail: route a successful AR Receipt payment
                 // to the common Payment Successful page with receipt printing.
-                var historyStored = true;
-                if (saved.HistoryRecords.Count == 0)
-                {
-                    historyStored = false;
-                    Console.WriteLine(
-                        $"[Outstanding Step 12] BILLING UI HISTORY MISSING | Receipt={saved.DisplayCode} | " +
-                        "No prepared history records were returned.");
-                }
-                else
-                {
-                    foreach (var historyRecord in saved.HistoryRecords)
-                    {
-                        historyStored &= await OutstandingHistoryService.RecordAsync(historyRecord);
-                    }
-                }
-
-                Console.WriteLine(
-                    $"[Outstanding Step 12] BILLING UI HISTORY PERSIST | Receipt={saved.DisplayCode} | " +
-                    $"Records={saved.HistoryRecords.Count} | Stored={historyStored}");
-
                 var paymentMethodDisplay = string.Join(
                     ", ",
                     outstandingPayments.Select(payment => payment.PaymentMethod));
@@ -4195,14 +4174,6 @@
                 _billingCalculatorDigits = string.Empty;
                 _billingStep = "summary";
                 SynchronizeBillingPaymentTotals();
-
-                if (!historyStored)
-                {
-                    Feedback.Warning(
-                        "The Outstanding payment was saved, but its local history could not be stored. Do not retry the payment.",
-                        "Outstanding history not stored",
-                        6000);
-                }
 
                 if (saved.VerificationPassed)
                 {
