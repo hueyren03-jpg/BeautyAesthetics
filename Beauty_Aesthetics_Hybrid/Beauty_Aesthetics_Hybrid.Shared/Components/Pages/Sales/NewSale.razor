@@ -2152,7 +2152,7 @@
                 .Where(item =>
                     !ReferenceEquals(item, except) &&
                     item.Points > 0m)
-                .Sum(RequiredPointsFor),
+                .Sum(item => Math.Max(0m, item.Points)),
             2,
             MidpointRounding.AwayFromZero);
 
@@ -2352,15 +2352,31 @@
         var required = RequiredPointsFor(item);
         var alreadyAllocated = PointsAllocatedOnCurrentBill(item);
         var latestBalance = Math.Max(0m, balanceResult.Value.PointBalance);
+        var availableForThisLine = Math.Max(0m, latestBalance - alreadyAllocated);
+
+        Console.WriteLine(
+            $"[Point Step 6] BALANCE CHECK | Source=Sales | Customer={currentOrder.AccountId} | " +
+            $"Inventory={item.InventoryId} | LatestBalance={latestBalance:0.##} | " +
+            $"AllocatedElsewhere={alreadyAllocated:0.##} | Available={availableForThisLine:0.##} | " +
+            $"Required={required:0.##}");
 
         if (required <= 0m ||
-            alreadyAllocated + required - latestBalance > 0.009m)
+            required - availableForThisLine > 0.009m)
         {
+            Console.WriteLine(
+                $"[Point Step 6] BLOCKED | Source=Sales | Customer={currentOrder.AccountId} | " +
+                $"Inventory={item.InventoryId} | Available={availableForThisLine:0.##} | Required={required:0.##}");
+
             Feedback.Warning(
-                $"Insufficient points. Available: {Math.Max(0m, latestBalance - alreadyAllocated):0.##} pts, Required: {required:0.##} pts.",
+                $"Insufficient points. Available: {availableForThisLine:0.##} pts, Required: {required:0.##} pts.",
                 "Not enough points");
             return;
         }
+
+        Console.WriteLine(
+            $"[Point Step 6] PASS | Source=Sales | Customer={currentOrder.AccountId} | " +
+            $"Inventory={item.InventoryId} | AvailableBeforeAssignment={availableForThisLine:0.##} | " +
+            $"Required={required:0.##} | RemainingAfterAssignment={Math.Max(0m, availableForThisLine - required):0.##}");
 
         if (item.OriginalUnitPrice <= 0m)
         {
