@@ -983,6 +983,23 @@ public sealed class CashSalesService : ICashSalesService
                 finalRedemptionRequestValidation.ErrorMessage);
         }
 
+        // Point Step 2 — Senang saves point spending on normal Cash Sales lines.
+        // Re-read the latest customer PointBalance immediately before CreateRecord
+        // so another terminal cannot make this request overspend a stale balance.
+        var preSavePointValidation = await ValidatePointRedemptionBeforeCreateAsync(
+            transaction,
+            cancellationToken);
+
+        if (!preSavePointValidation.Success)
+        {
+            Console.WriteLine(
+                $"[Point Step 2] BLOCKED | Customer={transaction.AccountId} | {preSavePointValidation.ErrorMessage}");
+
+            return ApiCallResult<Transaction>.Failure(
+                preSavePointValidation.StatusCode,
+                preSavePointValidation.ErrorMessage);
+        }
+
         var createResult = await cashSalesAC.CreateRecordAsync(document, cancellationToken);
         if (!createResult.Success)
         {
@@ -1297,6 +1314,7 @@ public sealed class CashSalesService : ICashSalesService
         var quantity = Number(line, "Quantity");
         var unitPrice = Number(line, "UnitPrice");
         var total = Number(line, "SubTotal");
+        var points = Math.Max(0m, Number(line, "Points"));
         var memberCreditAccountId = Text(line, "MemberCreditAccountID");
         var memberTypeId = Text(line, "MemberTypeID");
         var memberCreditAllocations = ParseSavedMemberCreditAllocations(
@@ -1340,6 +1358,9 @@ public sealed class CashSalesService : ICashSalesService
             TaxAmount = Number(line, "TaxAmount"),
             UnitOfMeasureId = Text(line, "UnitOfMeasureID"),
             IsTaxInclusive = Bool(line, "IsTaxInclusive"),
+            Points = points,
+            PointToRedeem = Math.Max(0m, Number(line, "PointToRedeem")),
+            AllowPointRedemption = Bool(line, "AllowPointRedemption") || points > 0m,
             ActivityTypeId = Integer(line, "ActivityTypeID") == 0 ? 1 : Integer(line, "ActivityTypeID"),
             MemberCreditAccountId = memberCreditAccountId,
             MemberTypeId = memberTypeId,
@@ -1719,6 +1740,91 @@ public sealed class CashSalesService : ICashSalesService
             MidpointRounding.AwayFromZero);
     }
 
+    private async Task<ApiCallResult<bool>> ValidatePointRedemptionBeforeCreateAsync(
+        Transaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var pointLines = transaction.Items
+            .Where(item => item.Points > 0m)
+            .ToList();
+
+        if (pointLines.Count == 0)
+        {
+            return ApiCallResult<bool>.Ok(HttpStatusCode.OK, true);
+        }
+
+        if (transaction.DocumentTypeId != 5)
+        {
+            return ApiCallResult<bool>.Failure(
+                HttpStatusCode.BadRequest,
+                "Point redemption is only supported in normal Sales mode (DocumentTypeID = 5).");
+        }
+
+        if (string.IsNullOrWhiteSpace(transaction.AccountId))
+        {
+            return ApiCallResult<bool>.Failure(
+                HttpStatusCode.BadRequest,
+                "A customer is required before points can be redeemed.");
+        }
+
+        foreach (var item in pointLines)
+        {
+            var expectedPoints = Math.Round(
+                Math.Max(0m, item.PointToRedeem) * Math.Max(1, item.Quantity),
+                2,
+                MidpointRounding.AwayFromZero);
+
+            if (!item.AllowPointRedemption ||
+                item.PointToRedeem <= 0m ||
+                Math.Abs(expectedPoints - item.Points) > 0.009m)
+            {
+                return ApiCallResult<bool>.Failure(
+                    HttpStatusCode.BadRequest,
+                    $"Point redemption for {First(item.Name, item.InventoryId, "item")} is invalid. Reapply points before completing the sale.");
+            }
+
+            if (Math.Abs(item.UnitPrice) > 0.009m)
+            {
+                return ApiCallResult<bool>.Failure(
+                    HttpStatusCode.BadRequest,
+                    $"Point-redeemed item {First(item.Name, item.InventoryId, "item")} must have UnitPrice = 0.");
+            }
+        }
+
+        var latestBalanceResult = await customerService.GetBalanceSummaryAsync(
+            transaction.AccountId,
+            cancellationToken);
+
+        if (!latestBalanceResult.Success || latestBalanceResult.Value is null)
+        {
+            return ApiCallResult<bool>.Failure(
+                HttpStatusCode.ServiceUnavailable,
+                latestBalanceResult.ErrorMessage ??
+                "Unable to verify the latest customer point balance.");
+        }
+
+        var totalPoints = Math.Round(
+            pointLines.Sum(item => item.Points),
+            2,
+            MidpointRounding.AwayFromZero);
+        var latestBalance = Math.Max(
+            0m,
+            latestBalanceResult.Value.PointBalance);
+
+        if (totalPoints - latestBalance > 0.009m)
+        {
+            return ApiCallResult<bool>.Failure(
+                HttpStatusCode.BadRequest,
+                $"Customer point balance changed. Latest balance: {latestBalance:0.##} pts; required: {totalPoints:0.##} pts.");
+        }
+
+        Console.WriteLine(
+            $"[Point Step 2] PRE-SAVE PASS | Customer={transaction.AccountId} | " +
+            $"LatestBalance={latestBalance:0.##} | Required={totalPoints:0.##} | Lines={pointLines.Count}");
+
+        return ApiCallResult<bool>.Ok(HttpStatusCode.OK, true);
+    }
+
     private static JsonArray BuildDocumentLines(
         JsonObject document,
         Transaction transaction,
@@ -1774,6 +1880,7 @@ public sealed class CashSalesService : ICashSalesService
             line["ItemName"] = First(item.Name, item.Description, $"{transaction.Type} Item");
             line["Quantity"] = quantity;
             line["UnitPrice"] = item.UnitPrice;
+            line["Points"] = Math.Max(0m, item.Points);
             line["Discount"] = discount;
             line["DiscountAmount"] = discount;
             line["CashDiscountID"] = item.CashDiscountId;
