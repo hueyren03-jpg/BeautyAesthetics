@@ -30,6 +30,7 @@
 @inject Beauty_Aesthetics_WebPos.Components.Services.Printing.IReceiptPrinterService ReceiptPrinterService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Inventory.ProductImageService ProductImageService
 @inject Beauty_Aesthetics_WebPos.Components.Services.AppState AppState
+@inject Beauty_Aesthetics_WebPos.Components.Services.Branches.IBranchSessionService BranchSession
 @inject Microsoft.JSInterop.IJSRuntime JS
 
 <PageTitle>Billing - Beauty Aesthetics</PageTitle>
@@ -1925,6 +1926,7 @@
     private string PatientPhone { get; set; } = "-";
     private string _billingCustomerId = string.Empty;
     private string? _loadedBillingCustomerKey;
+    private int _customerBalanceRequestVersion;
     private Appointment? _billingAppointment;
     private bool _appointmentSaleExists;
     private bool _paymentCommitted;
@@ -2995,12 +2997,14 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await BranchSession.InitializeAsync();
+
         var catalogLoadTask = LoadBillingCatalogsAsync();
         var staffLoadTask = LoadBillingStaffAsync();
         var discountLoadTask = LoadDiscountRulesAsync();
 
-        await LoadBillingPatientAsync(force: true);
         await LoadBillingAppointmentAsync();
+        await LoadBillingPatientAsync(force: true);
         await Task.WhenAll(catalogLoadTask, staffLoadTask, discountLoadTask);
     }
 
@@ -3176,9 +3180,14 @@
 
     private async Task LoadBillingPatientAsync(bool force)
     {
-        var requestedKey = !string.IsNullOrWhiteSpace(CustomerId)
-            ? CustomerId.Trim()
-            : PatientContext.CustomerId?.Trim();
+        // Appointment billing must always use the appointment's customer. A
+        // customer left in the shared context or query string may belong to a
+        // previously opened sale and would display that customer's balances.
+        var requestedKey = !string.IsNullOrWhiteSpace(_billingAppointment?.CustomerId)
+            ? _billingAppointment.CustomerId.Trim()
+            : !string.IsNullOrWhiteSpace(CustomerId)
+                ? CustomerId.Trim()
+                : PatientContext.CustomerId?.Trim();
 
         if (!force &&
             !string.IsNullOrWhiteSpace(requestedKey) &&
@@ -3187,7 +3196,7 @@
             return;
         }
 
-        var result = await PatientContext.LoadAsync(CustomerId);
+        var result = await PatientContext.LoadAsync(requestedKey);
         if (result.Success && result.Value is not null)
         {
             PatientName = Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext.GetDisplayName(result.Value);
@@ -3205,7 +3214,9 @@
         }
         else
         {
+            _billingCustomerId = string.Empty;
             _loadedBillingCustomerKey = requestedKey;
+            await LoadCustomerBalancesAsync(null);
             Feedback.Error(result.ErrorMessage ?? "Unable to load the appointment patient.", "Patient not loaded");
         }
     }
@@ -3280,10 +3291,12 @@
 
         try
         {
-            var branchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID)
+            var branchId = string.IsNullOrWhiteSpace(BranchSession.CurrentBranch?.Id)
                 ? "HQ"
-                : AppState.SelectedBranchID!;
-            var groupId = AppState.CurrentBranch?.GroupId ?? string.Empty;
+                : BranchSession.CurrentBranch.Id;
+            var groupId = string.IsNullOrWhiteSpace(BranchSession.CurrentBranch?.GroupId)
+                ? branchId
+                : BranchSession.CurrentBranch.GroupId;
 
             var result = await CashSalesService.LoadPaymentTypesAsync(
                 branchId,
@@ -3394,6 +3407,8 @@
 
     private async Task LoadCustomerBalancesAsync(string? customerId)
     {
+        var requestVersion = ++_customerBalanceRequestVersion;
+
         CustomerOutstandingBalance = null;
         _outstandingDocuments.Clear();
         _outstandingDocumentsError = null;
@@ -3411,14 +3426,15 @@
 
         if (string.IsNullOrWhiteSpace(customerId))
         {
+            _isCustomerBalanceLoading = false;
             return;
         }
 
         _isCustomerBalanceLoading = true;
         try
         {
-            var workingBranchId = AppState.SelectedBranchID?.Trim() ?? string.Empty;
-            var workingGroupId = AppState.CurrentBranch?.GroupId?.Trim();
+            var workingBranchId = BranchSession.CurrentBranch?.Id?.Trim() ?? string.Empty;
+            var workingGroupId = BranchSession.CurrentBranch?.GroupId?.Trim();
             if (string.IsNullOrWhiteSpace(workingGroupId))
             {
                 workingGroupId = workingBranchId;
@@ -3434,14 +3450,23 @@
             var redeemableCreditTask = MemberCreditWalletService.LoadWalletAsync(
                 customerId,
                 DateTime.Today,
-                AppState.SelectedBranchID,
-                AppState.CurrentBranch?.GroupId);
+                BranchSession.CurrentBranch?.Id,
+                BranchSession.CurrentBranch?.GroupId);
 
             await Task.WhenAll(
                 memberBalanceTask,
                 otherBalanceTask,
                 outstandingDocumentsTask,
                 redeemableCreditTask);
+
+            if (requestVersion != _customerBalanceRequestVersion ||
+                !string.Equals(
+                    customerId,
+                    _billingCustomerId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
 
             var memberBalance = await memberBalanceTask;
             var otherBalance = await otherBalanceTask;
@@ -3513,9 +3538,22 @@
                     "Some balances unavailable");
             }
         }
+        catch (Exception ex)
+        {
+            if (requestVersion == _customerBalanceRequestVersion)
+            {
+                Feedback.Error(
+                    $"Unable to load customer balances: {ex.Message}",
+                    "Balances not loaded");
+            }
+        }
         finally
         {
-            _isCustomerBalanceLoading = false;
+            if (requestVersion == _customerBalanceRequestVersion)
+            {
+                _isCustomerBalanceLoading = false;
+                await InvokeAsync(StateHasChanged);
+            }
         }
     }
 
@@ -3563,8 +3601,8 @@
             return;
         }
 
-        var workingBranchId = AppState.SelectedBranchID?.Trim() ?? string.Empty;
-        var workingGroupId = AppState.CurrentBranch?.GroupId?.Trim();
+        var workingBranchId = BranchSession.CurrentBranch?.Id?.Trim() ?? string.Empty;
+        var workingGroupId = BranchSession.CurrentBranch?.GroupId?.Trim();
         if (string.IsNullOrWhiteSpace(workingGroupId))
         {
             workingGroupId = workingBranchId;
@@ -3994,8 +4032,8 @@
             }
 
             var outstandingPayment = outstandingPayments[0];
-            var branchId = AppState.SelectedBranchID?.Trim() ?? string.Empty;
-            var groupId = AppState.CurrentBranch?.GroupId?.Trim();
+            var branchId = BranchSession.CurrentBranch?.Id?.Trim() ?? string.Empty;
+            var groupId = BranchSession.CurrentBranch?.GroupId?.Trim();
             if (string.IsNullOrWhiteSpace(groupId))
             {
                 groupId = branchId;
@@ -4114,7 +4152,7 @@
                     InvoiceNumber = saved.DisplayCode,
                     CustomerName = PatientName,
                     CustomerContact = PatientPhone == "-" ? string.Empty : PatientPhone,
-                    Branch = AppState.CurrentBranch?.Name ?? branchId,
+                    Branch = BranchSession.CurrentBranch?.Name ?? branchId,
                     Type = "Outstanding Payment",
                     ItemCount = 1,
                     Amount = saved.TotalAllocatedAmount,
