@@ -983,9 +983,9 @@ public sealed class CashSalesService : ICashSalesService
                 finalRedemptionRequestValidation.ErrorMessage);
         }
 
-        // Point Step 2 — Senang saves point spending on normal Cash Sales lines.
-        // Re-read the latest customer PointBalance immediately before CreateRecord
-        // so another terminal cannot make this request overspend a stale balance.
+        // Point Step 10 — final backend revalidation immediately before CreateRecord.
+        // Re-read the latest customer PointBalance so another terminal cannot make
+        // this request overspend a stale balance between UI confirmation and save.
         var preSavePointValidation = await ValidatePointRedemptionBeforeCreateAsync(
             transaction,
             cancellationToken);
@@ -993,7 +993,8 @@ public sealed class CashSalesService : ICashSalesService
         if (!preSavePointValidation.Success)
         {
             Console.WriteLine(
-                $"[Point Step 2] BLOCKED | Customer={transaction.AccountId} | {preSavePointValidation.ErrorMessage}");
+                $"[Point Step 10] BLOCKED | Source=CashSalesService | Customer={transaction.AccountId} | " +
+                $"{preSavePointValidation.ErrorMessage}");
 
             return ApiCallResult<Transaction>.Failure(
                 preSavePointValidation.StatusCode,
@@ -1862,16 +1863,25 @@ public sealed class CashSalesService : ICashSalesService
             0m,
             latestBalanceResult.Value.PointBalance);
 
+        Console.WriteLine(
+            $"[Point Step 10] PRE-SAVE CHECK | Source=CashSalesService | Customer={transaction.AccountId} | " +
+            $"LatestBalance={latestBalance:0.##} | Required={totalPoints:0.##} | Lines={pointLines.Count}");
+
         if (totalPoints - latestBalance > 0.009m)
         {
+            Console.WriteLine(
+                $"[Point Step 10] BLOCKED | Source=CashSalesService | Customer={transaction.AccountId} | " +
+                $"LatestBalance={latestBalance:0.##} | Required={totalPoints:0.##}");
+
             return ApiCallResult<bool>.Failure(
                 HttpStatusCode.BadRequest,
                 $"Customer point balance changed. Latest balance: {latestBalance:0.##} pts; required: {totalPoints:0.##} pts.");
         }
 
         Console.WriteLine(
-            $"[Point Step 2] PRE-SAVE PASS | Customer={transaction.AccountId} | " +
-            $"LatestBalance={latestBalance:0.##} | Required={totalPoints:0.##} | Lines={pointLines.Count}");
+            $"[Point Step 10] PASS | Source=CashSalesService | Customer={transaction.AccountId} | " +
+            $"LatestBalance={latestBalance:0.##} | Required={totalPoints:0.##} | " +
+            $"RemainingAfterSave={Math.Max(0m, latestBalance - totalPoints):0.##} | Lines={pointLines.Count}");
 
         return ApiCallResult<bool>.Ok(HttpStatusCode.OK, true);
     }
