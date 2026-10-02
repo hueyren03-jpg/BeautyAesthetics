@@ -581,7 +581,7 @@
                                             @if (item.Points > 0m)
                                             {
                                                 <span>Points redeemed</span>
-                                                <strong>@item.Points.ToString("0.##") pts</strong>
+                                                <strong>@RequiredPointsFor(item).ToString("0.##") pts</strong>
                                             }
                                             else
                                             {
@@ -2150,8 +2150,10 @@
     private decimal PointsAllocatedOnCurrentBill(TransactionItem? except = null) =>
         Math.Round(
             currentOrder.Items
-                .Where(item => !ReferenceEquals(item, except))
-                .Sum(item => Math.Max(0m, item.Points)),
+                .Where(item =>
+                    !ReferenceEquals(item, except) &&
+                    item.Points > 0m)
+                .Sum(RequiredPointsFor),
             2,
             MidpointRounding.AwayFromZero);
 
@@ -2188,7 +2190,9 @@
     private decimal ClearAllPointRedemptions()
     {
         var released = Math.Round(
-            currentOrder.Items.Sum(item => Math.Max(0m, item.Points)),
+            currentOrder.Items
+                .Where(item => item.Points > 0m)
+                .Sum(RequiredPointsFor),
             2,
             MidpointRounding.AwayFromZero);
 
@@ -2320,7 +2324,9 @@
                     string.Equals(candidate.Id, item.InventoryId, StringComparison.OrdinalIgnoreCase))?.Price ?? 0m;
         }
 
-        item.Points = required;
+        // Senang stores the per-unit PointToRedeem value on DocumentLine.Points.
+        // Balance usage is PointToRedeem x Quantity.
+        item.Points = item.PointToRedeem;
         item.UnitPrice = 0m;
         RecalculateItemTaxAndTotal(item);
         currentOrder.Payments.Clear();
@@ -2328,7 +2334,8 @@
 
         Console.WriteLine(
             $"[Point Step 2] ASSIGNED | Customer={currentOrder.AccountId} | Item={item.InventoryId} | " +
-            $"PointToRedeem={item.PointToRedeem:0.##} | Qty={item.Quantity} | Points={item.Points:0.##} | " +
+            $"PointToRedeem={item.PointToRedeem:0.##} | Qty={item.Quantity} | " +
+            $"LinePoints={item.Points:0.##} | Required={required:0.##} | " +
             $"LatestBalance={latestBalance:0.##} | AllocatedElsewhere={alreadyAllocated:0.##}");
 
         Feedback.Success(
@@ -2372,10 +2379,9 @@
 
         foreach (var item in pointLines)
         {
-            var expected = RequiredPointsFor(item);
             if (!item.AllowPointRedemption ||
                 item.PointToRedeem <= 0m ||
-                Math.Abs(expected - item.Points) > 0.009m ||
+                Math.Abs(item.PointToRedeem - item.Points) > 0.009m ||
                 Math.Abs(item.UnitPrice) > 0.009m)
             {
                 if (showFeedback)
@@ -2402,7 +2408,7 @@
 
         selectedCustomerPointBalance = balanceResult.Value.PointBalance;
         var totalRequired = Math.Round(
-            pointLines.Sum(item => item.Points),
+            pointLines.Sum(RequiredPointsFor),
             2,
             MidpointRounding.AwayFromZero);
 
@@ -4836,13 +4842,14 @@
             }
 
             item.Quantity = newQty;
-            item.Points = required;
+            item.Points = item.PointToRedeem;
             RecalculateItemTaxAndTotal(item);
             currentOrder.Payments.Clear();
             PendingOrderService.SaveOrUpdate(currentOrder);
 
             Console.WriteLine(
-                $"[Point Step 2] QUANTITY | Item={item.InventoryId} | Qty={item.Quantity} | Points={item.Points:0.##}");
+                $"[Point Step 2] QUANTITY | Item={item.InventoryId} | Qty={item.Quantity} | " +
+                $"LinePoints={item.Points:0.##} | Required={RequiredPointsFor(item):0.##}");
             return;
         }
 
@@ -4873,7 +4880,9 @@
     {
         var releasedAllocations = EffectiveLineCreditAllocations(item);
         var releasedAmount = releasedAllocations.Sum(allocation => allocation.Amount);
-        var releasedPoints = Math.Max(0m, item.Points);
+        var releasedPoints = item.Points > 0m
+            ? RequiredPointsFor(item)
+            : 0m;
 
         currentOrder.Items.Remove(item);
 
