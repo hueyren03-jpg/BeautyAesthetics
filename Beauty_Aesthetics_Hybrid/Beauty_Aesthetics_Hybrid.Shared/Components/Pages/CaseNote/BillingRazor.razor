@@ -2153,7 +2153,7 @@
             : BillingPayments;
 
     private IEnumerable<CashSalesPaymentTypeDTO> VisibleBillingPaymentMethods =>
-        _isOutstandingPaymentMode
+        _isOutstandingPaymentMode || HasBillingPointRedemption
             ? AvailablePaymentMethods.Where(method => method.POSPaymentTypeID != -10)
             : AvailablePaymentMethods;
 
@@ -4690,6 +4690,22 @@
 
         SynchronizeBillingPaymentTotals();
 
+        if (HasBillingPointRedemption &&
+            BillingPayments.Any(payment => payment.PaymentTypeId == -10))
+        {
+            BillingPayments.RemoveAll(payment => payment.PaymentTypeId == -10);
+            SynchronizeBillingPaymentTotals();
+
+            Console.WriteLine(
+                $"[Point Step 8] BLOCKED | Source=Billing | Customer={_billingCustomerId} | " +
+                $"Reason=StaleMemberCreditTenderRemoved");
+
+            Feedback.Warning(
+                "Member Credit cannot be combined with point redemption. The Member Credit payment was removed.",
+                "Payment method not allowed");
+            return;
+        }
+
         if (BillingPaidAmount < TotalPayable)
         {
             _showInsufficientAmountModal = true;
@@ -5734,6 +5750,18 @@
     // Billing payment calculator mirrors Sales > New Sale behavior.
     private void OpenBillingPaymentCalculator(CashSalesPaymentTypeDTO method)
     {
+        if (HasBillingPointRedemption && method.POSPaymentTypeID == -10)
+        {
+            Console.WriteLine(
+                $"[Point Step 8] BLOCKED | Source=Billing | Customer={_billingCustomerId} | " +
+                $"Reason=MemberCreditTenderWithPoints");
+
+            Feedback.Warning(
+                "Member Credit cannot be combined with point redemption on the same bill.",
+                "Payment method not allowed");
+            return;
+        }
+
         if (_isOutstandingPaymentMode)
         {
             if (method.POSPaymentTypeID == -10)
@@ -5865,6 +5893,19 @@
         if (_billingCalculatorMethod is null || BillingCalculatorAmount <= 0m)
         {
             Feedback.Warning("Enter a payment amount first.", "Payment amount required");
+            return;
+        }
+
+        if (HasBillingPointRedemption &&
+            _billingCalculatorMethod.POSPaymentTypeID == -10)
+        {
+            Console.WriteLine(
+                $"[Point Step 8] BLOCKED | Source=Billing | Customer={_billingCustomerId} | " +
+                $"Reason=MemberCreditTenderWithPoints");
+
+            Feedback.Warning(
+                "Member Credit cannot be combined with point redemption on the same bill.",
+                "Payment method not allowed");
             return;
         }
 
