@@ -245,7 +245,9 @@ public sealed class ServiceItemService : IServiceItemService
             FirstNonEmpty(record.UnitOfMeasureName, record.UnitOfMeasureID, "unit") ?? "unit",
             record.SalesDescription ?? string.Empty,
             record.ItemGroupID ?? string.Empty,
-            record.UnitOfMeasureID ?? string.Empty);
+            record.UnitOfMeasureID ?? string.Empty,
+            record.PointToRedeem ?? 0m,
+            record.AllowPointRedemption);
     }
 
     private static InventoryDM CreateServiceRecord(
@@ -335,6 +337,7 @@ public sealed class ServiceItemService : IServiceItemService
             Math.Max(0m, details.RedeemPoint),
             "RedeemPoint",
             "PointToRedeem");
+        record.AllowPointRedemption = details.RedeemPoint > 0m;
         SetFirstInventoryProperty(
             record,
             details.BillOfMaterial?.Trim() ?? string.Empty,
