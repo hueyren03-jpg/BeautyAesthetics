@@ -151,6 +151,7 @@ public sealed class CashSalesPaymentTypeDTO
     public int Sorting { get; set; }
     public string? ReceiptGroup { get; set; }
     public string? FinancialAccountID { get; set; }
+    public string? FinancialAccountName { get; set; }
     public string? VisibleInModules { get; set; }
     public string? VisibleInBranch { get; set; }
     public bool Active { get; set; }
