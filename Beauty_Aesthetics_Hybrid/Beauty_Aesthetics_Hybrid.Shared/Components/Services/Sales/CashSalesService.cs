@@ -1769,14 +1769,9 @@ public sealed class CashSalesService : ICashSalesService
 
         foreach (var item in pointLines)
         {
-            var expectedPoints = Math.Round(
-                Math.Max(0m, item.PointToRedeem) * Math.Max(1, item.Quantity),
-                2,
-                MidpointRounding.AwayFromZero);
-
             if (!item.AllowPointRedemption ||
                 item.PointToRedeem <= 0m ||
-                Math.Abs(expectedPoints - item.Points) > 0.009m)
+                Math.Abs(item.PointToRedeem - item.Points) > 0.009m)
             {
                 return ApiCallResult<bool>.Failure(
                     HttpStatusCode.BadRequest,
@@ -1804,7 +1799,8 @@ public sealed class CashSalesService : ICashSalesService
         }
 
         var totalPoints = Math.Round(
-            pointLines.Sum(item => item.Points),
+            pointLines.Sum(item =>
+                Math.Max(0m, item.Points) * Math.Max(1, item.Quantity)),
             2,
             MidpointRounding.AwayFromZero);
         var latestBalance = Math.Max(
