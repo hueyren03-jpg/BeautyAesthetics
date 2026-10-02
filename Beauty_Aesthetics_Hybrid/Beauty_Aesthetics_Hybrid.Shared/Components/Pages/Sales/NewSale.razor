@@ -2196,7 +2196,7 @@
         var released = Math.Round(
             currentOrder.Items
                 .Where(item => item.Points > 0m)
-                .Sum(RequiredPointsFor),
+                .Sum(item => Math.Max(0m, item.Points)),
             2,
             MidpointRounding.AwayFromZero);
 
@@ -2415,6 +2415,13 @@
             $"PointToRedeem={item.PointToRedeem:0.##} | Qty={item.Quantity} | " +
             $"LinePoints={item.Points:0.##} | Required={required:0.##} | " +
             $"LatestBalance={latestBalance:0.##} | AllocatedElsewhere={alreadyAllocated:0.##}");
+
+        var totalAllocatedAfterAssignment = PointsAllocatedOnCurrentBill();
+        Console.WriteLine(
+            $"[Point Step 7] TOTAL ALLOCATION | Source=Sales | Customer={currentOrder.AccountId} | " +
+            $"Lines={currentOrder.Items.Count(candidate => candidate.Points > 0m)} | " +
+            $"Allocated={totalAllocatedAfterAssignment:0.##} | LatestBalance={latestBalance:0.##} | " +
+            $"AvailableRemaining={Math.Max(0m, latestBalance - totalAllocatedAfterAssignment):0.##}");
 
         Feedback.Success(
             $"{required:0.##} points applied to {item.Name}.",
@@ -4932,6 +4939,11 @@
             Console.WriteLine(
                 $"[Point Step 2] QUANTITY | Item={item.InventoryId} | Qty={item.Quantity} | " +
                 $"LinePoints={item.Points:0.##} | Required={RequiredPointsFor(item):0.##}");
+
+            Console.WriteLine(
+                $"[Point Step 7] TOTAL ALLOCATION | Source=Sales | Customer={currentOrder.AccountId} | " +
+                $"Lines={currentOrder.Items.Count(candidate => candidate.Points > 0m)} | " +
+                $"Allocated={PointsAllocatedOnCurrentBill():0.##} | Change=Quantity");
             return;
         }
 
@@ -4962,9 +4974,7 @@
     {
         var releasedAllocations = EffectiveLineCreditAllocations(item);
         var releasedAmount = releasedAllocations.Sum(allocation => allocation.Amount);
-        var releasedPoints = item.Points > 0m
-            ? RequiredPointsFor(item)
-            : 0m;
+        var releasedPoints = Math.Max(0m, item.Points);
 
         currentOrder.Items.Remove(item);
 
@@ -4985,8 +4995,16 @@
 
         if (releasedPoints > 0m)
         {
+            var remainingAllocated = PointsAllocatedOnCurrentBill();
             Console.WriteLine(
-                $"[Point Step 2] DELETE | Item={item.InventoryId} | Released={releasedPoints:0.##}");
+                $"[Point Step 7] RELEASE | Source=Sales | Customer={currentOrder.AccountId} | " +
+                $"Item={item.InventoryId} | Released={releasedPoints:0.##} | " +
+                $"RemainingAllocated={remainingAllocated:0.##}");
+
+            Feedback.Info(
+                $"Removed {item.Name}; {releasedPoints:0.##} point(s) were released.",
+                "Points released",
+                2200);
         }
 
         PendingOrderService.SaveOrUpdate(currentOrder);
