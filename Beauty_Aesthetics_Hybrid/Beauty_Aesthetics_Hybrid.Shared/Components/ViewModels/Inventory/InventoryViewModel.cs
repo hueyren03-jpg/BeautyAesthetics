@@ -64,6 +64,7 @@ public sealed class InventoryViewModel
         public string ItemGroupId { get; init; } = string.Empty;
         public string ItemGroupName { get; init; } = string.Empty;
         public decimal RedeemPoint { get; init; }
+        public bool AllowPointRedemption { get; init; }
         public IReadOnlyList<string> VisibleBranchIds { get; init; } = new List<string>();
         public IReadOnlyList<ProductSellingUnit> SellingUnits { get; init; } = new List<ProductSellingUnit>();
         public string ImagePath { get; init; } = string.Empty;
