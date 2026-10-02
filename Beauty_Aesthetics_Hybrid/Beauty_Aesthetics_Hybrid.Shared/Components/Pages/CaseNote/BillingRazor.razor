@@ -3912,7 +3912,7 @@
         await InvokeAsync(StateHasChanged);
     }
 
-    private void OnConfirmPaymentClicked()
+    private async Task OnConfirmPaymentClicked()
     {
         _paymentValidationError = null;
 
@@ -3954,15 +3954,97 @@
                 return;
             }
 
-            Console.WriteLine(
-                $"[Outstanding Step 4] BILLING PAYMENT READY | Customer={_billingCustomerId} | " +
-                $"Amount={PaymentTotalPayable:N2} | Method={ActiveBillingPayments[0].PaymentMethod} | " +
-                $"PaymentTypeID={ActiveBillingPayments[0].PaymentTypeId} | ARReceiptSavePendingStep5=True");
+            var outstandingPayment = ActiveBillingPayments[0];
+            var branchId = AppState.SelectedBranchID?.Trim() ?? string.Empty;
+            var groupId = AppState.CurrentBranch?.GroupId?.Trim();
+            if (string.IsNullOrWhiteSpace(groupId))
+            {
+                groupId = branchId;
+            }
 
-            Feedback.Info(
-                "Outstanding payment method is ready. AR Receipt saving is handled in Step 5.",
-                "Outstanding payment ready",
-                3200);
+            if (string.IsNullOrWhiteSpace(branchId) ||
+                string.IsNullOrWhiteSpace(groupId))
+            {
+                Feedback.Error(
+                    "The working branch/group is unavailable for Outstanding settlement.",
+                    "Branch required");
+                return;
+            }
+
+            _isProcessingPayment = true;
+            var feedbackId = Feedback.Loading(
+                "Saving Outstanding settlement...",
+                "Outstanding payment");
+            await InvokeAsync(StateHasChanged);
+
+            try
+            {
+                Console.WriteLine(
+                    $"[Outstanding Step 5] BILLING SAVE START | Customer={_billingCustomerId} | " +
+                    $"Branch={branchId} | Group={groupId} | " +
+                    $"Documents={_outstandingSettlementSelections.Count} | " +
+                    $"Amount={PaymentTotalPayable:N2} | Method={outstandingPayment.PaymentMethod} | " +
+                    $"PaymentTypeID={outstandingPayment.PaymentTypeId}");
+
+                var result = await OutstandingBalanceService.CreateSettlementAsync(
+                    new OutstandingSettlementSaveRequestDTO
+                    {
+                        CustomerID = _billingCustomerId,
+                        CustomerName = PatientName,
+                        BranchID = branchId,
+                        GroupID = groupId,
+                        FinancialAccountID =
+                            outstandingPayment.FinancialAccountId,
+                        FinancialAccountName =
+                            outstandingPayment.BankName,
+                        SelectedAmounts = new Dictionary<string, decimal>(
+                            _outstandingSettlementSelections,
+                            StringComparer.OrdinalIgnoreCase)
+                    });
+
+                if (!result.Success || result.Value is null)
+                {
+                    _paymentValidationError =
+                        result.ErrorMessage ??
+                        "Unable to save Outstanding settlement.";
+                    Feedback.Fail(
+                        feedbackId,
+                        _paymentValidationError,
+                        "Outstanding payment failed");
+                    return;
+                }
+
+                var saved = result.Value;
+
+                Console.WriteLine(
+                    $"[Outstanding Step 5] BILLING SAVE COMPLETE | Id={saved.Id} | " +
+                    $"DisplayCode={saved.DisplayCode} | " +
+                    $"Amount={saved.TotalAllocatedAmount:N2} | " +
+                    $"Documents={saved.SettledDocumentCount}");
+
+                _outstandingSettlementSelections.Clear();
+                _outstandingSettlementPayments.Clear();
+                _isOutstandingPaymentMode = false;
+                _billingCalculatorMethod = null;
+                _billingCalculatorDigits = string.Empty;
+                _billingStep = "summary";
+                SynchronizeBillingPaymentTotals();
+
+                await LoadCustomerBalancesAsync(_billingCustomerId);
+
+                Feedback.Resolve(
+                    feedbackId,
+                    string.IsNullOrWhiteSpace(saved.DisplayCode)
+                        ? $"Outstanding payment of RM {saved.TotalAllocatedAmount:N2} saved successfully."
+                        : $"Outstanding payment {saved.DisplayCode} saved successfully.",
+                    "Outstanding paid");
+            }
+            finally
+            {
+                _isProcessingPayment = false;
+                await InvokeAsync(StateHasChanged);
+            }
+
             return;
         }
 
@@ -5033,12 +5115,60 @@
                 return;
             }
 
-            if (ActiveBillingPayments.Any(payment =>
-                    payment.PaymentTypeId != method.POSPaymentTypeID))
+            var existingOutstandingPayment =
+                BillingPaymentFor(method.POSPaymentTypeID);
+
+            if (existingOutstandingPayment is null)
             {
-                Feedback.Warning(
-                    "Outstanding settlement follows Senang Retail and allows one payment method only.",
-                    "One payment method");
+                if (ActiveBillingPayments.Any())
+                {
+                    Feedback.Warning(
+                        "Outstanding settlement follows Senang Retail and allows one payment method only.",
+                        "One payment method");
+                    return;
+                }
+
+                var amount = Math.Round(
+                    Math.Max(0m, PaymentTotalPayable),
+                    2,
+                    MidpointRounding.AwayFromZero);
+
+                if (amount <= 0m)
+                {
+                    Feedback.Warning(
+                        "The Outstanding settlement amount must be greater than zero.",
+                        "Outstanding amount required");
+                    return;
+                }
+
+                _outstandingSettlementPayments.Add(new TransactionPayment
+                {
+                    PaymentTypeId = method.POSPaymentTypeID,
+                    PaymentMethod =
+                        method.POSPaymentTypeName ??
+                        $"Payment {method.POSPaymentTypeID}",
+                    Amount = amount,
+                    FinancialAccountId =
+                        method.FinancialAccountID ?? string.Empty,
+                    BankName =
+                        method.FinancialAccountName ?? string.Empty
+                });
+
+                _billingCalculatorMethod = null;
+                _billingCalculatorDigits = string.Empty;
+                SelectedPaymentTypeId = method.POSPaymentTypeID;
+                SelectedPaymentMethod =
+                    method.POSPaymentTypeName ??
+                    $"Payment {method.POSPaymentTypeID}";
+
+                SynchronizeBillingPaymentTotals();
+
+                Console.WriteLine(
+                    $"[Outstanding Step 4] BILLING PAYMENT METHOD SELECTED | " +
+                    $"Type={method.POSPaymentTypeID} | Method={method.POSPaymentTypeName} | " +
+                    $"Amount={amount:N2}");
+
+                StateHasChanged();
                 return;
             }
         }
@@ -5156,6 +5286,8 @@
         payment.Amount = BillingCalculatorAmount;
         payment.FinancialAccountId =
             _billingCalculatorMethod.FinancialAccountID ?? string.Empty;
+        payment.BankName =
+            _billingCalculatorMethod.FinancialAccountName ?? string.Empty;
 
         SynchronizeBillingPaymentTotals();
         CloseBillingPaymentCalculator();
