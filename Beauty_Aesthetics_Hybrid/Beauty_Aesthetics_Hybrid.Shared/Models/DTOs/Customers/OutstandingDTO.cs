@@ -153,6 +153,35 @@ public sealed class OutstandingSettlementSaveResultDTO
 }
 
 
+
+public sealed class OutstandingPaymentHistoryDTO
+{
+    public string ReceiptID { get; set; } = string.Empty;
+    public string ReceiptNo { get; set; } = string.Empty;
+    public DateTime PaymentDate { get; set; }
+    public string CustomerID { get; set; } = string.Empty;
+    public string CustomerName { get; set; } = string.Empty;
+    public string BranchID { get; set; } = string.Empty;
+    public string GroupID { get; set; } = string.Empty;
+    public decimal PaidAmount { get; set; }
+    public string PaymentMethod { get; set; } = string.Empty;
+    public string FinancialAccountID { get; set; } = string.Empty;
+    public string FinancialAccountName { get; set; } = string.Empty;
+    public bool VerificationPassed { get; set; }
+    public string VerificationMessage { get; set; } = string.Empty;
+    public decimal? CustomerOutstandingAfterPayment { get; set; }
+    public List<OutstandingPaymentHistoryLineDTO> Documents { get; set; } = new();
+}
+
+public sealed class OutstandingPaymentHistoryLineDTO
+{
+    public string SourceDocumentID { get; set; } = string.Empty;
+    public string DocumentNo { get; set; } = string.Empty;
+    public decimal AmountPaid { get; set; }
+    public decimal RemainingAfterPayment { get; set; }
+}
+
+
 /// <summary>
 /// Beauty-owned wire contract for POST /api/Doc_ARReceipt/CreateRecord.
 /// Senang's Doc_ARReceipt wrapper is app-side code and is not present in Beauty's DLLs,
