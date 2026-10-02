@@ -1988,7 +1988,9 @@
             InventoryTypeId: 1,
             TaxCodeId: x.TaxCode,
             IsTaxInclusive: x.IsTaxInclusive,
-            TaxPercentage: CatalogTaxRate(taxRates, x.TaxCode))));
+            TaxPercentage: CatalogTaxRate(taxRates, x.TaxCode),
+            PointToRedeem: x.RedeemPoint,
+            AllowPointRedemption: x.AllowPointRedemption)));
 
         catalog.AddRange(services
             .Where(x => !string.IsNullOrWhiteSpace(x.MasterAccountId))
@@ -2002,7 +2004,9 @@
                 InventoryTypeId: 3,
                 TaxCodeId: x.TaxCode,
                 IsTaxInclusive: x.IsTaxInclusive,
-                TaxPercentage: CatalogTaxRate(taxRates, x.TaxCode))));
+                TaxPercentage: CatalogTaxRate(taxRates, x.TaxCode),
+                PointToRedeem: x.RedeemPoint,
+                AllowPointRedemption: x.AllowPointRedemption)));
 
         catalog.AddRange(packages.Select(x => new CatalogItem(
             x.MasterAccountId,
@@ -2212,7 +2216,9 @@
                 return item with
                 {
                     PointToRedeem = pointToRedeem,
-                    AllowPointRedemption = pointToRedeem > 0m
+                    AllowPointRedemption =
+                        productResult.Value.AllowPointRedemption &&
+                        pointToRedeem > 0m
                 };
             }
 
@@ -2221,14 +2227,16 @@
         }
         else if (item.InventoryTypeId == 3)
         {
-            var serviceResult = await ServiceItemService.LoadServiceEditorDetailsAsync(item.Id);
+            var serviceResult = await ServiceItemService.LoadServiceAsync(item.Id);
             if (serviceResult.Success && serviceResult.Value is not null)
             {
                 var pointToRedeem = Math.Max(0m, serviceResult.Value.RedeemPoint);
                 return item with
                 {
                     PointToRedeem = pointToRedeem,
-                    AllowPointRedemption = pointToRedeem > 0m
+                    AllowPointRedemption =
+                        serviceResult.Value.AllowPointRedemption &&
+                        pointToRedeem > 0m
                 };
             }
 
