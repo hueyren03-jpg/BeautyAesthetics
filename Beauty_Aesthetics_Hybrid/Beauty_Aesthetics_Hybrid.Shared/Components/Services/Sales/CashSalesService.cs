@@ -1887,6 +1887,16 @@ public sealed class CashSalesService : ICashSalesService
             line["Quantity"] = quantity;
             line["UnitPrice"] = item.UnitPrice;
             line["Points"] = Math.Max(0m, item.Points);
+
+            if (item.Points > 0m)
+            {
+                Console.WriteLine(
+                    $"[Point Step 5] DOCUMENT LINE | Inventory={item.InventoryId} | " +
+                    $"Type={item.InventoryTypeId} | Qty={quantity} | " +
+                    $"PointToRedeem={item.PointToRedeem:0.##} | Points={item.Points:0.##} | " +
+                    $"UnitPrice={item.UnitPrice:N2}");
+            }
+
             line["Discount"] = discount;
             line["DiscountAmount"] = discount;
             line["CashDiscountID"] = item.CashDiscountId;
