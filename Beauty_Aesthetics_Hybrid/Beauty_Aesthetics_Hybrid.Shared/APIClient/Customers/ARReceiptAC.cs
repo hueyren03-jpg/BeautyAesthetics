@@ -5,7 +5,6 @@ using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.Services.Auth;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 using EBI.DM;
-using EBI.UC;
 
 namespace Beauty_Aesthetics_WebPos.APIClient;
 
@@ -187,7 +186,7 @@ public sealed class ARReceiptAC
     }
 
     public async Task<ApiCallResult<OutstandingSettlementSaveResultDTO>> CreateRecordAsync(
-        Doc_ARReceipt receipt,
+        OutstandingARReceiptCreateDTO receipt,
         decimal totalAllocatedAmount,
         int settledDocumentCount,
         CancellationToken cancellationToken = default)
