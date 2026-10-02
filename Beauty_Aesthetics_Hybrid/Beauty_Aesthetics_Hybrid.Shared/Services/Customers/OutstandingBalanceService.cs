@@ -527,6 +527,13 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
                 saveResult.ErrorMessage ?? "Unable to save outstanding settlement.");
         }
 
+        await VerifySettlementAfterSaveAsync(
+            customerId,
+            groupId,
+            offsetLines,
+            saveResult.Value,
+            cancellationToken);
+
         Console.WriteLine(
             $"[Outstanding Step 10] SAVE COMPLETE | Id={saveResult.Value.Id} | " +
             $"DisplayCode={saveResult.Value.DisplayCode} | " +
@@ -743,6 +750,12 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
 
         var receiptIds = new List<string>();
         var receiptCodes = new List<string>();
+        var verifiedRemaining = new Dictionary<string, decimal>(
+            StringComparer.OrdinalIgnoreCase);
+        var verificationMessages = new List<string>();
+        var allVerificationsCompleted = true;
+        var allVerificationsPassed = true;
+        decimal? verifiedCustomerOutstanding = null;
         decimal savedTotal = 0m;
 
         foreach (var plan in plans)
@@ -783,6 +796,25 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
             }
 
             savedTotal += saveResult.Value.TotalAllocatedAmount;
+
+            allVerificationsCompleted &= saveResult.Value.VerificationCompleted;
+            allVerificationsPassed &= saveResult.Value.VerificationPassed;
+
+            if (!string.IsNullOrWhiteSpace(saveResult.Value.VerificationMessage))
+            {
+                verificationMessages.Add(saveResult.Value.VerificationMessage);
+            }
+
+            foreach (var pair in saveResult.Value.VerifiedRemainingAmounts)
+            {
+                verifiedRemaining[pair.Key] = pair.Value;
+            }
+
+            if (saveResult.Value.VerifiedCustomerOutstanding.HasValue)
+            {
+                verifiedCustomerOutstanding =
+                    saveResult.Value.VerifiedCustomerOutstanding.Value;
+            }
 
             foreach (var allocation in plan.Allocations)
             {
@@ -835,8 +867,138 @@ public sealed class OutstandingBalanceService : IOutstandingBalanceService
                 TotalAllocatedAmount = savedTotal,
                 SettledDocumentCount = requested.Count,
                 ReceiptIds = receiptIds,
-                ReceiptCodes = receiptCodes
+                ReceiptCodes = receiptCodes,
+                VerificationCompleted = allVerificationsCompleted,
+                VerificationPassed = allVerificationsPassed,
+                VerificationMessage = allVerificationsPassed
+                    ? $"All {receiptCodes.Count} Outstanding receipt(s) were verified against the latest backend balances."
+                    : string.Join(" ", verificationMessages.Distinct(StringComparer.OrdinalIgnoreCase)),
+                VerifiedCustomerOutstanding = verifiedCustomerOutstanding,
+                VerifiedRemainingAmounts = verifiedRemaining
             });
+    }
+
+    private async Task VerifySettlementAfterSaveAsync(
+        string customerId,
+        string groupId,
+        IReadOnlyCollection<ud_ARAPPaymentOffSetLineDM> savedLines,
+        OutstandingSettlementSaveResultDTO saveResult,
+        CancellationToken cancellationToken)
+    {
+        Console.WriteLine(
+            $"[Outstanding Step 11] VERIFY START | Receipt={saveResult.DisplayCode} | " +
+            $"Customer={customerId} | Documents={savedLines.Count} | " +
+            $"Paid={saveResult.TotalAllocatedAmount:N2}");
+
+        var verificationResult = await arReceiptAC.RetrieveSettlementLinesRawAsync(
+            customerId,
+            groupId,
+            cancellationToken);
+
+        if (!verificationResult.Success || verificationResult.Value is null)
+        {
+            saveResult.VerificationCompleted = false;
+            saveResult.VerificationPassed = false;
+            saveResult.VerificationMessage =
+                $"AR Receipt {saveResult.DisplayCode} was saved, but the latest Outstanding lines could not be reloaded for verification.";
+
+            Console.WriteLine(
+                $"[Outstanding Step 11] VERIFY NOT CONFIRMED | Receipt={saveResult.DisplayCode} | " +
+                $"Reason={verificationResult.ErrorMessage ?? "Unable to reload settlement lines"}");
+            return;
+        }
+
+        var liveLines = verificationResult.Value;
+        var allLinesPassed = true;
+
+        foreach (var savedLine in savedLines)
+        {
+            var before = Math.Round(
+                Math.Max(0m, savedLine.Outstanding),
+                2,
+                MidpointRounding.AwayFromZero);
+            var paid = Math.Round(
+                Math.Max(0m, savedLine.AllocatedAmount),
+                2,
+                MidpointRounding.AwayFromZero);
+            var expectedRemaining = Math.Round(
+                Math.Max(0m, before - paid),
+                2,
+                MidpointRounding.AwayFromZero);
+
+            var savedAliases = SettlementLineAliases(savedLine);
+            var liveLine = liveLines.FirstOrDefault(candidate =>
+                SettlementLineAliases(candidate).Any(alias =>
+                    savedAliases.Contains(alias, StringComparer.OrdinalIgnoreCase)));
+
+            // Senang removes fully settled rows from RetrieveSettlementLines,
+            // so an absent line is correctly interpreted as zero remaining.
+            var liveRemaining = liveLine is null
+                ? 0m
+                : Math.Round(
+                    Math.Max(0m, liveLine.Outstanding),
+                    2,
+                    MidpointRounding.AwayFromZero);
+
+            var verificationKey =
+                !string.IsNullOrWhiteSpace(savedLine.DocumentID)
+                    ? savedLine.DocumentID
+                    : !string.IsNullOrWhiteSpace(savedLine.DisplayCode)
+                        ? savedLine.DisplayCode
+                        : savedAliases.FirstOrDefault() ?? "unknown";
+
+            saveResult.VerifiedRemainingAmounts[verificationKey] = liveRemaining;
+
+            var linePassed =
+                Math.Abs(expectedRemaining - liveRemaining) <= 0.009m;
+            allLinesPassed &= linePassed;
+
+            Console.WriteLine(
+                $"[Outstanding Step 11] DOCUMENT {(linePassed ? "PASS" : "MISMATCH")} | " +
+                $"DocumentID={savedLine.DocumentID} | DisplayCode={savedLine.DisplayCode} | " +
+                $"Before={before:N2} | Paid={paid:N2} | " +
+                $"ExpectedRemaining={expectedRemaining:N2} | LiveRemaining={liveRemaining:N2}");
+        }
+
+        var summaryResult = await customerService.GetOtherBalanceSummaryAsync(
+            customerId,
+            DateTime.Now,
+            cancellationToken);
+
+        if (summaryResult.Success && summaryResult.Value is not null)
+        {
+            saveResult.VerifiedCustomerOutstanding =
+                Math.Round(
+                    summaryResult.Value.Outstanding,
+                    2,
+                    MidpointRounding.AwayFromZero);
+
+            Console.WriteLine(
+                $"[Outstanding Step 11] SUMMARY RELOADED | Customer={customerId} | " +
+                $"Outstanding={saveResult.VerifiedCustomerOutstanding.Value:N2}");
+        }
+        else
+        {
+            Console.WriteLine(
+                $"[Outstanding Step 11] SUMMARY NOT CONFIRMED | Customer={customerId} | " +
+                $"Reason={summaryResult.ErrorMessage ?? "Unable to reload summary"}");
+        }
+
+        saveResult.VerificationCompleted =
+            summaryResult.Success && summaryResult.Value is not null;
+        saveResult.VerificationPassed =
+            allLinesPassed && saveResult.VerificationCompleted;
+
+        saveResult.VerificationMessage = saveResult.VerificationPassed
+            ? $"AR Receipt {saveResult.DisplayCode} was verified against the latest Outstanding balances."
+            : allLinesPassed
+                ? $"AR Receipt {saveResult.DisplayCode} was saved and its source documents were verified, but the overall Outstanding summary could not be confirmed."
+                : $"AR Receipt {saveResult.DisplayCode} was saved, but the post-save Outstanding balance did not match the expected reduction. Refresh Outstanding before taking any further action.";
+
+        Console.WriteLine(
+            $"[Outstanding Step 11] VERIFY {(saveResult.VerificationPassed ? "PASS" : "WARNING")} | " +
+            $"Receipt={saveResult.DisplayCode} | Documents={savedLines.Count} | " +
+            $"SummaryOutstanding={(saveResult.VerifiedCustomerOutstanding.HasValue ? saveResult.VerifiedCustomerOutstanding.Value.ToString("N2") : "unavailable")}");
     }
 
     private static IReadOnlyList<string> SettlementLineAliases(
