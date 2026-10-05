@@ -1079,7 +1079,6 @@
                         <tr>
                             <th>Date</th>
                             <th>Invoice</th>
-                            <th class="amount-cell">Sale Amount</th>
                             <th class="amount-cell">Earned</th>
                             <th class="amount-cell">Redeemed</th>
                             <th class="amount-cell">Net</th>
@@ -1093,16 +1092,11 @@
                                 <td>@entry.FinancialDate.ToString("dd/MM/yyyy")</td>
                                 <td>
                                     <strong>@(string.IsNullOrWhiteSpace(entry.InvoiceNumber) ? entry.DocumentId : entry.InvoiceNumber)</strong>
-                                    @if (!string.IsNullOrWhiteSpace(entry.BranchId))
-                                    {
-                                        <small class="billing-line-code">@entry.BranchId</small>
-                                    }
                                 </td>
-                                <td class="amount-cell">RM @entry.SaleAmount.ToString("N2")</td>
                                 <td class="amount-cell">@(entry.EarnedPoints.HasValue ? $"+{entry.EarnedPoints.Value:0.##}" : "—")</td>
                                 <td class="amount-cell">@(entry.RedeemedPoints > 0m ? $"-{entry.RedeemedPoints:0.##}" : "—")</td>
-                                <td class="amount-cell">@(entry.NetPoints.HasValue ? entry.NetPoints.Value.ToString("+0.##;-0.##;0") : "—")</td>
-                                <td class="amount-cell">@(entry.BalanceAfter.HasValue ? entry.BalanceAfter.Value.ToString("0.##") : "—")</td>
+                                <td class="amount-cell">@entry.NetPoints.ToString("+0.##;-0.##;0")</td>
+                                <td class="amount-cell">@entry.BalanceAfter.ToString("0.##")</td>
                             </tr>
                         }
                     </tbody>
@@ -1111,7 +1105,7 @@
         }
 
         <footer>
-            <small>Historical balance-after is shown only when the backend provides it.</small>
+            <small>Point movements and running balances are loaded directly from the backend point ledger.</small>
             <button type="button" class="secondary-action" @onclick="ClosePointHistory">Close</button>
         </footer>
     </section>
