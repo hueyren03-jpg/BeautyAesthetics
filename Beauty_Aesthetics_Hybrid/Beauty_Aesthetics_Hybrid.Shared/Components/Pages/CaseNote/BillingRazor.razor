@@ -1753,7 +1753,6 @@
                                 <tr>
                                     <th>Date</th>
                                     <th>Invoice</th>
-                                    <th>Sale Amount</th>
                                     <th>Earned</th>
                                     <th>Redeemed</th>
                                     <th>Net</th>
@@ -1767,16 +1766,11 @@
                                         <td>@entry.FinancialDate.ToString("dd/MM/yyyy")</td>
                                         <td>
                                             <strong>@(string.IsNullOrWhiteSpace(entry.InvoiceNumber) ? entry.DocumentId : entry.InvoiceNumber)</strong>
-                                            @if (!string.IsNullOrWhiteSpace(entry.BranchId))
-                                            {
-                                                <small class="billing-line-code">@entry.BranchId</small>
-                                            }
                                         </td>
-                                        <td>RM @entry.SaleAmount.ToString("N2")</td>
                                         <td>@(entry.EarnedPoints.HasValue ? $"+{entry.EarnedPoints.Value:0.##}" : "—")</td>
                                         <td>@(entry.RedeemedPoints > 0m ? $"-{entry.RedeemedPoints:0.##}" : "—")</td>
-                                        <td>@(entry.NetPoints.HasValue ? entry.NetPoints.Value.ToString("+0.##;-0.##;0") : "—")</td>
-                                        <td>@(entry.BalanceAfter.HasValue ? entry.BalanceAfter.Value.ToString("0.##") : "—")</td>
+                                        <td>@entry.NetPoints.ToString("+0.##;-0.##;0")</td>
+                                        <td>@entry.BalanceAfter.ToString("0.##")</td>
                                     </tr>
                                 }
                             </tbody>
@@ -1784,7 +1778,7 @@
                     </div>
                 }
 
-                <small>Historical balance-after is shown only when the backend provides it.</small>
+                <small>Point movements and running balances are loaded directly from the backend point ledger.</small>
             </div>
 
             <div class="modal-footer">
