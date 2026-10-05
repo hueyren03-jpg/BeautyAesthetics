@@ -205,7 +205,7 @@ public sealed class FollowUpService : IFollowUpService
                 : groupId.Trim(),
             Symptoms = record.Symptoms.Trim(),
             Diagnoses = record.Diagnoses.Trim(),
-            SaveAction = "Changed",
+            SaveAction = isUpdate ? 0 : 1,
             IsDirty = true
         };
 
