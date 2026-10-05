@@ -51,6 +51,42 @@ public sealed class MemberOtherBalanceDetailRequest
     public string BalanceType { get; set; } = string.Empty;
 }
 
+public sealed class MemberOtherBalanceDetailDTO
+{
+    [JsonPropertyName("CustomerID")]
+    public string CustomerID { get; set; } = string.Empty;
+
+    [JsonPropertyName("CustomerCode")]
+    public string CustomerCode { get; set; } = string.Empty;
+
+    [JsonPropertyName("CustomerName")]
+    public string CustomerName { get; set; } = string.Empty;
+
+    [JsonPropertyName("Phone")]
+    public string Phone { get; set; } = string.Empty;
+
+    [JsonPropertyName("lstTransaction")]
+    public List<MemberBalanceTransactionDTO> Transactions { get; set; } = new();
+}
+
+public sealed class MemberBalanceTransactionDTO
+{
+    [JsonPropertyName("DocumentID")]
+    public string DocumentID { get; set; } = string.Empty;
+
+    [JsonPropertyName("FinancialDate")]
+    public DateTime FinancialDate { get; set; }
+
+    [JsonPropertyName("BillNo")]
+    public string BillNo { get; set; } = string.Empty;
+
+    [JsonPropertyName("Amount")]
+    public decimal Amount { get; set; }
+
+    [JsonPropertyName("Balance")]
+    public decimal Balance { get; set; }
+}
+
 public sealed class BranchPerformanceSummaryDTO
 {
     public string? BranchID { get; set; }
