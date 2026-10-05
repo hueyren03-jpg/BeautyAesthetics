@@ -310,54 +310,9 @@
             return false;
         }
 
-        await BranchSession.InitializeAsync();
-        var branchId = BranchSession.CurrentBranch?.Id?.Trim() ?? string.Empty;
-
-        Beauty_Aesthetics_WebPos.APIClient.ResultPattern.ApiCallResult<IReadOnlyList<Beauty_Aesthetics_WebPos.Models.DTOs.FollowUpRecordDTO>> result;
-
-        if (!string.Equals(ViewModel.DateFilter, "all", StringComparison.OrdinalIgnoreCase) &&
-            !string.IsNullOrWhiteSpace(branchId))
-        {
-            var (startDate, endDate) = ResolveBranchHistoryRange();
-
-            result = await FollowUpService.LoadByBranchAsync(
-                startDate,
-                endDate,
-                branchId);
-
-            if (result.Success && result.Value is not null)
-            {
-                var customerRecords = result.Value
-                    .Where(record =>
-                        string.Equals(
-                            record.CustomerId,
-                            customerId,
-                            StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-
-                result = Beauty_Aesthetics_WebPos.APIClient.ResultPattern.ApiCallResult<IReadOnlyList<Beauty_Aesthetics_WebPos.Models.DTOs.FollowUpRecordDTO>>.Ok(
-                    result.StatusCode,
-                    customerRecords);
-
-                Console.WriteLine(
-                    $"[Follow Up API] BRANCH HISTORY PASS | Branch={branchId} | " +
-                    $"Customer={customerId} | Start={startDate:yyyy-MM-dd} | End={endDate:yyyy-MM-dd} | " +
-                    $"Records={customerRecords.Count}");
-            }
-            else
-            {
-                Console.WriteLine(
-                    $"[Follow Up API] BRANCH HISTORY FAILED | Branch={branchId} | " +
-                    $"Customer={customerId} | Status={(int)result.StatusCode} | Error={result.ErrorMessage}");
-
-                result = await FollowUpService.LoadByCustomerAsync(customerId);
-            }
-        }
-        else
-        {
-            // All Dates keeps the complete customer history across branches.
-            result = await FollowUpService.LoadByCustomerAsync(customerId);
-        }
+        // Customer history is authoritative. Date filtering is applied by the
+        // existing FollowUpPageViewModel so the full customer history stays loaded.
+        var result = await FollowUpService.LoadByCustomerAsync(customerId);
 
         if (!result.Success || result.Value is null)
         {
@@ -372,8 +327,10 @@
         }
 
         ViewModel.ReplaceFollowUpHistory(result.Value);
+
         Console.WriteLine(
-            $"[Follow Up API] HISTORY LOAD PASS | Customer={customerId} | Records={result.Value.Count}");
+            $"[Follow Up API] HISTORY LOAD PASS | Customer={customerId} | " +
+            $"Records={result.Value.Count} | Filter={ViewModel.DateFilter}");
         return true;
     }
 
