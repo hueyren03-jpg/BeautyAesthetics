@@ -220,13 +220,6 @@ public sealed class CustomerFollowUpAC
             return ApiCallResult<T>.Unauthorized(statusCode);
         }
 
-        if (!isSuccessStatusCode)
-        {
-            return ApiCallResult<T>.Failure(
-                statusCode,
-                ReadError(body, fallback));
-        }
-
         if (string.IsNullOrWhiteSpace(body))
         {
             return ApiCallResult<T>.Failure(statusCode, fallback);
@@ -234,21 +227,45 @@ public sealed class CustomerFollowUpAC
 
         try
         {
+            // CustomerFollowUp/LoadProxyByCustomerID currently returns HTTP 404
+            // while its JSON envelope contains StatusCode=200 and a valid Result.
+            // Treat the API envelope as the source of truth before transport status.
             var wrapped = JsonSerializer.Deserialize<ApiResponse<T>>(body, JsonOptions);
             if (wrapped?.StatusCode > 0)
             {
+                var logicalStatus = Enum.IsDefined(typeof(HttpStatusCode), wrapped.StatusCode)
+                    ? (HttpStatusCode)wrapped.StatusCode
+                    : statusCode;
+
                 if (!wrapped.IsSuccess)
                 {
                     return ApiCallResult<T>.Failure(
-                        statusCode,
+                        logicalStatus,
                         string.IsNullOrWhiteSpace(wrapped.Message)
                             ? fallback
                             : wrapped.Message);
                 }
 
-                return wrapped.Result is null
-                    ? ApiCallResult<T>.Failure(statusCode, fallback)
-                    : ApiCallResult<T>.Ok(statusCode, wrapped.Result);
+                if (wrapped.Result is null)
+                {
+                    return ApiCallResult<T>.Failure(logicalStatus, fallback);
+                }
+
+                if (!isSuccessStatusCode)
+                {
+                    Console.WriteLine(
+                        $"[CustomerFollowUp] LEGACY ENVELOPE ACCEPTED | " +
+                        $"Transport={(int)statusCode} | ApiStatus={wrapped.StatusCode} | Message={wrapped.Message}");
+                }
+
+                return ApiCallResult<T>.Ok(logicalStatus, wrapped.Result);
+            }
+
+            if (!isSuccessStatusCode)
+            {
+                return ApiCallResult<T>.Failure(
+                    statusCode,
+                    ReadError(body, fallback));
             }
 
             var direct = JsonSerializer.Deserialize<T>(body, JsonOptions);
@@ -276,48 +293,12 @@ public sealed class CustomerFollowUpAC
         }
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            return ApiCallResult<T>.Failure(
-                response.StatusCode,
-                ReadError(body, fallback));
-        }
 
-        if (string.IsNullOrWhiteSpace(body))
-        {
-            return ApiCallResult<T>.Failure(response.StatusCode, fallback);
-        }
-
-        try
-        {
-            var wrapped = JsonSerializer.Deserialize<ApiResponse<T>>(body, JsonOptions);
-            if (wrapped?.StatusCode > 0)
-            {
-                if (!wrapped.IsSuccess)
-                {
-                    return ApiCallResult<T>.Failure(
-                        response.StatusCode,
-                        string.IsNullOrWhiteSpace(wrapped.Message)
-                            ? fallback
-                            : wrapped.Message);
-                }
-
-                return wrapped.Result is null
-                    ? ApiCallResult<T>.Failure(response.StatusCode, fallback)
-                    : ApiCallResult<T>.Ok(response.StatusCode, wrapped.Result);
-            }
-
-            var direct = JsonSerializer.Deserialize<T>(body, JsonOptions);
-            return direct is null
-                ? ApiCallResult<T>.Failure(response.StatusCode, fallback)
-                : ApiCallResult<T>.Ok(response.StatusCode, direct);
-        }
-        catch (JsonException)
-        {
-            return ApiCallResult<T>.Failure(
-                response.StatusCode,
-                $"{fallback} Response was invalid.");
-        }
+        return ReadResponseBody<T>(
+            response.StatusCode,
+            response.IsSuccessStatusCode,
+            body,
+            fallback);
     }
 
     private static string ReadError(string body, string fallback)
