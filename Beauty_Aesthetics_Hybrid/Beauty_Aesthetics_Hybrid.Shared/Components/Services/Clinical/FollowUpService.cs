@@ -1,24 +1,23 @@
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
+using Beauty_Aesthetics_WebPos.Components.Services;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 using System.Net;
-using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.Clinical;
 
 public sealed class FollowUpService : IFollowUpService
 {
-    private const string FollowUpMarker = "data-beauty-record=\"follow-up\"";
-    private const string MedicalCertificateMarker = "data-beauty-record=\"medical-certificate\"";
-    private const string PayloadMarker = "data-follow-up-html=\"";
+    private readonly CustomerFollowUpAC followUpAC;
+    private readonly AppState appState;
 
-    private readonly CustomerVisitNoteAC visitNoteAC;
-
-    public FollowUpService(CustomerVisitNoteAC visitNoteAC)
+    public FollowUpService(
+        CustomerFollowUpAC followUpAC,
+        AppState appState)
     {
-        this.visitNoteAC = visitNoteAC;
+        this.followUpAC = followUpAC;
+        this.appState = appState;
     }
 
     public async Task<ApiCallResult<IReadOnlyList<FollowUpRecordDTO>>> LoadByCustomerAsync(
@@ -32,7 +31,10 @@ public sealed class FollowUpService : IFollowUpService
                 "Customer ID is required before loading follow-up history.");
         }
 
-        var result = await visitNoteAC.LoadByCustomerAsync(customerId, cancellationToken);
+        var result = await followUpAC.LoadByCustomerAsync(
+            customerId.Trim(),
+            cancellationToken);
+
         if (!result.Success || result.Value is null)
         {
             return ApiCallResult<IReadOnlyList<FollowUpRecordDTO>>.Failure(
@@ -40,46 +42,84 @@ public sealed class FollowUpService : IFollowUpService
                 result.ErrorMessage ?? "Unable to load follow-up history.");
         }
 
-        var records = new List<FollowUpRecordDTO>();
-        foreach (var row in result.Value)
-        {
-            if (string.IsNullOrWhiteSpace(row.CustomerVisitNoteID))
-            {
-                continue;
-            }
+        var records = result.Value
+            .Where(row => !string.IsNullOrWhiteSpace(row.CustomerVisitNoteID))
+            .Select(row => ToFollowUpRecord(row, customerId))
+            .Where(record => !string.IsNullOrWhiteSpace(record.Content))
+            .OrderByDescending(record => record.Date)
+            .ToList();
 
-            if (!string.IsNullOrWhiteSpace(row.RtfMessage) &&
-                row.RtfMessage.Contains(MedicalCertificateMarker, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var content = ExtractFollowUpContent(row.RtfMessage);
-            if (string.IsNullOrWhiteSpace(content))
-            {
-                continue;
-            }
-
-            var date = row.ModifiedDateTime != default && row.ModifiedDateTime != DateTime.MinValue
-                ? row.ModifiedDateTime
-                : row.CreatedDateTime != default && row.CreatedDateTime != DateTime.MinValue
-                    ? row.CreatedDateTime
-                    : row.FinancialDate != default && row.FinancialDate != DateTime.MinValue
-                        ? row.FinancialDate
-                        : DateTime.Now;
-
-            records.Add(new FollowUpRecordDTO
-            {
-                RecordId = row.CustomerVisitNoteID,
-                CustomerId = string.IsNullOrWhiteSpace(row.CustomerID) ? customerId : row.CustomerID,
-                Date = date,
-                Content = content
-            });
-        }
+        Console.WriteLine(
+            $"[CustomerFollowUp] LOAD CUSTOMER PASS | Customer={customerId} | Records={records.Count}");
 
         return ApiCallResult<IReadOnlyList<FollowUpRecordDTO>>.Ok(
             result.StatusCode,
-            records.OrderByDescending(record => record.Date).ToList());
+            records);
+    }
+
+    public async Task<ApiCallResult<IReadOnlyList<FollowUpRecordDTO>>> LoadByBranchAsync(
+        DateTime startDate,
+        DateTime endDate,
+        string branchId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(branchId))
+        {
+            return ApiCallResult<IReadOnlyList<FollowUpRecordDTO>>.Failure(
+                HttpStatusCode.BadRequest,
+                "Branch ID is required before loading follow-up history.");
+        }
+
+        var result = await followUpAC.LoadByBranchAsync(
+            startDate,
+            endDate,
+            branchId.Trim(),
+            cancellationToken);
+
+        if (!result.Success || result.Value is null)
+        {
+            return ApiCallResult<IReadOnlyList<FollowUpRecordDTO>>.Failure(
+                result.StatusCode,
+                result.ErrorMessage ?? "Unable to load branch follow-up history.");
+        }
+
+        var records = result.Value
+            .Where(row => !string.IsNullOrWhiteSpace(row.CustomerVisitNoteID))
+            .Select(row => ToFollowUpRecord(row, row.CustomerID))
+            .Where(record => !string.IsNullOrWhiteSpace(record.Content))
+            .OrderByDescending(record => record.Date)
+            .ToList();
+
+        return ApiCallResult<IReadOnlyList<FollowUpRecordDTO>>.Ok(
+            result.StatusCode,
+            records);
+    }
+
+    public async Task<ApiCallResult<FollowUpRecordDTO>> LoadRecordAsync(
+        string recordId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(recordId))
+        {
+            return ApiCallResult<FollowUpRecordDTO>.Failure(
+                HttpStatusCode.BadRequest,
+                "Follow-up record ID is required.");
+        }
+
+        var result = await followUpAC.LoadRecordAsync(
+            recordId.Trim(),
+            cancellationToken);
+
+        if (!result.Success || result.Value is null)
+        {
+            return ApiCallResult<FollowUpRecordDTO>.Failure(
+                result.StatusCode,
+                result.ErrorMessage ?? "Unable to load the follow-up record.");
+        }
+
+        return ApiCallResult<FollowUpRecordDTO>.Ok(
+            result.StatusCode,
+            ToFollowUpRecord(result.Value, result.Value.CustomerID));
     }
 
     public async Task<ApiCallResult<FollowUpRecordDTO>> SaveAsync(
@@ -102,25 +142,81 @@ public sealed class FollowUpService : IFollowUpService
                 "Follow-up content is required.");
         }
 
-        var isUpdate = !string.IsNullOrWhiteSpace(record.RecordId);
-        var payload = new CustomerVisitNoteWriteDTO
+        if (string.IsNullOrWhiteSpace(branchId))
         {
-            CustomerVisitNoteID = record.RecordId,
-            FinancialDate = record.Date == default ? DateTime.Now : record.Date,
-            RtfMessage = BuildRecordHtml(record.Content),
-            CustomerID = record.CustomerId,
-            BranchID = branchId ?? string.Empty,
-            GroupID = groupId ?? string.Empty,
-            Symptoms = null,
-            Diagnoses = null,
-            SaveAction = isUpdate ? 2 : 1,
-            IsDirty = true,
-            IsLoading = false
+            return ApiCallResult<FollowUpRecordDTO>.Failure(
+                HttpStatusCode.BadRequest,
+                "Branch ID is required before saving a follow-up.");
+        }
+
+        var isUpdate = !string.IsNullOrWhiteSpace(record.RecordId);
+        CustomerFollowUpDTO? existing = null;
+
+        if (isUpdate)
+        {
+            var loadResult = await followUpAC.LoadRecordAsync(
+                record.RecordId,
+                cancellationToken);
+
+            if (!loadResult.Success || loadResult.Value is null)
+            {
+                return ApiCallResult<FollowUpRecordDTO>.Failure(
+                    loadResult.StatusCode,
+                    loadResult.ErrorMessage ??
+                    "Unable to load the follow-up before updating it.");
+            }
+
+            existing = loadResult.Value;
+        }
+
+        var now = DateTime.Now;
+        var actor = appState.UserEmail?.Trim() ?? string.Empty;
+
+        var payload = new CustomerFollowUpDTO
+        {
+            IsLoading = false,
+            CustomerVisitNoteID = isUpdate
+                ? record.RecordId.Trim()
+                : string.Empty,
+            FinancialDate = record.Date == default
+                ? existing?.FinancialDate ?? now
+                : record.Date,
+            CreatedBy = isUpdate
+                ? existing?.CreatedBy ?? actor
+                : actor,
+            CreatedDateTime = isUpdate && existing is not null &&
+                              existing.CreatedDateTime != default &&
+                              existing.CreatedDateTime != DateTime.MinValue
+                ? existing.CreatedDateTime
+                : now,
+            ModifiedBy = actor,
+            ModifiedDateTime = now,
+            RtfMessage = record.Content,
+            CustomerID = record.CustomerId.Trim(),
+            BranchID = branchId.Trim(),
+            GroupID = string.IsNullOrWhiteSpace(groupId)
+                ? branchId.Trim()
+                : groupId.Trim(),
+            Symptoms = string.IsNullOrWhiteSpace(record.Symptoms)
+                ? existing?.Symptoms ?? string.Empty
+                : record.Symptoms,
+            Diagnoses = string.IsNullOrWhiteSpace(record.Diagnoses)
+                ? existing?.Diagnoses ?? string.Empty
+                : record.Diagnoses,
+            SaveAction = "Changed",
+            IsDirty = true
         };
 
+        Console.WriteLine(
+            $"[CustomerFollowUp] {(isUpdate ? "UPDATE" : "CREATE")} REQUEST | " +
+            $"Customer={payload.CustomerID} | Record={payload.CustomerVisitNoteID} | " +
+            $"Branch={payload.BranchID} | Group={payload.GroupID} | " +
+            $"SymptomsLength={payload.Symptoms.Length} | DiagnosesLength={payload.Diagnoses.Length} | " +
+            $"RtfLength={payload.RtfMessage.Length}");
+
         var response = isUpdate
-            ? await visitNoteAC.UpdateAsync(payload, cancellationToken)
-            : await visitNoteAC.CreateAsync(payload, cancellationToken);
+            ? await followUpAC.UpdateAsync(payload, cancellationToken)
+            : await followUpAC.CreateAsync(payload, cancellationToken);
 
         if (!response.Success)
         {
@@ -129,28 +225,55 @@ public sealed class FollowUpService : IFollowUpService
                 response.ErrorMessage ?? "Unable to save follow-up.");
         }
 
+        record.BranchId = payload.BranchID;
+        record.GroupId = payload.GroupID;
+        record.Symptoms = payload.Symptoms;
+        record.Diagnoses = payload.Diagnoses;
+
         if (!isUpdate)
         {
             record.RecordId = ExtractId(response.Value);
+
+            // Some CustomerFollowUp deployments return only HTTP 200 for CreateRecord.
+            // Resolve the generated ID from the customer proxy so Edit/Delete immediately
+            // operate on the actual backend record.
             if (string.IsNullOrWhiteSpace(record.RecordId))
             {
-                var reload = await LoadByCustomerAsync(record.CustomerId, cancellationToken);
+                var reload = await LoadByCustomerAsync(
+                    record.CustomerId,
+                    cancellationToken);
+
                 if (reload.Success && reload.Value is not null)
                 {
                     var match = reload.Value
-                        .Where(item => string.Equals(item.Content, record.Content, StringComparison.Ordinal))
+                        .Where(item =>
+                            string.Equals(
+                                item.Content,
+                                record.Content,
+                                StringComparison.Ordinal))
                         .OrderByDescending(item => item.Date)
                         .FirstOrDefault();
+
                     if (match is not null)
                     {
                         record.RecordId = match.RecordId;
                         record.Date = match.Date;
+                        record.BranchId = match.BranchId;
+                        record.GroupId = match.GroupId;
+                        record.Symptoms = match.Symptoms;
+                        record.Diagnoses = match.Diagnoses;
                     }
                 }
             }
         }
 
-        return ApiCallResult<FollowUpRecordDTO>.Ok(response.StatusCode, record);
+        Console.WriteLine(
+            $"[CustomerFollowUp] {(isUpdate ? "UPDATE" : "CREATE")} PASS | " +
+            $"Customer={record.CustomerId} | Record={record.RecordId}");
+
+        return ApiCallResult<FollowUpRecordDTO>.Ok(
+            response.StatusCode,
+            record);
     }
 
     public Task<ApiCallResult<bool>> DeleteAsync(
@@ -165,62 +288,40 @@ public sealed class FollowUpService : IFollowUpService
                     "Follow-up record ID is missing."));
         }
 
-        return visitNoteAC.DeleteAsync(recordId, cancellationToken);
+        return followUpAC.DeleteAsync(
+            recordId.Trim(),
+            cancellationToken);
     }
 
-    private static string BuildRecordHtml(string content)
+    private static FollowUpRecordDTO ToFollowUpRecord(
+        CustomerFollowUpDTO row,
+        string fallbackCustomerId)
     {
-        var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(content));
-        var preview = Regex.Replace(content, "<[^>]+>", " ");
-        preview = System.Net.WebUtility.HtmlDecode(preview);
-        preview = Regex.Replace(preview, @"\s+", " ").Trim();
-        if (preview.Length > 240)
-        {
-            preview = preview[..240] + "...";
-        }
+        var date =
+            row.ModifiedDateTime != default &&
+            row.ModifiedDateTime != DateTime.MinValue
+                ? row.ModifiedDateTime
+                : row.CreatedDateTime != default &&
+                  row.CreatedDateTime != DateTime.MinValue
+                    ? row.CreatedDateTime
+                    : row.FinancialDate != default &&
+                      row.FinancialDate != DateTime.MinValue
+                        ? row.FinancialDate
+                        : DateTime.Now;
 
-        var safePreview = System.Net.WebUtility.HtmlEncode(preview);
-        return $"<div class=\"follow-up-record\" {FollowUpMarker} {PayloadMarker}{encoded}\">" +
-               $"<div class=\"visit-note-text\">{safePreview}</div></div>";
-    }
-
-    private static string ExtractFollowUpContent(string? html)
-    {
-        if (string.IsNullOrWhiteSpace(html))
+        return new FollowUpRecordDTO
         {
-            return string.Empty;
-        }
-
-        if (!html.Contains(FollowUpMarker, StringComparison.OrdinalIgnoreCase))
-        {
-            // Backward compatibility: Senang/older Beauty customer visit notes
-            // did not include a Beauty record marker. Treat any non-medical
-            // visit-note record as a legacy follow-up.
-            return html;
-        }
-
-        var markerIndex = html.IndexOf(PayloadMarker, StringComparison.OrdinalIgnoreCase);
-        if (markerIndex < 0)
-        {
-            return html;
-        }
-
-        var payloadStart = markerIndex + PayloadMarker.Length;
-        var payloadEnd = html.IndexOf('"', payloadStart);
-        if (payloadEnd <= payloadStart)
-        {
-            return html;
-        }
-
-        try
-        {
-            var encoded = html[payloadStart..payloadEnd];
-            return Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
-        }
-        catch
-        {
-            return html;
-        }
+            RecordId = row.CustomerVisitNoteID ?? string.Empty,
+            CustomerId = string.IsNullOrWhiteSpace(row.CustomerID)
+                ? fallbackCustomerId ?? string.Empty
+                : row.CustomerID,
+            Date = date,
+            Content = row.RtfMessage ?? string.Empty,
+            BranchId = row.BranchID ?? string.Empty,
+            GroupId = row.GroupID ?? string.Empty,
+            Symptoms = row.Symptoms ?? string.Empty,
+            Diagnoses = row.Diagnoses ?? string.Empty
+        };
     }
 
     private static string ExtractId(JsonElement response)
@@ -235,7 +336,14 @@ public sealed class FollowUpService : IFollowUpService
             return string.Empty;
         }
 
-        foreach (var key in new[] { "Id", "id", "ID", "CustomerVisitNoteID", "customerVisitNoteID" })
+        foreach (var key in new[]
+        {
+            "Id",
+            "id",
+            "ID",
+            "CustomerVisitNoteID",
+            "customerVisitNoteID"
+        })
         {
             if (!response.TryGetProperty(key, out var value))
             {
