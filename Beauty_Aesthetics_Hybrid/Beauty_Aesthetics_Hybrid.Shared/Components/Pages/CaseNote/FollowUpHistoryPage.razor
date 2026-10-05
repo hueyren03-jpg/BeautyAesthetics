@@ -142,15 +142,17 @@
                 <div class="custom-date-range">
                     <div class="date-input-group">
                         <label>From:</label>
-                        <input type="date" 
-                               class="date-input" 
-                               @bind="ViewModel.CustomStartDate" />
+                        <input type="date"
+                               class="date-input"
+                               value="@FormatDateInput(ViewModel.CustomStartDate)"
+                               @onchange="OnCustomStartDateChanged" />
                     </div>
                     <div class="date-input-group">
                         <label>To:</label>
-                        <input type="date" 
-                               class="date-input" 
-                               @bind="ViewModel.CustomEndDate" />
+                        <input type="date"
+                               class="date-input"
+                               value="@FormatDateInput(ViewModel.CustomEndDate)"
+                               @onchange="OnCustomEndDateChanged" />
                     </div>
                 </div>
             }
@@ -266,13 +268,10 @@
 
         Beauty_Aesthetics_WebPos.APIClient.ResultPattern.ApiCallResult<IReadOnlyList<Beauty_Aesthetics_WebPos.Models.DTOs.FollowUpRecordDTO>> result;
 
-        if (!string.IsNullOrWhiteSpace(branchId))
+        if (!string.Equals(ViewModel.DateFilter, "all", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(branchId))
         {
-            // CustomerFollowUp/LoadProxyByBranchID is the source for the History page.
-            // Load a broad branch range once; the existing UI date filters then work
-            // locally without repeatedly hitting the API while the user changes filters.
-            var startDate = new DateTime(2000, 1, 1);
-            var endDate = DateTime.Today.AddDays(1).AddTicks(-1);
+            var (startDate, endDate) = ResolveBranchHistoryRange();
 
             result = await FollowUpService.LoadByBranchAsync(
                 startDate,
@@ -295,7 +294,8 @@
 
                 Console.WriteLine(
                     $"[Follow Up API] BRANCH HISTORY PASS | Branch={branchId} | " +
-                    $"Customer={customerId} | Records={customerRecords.Count}");
+                    $"Customer={customerId} | Start={startDate:yyyy-MM-dd} | End={endDate:yyyy-MM-dd} | " +
+                    $"Records={customerRecords.Count}");
             }
             else
             {
@@ -303,12 +303,12 @@
                     $"[Follow Up API] BRANCH HISTORY FAILED | Branch={branchId} | " +
                     $"Customer={customerId} | Status={(int)result.StatusCode} | Error={result.ErrorMessage}");
 
-                // Fallback keeps the page usable if the branch proxy is unavailable.
                 result = await FollowUpService.LoadByCustomerAsync(customerId);
             }
         }
         else
         {
+            // All Dates keeps the complete customer history across branches.
             result = await FollowUpService.LoadByCustomerAsync(customerId);
         }
 
@@ -330,6 +330,56 @@
         return true;
     }
 
+    private (DateTime StartDate, DateTime EndDate) ResolveBranchHistoryRange()
+    {
+        var today = DateTime.Today;
+
+        return ViewModel.DateFilter switch
+        {
+            "today" => (today, today.AddDays(1).AddTicks(-1)),
+            "yesterday" => (today.AddDays(-1), today.AddTicks(-1)),
+            "last7days" => (today.AddDays(-7), today.AddDays(1).AddTicks(-1)),
+            "last30days" => (today.AddDays(-30), today.AddDays(1).AddTicks(-1)),
+            "thisMonth" => (
+                new DateTime(today.Year, today.Month, 1),
+                today.AddDays(1).AddTicks(-1)),
+            "lastMonth" => (
+                new DateTime(today.AddMonths(-1).Year, today.AddMonths(-1).Month, 1),
+                new DateTime(today.Year, today.Month, 1).AddTicks(-1)),
+            "custom" => (
+                ViewModel.CustomStartDate?.Date ?? today.AddDays(-30),
+                (ViewModel.CustomEndDate?.Date ?? today).AddDays(1).AddTicks(-1)),
+            _ => (new DateTime(2000, 1, 1), today.AddDays(1).AddTicks(-1))
+        };
+    }
+
+    private static string FormatDateInput(DateTime? value) =>
+        value.HasValue ? value.Value.ToString("yyyy-MM-dd") : string.Empty;
+
+    private async Task OnCustomStartDateChanged(ChangeEventArgs e)
+    {
+        ViewModel.CustomStartDate = DateTime.TryParse(e.Value?.ToString(), out var parsed)
+            ? parsed.Date
+            : null;
+
+        if (ViewModel.DateFilter == "custom")
+        {
+            await LoadFollowUpHistoryAsync();
+        }
+    }
+
+    private async Task OnCustomEndDateChanged(ChangeEventArgs e)
+    {
+        ViewModel.CustomEndDate = DateTime.TryParse(e.Value?.ToString(), out var parsed)
+            ? parsed.Date
+            : null;
+
+        if (ViewModel.DateFilter == "custom")
+        {
+            await LoadFollowUpHistoryAsync();
+        }
+    }
+
     private bool _isDateFilterOpen = false;
 
     private void ToggleDateFilter()
@@ -337,10 +387,11 @@
         _isDateFilterOpen = !_isDateFilterOpen;
     }
 
-    private void SelectDateFilter(string filter)
+    private async Task SelectDateFilter(string filter)
     {
         ViewModel.DateFilter = filter;
         _isDateFilterOpen = false;
+        await LoadFollowUpHistoryAsync();
         StateHasChanged();
     }
 
