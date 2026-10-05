@@ -205,7 +205,7 @@ public sealed class FollowUpService : IFollowUpService
                 string.IsNullOrWhiteSpace(record.Diagnoses)
                     ? existing?.Diagnoses
                     : record.Diagnoses),
-            SaveAction = "Changed",
+            SaveAction = isUpdate ? "Changed" : "Added",
             IsDirty = true
         };
 
