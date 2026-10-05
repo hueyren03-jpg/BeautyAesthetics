@@ -29,9 +29,10 @@ public sealed class ServiceItemService : IServiceItemService
         string branchId = "hq",
         CancellationToken cancellationToken = default)
     {
-        // Services are master records. Load the normal inventory proxy and use the
-        // current branch only to prefer that branch when the API returns duplicates.
-        var result = await serviceInventoryAC.LoadProxyAsync(null, cancellationToken);
+        // Sales must use the same branch-scoped Inventory/LoadProxy behavior as
+        // Member Credit so the current outlet receives its visible sale catalog.
+        var normalizedBranchId = NormalizeBranchId(branchId);
+        var result = await serviceInventoryAC.LoadProxyAsync(normalizedBranchId, cancellationToken);
         if (!result.Success || result.Value is null)
         {
             return ApiCallResult<IReadOnlyList<ServiceViewModel.ServiceItem>>.Failure(
@@ -39,7 +40,6 @@ public sealed class ServiceItemService : IServiceItemService
                 result.ErrorMessage ?? "Unable to load service records.");
         }
 
-        var normalizedBranchId = NormalizeBranchId(branchId);
         var services = result.Value
             .Where(record => record.InventoryTypeID == ServiceInventoryTypeId)
             .GroupBy(ServiceRecordKey, StringComparer.OrdinalIgnoreCase)
@@ -49,6 +49,9 @@ public sealed class ServiceItemService : IServiceItemService
             .Select(ToServiceItem)
             .OrderBy(service => service.ServiceName)
             .ToList();
+
+        Console.WriteLine(
+            $"[Sales Catalog] SERVICE | Branch={normalizedBranchId} | Records={result.Value.Count} | Services={services.Count}");
 
         return ApiCallResult<IReadOnlyList<ServiceViewModel.ServiceItem>>.Ok(result.StatusCode, services);
     }
