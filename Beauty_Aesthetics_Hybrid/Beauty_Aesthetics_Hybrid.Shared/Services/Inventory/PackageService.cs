@@ -31,7 +31,8 @@ public sealed class PackageService : IPackageService
         string branchId = "hq",
         CancellationToken cancellationToken = default)
     {
-        var result = await serviceInventoryAC.LoadProxyAsync(null, cancellationToken);
+        var normalizedBranchId = NormalizeBranchId(branchId);
+        var result = await serviceInventoryAC.LoadProxyAsync(normalizedBranchId, cancellationToken);
 
         if (!result.Success || result.Value is null)
         {
@@ -43,6 +44,9 @@ public sealed class PackageService : IPackageService
         var packageHeaders = result.Value
             .Where(record => record.InventoryTypeID == PackageInventoryTypeId)
             .ToList();
+
+        Console.WriteLine(
+            $"[Sales Catalog] PACKAGE | Branch={normalizedBranchId} | Records={result.Value.Count} | Packages={packageHeaders.Count}");
 
         var serviceById = services
             .Where(service => !string.IsNullOrWhiteSpace(service.MasterAccountId))
