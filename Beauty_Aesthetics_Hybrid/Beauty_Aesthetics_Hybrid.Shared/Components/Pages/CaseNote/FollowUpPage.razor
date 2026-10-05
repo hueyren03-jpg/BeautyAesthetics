@@ -7,6 +7,8 @@
 @inject IJSRuntime JS
 @inject NavigationManager NavigationManager
 @inject FollowUpPageViewModel ViewModel
+@inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.IFollowUpService FollowUpService
+@inject Beauty_Aesthetics_WebPos.Components.Services.Branches.IBranchSessionService BranchSession
 @inject AppFeedbackService Feedback
 @inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext PatientContext
 @implements IAsyncDisposable
@@ -598,6 +600,40 @@
         {
             Feedback.Error(result.ErrorMessage ?? "Unable to load the appointment patient.", "Patient not loaded");
         }
+
+        await BranchSession.InitializeAsync();
+        await LoadFollowUpHistoryAsync(showFeedback: true);
+    }
+
+    private async Task<bool> LoadFollowUpHistoryAsync(bool showFeedback)
+    {
+        var customerId = ViewModel.SelectedPatient?.Id?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(customerId))
+        {
+            return false;
+        }
+
+        var result = await FollowUpService.LoadByCustomerAsync(customerId);
+        if (!result.Success || result.Value is null)
+        {
+            if (showFeedback)
+            {
+                Feedback.Error(
+                    result.ErrorMessage ?? "Unable to load follow-up history.",
+                    "Follow-up history not loaded");
+            }
+
+            Console.WriteLine(
+                $"[Follow Up API] LOAD FAILED | Customer={customerId} | " +
+                $"Status={(int)result.StatusCode} | Error={result.ErrorMessage}");
+            return false;
+        }
+
+        ViewModel.ReplaceFollowUpHistory(result.Value);
+
+        Console.WriteLine(
+            $"[Follow Up API] LOAD PASS | Customer={customerId} | Records={result.Value.Count}");
+        return true;
     }
     
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -952,80 +988,109 @@
 
         _isSaving = true;
         _showSavingOverlay = true;
-        _statusMessage = "";
-        
-        // Immediate UI feedback - don't wait for StateHasChanged
+        _statusMessage = string.Empty;
         await InvokeAsync(StateHasChanged);
 
         try
         {
-            // Get content asynchronously
             var content = await JS.InvokeAsync<string>("getEditorContent");
-            
-            // Validate content early
             if (string.IsNullOrWhiteSpace(content))
             {
                 _statusMessage = "Please write some follow-up notes";
                 _isSuccess = false;
                 Feedback.Warning(_statusMessage, "Follow-up not saved");
-                _isSaving = false;
-                _showSavingOverlay = false;
-                await InvokeAsync(StateHasChanged);
                 return;
             }
 
-            // Process save operation in background without blocking UI
-            var isUpdate = _currentlyViewingFollowUpId.HasValue;
-            var followUpId = _currentlyViewingFollowUpId;
-            
-            // Offload heavy processing to Task.Run to avoid blocking UI thread
-            await Task.Run(() =>
+            await BranchSession.InitializeAsync();
+            var branch = BranchSession.CurrentBranch;
+            var branchId = branch?.Id ?? string.Empty;
+            var groupId = string.IsNullOrWhiteSpace(branch?.GroupId)
+                ? branchId
+                : branch.GroupId;
+
+            if (string.IsNullOrWhiteSpace(branchId))
             {
-                if (isUpdate && followUpId.HasValue)
-                {
-                    ViewModel.UpdateFollowUp(followUpId.Value, content);
-                }
-                else
-                {
-                    ViewModel.SaveFollowUp(content);
-                }
-            });
-            
-            // Update UI state after save completes
+                _statusMessage = "Select a working branch before saving the follow-up.";
+                _isSuccess = false;
+                Feedback.Warning(_statusMessage, "Branch required");
+                return;
+            }
+
+            var isUpdate = _currentlyViewingFollowUpId.HasValue;
+            var currentFollowUp = isUpdate && _currentlyViewingFollowUpId.HasValue
+                ? ViewModel.FindFollowUp(_currentlyViewingFollowUpId.Value)
+                : null;
+
+            if (isUpdate && (currentFollowUp is null || string.IsNullOrWhiteSpace(currentFollowUp.BackendId)))
+            {
+                _statusMessage = "The selected follow-up is missing its backend record ID. Reload the history and try again.";
+                _isSuccess = false;
+                Feedback.Error(_statusMessage, "Follow-up not saved");
+                return;
+            }
+
+            var record = new Beauty_Aesthetics_WebPos.Models.DTOs.FollowUpRecordDTO
+            {
+                RecordId = currentFollowUp?.BackendId ?? string.Empty,
+                CustomerId = ViewModel.SelectedPatient.Id,
+                Date = currentFollowUp?.Date ?? DateTime.Now,
+                Content = content
+            };
+
+            Console.WriteLine(
+                $"[Follow Up API] {(isUpdate ? "UPDATE" : "CREATE")} | " +
+                $"Customer={record.CustomerId} | Record={record.RecordId} | Branch={branchId} | Group={groupId}");
+
+            var saveResult = await FollowUpService.SaveAsync(
+                record,
+                branchId,
+                groupId);
+
+            if (!saveResult.Success || saveResult.Value is null)
+            {
+                _statusMessage = saveResult.ErrorMessage ?? "Failed to save follow-up. Please try again.";
+                _isSuccess = false;
+                Feedback.Error(_statusMessage, "Follow-up not saved");
+                Console.WriteLine(
+                    $"[Follow Up API] SAVE FAILED | Customer={record.CustomerId} | " +
+                    $"Record={record.RecordId} | Status={(int)saveResult.StatusCode} | Error={saveResult.ErrorMessage}");
+                return;
+            }
+
+            await LoadFollowUpHistoryAsync(showFeedback: false);
+
             _hasUnsavedChanges = false;
             _lastSavedContent = content;
             _currentlyViewingFollowUpId = null;
             _isSuccess = true;
-            _statusMessage = isUpdate ? "Follow-up updated successfully!" : "Follow-up saved successfully!";
+            _statusMessage = isUpdate
+                ? "Follow-up updated successfully!"
+                : "Follow-up saved successfully!";
+
             Feedback.Success(
                 _statusMessage,
                 isUpdate ? "Follow-up updated" : "Follow-up saved");
-            
-            // Clear editor for new follow-ups (non-blocking)
+
+            Console.WriteLine(
+                $"[Follow Up API] SAVE PASS | Customer={record.CustomerId} | " +
+                $"Record={saveResult.Value.RecordId} | Mode={(isUpdate ? "Update" : "Create")}");
+
             if (!isUpdate)
             {
-                _ = JS.InvokeVoidAsync("clearEditor");
+                await JS.InvokeVoidAsync("clearEditor");
+                _lastSavedContent = string.Empty;
             }
 
-            // Auto-hide message after delay
             _hideMessageCts?.Cancel();
             _hideMessageCts?.Dispose();
             _hideMessageCts = new CancellationTokenSource();
-            
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await Task.Delay(3000, _hideMessageCts.Token);
-                    _statusMessage = "";
-                    await InvokeAsync(StateHasChanged);
-                }
-                catch (TaskCanceledException) { }
-            });
+
+            _ = HideStatusMessageAsync(_hideMessageCts.Token);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[BLAZOR] Error saving follow-up: {ex.Message}");
+            Console.WriteLine($"[Follow Up API] SAVE EXCEPTION | {ex}");
             _statusMessage = "Failed to save follow-up. Please try again.";
             _isSuccess = false;
             Feedback.Error(_statusMessage, "Follow-up not saved");
@@ -1035,6 +1100,19 @@
             _isSaving = false;
             _showSavingOverlay = false;
             await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task HideStatusMessageAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(3000, cancellationToken);
+            _statusMessage = string.Empty;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (TaskCanceledException)
+        {
         }
     }
 
@@ -1055,45 +1133,66 @@
 
     private async Task ConfirmDelete()
     {
-        if (_followUpToDelete.HasValue)
+        if (!_followUpToDelete.HasValue)
         {
-            ViewModel.DeleteFollowUp(_followUpToDelete.Value);
-            
-            // If deleting the currently viewed follow-up, clear editor
-            if (_currentlyViewingFollowUpId == _followUpToDelete.Value)
-            {
-                _currentlyViewingFollowUpId = null;
-                if (_isEditorReady)
-                {
-                    await JS.InvokeVoidAsync("clearEditor");
-                }
-            }
-            
-            _statusMessage = "Follow-up deleted successfully!";
-            _isSuccess = true;
-            Feedback.Success(_statusMessage, "Follow-up deleted");
+            _showDeleteModal = false;
+            return;
         }
-        
-        // Close modal immediately
+
+        var localId = _followUpToDelete.Value;
+        var followUp = ViewModel.FindFollowUp(localId);
+        if (followUp is null || string.IsNullOrWhiteSpace(followUp.BackendId))
+        {
+            Feedback.Error(
+                "The selected follow-up is missing its backend record ID. Reload the history and try again.",
+                "Follow-up not deleted");
+            _showDeleteModal = false;
+            _followUpToDelete = null;
+            return;
+        }
+
+        var deleteResult = await FollowUpService.DeleteAsync(followUp.BackendId);
+        if (!deleteResult.Success)
+        {
+            Feedback.Error(
+                deleteResult.ErrorMessage ?? "Unable to delete the follow-up.",
+                "Follow-up not deleted");
+            Console.WriteLine(
+                $"[Follow Up API] DELETE FAILED | Record={followUp.BackendId} | " +
+                $"Status={(int)deleteResult.StatusCode} | Error={deleteResult.ErrorMessage}");
+            _showDeleteModal = false;
+            _followUpToDelete = null;
+            return;
+        }
+
+        if (_currentlyViewingFollowUpId == localId)
+        {
+            _currentlyViewingFollowUpId = null;
+            _lastSavedContent = string.Empty;
+            _hasUnsavedChanges = false;
+            if (_isEditorReady)
+            {
+                await JS.InvokeVoidAsync("clearEditor");
+            }
+        }
+
+        await LoadFollowUpHistoryAsync(showFeedback: false);
+
+        _statusMessage = "Follow-up deleted successfully!";
+        _isSuccess = true;
+        Feedback.Success(_statusMessage, "Follow-up deleted");
+
+        Console.WriteLine(
+            $"[Follow Up API] DELETE PASS | Record={followUp.BackendId} | Customer={followUp.PatientId}");
+
         _showDeleteModal = false;
         _followUpToDelete = null;
         StateHasChanged();
-        
-        // Auto-hide success message after delay (in background)
+
         _hideMessageCts?.Cancel();
         _hideMessageCts?.Dispose();
         _hideMessageCts = new CancellationTokenSource();
-        
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(3000, _hideMessageCts.Token);
-                _statusMessage = "";
-                await InvokeAsync(StateHasChanged);
-            }
-            catch (TaskCanceledException) { }
-        });
+        _ = HideStatusMessageAsync(_hideMessageCts.Token);
     }
 
     private void TogglePin(int id)
