@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
 using Beauty_Aesthetics_WebPos.Components.Services.Auth;
@@ -88,14 +89,68 @@ public sealed class WebDashboardAC
             "Expiring package response was invalid.",
             cancellationToken);
 
-    public Task<ApiCallResult<Dictionary<string, MemberOtherBalanceDetailDTO>>> GetMemberPointBalanceDetailAsync(
+    public async Task<ApiCallResult<Dictionary<string, MemberOtherBalanceDetailDTO>>> GetMemberPointBalanceDetailAsync(
         MemberOtherBalanceDetailRequest payload,
-        CancellationToken cancellationToken = default) =>
-        PostAsync<Dictionary<string, MemberOtherBalanceDetailDTO>>(
-            "/api/WebDashboard/GetMemberOtherBalanceDetail",
-            payload,
-            "Point balance transaction response was invalid.",
-            cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        const string endpoint = "/api/WebDashboard/GetMemberOtherBalanceDetail";
+        var wirePayload = new
+        {
+            id = payload.Id,
+            startDate = payload.StartDate.ToString("yyyy-MM-dd HH:mm:ss"),
+            balanceType = payload.BalanceType
+        };
+        var requestJson = JsonSerializer.Serialize(wirePayload, JsonOptions);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
+        {
+            Content = new StringContent(requestJson, Encoding.UTF8, "application/json")
+        };
+
+        Console.WriteLine($"[Point Step 14] API POST {endpoint} | Request={requestJson}");
+        using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        Console.WriteLine(
+            $"[Point Step 14] API POST {endpoint} | HTTP={(int)response.StatusCode} {response.StatusCode} | Body={responseBody}");
+
+        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            return ApiCallResult<Dictionary<string, MemberOtherBalanceDetailDTO>>.Unauthorized(response.StatusCode);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return ApiCallResult<Dictionary<string, MemberOtherBalanceDetailDTO>>.Failure(
+                response.StatusCode,
+                ReadError(responseBody, "Point balance transaction request failed."));
+        }
+
+        try
+        {
+            var apiResponse = JsonSerializer.Deserialize<ApiResponse<Dictionary<string, MemberOtherBalanceDetailDTO>>>(
+                responseBody,
+                JsonOptions);
+
+            if (apiResponse is null || !apiResponse.IsSuccess || apiResponse.Result is null)
+            {
+                return ApiCallResult<Dictionary<string, MemberOtherBalanceDetailDTO>>.Failure(
+                    response.StatusCode,
+                    string.IsNullOrWhiteSpace(apiResponse?.Message)
+                        ? "Point balance transaction response was invalid."
+                        : apiResponse.Message);
+            }
+
+            return ApiCallResult<Dictionary<string, MemberOtherBalanceDetailDTO>>.Ok(
+                response.StatusCode,
+                apiResponse.Result);
+        }
+        catch (JsonException)
+        {
+            return ApiCallResult<Dictionary<string, MemberOtherBalanceDetailDTO>>.Failure(
+                response.StatusCode,
+                "Point balance transaction response was invalid.");
+        }
+    }
 
     private async Task<ApiCallResult<T>> PostAsync<T>(
         string uri,
