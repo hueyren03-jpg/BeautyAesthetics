@@ -209,6 +209,41 @@ public sealed class FollowUpService : IFollowUpService
             IsDirty = true
         };
 
+        HashSet<string> preCreateIds = new(StringComparer.OrdinalIgnoreCase);
+        if (!isUpdate)
+        {
+            var beforeCreate = await followUpAC.LoadByCustomerAsync(
+                payload.CustomerID,
+                cancellationToken);
+
+            if (beforeCreate.Success && beforeCreate.Value is not null)
+            {
+                preCreateIds = beforeCreate.Value
+                    .Where(item => !string.IsNullOrWhiteSpace(item.CustomerVisitNoteID))
+                    .Select(item => item.CustomerVisitNoteID)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                var existingSameContent = beforeCreate.Value
+                    .Where(item =>
+                        string.Equals(item.RtfMessage, payload.RtfMessage, StringComparison.Ordinal) &&
+                        string.Equals(item.BranchID, payload.BranchID, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(item => ResolveRecordDate(item))
+                    .FirstOrDefault();
+
+                if (existingSameContent is not null &&
+                    ResolveRecordDate(existingSameContent) >= now.AddMinutes(-10))
+                {
+                    Console.WriteLine(
+                        $"[CustomerFollowUp] CREATE DUPLICATE PREVENTED | Customer={payload.CustomerID} | " +
+                        $"Record={existingSameContent.CustomerVisitNoteID} | Branch={payload.BranchID}");
+
+                    return ApiCallResult<FollowUpRecordDTO>.Ok(
+                        HttpStatusCode.OK,
+                        ToFollowUpRecord(existingSameContent, payload.CustomerID));
+                }
+            }
+        }
+
         Console.WriteLine(
             $"[CustomerFollowUp] {(isUpdate ? "UPDATE" : "CREATE")} REQUEST | " +
             $"Customer={payload.CustomerID} | Record={payload.CustomerVisitNoteID} | " +
@@ -222,6 +257,61 @@ public sealed class FollowUpService : IFollowUpService
 
         if (!response.Success)
         {
+            var isDbNullServerBug =
+                response.StatusCode == HttpStatusCode.InternalServerError &&
+                !string.IsNullOrWhiteSpace(response.ErrorMessage) &&
+                response.ErrorMessage.Contains(
+                    "System.DBNull",
+                    StringComparison.OrdinalIgnoreCase);
+
+            if (isDbNullServerBug)
+            {
+                if (!isUpdate)
+                {
+                    var recovered = await RecoverCreatedRecordAfterDbNullAsync(
+                        payload,
+                        preCreateIds,
+                        cancellationToken);
+
+                    if (recovered is not null)
+                    {
+                        Console.WriteLine(
+                            $"[CustomerFollowUp] CREATE RECOVERED AFTER SERVER 500 | " +
+                            $"Customer={payload.CustomerID} | Record={recovered.RecordId}");
+
+                        return ApiCallResult<FollowUpRecordDTO>.Ok(
+                            HttpStatusCode.OK,
+                            recovered);
+                    }
+                }
+                else
+                {
+                    var verifyUpdate = await followUpAC.LoadRecordAsync(
+                        payload.CustomerVisitNoteID,
+                        cancellationToken);
+
+                    if (verifyUpdate.Success &&
+                        verifyUpdate.Value is not null &&
+                        string.Equals(
+                            verifyUpdate.Value.RtfMessage,
+                            payload.RtfMessage,
+                            StringComparison.Ordinal))
+                    {
+                        Console.WriteLine(
+                            $"[CustomerFollowUp] UPDATE RECOVERED AFTER SERVER 500 | " +
+                            $"Customer={payload.CustomerID} | Record={payload.CustomerVisitNoteID}");
+
+                        return ApiCallResult<FollowUpRecordDTO>.Ok(
+                            HttpStatusCode.OK,
+                            ToFollowUpRecord(verifyUpdate.Value, payload.CustomerID));
+                    }
+                }
+
+                return ApiCallResult<FollowUpRecordDTO>.Failure(
+                    response.StatusCode,
+                    "CustomerFollowUp API returned a server-side DBNull mapping error and the save could not be verified. The backend API needs to handle nullable database string columns.");
+            }
+
             return ApiCallResult<FollowUpRecordDTO>.Failure(
                 response.StatusCode,
                 response.ErrorMessage ?? "Unable to save follow-up.");
@@ -325,6 +415,52 @@ public sealed class FollowUpService : IFollowUpService
             Diagnoses = row.Diagnoses ?? string.Empty
         };
     }
+
+    private async Task<FollowUpRecordDTO?> RecoverCreatedRecordAfterDbNullAsync(
+        CustomerFollowUpDTO payload,
+        HashSet<string> preCreateIds,
+        CancellationToken cancellationToken)
+    {
+        var reload = await followUpAC.LoadByCustomerAsync(
+            payload.CustomerID,
+            cancellationToken);
+
+        if (!reload.Success || reload.Value is null)
+        {
+            Console.WriteLine(
+                $"[CustomerFollowUp] CREATE RECOVERY LOAD FAILED | Customer={payload.CustomerID} | " +
+                $"Status={(int)reload.StatusCode} | Error={reload.ErrorMessage}");
+            return null;
+        }
+
+        var match = reload.Value
+            .Where(item =>
+                !string.IsNullOrWhiteSpace(item.CustomerVisitNoteID) &&
+                !preCreateIds.Contains(item.CustomerVisitNoteID) &&
+                string.Equals(item.RtfMessage, payload.RtfMessage, StringComparison.Ordinal) &&
+                string.Equals(item.CustomerID, payload.CustomerID, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(ResolveRecordDate)
+            .FirstOrDefault();
+
+        if (match is null)
+        {
+            Console.WriteLine(
+                $"[CustomerFollowUp] CREATE RECOVERY NOT FOUND | Customer={payload.CustomerID} | " +
+                $"BeforeCount={preCreateIds.Count} | ReloadCount={reload.Value.Count}");
+            return null;
+        }
+
+        return ToFollowUpRecord(match, payload.CustomerID);
+    }
+
+    private static DateTime ResolveRecordDate(CustomerFollowUpDTO row) =>
+        row.ModifiedDateTime != default && row.ModifiedDateTime != DateTime.MinValue
+            ? row.ModifiedDateTime
+            : row.CreatedDateTime != default && row.CreatedDateTime != DateTime.MinValue
+                ? row.CreatedDateTime
+                : row.FinancialDate != default && row.FinancialDate != DateTime.MinValue
+                    ? row.FinancialDate
+                    : DateTime.MinValue;
 
     private string ResolveAuditUser()
     {
