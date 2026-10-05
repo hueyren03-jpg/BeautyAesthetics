@@ -18,6 +18,29 @@ public sealed class CustomerService : ICustomerService
         this.customerAC = customerAC;
     }
 
+    public async Task<CustomerOperationResult<IReadOnlyList<PackageBalanceDetailDTO>>> GetPackagesAsync(
+        string customerId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(customerId))
+            return CustomerOperationResult<IReadOnlyList<PackageBalanceDetailDTO>>.Fail("Select a customer.");
+        var result = await customerAC.GetPackageBalanceDetailsAsync(customerId, cancellationToken);
+        return result.Success && result.Value is not null
+            ? CustomerOperationResult<IReadOnlyList<PackageBalanceDetailDTO>>.Ok(result.Value
+                .OrderBy(item => item.ExpiryDate).ThenBy(item => item.AutoID).ToList())
+            : CustomerOperationResult<IReadOnlyList<PackageBalanceDetailDTO>>.Fail(ToCustomerError(result.ErrorMessage));
+    }
+
+    public async Task<CustomerOperationResult<IReadOnlyList<PackageRedemptionHistoryDTO>>> GetPackageHistoryAsync(
+        string balanceRecordId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(balanceRecordId))
+            return CustomerOperationResult<IReadOnlyList<PackageRedemptionHistoryDTO>>.Fail("Select a package item.");
+        var result = await customerAC.GetPackageRedemptionHistoryAsync(balanceRecordId, cancellationToken);
+        return result.Success && result.Value is not null
+            ? CustomerOperationResult<IReadOnlyList<PackageRedemptionHistoryDTO>>.Ok(result.Value)
+            : CustomerOperationResult<IReadOnlyList<PackageRedemptionHistoryDTO>>.Fail(ToCustomerError(result.ErrorMessage));
+    }
+
     public async Task<CustomerOperationResult<IReadOnlyList<Customer>>> SearchCustomersAsync(
         string keyword = "",
         CancellationToken cancellationToken = default)

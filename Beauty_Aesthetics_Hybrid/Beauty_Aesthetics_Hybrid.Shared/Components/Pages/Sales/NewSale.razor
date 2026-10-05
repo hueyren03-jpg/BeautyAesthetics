@@ -404,13 +404,14 @@
                             </span>
                             <i class="bi bi-chevron-right customer-balance-chevron"></i>
                         </button>
-                        <div class="customer-balance-item">
+                        <button type="button" class="customer-balance-item customer-balance-button" aria-haspopup="dialog" @onclick="OpenCustomerPackages">
                             <span class="customer-balance-icon"><i class="bi bi-box2-heart"></i></span>
                             <span class="customer-balance-copy">
                                 <small>Package</small>
                                 <strong>@FormatPackageBalance()</strong>
                             </span>
-                        </div>
+                            <i class="bi bi-chevron-right customer-balance-chevron"></i>
+                        </button>
                         <button type="button"
                                 class="customer-balance-item customer-balance-button customer-wallet-card credit-wallet-card-trigger"
                                 title="View redeemable Member Credit accounts"
@@ -599,7 +600,11 @@
                                     }
                                     @if (currentOrder.IsRedemptionMode)
                                     {
-                                        @if (item.MemberCreditAllocations.Count > 1)
+                                        @if (item.IsPackageRedemption)
+                                        {
+                                            <small class="member-credit-assignment is-assigned"><i class="bi bi-box2-heart"></i><span>Package redemption</span><strong>@item.SourceDocumentLineId</strong></small>
+                                        }
+                                        else if (item.MemberCreditAllocations.Count > 1)
                                         {
                                             <small class="member-credit-assignment is-assigned">
                                                 <i class="bi bi-wallet2"></i>
@@ -684,6 +689,13 @@
                     @if (currentOrder.IsRedemptionMode && RedeemedCreditAmount > 0m)
                     {
                         <div><span>Member Credit</span><strong>- MYR @RedeemedCreditAmount.ToString("N2")</strong></div>
+                    }
+                    @if (!isOutstandingPaymentMode && RedeemedPackageAmount > 0m)
+                    {
+                        <div><span>Package Sessions</span><strong>- MYR @RedeemedPackageAmount.ToString("N2")</strong></div>
+                    }
+                    @if (currentOrder.IsRedemptionMode)
+                    {
                         <div><span>Balance to Pay</span><strong>MYR @AmountDueAfterCredit.ToString("N2")</strong></div>
                     }
 
@@ -856,6 +868,10 @@
                             <div><span>Member Credit</span><strong>- MYR @RedeemedCreditAmount.ToString("N2")</strong></div>
                         }
                     }
+                    @if (!isOutstandingPaymentMode && RedeemedPackageAmount > 0m)
+                    {
+                        <div><span>Package Sessions</span><strong>- MYR @RedeemedPackageAmount.ToString("N2")</strong></div>
+                    }
                     <div><span>Amount Received</span><strong>MYR @PaidAmount.ToString("N2")</strong></div>
                     <div class="remaining @(Remaining > 0 ? "due" : "covered")">
                         <span>Remaining</span>
@@ -866,7 +882,7 @@
 
                 <button type="button"
                         class="primary-action"
-                        disabled="@(isSaving || (PaymentTargetAmount <= 0m && !IsFullyPointRedeemedSale) || Remaining > 0m || (isOutstandingPaymentMode && (ActivePaymentLines.Count == 0 || Math.Abs(PaidAmount - PaymentTargetAmount) > 0.009m)) || (!isOutstandingPaymentMode && !currentOrder.IsRedemptionMode && ActivePaymentLines.Count == 0 && !IsFullyPointRedeemedSale))"
+                        disabled="@(isSaving || (PaymentTargetAmount <= 0m && !IsFullyPointRedeemedSale && !IsFullyCoveredRedemption) || Remaining > 0m || (isOutstandingPaymentMode && (ActivePaymentLines.Count == 0 || Math.Abs(PaidAmount - PaymentTargetAmount) > 0.009m)) || (!isOutstandingPaymentMode && !currentOrder.IsRedemptionMode && ActivePaymentLines.Count == 0 && !IsFullyPointRedeemedSale))"
                         @onclick="SaveSale">
                     @if (isSaving)
                     {
@@ -876,7 +892,7 @@
                     else
                     {
                         <i class="bi bi-check2-circle"></i>
-                        <span>@(isOutstandingPaymentMode ? "Continue Outstanding Payment" : "Complete Sale")</span>
+                        <span>@(isOutstandingPaymentMode ? "Continue Outstanding Payment" : currentOrder.IsRedemptionMode ? "Complete Redemption" : "Complete Sale")</span>
                     }
                 </button>
             </aside>
@@ -1782,6 +1798,12 @@
     </section>
 }
 
+@if (showCustomerPackageDialog)
+{
+    <CustomerPackageDialog CustomerId="@currentOrder.AccountId" CustomerName="@currentOrder.CustomerName" AllowRedeem="@currentOrder.IsRedemptionMode"
+                           ReservedQuantities="@ReservedPackageQuantities" OnRedeem="AddPackageRedemption" OnClose="CloseCustomerPackages" />
+}
+
 @code {
     private enum SaleStage
     {
@@ -1797,6 +1819,45 @@
 
     private SaleStage stage = SaleStage.PendingOrders;
     private PendingOrder currentOrder = new();
+    private bool showCustomerPackageDialog;
+
+    private void OpenCustomerPackages()
+    {
+        if (string.IsNullOrWhiteSpace(currentOrder.AccountId))
+        {
+            Feedback.Warning("Select a customer first.", "Customer required");
+            return;
+        }
+        mobileCartOpen = false;
+        showCustomerPackageDialog = true;
+    }
+
+    private void CloseCustomerPackages() => showCustomerPackageDialog = false;
+
+    private IEnumerable<TransactionItem> ReservedPackageItems => currentOrder.Items.Concat(
+        PendingOrderService.GetAll()
+            .Where(order => order.Id != currentOrder.Id &&
+                string.Equals(order.AccountId, currentOrder.AccountId, StringComparison.OrdinalIgnoreCase))
+            .SelectMany(order => order.Items)).Where(item => item.IsPackageRedemption);
+
+    private IReadOnlyDictionary<string, decimal> ReservedPackageQuantities => ReservedPackageItems
+        .GroupBy(item => item.SourceDocumentLineId, StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(group => group.Key, group => (decimal)group.Sum(item => item.Quantity), StringComparer.OrdinalIgnoreCase);
+
+    private decimal PackageReservedQuantity(string sourceId, TransactionItem? excluding = null) => ReservedPackageItems
+        .Where(item => !ReferenceEquals(item, excluding) && string.Equals(item.SourceDocumentLineId, sourceId, StringComparison.OrdinalIgnoreCase))
+        .Sum(item => item.Quantity);
+
+    private void AddPackageRedemption(TransactionItem item)
+    {
+        if (!currentOrder.IsRedemptionMode || !item.IsPackageRedemption) return;
+        currentOrder.Items.Add(item);
+        currentOrder.Payments.Clear();
+        PendingOrderService.SaveOrUpdate(currentOrder);
+        showCustomerPackageDialog = false;
+        Feedback.Success($"{item.Name} added to cart.", "Package session", 2000);
+    }
+
     private bool isReopenedRedemption;
     private List<PendingOrder> pendingOrders = new();
     private PendingOrder? orderToDelete;
@@ -1928,6 +1989,12 @@
         HasPointRedemption &&
         PaymentTargetAmount <= 0.009m;
 
+    private bool IsFullyCoveredRedemption => !isOutstandingPaymentMode && currentOrder.IsRedemptionMode &&
+        currentOrder.Items.Count > 0 && currentOrder.Items.Any(item => item.IsPackageRedemption || item.ActivityTypeId == 6) &&
+        PaymentTargetAmount <= 0.009m;
+    private decimal RedeemedPackageAmount => currentOrder.IsRedemptionMode
+        ? currentOrder.Items.Where(item => item.IsPackageRedemption).Sum(item => item.TotalPrice) : 0m;
+
     private decimal PaidAmount => ActivePaymentLines.Sum(payment => payment.Amount);
     private decimal RedeemedCreditAmount => currentOrder.IsRedemptionMode
         ? currentOrder.Items
@@ -1946,7 +2013,7 @@
             credit.NetBalanceAfterUtilised > 0m &&
             (credit.DueDate.Year <= 1900 || credit.DueDate.Date >= DateTime.Today) &&
             CreditAvailableForLine(credit, creditTargetItem) > 0m);
-    private decimal AmountDueAfterCredit => Math.Max(0m, currentOrder.Total - RedeemedCreditAmount);
+    private decimal AmountDueAfterCredit => Math.Max(0m, currentOrder.Total - RedeemedCreditAmount - RedeemedPackageAmount);
     private decimal? CreditModalTotalAmount =>
         selectedCustomerCreditBalance ??
         (redeemableCredits.Count > 0
@@ -2418,7 +2485,7 @@
             MidpointRounding.AwayFromZero);
 
     private static bool IsPointRedemptionEligible(TransactionItem item) =>
-        item.InventoryTypeId is 1 or 3 &&
+        !item.IsPackageRedemption && (item.InventoryTypeId is 1 or 3) &&
         item.AllowPointRedemption &&
         item.PointToRedeem > 0m;
 
@@ -2976,6 +3043,8 @@
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Count();
 
+        currentOrder.Items.RemoveAll(item => item.IsPackageRedemption);
+        showCustomerPackageDialog = false;
         ClearAllLineCreditSelections();
         currentOrder.Payments.Clear();
         CloseLineCreditSelector();
@@ -3172,6 +3241,7 @@
                 item.MemberCreditAllocations.Count > 0);
 
             currentOrder.IsRedemptionMode = false;
+            currentOrder.Items.RemoveAll(item => item.IsPackageRedemption);
             currentOrder.Payments.Clear();
             ClearAllLineCreditSelections();
 
@@ -3186,6 +3256,11 @@
 
     private async Task OpenLineCreditSelectorAsync(TransactionItem item)
     {
+        if (item.IsPackageRedemption)
+        {
+            Feedback.Warning("This item uses a purchased package session.", "Package redemption");
+            return;
+        }
         if (!currentOrder.IsRedemptionMode)
         {
             Feedback.Warning("Switch to Redemption Mode before assigning Member Credit.", "Redemption mode");
@@ -3567,6 +3642,7 @@
     {
         foreach (var item in currentOrder.Items)
         {
+            if (item.IsPackageRedemption) continue;
             ClearCreditFromLine(item);
         }
     }
@@ -4416,6 +4492,10 @@
                 Points = item.Points,
                 OriginalUnitPrice = item.OriginalUnitPrice,
                 ActivityTypeId = item.ActivityTypeId,
+                SourceDocumentLineId = item.SourceDocumentLineId,
+                KitMemberId = item.KitMemberId,
+                OriginalKitPrice = item.OriginalKitPrice,
+                UnitActualValue = item.UnitActualValue,
                 MemberCreditAccountId = item.MemberCreditAccountId,
                 MemberTypeId = item.MemberTypeId,
                 MembershipCredit = item.MembershipCredit,
@@ -4565,10 +4645,10 @@
         }
 
         if (isChangingCustomerForExistingOrder &&
-            currentOrder.Items.Any(item => item.InventoryTypeId == 7))
+            currentOrder.Items.Any(item => item.InventoryTypeId is 5 or 7 || item.IsPackageRedemption))
         {
             Feedback.Warning(
-                "Member Credit items require a customer. Remove the Member Credit item before switching this order to Walk-in.",
+                "Remove packages, package sessions, and Member Credit before switching to Walk-in.",
                 "Customer required");
             return;
         }
@@ -5067,10 +5147,10 @@
             return;
         }
 
-        if (item.InventoryTypeId == 7 && string.IsNullOrWhiteSpace(currentOrder.AccountId))
+        if ((item.InventoryTypeId is 5 or 7) && string.IsNullOrWhiteSpace(currentOrder.AccountId))
         {
             Feedback.Warning(
-                "Select a customer before adding member credit.",
+                "Select a customer before adding a package or Member Credit.",
                 "Customer required");
             return;
         }
@@ -5128,6 +5208,11 @@
 
     private void EditCartItem(TransactionItem item)
     {
+        if (item.IsPackageRedemption)
+        {
+            Feedback.Info("Use the quantity buttons to change package sessions.", "Package redemption");
+            return;
+        }
         if (item.Points > 0m)
         {
             Feedback.Info(
@@ -5238,10 +5323,10 @@
     {
         if (editingCatalogItem is null) return;
 
-        if (editingCatalogItem.InventoryTypeId == 7 && string.IsNullOrWhiteSpace(currentOrder.AccountId))
+        if ((editingCatalogItem.InventoryTypeId is 5 or 7) && string.IsNullOrWhiteSpace(currentOrder.AccountId))
         {
             Feedback.Warning(
-                "Select a customer before adding member credit.",
+                "Select a customer before adding a package or Member Credit.",
                 "Customer required");
             return;
         }
@@ -5259,6 +5344,7 @@
         {
             var existing = currentOrder.Items.FirstOrDefault(i =>
                 string.Equals(i.InventoryId, editingCatalogItem.Id, StringComparison.OrdinalIgnoreCase) &&
+                !i.IsPackageRedemption &&
                 i.Points <= 0m &&
                 i.Discount == 0 &&
                 discount == 0 &&
@@ -5353,6 +5439,20 @@
         {
             RemoveItem(item);
             return;
+        }
+
+        if (item.IsPackageRedemption && delta > 0)
+        {
+            var result = await CustomerService.GetPackagesAsync(currentOrder.AccountId);
+            var balance = result.Value?.FirstOrDefault(entry => entry.AutoID == item.SourceDocumentLineId);
+            var reserved = PackageReservedQuantity(item.SourceDocumentLineId, item);
+            if (!result.Success || balance is null || balance.IsRedeemable == false ||
+                (balance.ExpiryDate.Year > 1900 && balance.ExpiryDate.Date < DateTime.Today) ||
+                newQty + reserved > balance.NetBalanceAfterUtilised)
+            {
+                Feedback.Warning(result.ErrorMessage ?? "No more package sessions are available.", "Package balance");
+                return;
+            }
         }
 
         if (item.Points > 0m)
@@ -5583,11 +5683,11 @@
             return;
         }
 
-        if (currentOrder.Items.Any(item => item.InventoryTypeId == 7) &&
+        if (currentOrder.Items.Any(item => item.InventoryTypeId is 5 or 7) &&
             string.IsNullOrWhiteSpace(currentOrder.AccountId))
         {
             Feedback.Warning(
-                "Select a customer before purchasing Member Credit.",
+                "Select a customer before purchasing a package or Member Credit.",
                 "Customer required");
             return;
         }
@@ -5609,11 +5709,11 @@
                 }
             }
 
-            if (!currentOrder.Items.Any(item =>
-                    item.ActivityTypeId == 6 &&
-                    EffectiveLineCreditAllocations(item).Count > 0))
+            if (!currentOrder.Items.Any(item => item.IsPackageRedemption ||
+                    (item.ActivityTypeId == 6 &&
+                    EffectiveLineCreditAllocations(item).Count > 0)))
             {
-                Feedback.Warning("Assign a Member Credit account to at least one cart line.", "Credit not assigned");
+                Feedback.Warning("Select package sessions or assign Member Credit.", "Select redemption");
                 return;
             }
 
@@ -6228,6 +6328,10 @@
                     Points = i.Points,
                     OriginalUnitPrice = i.OriginalUnitPrice,
                     ActivityTypeId = i.ActivityTypeId,
+                    SourceDocumentLineId = i.SourceDocumentLineId,
+                    KitMemberId = i.KitMemberId,
+                    OriginalKitPrice = i.OriginalKitPrice,
+                    UnitActualValue = i.UnitActualValue,
                     MemberCreditAccountId = i.MemberCreditAccountId,
                     MemberTypeId = i.MemberTypeId,
                     MembershipCredit = i.MembershipCredit,

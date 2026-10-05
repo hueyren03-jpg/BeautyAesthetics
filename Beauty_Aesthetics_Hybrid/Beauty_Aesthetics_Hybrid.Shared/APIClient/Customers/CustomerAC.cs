@@ -194,6 +194,18 @@ public sealed class CustomerAC
             cancellationToken);
     }
 
+    public async Task<ApiCallResult<List<PackageRedemptionHistoryDTO>>> GetPackageRedemptionHistoryAsync(
+        string balanceRecordId,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = CreatePostRequest(
+            "/api/CashSales_Series_UnconsumedItem/GetRedemptionHistory",
+            new CustomerLookupDTO { Id = balanceRecordId });
+        using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+        return await ReadApiResponseAsync<List<PackageRedemptionHistoryDTO>>(
+            response, "Unable to load package redemption history.", cancellationToken);
+    }
+
     public async Task<ApiCallResult<CustomerCreateResultDTO>> CreateRecordAsync(
         CustomerDM customer,
         CancellationToken cancellationToken = default)

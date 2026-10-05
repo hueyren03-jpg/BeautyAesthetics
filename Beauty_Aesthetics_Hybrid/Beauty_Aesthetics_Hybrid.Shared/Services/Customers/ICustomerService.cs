@@ -5,6 +5,11 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.Customers;
 
 public interface ICustomerService
 {
+    Task<CustomerOperationResult<IReadOnlyList<PackageBalanceDetailDTO>>> GetPackagesAsync(
+        string customerId, CancellationToken cancellationToken = default);
+    Task<CustomerOperationResult<IReadOnlyList<PackageRedemptionHistoryDTO>>> GetPackageHistoryAsync(
+        string balanceRecordId, CancellationToken cancellationToken = default);
+
     Task<CustomerOperationResult<IReadOnlyList<Customer>>> SearchCustomersAsync(
         string keyword = "",
         CancellationToken cancellationToken = default);

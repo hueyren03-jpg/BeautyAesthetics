@@ -135,13 +135,14 @@
                             <div class="wallet-amount">@FormatPointBalance(CustomerPointBalance)</div>
                         </div>
 
-                        <div class="wallet-card package-balance">
+                        <button type="button" class="wallet-card package-balance" aria-haspopup="dialog" @onclick="OpenCustomerPackages">
                             <div class="wallet-card-header">
                                 <i class="bi bi-box2-heart"></i>
                                 <span>Package</span>
+                                <i class="bi bi-chevron-right" style="margin-left:auto;"></i>
                             </div>
                             <div class="wallet-amount">@FormatPackageBalance(CustomerPackageBalance)</div>
-                        </div>
+                        </button>
 
                         <div class="wallet-card customer-wallet-card credit-wallet-card-trigger credit-balance"
                              role="button"
@@ -2159,7 +2160,20 @@
                Message="@BillingErrorMessage"
                OnDismiss="DismissBillingError" />
 
+@if (showCustomerPackageDialog)
+{
+    <CustomerPackageDialog CustomerId="@_billingCustomerId" CustomerName="@PatientName" OnClose="CloseCustomerPackages" />
+}
+
 @code {
+    private bool showCustomerPackageDialog;
+
+    private void OpenCustomerPackages()
+    {
+        if (!string.IsNullOrWhiteSpace(_billingCustomerId)) showCustomerPackageDialog = true;
+    }
+
+    private void CloseCustomerPackages() => showCustomerPackageDialog = false;
     [SupplyParameterFromQuery(Name = "customerId")]
     public string? CustomerId { get; set; }
 
@@ -4212,6 +4226,7 @@
             }
 
             var memberBalanceTask = CustomerService.GetBalanceSummaryAsync(customerId);
+            var packageBalanceTask = CustomerService.GetPackagesAsync(customerId);
             var otherBalanceTask = OutstandingBalanceService.LoadSummaryAsync(
                 customerId,
                 DateTime.UtcNow);
@@ -4226,6 +4241,7 @@
 
             await Task.WhenAll(
                 memberBalanceTask,
+                packageBalanceTask,
                 otherBalanceTask,
                 outstandingDocumentsTask,
                 redeemableCreditTask);
@@ -4240,6 +4256,7 @@
             }
 
             var memberBalance = await memberBalanceTask;
+            var packageBalance = await packageBalanceTask;
             var otherBalance = await otherBalanceTask;
             var detailedOutstanding = await outstandingDocumentsTask;
             var redeemableCredit = await redeemableCreditTask;
@@ -4247,9 +4264,10 @@
             if (memberBalance.Success && memberBalance.Value is not null)
             {
                 CustomerPointBalance = memberBalance.Value.PointBalance;
-                CustomerPackageBalance = memberBalance.Value.PackageBalance;
                 CustomerCreditBalance = memberBalance.Value.CreditBalance;
             }
+            if (packageBalance.Success && packageBalance.Value is not null)
+                CustomerPackageBalance = packageBalance.Value.Sum(package => Math.Max(0m, package.NetBalanceAfterUtilised));
 
             if (otherBalance.Success && otherBalance.Value is not null)
             {

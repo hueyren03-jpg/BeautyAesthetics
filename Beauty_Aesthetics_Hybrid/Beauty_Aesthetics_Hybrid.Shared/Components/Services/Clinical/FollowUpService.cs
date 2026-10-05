@@ -47,12 +47,9 @@ public sealed class FollowUpService : IFollowUpService
         {
             var source = row;
 
-            // Some proxy responses can omit the medical detail columns.
-            // Hydrate the row through LoadRecord so history can restore
-            // FinancialDate + Symptoms + Diagnoses + RtfMessage completely.
-            if (string.IsNullOrWhiteSpace(row.Symptoms) ||
-                string.IsNullOrWhiteSpace(row.Diagnoses) ||
-                string.IsNullOrWhiteSpace(row.RtfMessage))
+            // Only hydrate incomplete note bodies. Null medical fields alone
+            // must not trigger a separate request for every history record.
+            if (string.IsNullOrWhiteSpace(row.RtfMessage))
             {
                 var fullRecord = await followUpAC.LoadRecordAsync(
                     row.CustomerVisitNoteID,
@@ -199,9 +196,7 @@ public sealed class FollowUpService : IFollowUpService
 
         var isUpdate = !string.IsNullOrWhiteSpace(record.RecordId);
 
-        // Beauty medical-aesthetics Follow Up:
-        // keep Symptoms/Diagnoses populated, but use the working backend action code.
-        // User requirement: SaveAction = 1 for BOTH Create and Update.
+        // Match Senang: update the existing note rather than marking it Added.
         var payload = new CustomerFollowUpDTO
         {
             IsLoading = false,
@@ -211,15 +206,18 @@ public sealed class FollowUpService : IFollowUpService
             CreatedDateTime = default,
             ModifiedBy = null,
             ModifiedDateTime = default,
-            RtfMessage = record.Content,
+            RtfMessage = FollowUpNoteContent.Encode(
+                record.Content,
+                record.Symptoms.Trim(),
+                record.Diagnoses.Trim()),
             CustomerID = record.CustomerId.Trim(),
             BranchID = branchId.Trim(),
             GroupID = string.IsNullOrWhiteSpace(groupId)
                 ? branchId.Trim()
                 : groupId.Trim(),
-            Symptoms = record.Symptoms.Trim(),
-            Diagnoses = record.Diagnoses.Trim(),
-            SaveAction = 1,
+            Symptoms = FollowUpNoteContent.NormalizeField(record.Symptoms),
+            Diagnoses = FollowUpNoteContent.NormalizeField(record.Diagnoses),
+            SaveAction = (int)(isUpdate ? EBI.Enum.EntityState.Changed : EBI.Enum.EntityState.Added),
             IsDirty = true
         };
 
@@ -305,6 +303,7 @@ public sealed class FollowUpService : IFollowUpService
         CustomerFollowUpDTO row,
         string fallbackCustomerId)
     {
+        var savedContent = FollowUpNoteContent.Decode(row.RtfMessage);
         var date =
             row.FinancialDate != default &&
             row.FinancialDate != DateTime.MinValue
@@ -324,11 +323,11 @@ public sealed class FollowUpService : IFollowUpService
                 ? fallbackCustomerId ?? string.Empty
                 : row.CustomerID,
             Date = date,
-            Content = row.RtfMessage ?? string.Empty,
+            Content = savedContent.Notes,
             BranchId = row.BranchID ?? string.Empty,
             GroupId = row.GroupID ?? string.Empty,
-            Symptoms = row.Symptoms ?? string.Empty,
-            Diagnoses = row.Diagnoses ?? string.Empty
+            Symptoms = string.IsNullOrWhiteSpace(row.Symptoms) ? savedContent.Symptoms : row.Symptoms,
+            Diagnoses = string.IsNullOrWhiteSpace(row.Diagnoses) ? savedContent.Diagnoses : row.Diagnoses
         };
     }
 

@@ -407,8 +407,9 @@
                         <label for="follow-up-symptoms">Symptoms</label>
                         <textarea id="follow-up-symptoms"
                                   rows="2"
-                                  value="@_followUpSymptoms"
-                                  @oninput="OnSymptomsInput"
+                                  @bind:get="_followUpSymptoms"
+                                  @bind:set="OnSymptomsInput"
+                                  @bind:event="oninput"
                                   placeholder="Enter symptoms..."></textarea>
                     </div>
 
@@ -416,8 +417,9 @@
                         <label for="follow-up-diagnoses">Diagnoses</label>
                         <textarea id="follow-up-diagnoses"
                                   rows="2"
-                                  value="@_followUpDiagnoses"
-                                  @oninput="OnDiagnosesInput"
+                                  @bind:get="_followUpDiagnoses"
+                                  @bind:set="OnDiagnosesInput"
+                                  @bind:event="oninput"
                                   placeholder="Enter diagnoses..."></textarea>
                     </div>
                 </div>
@@ -651,6 +653,8 @@
     private DateTime _followUpDate = DateTime.Today;
     private string _followUpSymptoms = string.Empty;
     private string _followUpDiagnoses = string.Empty;
+    private string _activeFollowUpRecordId = string.Empty;
+    private bool _savedWithoutRecordId;
     private CancellationTokenSource? _hideMessageCts;
 
     protected override async Task OnInitializedAsync()
@@ -773,6 +777,7 @@
                         {
                             await JS.InvokeVoidAsync("setEditorContent", followUp.Content);
                             _lastSavedContent = followUp.Content;
+                            _activeFollowUpRecordId = followUp.BackendId;
                             _followUpDate = followUp.Date.Date;
                             _followUpSymptoms = followUp.Symptoms;
                             _followUpDiagnoses = followUp.Diagnoses;
@@ -1023,22 +1028,25 @@
         }
     }
 
-    private void OnSymptomsInput(ChangeEventArgs e)
+    private void OnSymptomsInput(string value)
     {
-        _followUpSymptoms = e.Value?.ToString() ?? string.Empty;
+        _followUpSymptoms = value ?? string.Empty;
         _hasUnsavedChanges = true;
     }
 
-    private void OnDiagnosesInput(ChangeEventArgs e)
+    private void OnDiagnosesInput(string value)
     {
-        _followUpDiagnoses = e.Value?.ToString() ?? string.Empty;
+        _followUpDiagnoses = value ?? string.Empty;
         _hasUnsavedChanges = true;
     }
 
     private async Task ConfirmNewFollowUp()
     {
+        if (_isSaving) return;
         _showNewFollowUpConfirmModal = false;
         _currentlyViewingFollowUpId = null;
+        _activeFollowUpRecordId = string.Empty;
+        _savedWithoutRecordId = false;
         _hasUnsavedChanges = false;
         _lastSavedContent = "";
         _followUpDate = DateTime.Today;
@@ -1062,6 +1070,7 @@
 
     private async Task ViewFollowUp(FollowUpPageViewModel.FollowUp followUp)
     {
+        if (_isSaving) return;
         // Check for unsaved changes
         if (_hasUnsavedChanges)
         {
@@ -1072,10 +1081,15 @@
         }
         
         _currentlyViewingFollowUpId = followUp.Id;
+        _activeFollowUpRecordId = followUp.BackendId;
+        _savedWithoutRecordId = false;
         _hasUnsavedChanges = false;
         Feedback.Info($"Editing follow-up from {followUp.Date:MMM dd, yyyy}.", "Edit follow-up", 2200);
         _lastSavedContent = followUp.Content;
         _followUpDate = followUp.Date.Date;
+        _followUpSymptoms = followUp.Symptoms;
+        _followUpDiagnoses = followUp.Diagnoses;
+        var loadedContent = followUp.Content;
 
         if (!string.IsNullOrWhiteSpace(followUp.BackendId))
         {
@@ -1083,6 +1097,8 @@
             if (recordResult.Success && recordResult.Value is not null)
             {
                 _followUpDate = recordResult.Value.Date.Date;
+                loadedContent = recordResult.Value.Content;
+                _lastSavedContent = loadedContent;
                 _followUpSymptoms = recordResult.Value.Symptoms;
                 _followUpDiagnoses = recordResult.Value.Diagnoses;
 
@@ -1101,7 +1117,7 @@
         
         if (_isEditorReady)
         {
-            await JS.InvokeVoidAsync("setEditorContent", followUp.Content);
+            await JS.InvokeVoidAsync("setEditorContent", loadedContent);
         }
         
         StateHasChanged();
@@ -1109,6 +1125,12 @@
 
     private async Task SaveFollowUp()
     {
+        if (_isSaving) return;
+        if (_savedWithoutRecordId)
+        {
+            Feedback.Warning("The note was saved, but its record ID was not returned. Open it from history before saving again.", "Reload follow-up");
+            return;
+        }
         if (!_isEditorReady || ViewModel.SelectedPatient == null)
         {
             _statusMessage = ViewModel.SelectedPatient == null ? "Please select a patient" : "Editor not ready";
@@ -1149,12 +1171,15 @@
                 return;
             }
 
-            var isUpdate = _currentlyViewingFollowUpId.HasValue;
-            var currentFollowUp = isUpdate && _currentlyViewingFollowUpId.HasValue
+            var currentFollowUp = _currentlyViewingFollowUpId.HasValue
                 ? ViewModel.FindFollowUp(_currentlyViewingFollowUpId.Value)
                 : null;
+            var activeRecordId = !string.IsNullOrWhiteSpace(_activeFollowUpRecordId)
+                ? _activeFollowUpRecordId
+                : currentFollowUp?.BackendId ?? string.Empty;
+            var isUpdate = !string.IsNullOrWhiteSpace(activeRecordId);
 
-            if (isUpdate && (currentFollowUp is null || string.IsNullOrWhiteSpace(currentFollowUp.BackendId)))
+            if (_currentlyViewingFollowUpId.HasValue && !isUpdate)
             {
                 _statusMessage = "The selected follow-up is missing its backend record ID. Reload the history and try again.";
                 _isSuccess = false;
@@ -1164,7 +1189,7 @@
 
             var record = new Beauty_Aesthetics_WebPos.Models.DTOs.FollowUpRecordDTO
             {
-                RecordId = currentFollowUp?.BackendId ?? string.Empty,
+                RecordId = activeRecordId,
                 CustomerId = ViewModel.SelectedPatient.Id,
                 Date = _followUpDate.Date,
                 Content = content,
@@ -1192,7 +1217,11 @@
                 return;
             }
 
-            await LoadFollowUpHistoryAsync(showFeedback: false);
+            // Keep the server identity before any reload/await so a later Save
+            // cannot create the same draft again if history loading fails.
+            _activeFollowUpRecordId = isUpdate ? activeRecordId : saveResult.Value.RecordId;
+            _savedWithoutRecordId = string.IsNullOrWhiteSpace(_activeFollowUpRecordId);
+            var historyLoaded = await LoadFollowUpHistoryAsync(showFeedback: false);
 
             _hasUnsavedChanges = false;
             _lastSavedContent = content;
@@ -1200,40 +1229,43 @@
             _followUpSymptoms = saveResult.Value.Symptoms;
             _followUpDiagnoses = saveResult.Value.Diagnoses;
 
-            if (isUpdate)
-            {
-                var savedBackendId = string.IsNullOrWhiteSpace(saveResult.Value.RecordId)
-                    ? currentFollowUp?.BackendId ?? string.Empty
-                    : saveResult.Value.RecordId;
-
-                _currentlyViewingFollowUpId = ViewModel.FollowUpHistory
-                    .FirstOrDefault(item =>
-                        string.Equals(item.BackendId, savedBackendId, StringComparison.OrdinalIgnoreCase))
-                    ?.Id;
-            }
-            else
-            {
-                _currentlyViewingFollowUpId = null;
-            }
+            var savedFollowUp = ViewModel.FollowUpHistory.FirstOrDefault(item =>
+                string.Equals(item.BackendId, _activeFollowUpRecordId, StringComparison.OrdinalIgnoreCase));
+            _currentlyViewingFollowUpId = savedFollowUp?.Id;
 
             _isSuccess = true;
             _statusMessage = isUpdate
                 ? "Follow-up updated successfully!"
                 : "Follow-up saved successfully!";
 
-            Feedback.Success(
-                _statusMessage,
-                isUpdate ? "Follow-up updated" : "Follow-up saved");
+            if (_savedWithoutRecordId)
+            {
+                _isSuccess = false;
+                _statusMessage = "Note saved, but the API did not return its record ID. Open the note from history before editing.";
+                Feedback.Warning(_statusMessage, "Check saved follow-up");
+            }
+            else if (!historyLoaded || savedFollowUp is null)
+            {
+                _isSuccess = false;
+                _statusMessage = "Saved. History could not be refreshed.";
+                Feedback.Warning(_statusMessage, "Check follow-up");
+            }
+            else if (!string.Equals(savedFollowUp.Symptoms, record.Symptoms, StringComparison.Ordinal) ||
+                     !string.Equals(savedFollowUp.Diagnoses, record.Diagnoses, StringComparison.Ordinal))
+            {
+                _isSuccess = false;
+                _hasUnsavedChanges = true;
+                _statusMessage = "Some fields were not restored. Your entries are still here.";
+                Feedback.Warning(_statusMessage, "Check follow-up");
+            }
+            else
+            {
+                Feedback.Success(_statusMessage, isUpdate ? "Follow-up updated" : "Follow-up saved");
+            }
 
             Console.WriteLine(
                 $"[Follow Up API] SAVE PASS | Customer={record.CustomerId} | " +
                 $"Record={saveResult.Value.RecordId} | Mode={(isUpdate ? "Update" : "Create")}");
-
-            if (!isUpdate)
-            {
-                await JS.InvokeVoidAsync("clearEditor");
-                _lastSavedContent = string.Empty;
-            }
 
             _hideMessageCts?.Cancel();
             _hideMessageCts?.Dispose();

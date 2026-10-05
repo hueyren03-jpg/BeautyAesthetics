@@ -57,6 +57,9 @@ public sealed class InventoryPackageLoadDTO
 
 public sealed class InventoryPackageLoadRecordDTO
 {
+    [JsonPropertyName("inventoryTypeID")]
+    public int InventoryTypeId { get; set; }
+
     [JsonPropertyName("masterAccountID")]
     public string? MasterAccountId { get; set; }
 

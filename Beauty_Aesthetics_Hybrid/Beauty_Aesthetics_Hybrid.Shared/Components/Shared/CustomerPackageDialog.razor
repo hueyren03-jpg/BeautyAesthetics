@@ -1,0 +1,190 @@
+@using Beauty_Aesthetics_WebPos.APIClient
+@using Beauty_Aesthetics_WebPos.Components.Services.Customers
+@using Beauty_Aesthetics_WebPos.Components.Services.Inventory
+@using Beauty_Aesthetics_WebPos.Components.Services.Tax
+@using Beauty_Aesthetics_WebPos.Models.DTOs
+@inject ICustomerService CustomerService
+@inject ServiceInventoryAC InventoryAC
+@inject IGstTaxRateService TaxService
+@inject ProductImageService Images
+
+<div class="package-overlay" @onclick="Close">
+    <section class="package-dialog" role="dialog" aria-modal="true" aria-labelledby="customer-package-title" @onclick:stopPropagation="true">
+        <header>
+            <div><h2 id="customer-package-title">Customer Packages</h2><p>@CustomerName</p></div>
+            <button type="button" class="package-close" aria-label="Close packages" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+        </header>
+        <div class="package-body">
+            @if (loading)
+            {
+                <p role="status">Loading packages…</p>
+            }
+            else if (!string.IsNullOrWhiteSpace(error))
+            {
+                <p class="package-error" role="alert">@error</p>
+                <button type="button" @onclick="Reload">Retry</button>
+            }
+            else if (packages.Count == 0)
+            {
+                <p>No purchased packages.</p>
+            }
+            else
+            {
+                @foreach (var package in packages)
+                {
+                    <article class="package-card @(selected?.AutoID == package.AutoID ? "selected" : "")">
+                        <button type="button" class="package-select" aria-pressed="@(selected?.AutoID == package.AutoID)"
+                                @onclick="() => Select(package)">
+                            <img src="@Images.ResolveImageUrl(package.InventoryID, null, null)" alt="" />
+                            <div class="package-details">
+                                <strong>@package.Description</strong><span>@package.PackageName</span><small>@package.AutoID</small>
+                            </div>
+                            <span class="package-status @(CanRedeem(package) ? "available" : "unavailable")">@(Expired(package) ? "Expired" : Available(package) < 1m ? "Used" : CanRedeem(package) ? "Available" : "Unavailable")</span>
+                        </button>
+                        <dl>
+                            <div><dt>Purchased</dt><dd>@package.QuantityPurchased.ToString("0.##")</dd></div>
+                            <div><dt>Remaining</dt><dd>@Available(package).ToString("0.##")</dd></div>
+                            <div><dt>Expiry</dt><dd>@(package.ExpiryDate.Year > 1900 ? package.ExpiryDate.ToString("dd/MM/yyyy") : "—")</dd></div>
+                        </dl>
+                        <button type="button" class="package-history" @onclick="() => LoadHistory(package)">History <i class="bi bi-clock-history"></i></button>
+                    </article>
+                }
+            }
+            @if (historyId is not null)
+            {
+                <section class="package-history-panel">
+                    <div class="package-history-title"><strong>Redemption History</strong><button type="button" aria-label="Close history" @onclick="CloseHistory"><i class="bi bi-x-lg"></i></button></div>
+                    <small>@historyId</small>
+                    @if (historyLoading) { <p>Loading…</p> }
+                    else if (!string.IsNullOrWhiteSpace(historyError)) { <p role="alert">@historyError</p> }
+                    else if (history.Count == 0) { <p>No redemptions.</p> }
+                    else
+                    {
+                        @foreach (var entry in history)
+                        {
+                            <div class="package-history-entry"><strong>@(entry.DisplayCode ?? entry.DocumentID)</strong><span>@entry.FinancialDate.ToString("dd/MM/yyyy") · @entry.BranchID</span><span>@Math.Abs(entry.QuantityRedeemed).ToString("0.##") session(s)</span></div>
+                        }
+                    }
+                </section>
+            }
+            @if (!string.IsNullOrWhiteSpace(actionError)) { <p class="package-error" role="alert">@actionError</p> }
+        </div>
+        <footer>
+            @if (AllowRedeem && selected is not null)
+            {
+                <label>Quantity <input type="number" min="1" max="@decimal.Floor(Available(selected))" step="1" @bind="quantity" /></label>
+                <button type="button" class="package-redeem" disabled="@(busy || !CanRedeem(selected))" @onclick="Redeem">@(busy ? "Loading…" : "Redeem")</button>
+            }
+            else
+            {
+                <button type="button" class="package-close-footer" @onclick="Close">Close</button>
+            }
+        </footer>
+    </section>
+</div>
+
+@code {
+    [Parameter] public string CustomerId { get; set; } = string.Empty;
+    [Parameter] public string CustomerName { get; set; } = string.Empty;
+    [Parameter] public bool AllowRedeem { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, decimal> ReservedQuantities { get; set; } = new Dictionary<string, decimal>();
+    [Parameter] public EventCallback<TransactionItem> OnRedeem { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    private string? loadedCustomerId;
+    private IReadOnlyList<PackageBalanceDetailDTO> packages = [];
+    private IReadOnlyList<PackageRedemptionHistoryDTO> history = [];
+    private PackageBalanceDetailDTO? selected;
+    private string? error, actionError, historyError, historyId;
+    private bool loading, busy, historyLoading;
+    private int quantity = 1;
+    private int historyVersion;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedCustomerId != CustomerId)
+        {
+            loadedCustomerId = CustomerId;
+            await Reload();
+        }
+    }
+
+    private async Task Reload()
+    {
+        loading = true;
+        error = null;
+        selected = null;
+        CloseHistory();
+        try
+        {
+            var result = await CustomerService.GetPackagesAsync(CustomerId);
+            packages = result.Value ?? [];
+            if (!result.Success) error = result.ErrorMessage ?? "Unable to load packages.";
+        }
+        catch { error = "Unable to load packages."; }
+        finally { loading = false; }
+    }
+
+    private static bool Expired(PackageBalanceDetailDTO package) => package.ExpiryDate.Year > 1900 && package.ExpiryDate.Date < DateTime.Today;
+    private decimal Available(PackageBalanceDetailDTO package) => Math.Max(0m,
+        package.NetBalanceAfterUtilised - (ReservedQuantities.TryGetValue(package.AutoID ?? string.Empty, out var used) ? used : 0m));
+    private bool CanRedeem(PackageBalanceDetailDTO package) => package.IsRedeemable != false && !Expired(package) && Available(package) >= 1m &&
+        !string.IsNullOrWhiteSpace(package.AutoID) && !string.IsNullOrWhiteSpace(package.InventoryID) && !string.IsNullOrWhiteSpace(package.PackageID);
+    private void Select(PackageBalanceDetailDTO package) { if (busy) return; selected = package; quantity = 1; actionError = null; }
+    private Task Close() => busy ? Task.CompletedTask : OnClose.InvokeAsync();
+    private void CloseHistory() { historyVersion++; historyId = null; history = []; historyLoading = false; }
+
+    private async Task LoadHistory(PackageBalanceDetailDTO package)
+    {
+        var version = ++historyVersion;
+        historyId = package.AutoID;
+        historyError = null;
+        history = [];
+        historyLoading = true;
+        try
+        {
+            var result = await CustomerService.GetPackageHistoryAsync(package.AutoID ?? string.Empty);
+            if (version != historyVersion) return;
+            history = result.Value ?? [];
+            if (!result.Success) historyError = result.ErrorMessage ?? "Unable to load history.";
+        }
+        catch { if (version == historyVersion) historyError = "Unable to load history."; }
+        finally { if (version == historyVersion) historyLoading = false; }
+    }
+
+    private async Task Redeem()
+    {
+        if (busy || selected is null || !AllowRedeem) return;
+        if (!CanRedeem(selected) || quantity < 1 || quantity > Available(selected))
+        { actionError = "Check the remaining quantity."; return; }
+        busy = true;
+        try
+        {
+            var result = await InventoryAC.LoadRecordAsync(selected.InventoryID!);
+            if (!result.Success || result.Value is null)
+            { actionError = result.ErrorMessage ?? "Unable to load the package item."; return; }
+            var inventory = result.Value;
+            if (inventory.InventoryTypeID is not (1 or 3))
+            { actionError = "This package item is not a product or service."; return; }
+            var item = new TransactionItem
+            {
+                InventoryId = selected.InventoryID!, Name = selected.Description ?? inventory.AccountName ?? "Package item",
+                Description = selected.Description ?? inventory.AccountName ?? string.Empty,
+                Sku = inventory.DisplayCode ?? inventory.MasterAccountID ?? string.Empty,
+                Category = inventory.InventoryTypeID == 3 ? "Service" : "Product", InventoryTypeId = inventory.InventoryTypeID,
+                ImageUrl = Images.ResolveImageUrl(inventory.MasterAccountID, inventory.ImagePath, inventory.ImageFileName),
+                Quantity = quantity, UnitPrice = selected.UnitPrice, OriginalKitPrice = selected.SourceUnitPrice,
+                UnitActualValue = selected.UnitActualValue, SourceDocumentLineId = selected.AutoID!, KitMemberId = selected.PackageID!,
+                ActivityTypeId = selected.ActivityTypeID == 4 ? 5 : 2,
+                UnitOfMeasureId = inventory.UnitOfMeasureID ?? "UNIT", TaxCodeId = inventory.TaxCodeID ?? string.Empty,
+                IsTaxInclusive = inventory.IsTaxInclusive,
+                TaxPercentage = await TaxService.GetRateForTaxCodeAsync(inventory.TaxCodeID)
+            };
+            OrderLineTaxCalculator.ComputeLineAmounts(item.UnitPrice, quantity, 0m, item.TaxPercentage, item.IsTaxInclusive, out var beforeTax, out var tax);
+            item.TaxAmount = tax;
+            item.TotalPrice = beforeTax + tax;
+            await OnRedeem.InvokeAsync(item);
+        }
+        catch { actionError = "Unable to add the package item."; }
+        finally { busy = false; }
+    }
+}

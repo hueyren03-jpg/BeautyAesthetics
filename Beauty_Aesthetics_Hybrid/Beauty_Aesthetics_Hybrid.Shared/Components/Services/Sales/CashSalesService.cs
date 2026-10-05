@@ -16,7 +16,7 @@ using Microsoft.JSInterop;
 
 namespace Beauty_Aesthetics_WebPos.Components.Services.Sales;
 
-public sealed class CashSalesService : ICashSalesService
+public sealed partial class CashSalesService : ICashSalesService
 {
     private readonly CashSalesAC cashSalesAC;
     private readonly BranchAC branchAC;
@@ -28,6 +28,7 @@ public sealed class CashSalesService : ICashSalesService
     private readonly IPointConversionService pointConversionService;
     private readonly IMemberCreditWalletService memberCreditWalletService;
     private readonly IJSRuntime jsRuntime;
+    private readonly ServiceInventoryAC packageInventoryAC;
     private Transaction? lastCreatedTransaction;
 
     public CashSalesService(
@@ -40,7 +41,8 @@ public sealed class CashSalesService : ICashSalesService
         ICustomerService customerService,
         IPointConversionService pointConversionService,
         IMemberCreditWalletService memberCreditWalletService,
-        IJSRuntime jsRuntime)
+        IJSRuntime jsRuntime,
+        ServiceInventoryAC packageInventoryAC)
     {
         this.cashSalesAC = cashSalesAC;
         this.branchAC = branchAC;
@@ -52,6 +54,7 @@ public sealed class CashSalesService : ICashSalesService
         this.pointConversionService = pointConversionService;
         this.memberCreditWalletService = memberCreditWalletService;
         this.jsRuntime = jsRuntime;
+        this.packageInventoryAC = packageInventoryAC;
     }
 
     public async Task<ApiCallResult<IReadOnlyList<Transaction>>> LoadTransactionsAsync(
@@ -621,6 +624,10 @@ public sealed class CashSalesService : ICashSalesService
             }
         }
 
+        var packageRedemptionValidation = await ValidatePackageRedemptionsAsync(transaction, cancellationToken);
+        if (!packageRedemptionValidation.Success)
+            return ApiCallResult<Transaction>.Failure(HttpStatusCode.BadRequest, packageRedemptionValidation.ErrorMessage);
+
         var documentLines = BuildDocumentLines(
             transaction,
             gstTypeId,
@@ -629,6 +636,12 @@ public sealed class CashSalesService : ICashSalesService
         ApplyHeader(header, transaction, true, currencyId, gstTypeId);
         document["objDoc_CashSales"] = header;
         document["lstDocumentLine"] = documentLines;
+
+        var packageBuild = await BuildPurchasedPackagesAsync(transaction, documentLines, cancellationToken);
+        if (!packageBuild.Success)
+            return ApiCallResult<Transaction>.Failure(HttpStatusCode.BadRequest, packageBuild.ErrorMessage);
+        document["lstCashSales_Series_UnconsumedItem"] = packageBuild.Series;
+        document["lstCashSales_UnconsumedTime"] = packageBuild.Time;
 
         var redemptionTaxValidation = ValidateAndApplyRedemptionTaxBasis(
             transaction,
@@ -676,6 +689,7 @@ public sealed class CashSalesService : ICashSalesService
         }
 
         document["lstARAPOutstanding_MemberCredit"] = memberCreditBuild.RootCredits;
+        ApplyPackageActualValues(transaction, documentLines, packageBuild.Series, packageBuild.Time, memberCreditBuild.RootCredits);
 
         var singleCreditVerification = await CaptureSingleMemberCreditRedemptionAsync(
             transaction,
@@ -911,22 +925,25 @@ public sealed class CashSalesService : ICashSalesService
             : new List<CashSalesReceiptLineDTO>();
         var payments = transaction.Payments.Count > 0
             ? transaction.Payments
-                .Where(payment => payment.PaymentTypeId != -10)
+                .Where(payment => payment.PaymentTypeId is not (-10 or -5))
                 .ToList()
-            : transaction.PaymentTypeId != 0 && transaction.PaymentTypeId != -10
+            : transaction.PaymentTypeId is not (0 or -10 or -5)
                 ? new List<TransactionPayment>
                 {
                     new() { PaymentTypeId = transaction.PaymentTypeId, PaymentMethod = transaction.PaymentMethod, Amount = transaction.Amount }
                 }
                 : new List<TransactionPayment>();
-        var change = Math.Max(0, payments.Sum(payment => payment.Amount) - transaction.Amount);
+        var redemptionCovered = transaction.DocumentTypeId == 52
+            ? existing.Where(line => line.POSPaymentTypeID is -10 or -5).Sum(line => line.POSReceiptLineAmount)
+            : 0m;
+        var change = Math.Max(0, payments.Sum(payment => payment.Amount) - Math.Max(0m, transaction.Amount - redemptionCovered));
         var changePayment = payments.LastOrDefault(payment =>
             payment.PaymentMethod.Contains("cash", StringComparison.OrdinalIgnoreCase)) ?? payments.LastOrDefault();
 
         // Member Credit redemption receipts are backend accounting rows, not normal
         // Cash/Card tender rows. A normal payment edit must not delete them.
         var retainedReceiptIds = existing
-            .Where(line => line.POSPaymentTypeID == -10 &&
+            .Where(line => (line.POSPaymentTypeID is -10 or -5) &&
                            !string.IsNullOrWhiteSpace(line.POSReceiptLineID))
             .Select(line => line.POSReceiptLineID!)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -1064,7 +1081,7 @@ public sealed class CashSalesService : ICashSalesService
             .ToList();
 
         transaction.Payments = transaction.ReceiptPayments
-            .Where(payment => payment.PaymentTypeId != -10)
+            .Where(payment => payment.PaymentTypeId is not (-10 or -5))
             .ToList();
 
         if (transaction.Payments.Count > 0)
@@ -1155,6 +1172,10 @@ public sealed class CashSalesService : ICashSalesService
             PointToRedeem = Math.Max(0m, Number(line, "PointToRedeem")),
             AllowPointRedemption = Bool(line, "AllowPointRedemption") || points > 0m,
             ActivityTypeId = Integer(line, "ActivityTypeID") == 0 ? 1 : Integer(line, "ActivityTypeID"),
+            SourceDocumentLineId = Text(line, "SourceDocumentLineID"),
+            KitMemberId = Text(line, "KitMemberID"),
+            OriginalKitPrice = Number(line, "OriginalKitPrice"),
+            UnitActualValue = Number(line, "UnitActualValue"),
             MemberCreditAccountId = memberCreditAccountId,
             MemberTypeId = memberTypeId,
             MembershipCredit = membershipCredit,
@@ -2398,6 +2419,11 @@ public sealed class CashSalesService : ICashSalesService
                 CurrencyID = string.IsNullOrWhiteSpace(currencyId) ? "MYR" : currencyId,
                 ExchangeRate = 1m,
                 ActivityTypeID = item.ActivityTypeId <= 0 ? 1 : item.ActivityTypeId,
+                SourceDocumentLineID = item.SourceDocumentLineId,
+                KitMemberID = item.KitMemberId,
+                OriginalKitPrice = item.OriginalKitPrice,
+                UnitActualValue = item.UnitActualValue,
+                SKUQuantity = 1,
                 SaveAction = EBI.Enum.EntityState.Added,
                 IsDirty = true
             };
@@ -2491,7 +2517,7 @@ public sealed class CashSalesService : ICashSalesService
         var memberCreditIndexes = transaction.Items
             .Select((item, index) => new { Item = item, Index = index })
             .Where(entry =>
-                entry.Item.InventoryTypeId == 7 ||
+                entry.Item.InventoryTypeId is 5 or 7 ||
                 string.Equals(entry.Item.Category, "Member Credit", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
@@ -2553,6 +2579,8 @@ public sealed class CashSalesService : ICashSalesService
 
             if (allocations.Count == 0)
             {
+                // Member credit is optional for a package purchase.
+                if (item.InventoryTypeId == 5) continue;
                 return (
                     false,
                     $"Member Credit '{creditSetup.Name}' has no configured membership credit amount.",
@@ -3141,7 +3169,10 @@ public sealed class CashSalesService : ICashSalesService
             .Where(item => item.ActivityTypeId == 6)
             .ToList();
 
-        if (redemptionLines.Count == 0 ||
+        var packageValidation = ValidateFinalPackageRequest(transaction, document);
+        if (!packageValidation.Success) return packageValidation;
+
+        if ((!transaction.Items.Any(item => item.IsPackageRedemption) && redemptionLines.Count == 0) ||
             redemptionLines.Count != expectedRedemptionItems.Count)
         {
             return (
@@ -3200,6 +3231,8 @@ public sealed class CashSalesService : ICashSalesService
                 group => group.Key,
                 group => Math.Round(group.Sum(item => item.Amount), 2, MidpointRounding.AwayFromZero),
                 StringComparer.OrdinalIgnoreCase);
+
+        if (expectedRedemptionItems.Count == 0) return (true, string.Empty);
 
         if (creditReceipts.Count == 0)
         {
@@ -3383,9 +3416,7 @@ public sealed class CashSalesService : ICashSalesService
             .Where(item => item.ActivityTypeId == 6)
             .ToList();
 
-        var isMemberCreditRedemption =
-            transaction.DocumentTypeId == 52 ||
-            redemptionItems.Count > 0;
+        var isMemberCreditRedemption = redemptionItems.Count > 0;
 
         if (!isMemberCreditRedemption)
         {
@@ -3996,9 +4027,9 @@ public sealed class CashSalesService : ICashSalesService
     {
         var payments = transaction.Payments.Count > 0
             ? transaction.Payments
-                .Where(payment => payment.PaymentTypeId != -10)
+                .Where(payment => payment.PaymentTypeId is not (-10 or -5))
                 .ToList()
-            : transaction.PaymentTypeId != 0 && transaction.PaymentTypeId != -10
+            : transaction.PaymentTypeId is not (0 or -10 or -5)
                 ? new List<TransactionPayment>
                 {
                     new()
@@ -4018,7 +4049,7 @@ public sealed class CashSalesService : ICashSalesService
         var redeemedAmount = transaction.DocumentTypeId == 52
             ? transaction.Items
                 .Where(item => item.ActivityTypeId == 6)
-                .Sum(GetRedeemedCreditAmount)
+                .Sum(GetRedeemedCreditAmount) + transaction.Items.Where(item => item.IsPackageRedemption).Sum(item => item.TotalPrice)
             : 0m;
         var cashDue = Math.Max(0m, transaction.Amount - redeemedAmount);
         var changeDue = Math.Max(0m, totalTendered - cashDue);
@@ -4054,6 +4085,36 @@ public sealed class CashSalesService : ICashSalesService
 
         if (transaction.DocumentTypeId == 52)
         {
+            foreach (var group in transaction.Items.Where(item => item.IsPackageRedemption)
+                         .GroupBy(item => item.SourceDocumentLineId, StringComparer.OrdinalIgnoreCase))
+            {
+                var item = group.First();
+                lines.Add(new JsonObject
+                {
+                    ["POSReceiptLineID"] = (lines.Count + 1).ToString(),
+                    ["DocumentID"] = transaction.DocumentId,
+                    ["AccountID"] = transaction.AccountId,
+                    ["AccountTypeID"] = 3,
+                    ["POSPaymentTypeID"] = -5,
+                    ["Description"] = "Series Redemption",
+                    ["Reference"] = $"{group.Key} - {item.Name}",
+                    ["SourceDocumentLineID"] = group.Key,
+                    ["PackageID"] = item.KitMemberId,
+                    ["InventoryID"] = item.InventoryId,
+                    ["QuantityRedeemed"] = group.Sum(entry => entry.Quantity),
+                    ["SourceUnitPrice"] = item.OriginalKitPrice,
+                    ["SourceUnitActualValue"] = item.UnitActualValue,
+                    ["POSReceiptLineAmount"] = group.Sum(entry => entry.TotalPrice),
+                    ["CurrencyID"] = currency,
+                    ["CurrencyName"] = currency,
+                    ["ExchangeRate"] = 1m,
+                    ["BranchID"] = transaction.BranchId,
+                    ["GroupID"] = transaction.GroupId,
+                    ["FinancialDate"] = transaction.Date,
+                    ["SaveAction"] = 1,
+                    ["IsDirty"] = true
+                });
+            }
             foreach (var item in transaction.Items.Where(item => item.ActivityTypeId == 6))
             {
                 var allocations = EffectiveMemberCreditAllocations(item);
@@ -4130,7 +4191,7 @@ public sealed class CashSalesService : ICashSalesService
         // Keep Member Credit outside the normal tender collection so normal
         // Cash/Card/Multi-Payment editing does not treat -10 as a selectable payment.
         transaction.Payments = transaction.ReceiptPayments
-            .Where(payment => payment.PaymentTypeId != -10)
+            .Where(payment => payment.PaymentTypeId is not (-10 or -5))
             .ToList();
 
         if (transaction.Payments.Count == 0)

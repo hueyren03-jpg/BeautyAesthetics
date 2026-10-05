@@ -99,6 +99,12 @@ namespace Beauty_Aesthetics_WebPos.Components.Models
 
         // Member Credit redemption (Senang single-account structure).
         public int ActivityTypeId { get; set; } = 1;
+        public string SourceDocumentLineId { get; set; } = "";
+        public string KitMemberId { get; set; } = "";
+        public decimal OriginalKitPrice { get; set; }
+        public decimal UnitActualValue { get; set; }
+        public bool IsPackageRedemption => (ActivityTypeId is 2 or 5) &&
+            !string.IsNullOrWhiteSpace(SourceDocumentLineId);
         public string MemberCreditAccountId { get; set; } = "";
         public string MemberTypeId { get; set; } = "";
         public string MembershipCredit { get; set; } = "";

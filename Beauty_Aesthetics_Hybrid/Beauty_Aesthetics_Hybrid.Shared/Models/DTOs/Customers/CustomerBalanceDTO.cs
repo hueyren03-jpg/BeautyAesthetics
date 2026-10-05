@@ -14,13 +14,37 @@ public sealed class MemberBalanceSummaryDTO
 public sealed class PackageBalanceDetailDTO
 {
     public string? AutoID { get; set; }
+    public string? CustomerAccountID { get; set; }
+    public string? PackageID { get; set; }
+    public string? PackageItemID { get; set; }
+    public string? InventoryID { get; set; }
+    public string? DocumentLineID { get; set; }
+    public string? BranchID { get; set; }
+    public string? GroupID { get; set; }
+    public DateTime FinancialDate { get; set; }
+    public decimal QuantityPurchased { get; set; }
+    public decimal QuantityRedeemed { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal UnitActualValue { get; set; }
+    public decimal SourceUnitPrice { get; set; }
+    public int ActivityTypeID { get; set; }
     public string? PackageName { get; set; }
     public string? PackageCode { get; set; }
     public string? Description { get; set; }
     public decimal NetBalanceAfterUtilised { get; set; }
     public decimal BalancePVValue { get; set; }
     public DateTime ExpiryDate { get; set; }
-    public bool IsRedeemable { get; set; }
+    public bool? IsRedeemable { get; set; }
+}
+
+public sealed class PackageRedemptionHistoryDTO
+{
+    public string? DocumentID { get; set; }
+    public string? DisplayCode { get; set; }
+    public string? SourceDocumentLineID { get; set; }
+    public DateTime FinancialDate { get; set; }
+    public decimal QuantityRedeemed { get; set; }
+    public string? BranchID { get; set; }
 }
 
 public sealed class CreditBalanceDetailDTO
