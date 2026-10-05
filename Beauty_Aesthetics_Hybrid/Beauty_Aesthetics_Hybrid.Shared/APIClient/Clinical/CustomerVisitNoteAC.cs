@@ -19,8 +19,10 @@ public sealed class CustomerVisitNoteAC
         CancellationToken cancellationToken = default)
     {
         var url = $"/api/CustomerVisitNote/LoadProxyByCustomerID?id={Uri.EscapeDataString(customerId ?? string.Empty)}";
+        Console.WriteLine($"[API GET api/CustomerVisitNote/LoadProxyByCustomerID] CustomerID={customerId}");
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+        Console.WriteLine($"[API GET api/CustomerVisitNote/LoadProxyByCustomerID] HTTP {(int)response.StatusCode}");
 
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
             return ApiCallResult<List<CustomerVisitNoteRecordDTO>>.Unauthorized(response.StatusCode);
@@ -28,7 +30,7 @@ public sealed class CustomerVisitNoteAC
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
             return ApiCallResult<List<CustomerVisitNoteRecordDTO>>.Failure(
-                response.StatusCode, ReadError(body, "Unable to load customer medical-certificate records."));
+                response.StatusCode, ReadError(body, "Unable to load customer visit-note records."));
 
         try
         {
@@ -39,7 +41,7 @@ public sealed class CustomerVisitNoteAC
                     return ApiCallResult<List<CustomerVisitNoteRecordDTO>>.Failure(
                         response.StatusCode,
                         string.IsNullOrWhiteSpace(wrapped.Message)
-                            ? "Unable to load customer medical-certificate records."
+                            ? "Unable to load customer visit-note records."
                             : wrapped.Message);
 
                 return ApiCallResult<List<CustomerVisitNoteRecordDTO>>.Ok(
@@ -56,7 +58,7 @@ public sealed class CustomerVisitNoteAC
         {
             return ApiCallResult<List<CustomerVisitNoteRecordDTO>>.Failure(
                 response.StatusCode,
-                "Customer medical-certificate response was invalid.");
+                "Customer visit-note response was invalid.");
         }
     }
 
@@ -75,8 +77,10 @@ public sealed class CustomerVisitNoteAC
         CancellationToken cancellationToken = default)
     {
         var url = $"/api/CustomerVisitNote/Delete?id={Uri.EscapeDataString(recordId ?? string.Empty)}";
+        Console.WriteLine($"[API DELETE api/CustomerVisitNote/Delete] RecordID={recordId}");
         using var request = new HttpRequestMessage(HttpMethod.Delete, url);
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+        Console.WriteLine($"[API DELETE api/CustomerVisitNote/Delete] HTTP {(int)response.StatusCode}");
 
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
             return ApiCallResult<bool>.Unauthorized(response.StatusCode);
@@ -84,7 +88,7 @@ public sealed class CustomerVisitNoteAC
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         return response.IsSuccessStatusCode
             ? ApiCallResult<bool>.Ok(response.StatusCode, true)
-            : ApiCallResult<bool>.Failure(response.StatusCode, ReadError(body, "Unable to delete medical certificate."));
+            : ApiCallResult<bool>.Failure(response.StatusCode, ReadError(body, "Unable to delete customer visit note."));
     }
 
     private async Task<ApiCallResult<JsonElement>> SendRecordAsync(
@@ -93,11 +97,17 @@ public sealed class CustomerVisitNoteAC
         CustomerVisitNoteWriteDTO record,
         CancellationToken cancellationToken)
     {
+        Console.WriteLine(
+            $"[API {method.Method} {url.TrimStart('/')}] " +
+            $"CustomerID={record.CustomerID} | RecordID={record.CustomerVisitNoteID} | " +
+            $"BranchID={record.BranchID} | GroupID={record.GroupID} | RtfLength={record.RtfMessage?.Length ?? 0}");
+
         using var request = new HttpRequestMessage(method, url)
         {
             Content = JsonContent.Create(record, options: JsonOptions)
         };
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
+        Console.WriteLine($"[API {method.Method} {url.TrimStart('/')}] HTTP {(int)response.StatusCode}");
 
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
             return ApiCallResult<JsonElement>.Unauthorized(response.StatusCode);
@@ -105,7 +115,7 @@ public sealed class CustomerVisitNoteAC
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
             return ApiCallResult<JsonElement>.Failure(
-                response.StatusCode, ReadError(body, "Unable to save medical certificate."));
+                response.StatusCode, ReadError(body, "Unable to save customer visit note."));
 
         try
         {
@@ -115,7 +125,7 @@ public sealed class CustomerVisitNoteAC
                 if (!wrapped.IsSuccess)
                     return ApiCallResult<JsonElement>.Failure(
                         response.StatusCode,
-                        string.IsNullOrWhiteSpace(wrapped.Message) ? "Unable to save medical certificate." : wrapped.Message);
+                        string.IsNullOrWhiteSpace(wrapped.Message) ? "Unable to save customer visit note." : wrapped.Message);
 
                 return ApiCallResult<JsonElement>.Ok(response.StatusCode, wrapped.Result);
             }
