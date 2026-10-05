@@ -14,27 +14,20 @@ public sealed class PointHistoryEntryDTO
 {
     public string DocumentId { get; set; } = string.Empty;
     public string InvoiceNumber { get; set; } = string.Empty;
-    public string BranchId { get; set; } = string.Empty;
     public DateTime FinancialDate { get; set; }
-    public decimal SaleAmount { get; set; }
 
-    // Exact backend-persisted redemption from Cash Sale DocumentLine.Points.
-    public decimal RedeemedPoints { get; set; }
+    // Exact signed point movement from
+    // POST /api/WebDashboard/GetMemberOtherBalanceDetail with balanceType = "Point".
+    public decimal MovementPoints { get; set; }
 
-    // The backend does not expose a dedicated historical point-movement endpoint.
-    // EarnedPoints is populated only when the dated Point Setup rule can be
-    // deterministically matched for the customer's member type.
-    public decimal? EarnedPoints { get; set; }
-    public bool EarnedPointsCalculated { get; set; }
-    public string PointRuleId { get; set; } = string.Empty;
+    // Exact running point balance returned by the same backend point ledger.
+    public decimal BalanceAfter { get; set; }
 
-    // No historical balance-after field is exposed by the available backend APIs.
-    public decimal? BalanceAfter { get; set; }
+    public decimal? EarnedPoints =>
+        MovementPoints > 0m ? MovementPoints : null;
 
-    public decimal? NetPoints =>
-        EarnedPoints.HasValue
-            ? EarnedPoints.Value - RedeemedPoints
-            : RedeemedPoints > 0m
-                ? -RedeemedPoints
-                : null;
+    public decimal RedeemedPoints =>
+        MovementPoints < 0m ? Math.Abs(MovementPoints) : 0m;
+
+    public decimal NetPoints => MovementPoints;
 }
