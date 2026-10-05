@@ -347,13 +347,31 @@
                     </div>
                 </div>
 
-                <div class="follow-up-schedule-row">
+                <div class="follow-up-medical-fields">
                     <div class="follow-up-date-field">
                         <label for="follow-up-date">Follow Up Date</label>
                         <input id="follow-up-date"
                                type="date"
                                value="@_followUpDate.ToString("yyyy-MM-dd")"
                                @onchange="OnFollowUpDateChanged" />
+                    </div>
+
+                    <div class="follow-up-text-field">
+                        <label for="follow-up-symptoms">Symptoms</label>
+                        <textarea id="follow-up-symptoms"
+                                  rows="2"
+                                  value="@_followUpSymptoms"
+                                  @oninput="OnSymptomsInput"
+                                  placeholder="Enter symptoms..."></textarea>
+                    </div>
+
+                    <div class="follow-up-text-field">
+                        <label for="follow-up-diagnoses">Diagnoses</label>
+                        <textarea id="follow-up-diagnoses"
+                                  rows="2"
+                                  value="@_followUpDiagnoses"
+                                  @oninput="OnDiagnosesInput"
+                                  placeholder="Enter diagnoses..."></textarea>
                     </div>
                 </div>
 
@@ -584,6 +602,8 @@
     private string _statusMessage = "";
     private bool _isSuccess = false;
     private DateTime _followUpDate = DateTime.Today;
+    private string _followUpSymptoms = string.Empty;
+    private string _followUpDiagnoses = string.Empty;
     private CancellationTokenSource? _hideMessageCts;
 
     protected override async Task OnInitializedAsync()
@@ -949,6 +969,18 @@
         }
     }
 
+    private void OnSymptomsInput(ChangeEventArgs e)
+    {
+        _followUpSymptoms = e.Value?.ToString() ?? string.Empty;
+        _hasUnsavedChanges = true;
+    }
+
+    private void OnDiagnosesInput(ChangeEventArgs e)
+    {
+        _followUpDiagnoses = e.Value?.ToString() ?? string.Empty;
+        _hasUnsavedChanges = true;
+    }
+
     private async Task ConfirmNewFollowUp()
     {
         _showNewFollowUpConfirmModal = false;
@@ -956,6 +988,8 @@
         _hasUnsavedChanges = false;
         _lastSavedContent = "";
         _followUpDate = DateTime.Today;
+        _followUpSymptoms = string.Empty;
+        _followUpDiagnoses = string.Empty;
         
         if (_isEditorReady)
         {
@@ -995,10 +1029,13 @@
             if (recordResult.Success && recordResult.Value is not null)
             {
                 _followUpDate = recordResult.Value.Date.Date;
+                _followUpSymptoms = recordResult.Value.Symptoms;
+                _followUpDiagnoses = recordResult.Value.Diagnoses;
 
                 Console.WriteLine(
                     $"[Follow Up API] LOAD RECORD PASS | Record={followUp.BackendId} | " +
-                    $"FinancialDate={_followUpDate:yyyy-MM-dd}");
+                    $"FinancialDate={_followUpDate:yyyy-MM-dd} | " +
+                    $"SymptomsLength={_followUpSymptoms.Length} | DiagnosesLength={_followUpDiagnoses.Length}");
             }
             else
             {
@@ -1076,7 +1113,9 @@
                 RecordId = currentFollowUp?.BackendId ?? string.Empty,
                 CustomerId = ViewModel.SelectedPatient.Id,
                 Date = _followUpDate.Date,
-                Content = content
+                Content = content,
+                Symptoms = _followUpSymptoms.Trim(),
+                Diagnoses = _followUpDiagnoses.Trim()
             };
 
             Console.WriteLine(
@@ -1104,6 +1143,8 @@
             _hasUnsavedChanges = false;
             _lastSavedContent = content;
             _followUpDate = saveResult.Value.Date.Date;
+            _followUpSymptoms = saveResult.Value.Symptoms;
+            _followUpDiagnoses = saveResult.Value.Diagnoses;
 
             if (isUpdate)
             {
