@@ -12,8 +12,7 @@ public sealed class CustomerFollowUpAC
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        PropertyNameCaseInsensitive = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        PropertyNameCaseInsensitive = true
     };
 
     private static readonly MediaTypeHeaderValue JsonPatchMediaType =
@@ -35,12 +34,15 @@ public sealed class CustomerFollowUpAC
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         using var response = await authService.SendAuthorizedAsync(request, cancellationToken);
-        Console.WriteLine($"[API GET api/CustomerFollowUp/LoadProxyByCustomerID] HTTP {(int)response.StatusCode}");
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        Console.WriteLine(
+            $"[API GET api/CustomerFollowUp/LoadProxyByCustomerID] HTTP {(int)response.StatusCode} | Body: {body}");
 
-        return await ReadResponseAsync<List<CustomerFollowUpDTO>>(
-            response,
-            "Unable to load customer follow-up records.",
-            cancellationToken);
+        return ReadResponseBody<List<CustomerFollowUpDTO>>(
+            response.StatusCode,
+            response.IsSuccessStatusCode,
+            body,
+            "Unable to load customer follow-up records.");
     }
 
     public async Task<ApiCallResult<List<CustomerFollowUpDTO>>> LoadByBranchAsync(
@@ -204,6 +206,62 @@ public sealed class CustomerFollowUpAC
         catch (JsonException)
         {
             return ApiCallResult<JsonElement>.Ok(response.StatusCode, default);
+        }
+    }
+
+    private static ApiCallResult<T> ReadResponseBody<T>(
+        HttpStatusCode statusCode,
+        bool isSuccessStatusCode,
+        string body,
+        string fallback)
+    {
+        if (statusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            return ApiCallResult<T>.Unauthorized(statusCode);
+        }
+
+        if (!isSuccessStatusCode)
+        {
+            return ApiCallResult<T>.Failure(
+                statusCode,
+                ReadError(body, fallback));
+        }
+
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return ApiCallResult<T>.Failure(statusCode, fallback);
+        }
+
+        try
+        {
+            var wrapped = JsonSerializer.Deserialize<ApiResponse<T>>(body, JsonOptions);
+            if (wrapped?.StatusCode > 0)
+            {
+                if (!wrapped.IsSuccess)
+                {
+                    return ApiCallResult<T>.Failure(
+                        statusCode,
+                        string.IsNullOrWhiteSpace(wrapped.Message)
+                            ? fallback
+                            : wrapped.Message);
+                }
+
+                return wrapped.Result is null
+                    ? ApiCallResult<T>.Failure(statusCode, fallback)
+                    : ApiCallResult<T>.Ok(statusCode, wrapped.Result);
+            }
+
+            var direct = JsonSerializer.Deserialize<T>(body, JsonOptions);
+            return direct is null
+                ? ApiCallResult<T>.Failure(statusCode, fallback)
+                : ApiCallResult<T>.Ok(statusCode, direct);
+        }
+        catch (JsonException ex)
+        {
+            Console.WriteLine($"[CustomerFollowUp] HISTORY PARSE FAILED | {ex.Message}");
+            return ApiCallResult<T>.Failure(
+                statusCode,
+                $"{fallback} Response was invalid.");
         }
     }
 
