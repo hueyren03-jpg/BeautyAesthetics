@@ -105,10 +105,11 @@
 
                     <!-- Customer balances: follows the actual member balance model -->
                     <div class="wallet-strip customer-balance-strip" style="margin-top: 10px;">
-                        <div class="wallet-card outstanding-balance billing-outstanding-button outstanding-clickable-field">
+                        <div class="wallet-card customer-wallet-card outstanding-wallet-card outstanding-balance billing-outstanding-button outstanding-clickable-field">
                             <div class="wallet-card-header">
                                 <i class="bi bi-currency-exchange"></i>
                                 <span>Outstanding Balance</span>
+                                <i class="bi bi-chevron-right wallet-card-chevron"></i>
                             </div>
                             <div class="wallet-amount">@FormatMoneyBalance(CustomerOutstandingBalance)</div>
                             <button type="button"
@@ -142,7 +143,7 @@
                             <div class="wallet-amount">@FormatPackageBalance(CustomerPackageBalance)</div>
                         </div>
 
-                        <div class="wallet-card credit-balance"
+                        <div class="wallet-card customer-wallet-card credit-wallet-card-trigger credit-balance"
                              role="button"
                              tabindex="0"
                              title="View redeemable Member Credit accounts"
@@ -150,6 +151,7 @@
                             <div class="wallet-card-header">
                                 <i class="bi bi-credit-card-2-front"></i>
                                 <span>Credit</span>
+                                <i class="bi bi-chevron-right wallet-card-chevron"></i>
                             </div>
                             <div class="wallet-amount">@FormatNumericBalance(CustomerCreditBalance)</div>
                         </div>
@@ -1902,13 +1904,15 @@
 @if (_showRedeemableCredits)
 {
     <div class="modal-overlay" @onclick="CloseRedeemableCredits">
-        <div class="modal-container billing-service-modal billing-credit-dialog @(!string.IsNullOrWhiteSpace(_selectedHistoryCreditId) ? "has-credit-history" : string.Empty)"
+        <div class="modal-container billing-service-modal billing-credit-dialog credit-wallet-dialog @(!string.IsNullOrWhiteSpace(_selectedHistoryCreditId) ? "has-credit-history" : string.Empty)"
              @onclick:stopPropagation="true">
             <div class="billing-credit-dialog__header">
-                <div class="billing-credit-dialog__title">
-                    <span class="billing-credit-dialog__icon"><i class="bi bi-wallet2"></i></span>
+                <div class="billing-credit-dialog__title credit-wallet-title">
+                    <span class="billing-credit-dialog__icon"><i class="bi bi-credit-card-2-front"></i></span>
                     <div>
-                        <h3>Member Credit Accounts</h3>
+                        <span class="credit-wallet-eyebrow">Customer Wallet</span>
+                        <h3>Member Credit</h3>
+                        <small>@PatientName</small>
                     </div>
                 </div>
                 <button type="button"
@@ -1944,8 +1948,8 @@
                 }
                 else
                 {
-                    <div class="billing-credit-summary">
-                        <div>
+                    <div class="billing-credit-summary credit-wallet-summary-grid">
+                        <div class="primary">
                             <small>Total Credit</small>
                             <strong>RM @(_redeemableCredits.Sum(x => x.NetBalanceAfterUtilised).ToString("N2"))</strong>
                         </div>
