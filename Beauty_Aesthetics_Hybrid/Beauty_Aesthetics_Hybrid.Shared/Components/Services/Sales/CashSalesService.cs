@@ -2092,6 +2092,7 @@ public sealed class CashSalesService : ICashSalesService
         public string MembershipTypeId { get; init; } = string.Empty;
         public PointConversionDM? Rule { get; init; }
         public bool MultipleRulesMatched { get; init; }
+        public bool RuleLookupSucceeded { get; init; }
     }
 
     private async Task<PointStep13Snapshot?> CapturePointStep13SnapshotAsync(
@@ -2126,12 +2127,16 @@ public sealed class CashSalesService : ICashSalesService
 
         PointConversionDM? matchedRule = null;
         var multipleRulesMatched = false;
+        // A customer without a membership type has no member-type point rule to
+        // resolve. Treat that lookup as complete rather than an API failure.
+        var ruleLookupSucceeded = string.IsNullOrWhiteSpace(membershipTypeId);
 
         if (!string.IsNullOrWhiteSpace(membershipTypeId))
         {
             var ruleResult = await pointConversionService.GetAllAsync(cancellationToken);
             if (ruleResult.Success && ruleResult.Value is not null)
             {
+                ruleLookupSucceeded = true;
                 var matchingRules = ruleResult.Value
                     .Where(rule =>
                         string.Equals(
@@ -2185,7 +2190,8 @@ public sealed class CashSalesService : ICashSalesService
             RedeemedPoints = redeemedPoints,
             MembershipTypeId = membershipTypeId,
             Rule = matchedRule,
-            MultipleRulesMatched = multipleRulesMatched
+            MultipleRulesMatched = multipleRulesMatched,
+            RuleLookupSucceeded = ruleLookupSucceeded
         };
     }
 
@@ -2296,12 +2302,26 @@ public sealed class CashSalesService : ICashSalesService
                 $"ConfiguredFormulaEstimate={configuredFormulaEstimate.Value:0.##} | " +
                 $"BackendAuthoritative=True");
         }
+        else if (rule is null &&
+                 snapshot.RuleLookupSucceeded &&
+                 !snapshot.MultipleRulesMatched)
+        {
+            var noRuleMatches =
+                Math.Abs(observedEarned) <= 0.009m;
+
+            Console.WriteLine(
+                $"[Point Step 13] {(noRuleMatches ? "PASS" : "WARNING")} | " +
+                $"Document={transaction.DocumentId} | Customer={transaction.AccountId} | " +
+                $"ObservedEarned={observedEarned:0.##} | NoApplicableRule=True | " +
+                $"ExpectedEarned=0 | BackendAuthoritative=True");
+        }
         else
         {
             Console.WriteLine(
                 $"[Point Step 13] OBSERVED | Document={transaction.DocumentId} | " +
                 $"Customer={transaction.AccountId} | ObservedEarned={observedEarned:0.##} | " +
                 $"Rule={(rule?.PointID ?? "none")} | MultipleRulesMatched={snapshot.MultipleRulesMatched} | " +
+                $"RuleLookupSucceeded={snapshot.RuleLookupSucceeded} | " +
                 $"BackendAuthoritative=True");
         }
     }
