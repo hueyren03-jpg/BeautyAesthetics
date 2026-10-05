@@ -1,3 +1,4 @@
+using Beauty_Aesthetics_WebPos.Models.DTOs;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
@@ -14,7 +15,16 @@ public class FollowUpPageViewModel : INotifyPropertyChanged
 
     // Models
     public record Patient(string Id, string Name, DateTime? Birthday, string Phone, string Email = "", string MembershipType = "");
-    public record FollowUp(int Id, string PatientId, DateTime Date, string Content, string Preview, string PatientName, string? ImageUrl = null, bool IsPinned = false);
+    public record FollowUp(
+        int Id,
+        string PatientId,
+        DateTime Date,
+        string Content,
+        string Preview,
+        string PatientName,
+        string? ImageUrl = null,
+        bool IsPinned = false,
+        string BackendId = "");
 
     // Properties
     private Patient? _selectedPatient;
@@ -168,6 +178,61 @@ public class FollowUpPageViewModel : INotifyPropertyChanged
         Patients.Add(patient);
         SelectedPatient = patient;
     }
+
+    public void ReplaceFollowUpHistory(IEnumerable<FollowUpRecordDTO> records)
+    {
+        var selectedBackendId = CurrentlyViewingFollowUpId.HasValue
+            ? FollowUpHistory.FirstOrDefault(item => item.Id == CurrentlyViewingFollowUpId.Value)?.BackendId
+            : null;
+
+        var pinnedByBackendId = FollowUpHistory
+            .Where(item => item.IsPinned && !string.IsNullOrWhiteSpace(item.BackendId))
+            .Select(item => item.BackendId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        FollowUpHistory.Clear();
+
+        var nextId = 1;
+        foreach (var record in records.OrderByDescending(item => item.Date))
+        {
+            if (string.IsNullOrWhiteSpace(record.RecordId) ||
+                string.IsNullOrWhiteSpace(record.Content))
+            {
+                continue;
+            }
+
+            FollowUpHistory.Add(new FollowUp(
+                nextId++,
+                string.IsNullOrWhiteSpace(record.CustomerId)
+                    ? SelectedPatient?.Id ?? string.Empty
+                    : record.CustomerId,
+                record.Date == default ? DateTime.Now : record.Date,
+                record.Content,
+                GeneratePreview(record.Content),
+                SelectedPatient?.Name ?? string.Empty,
+                ExtractFirstImage(record.Content),
+                pinnedByBackendId.Contains(record.RecordId),
+                record.RecordId));
+        }
+
+        if (!string.IsNullOrWhiteSpace(selectedBackendId))
+        {
+            CurrentlyViewingFollowUpId = FollowUpHistory
+                .FirstOrDefault(item =>
+                    string.Equals(item.BackendId, selectedBackendId, StringComparison.OrdinalIgnoreCase))
+                ?.Id;
+        }
+        else if (CurrentlyViewingFollowUpId.HasValue &&
+                 FollowUpHistory.All(item => item.Id != CurrentlyViewingFollowUpId.Value))
+        {
+            CurrentlyViewingFollowUpId = null;
+        }
+
+        OnPropertyChanged(nameof(FilteredFollowUpHistory));
+    }
+
+    public FollowUp? FindFollowUp(int id) =>
+        FollowUpHistory.FirstOrDefault(item => item.Id == id);
 
     public void SelectPatient(Patient patient)
     {
