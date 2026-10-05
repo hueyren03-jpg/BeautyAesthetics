@@ -1,5 +1,6 @@
 using Beauty_Aesthetics_WebPos.APIClient;
 using Beauty_Aesthetics_WebPos.APIClient.ResultPattern;
+using Beauty_Aesthetics_WebPos.Components.Services;
 using Beauty_Aesthetics_WebPos.Models.DTOs;
 using System.Net;
 using System.Text.Json;
@@ -9,10 +10,12 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.Clinical;
 public sealed class FollowUpService : IFollowUpService
 {
     private readonly CustomerFollowUpAC followUpAC;
+    private readonly AppState appState;
 
-    public FollowUpService(CustomerFollowUpAC followUpAC)
+    public FollowUpService(CustomerFollowUpAC followUpAC, AppState appState)
     {
         this.followUpAC = followUpAC;
+        this.appState = appState;
     }
 
     public async Task<ApiCallResult<IReadOnlyList<FollowUpRecordDTO>>> LoadByCustomerAsync(
@@ -137,6 +140,20 @@ public sealed class FollowUpService : IFollowUpService
                 "Follow-up content is required.");
         }
 
+        if (string.IsNullOrWhiteSpace(record.Symptoms))
+        {
+            return ApiCallResult<FollowUpRecordDTO>.Failure(
+                HttpStatusCode.BadRequest,
+                "Symptoms are required before saving a follow-up.");
+        }
+
+        if (string.IsNullOrWhiteSpace(record.Diagnoses))
+        {
+            return ApiCallResult<FollowUpRecordDTO>.Failure(
+                HttpStatusCode.BadRequest,
+                "Diagnoses are required before saving a follow-up.");
+        }
+
         if (string.IsNullOrWhiteSpace(branchId))
         {
             return ApiCallResult<FollowUpRecordDTO>.Failure(
@@ -145,38 +162,59 @@ public sealed class FollowUpService : IFollowUpService
         }
 
         var isUpdate = !string.IsNullOrWhiteSpace(record.RecordId);
+        CustomerFollowUpDTO? existing = null;
 
-        // Match Senang Retail's CustomerFollowUp payload exactly:
-        // Create: CustomerVisitNoteID=null, audit fields=null/default,
-        // Symptoms/Diagnoses=null, SaveAction=1.
-        // Update: existing ID, same null/default optional fields, SaveAction=0.
+        if (isUpdate)
+        {
+            var loadResult = await followUpAC.LoadRecordAsync(
+                record.RecordId,
+                cancellationToken);
+
+            if (!loadResult.Success || loadResult.Value is null)
+            {
+                return ApiCallResult<FollowUpRecordDTO>.Failure(
+                    loadResult.StatusCode,
+                    loadResult.ErrorMessage ??
+                    "Unable to load the follow-up before updating it.");
+            }
+
+            existing = loadResult.Value;
+        }
+
+        var now = DateTime.Now;
+        var actor = ResolveAuditUser();
+
         var payload = new CustomerFollowUpDTO
         {
             IsLoading = false,
-            CustomerVisitNoteID = isUpdate ? record.RecordId.Trim() : null,
+            CustomerVisitNoteID = isUpdate ? record.RecordId.Trim() : string.Empty,
             FinancialDate = record.Date == default ? DateTime.Today : record.Date,
-            CreatedBy = null,
-            CreatedDateTime = default,
-            ModifiedBy = null,
-            ModifiedDateTime = default,
+            CreatedBy = isUpdate && existing is not null && !string.IsNullOrWhiteSpace(existing.CreatedBy)
+                ? existing.CreatedBy
+                : actor,
+            CreatedDateTime = isUpdate && existing is not null && existing.CreatedDateTime != default
+                ? existing.CreatedDateTime
+                : now,
+            ModifiedBy = actor,
+            ModifiedDateTime = now,
             RtfMessage = record.Content,
             CustomerID = record.CustomerId.Trim(),
             BranchID = branchId.Trim(),
             GroupID = string.IsNullOrWhiteSpace(groupId)
                 ? branchId.Trim()
                 : groupId.Trim(),
-            Symptoms = null,
-            Diagnoses = null,
-            SaveAction = isUpdate ? 0 : 1,
+            Symptoms = record.Symptoms.Trim(),
+            Diagnoses = record.Diagnoses.Trim(),
+            SaveAction = "Changed",
             IsDirty = true
         };
 
         Console.WriteLine(
-            $"[CustomerFollowUp Senang] {(isUpdate ? "UPDATE" : "CREATE")} | " +
-            $"Customer={payload.CustomerID} | Record={payload.CustomerVisitNoteID ?? "null"} | " +
+            $"[CustomerFollowUp Beauty] {(isUpdate ? "UPDATE" : "CREATE")} | " +
+            $"Customer={payload.CustomerID} | Record={payload.CustomerVisitNoteID} | " +
             $"FinancialDate={payload.FinancialDate:O} | Branch={payload.BranchID} | Group={payload.GroupID} | " +
-            $"SaveAction={payload.SaveAction} | CreatedBy=null | ModifiedBy=null | " +
-            $"Symptoms=null | Diagnoses=null | RtfLength={payload.RtfMessage.Length}");
+            $"SaveAction={payload.SaveAction} | SymptomsLength={payload.Symptoms.Length} | " +
+            $"DiagnosesLength={payload.Diagnoses.Length} | RtfLength={payload.RtfMessage.Length}");
 
         var response = isUpdate
             ? await followUpAC.UpdateAsync(payload, cancellationToken)
@@ -191,8 +229,8 @@ public sealed class FollowUpService : IFollowUpService
 
         record.BranchId = payload.BranchID;
         record.GroupId = payload.GroupID;
-        record.Symptoms = string.Empty;
-        record.Diagnoses = string.Empty;
+        record.Symptoms = payload.Symptoms;
+        record.Diagnoses = payload.Diagnoses;
 
         if (!isUpdate)
         {
@@ -208,7 +246,9 @@ public sealed class FollowUpService : IFollowUpService
                 {
                     var match = reload.Value
                         .Where(item =>
-                            string.Equals(item.Content, record.Content, StringComparison.Ordinal))
+                            string.Equals(item.Content, record.Content, StringComparison.Ordinal) &&
+                            string.Equals(item.Symptoms, record.Symptoms, StringComparison.Ordinal) &&
+                            string.Equals(item.Diagnoses, record.Diagnoses, StringComparison.Ordinal))
                         .OrderByDescending(item => item.Date)
                         .FirstOrDefault();
 
@@ -222,7 +262,7 @@ public sealed class FollowUpService : IFollowUpService
         }
 
         Console.WriteLine(
-            $"[CustomerFollowUp Senang] {(isUpdate ? "UPDATE" : "CREATE")} PASS | " +
+            $"[CustomerFollowUp Beauty] {(isUpdate ? "UPDATE" : "CREATE")} PASS | " +
             $"Customer={record.CustomerId} | Record={record.RecordId}");
 
         return ApiCallResult<FollowUpRecordDTO>.Ok(
@@ -276,6 +316,16 @@ public sealed class FollowUpService : IFollowUpService
             Symptoms = row.Symptoms ?? string.Empty,
             Diagnoses = row.Diagnoses ?? string.Empty
         };
+    }
+
+    private string ResolveAuditUser()
+    {
+        if (!string.IsNullOrWhiteSpace(appState.UserEmail))
+        {
+            return appState.UserEmail.Trim();
+        }
+
+        return "POS";
     }
 
     private static string ExtractId(JsonElement response)
