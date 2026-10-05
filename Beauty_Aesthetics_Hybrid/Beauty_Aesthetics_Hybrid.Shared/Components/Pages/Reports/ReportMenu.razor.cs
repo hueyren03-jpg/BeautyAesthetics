@@ -78,13 +78,6 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
         private void OpenReportParameter(ReportItem report)
         {
             SelectedReport = report;
-
-            if (report.Title is "Point Balance" or "Member Point Movement")
-            {
-                nav.NavigateTo("/PointReport");
-                return;
-            }
-
             isSelectedReportParameterOpen = true;
             feedback.Info($"Configure parameters for {report.Title}.", "Report selected", 2200);
         }
@@ -103,13 +96,6 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
                 SelectedReport is null ? "Generating report view." : $"Generating {SelectedReport.Title}.",
                 "Generate report",
                 2200);
-
-            if (SelectedReport?.Title is "Point Balance" or "Member Point Movement")
-            {
-                nav.NavigateTo("/PointReport");
-                return;
-            }
-
             nav.NavigateTo("/Report");
         }
 
