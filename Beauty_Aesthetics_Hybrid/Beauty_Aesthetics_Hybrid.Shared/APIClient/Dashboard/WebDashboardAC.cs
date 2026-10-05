@@ -88,6 +88,15 @@ public sealed class WebDashboardAC
             "Expiring package response was invalid.",
             cancellationToken);
 
+    public Task<ApiCallResult<Dictionary<string, MemberOtherBalanceDetailDTO>>> GetMemberPointBalanceDetailAsync(
+        MemberOtherBalanceDetailRequest payload,
+        CancellationToken cancellationToken = default) =>
+        PostAsync<Dictionary<string, MemberOtherBalanceDetailDTO>>(
+            "/api/WebDashboard/GetMemberOtherBalanceDetail",
+            payload,
+            "Point balance transaction response was invalid.",
+            cancellationToken);
+
     private async Task<ApiCallResult<T>> PostAsync<T>(
         string uri,
         object payload,
