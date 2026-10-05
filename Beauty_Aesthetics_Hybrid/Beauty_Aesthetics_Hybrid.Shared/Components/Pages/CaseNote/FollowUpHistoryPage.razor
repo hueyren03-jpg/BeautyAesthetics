@@ -11,6 +11,7 @@
 @inject FollowUpPageViewModel ViewModel
 @inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.IFollowUpService FollowUpService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext PatientContext
+@inject Beauty_Aesthetics_WebPos.Components.Services.Branches.IBranchSessionService BranchSession
 
 <PageTitle>Follow Up History - Beauty Aesthetics</PageTitle>
 
@@ -248,6 +249,7 @@
             Feedback.Error(result.ErrorMessage ?? "Unable to load the appointment patient.", "Patient not loaded");
         }
 
+        await BranchSession.InitializeAsync();
         await LoadFollowUpHistoryAsync();
     }
 
@@ -259,7 +261,57 @@
             return false;
         }
 
-        var result = await FollowUpService.LoadByCustomerAsync(customerId);
+        await BranchSession.InitializeAsync();
+        var branchId = BranchSession.CurrentBranch?.Id?.Trim() ?? string.Empty;
+
+        Beauty_Aesthetics_WebPos.APIClient.ResultPattern.ApiCallResult<IReadOnlyList<Beauty_Aesthetics_WebPos.Models.DTOs.FollowUpRecordDTO>> result;
+
+        if (!string.IsNullOrWhiteSpace(branchId))
+        {
+            // CustomerFollowUp/LoadProxyByBranchID is the source for the History page.
+            // Load a broad branch range once; the existing UI date filters then work
+            // locally without repeatedly hitting the API while the user changes filters.
+            var startDate = new DateTime(2000, 1, 1);
+            var endDate = DateTime.Today.AddDays(1).AddTicks(-1);
+
+            result = await FollowUpService.LoadByBranchAsync(
+                startDate,
+                endDate,
+                branchId);
+
+            if (result.Success && result.Value is not null)
+            {
+                var customerRecords = result.Value
+                    .Where(record =>
+                        string.Equals(
+                            record.CustomerId,
+                            customerId,
+                            StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                result = Beauty_Aesthetics_WebPos.APIClient.ResultPattern.ApiCallResult<IReadOnlyList<Beauty_Aesthetics_WebPos.Models.DTOs.FollowUpRecordDTO>>.Ok(
+                    result.StatusCode,
+                    customerRecords);
+
+                Console.WriteLine(
+                    $"[Follow Up API] BRANCH HISTORY PASS | Branch={branchId} | " +
+                    $"Customer={customerId} | Records={customerRecords.Count}");
+            }
+            else
+            {
+                Console.WriteLine(
+                    $"[Follow Up API] BRANCH HISTORY FAILED | Branch={branchId} | " +
+                    $"Customer={customerId} | Status={(int)result.StatusCode} | Error={result.ErrorMessage}");
+
+                // Fallback keeps the page usable if the branch proxy is unavailable.
+                result = await FollowUpService.LoadByCustomerAsync(customerId);
+            }
+        }
+        else
+        {
+            result = await FollowUpService.LoadByCustomerAsync(customerId);
+        }
+
         if (!result.Success || result.Value is null)
         {
             Feedback.Error(
