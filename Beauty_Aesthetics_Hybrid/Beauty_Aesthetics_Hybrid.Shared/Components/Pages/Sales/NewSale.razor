@@ -2206,18 +2206,20 @@
             : new List<ServiceViewModel.ServiceItem>();
 
         IReadOnlyList<InventoryPackageSummary> packages = Array.Empty<InventoryPackageSummary>();
-        if (services.Count > 0)
+        var packageResult = await PackageService.LoadPackagesAsync(services, branchId);
+        if (packageResult.Success && packageResult.Value is not null)
         {
-            var packageResult = await PackageService.LoadPackagesAsync(services, branchId);
-            if (packageResult.Success && packageResult.Value is not null)
-            {
-                packages = packageResult.Value
-                    .Where(x =>
-                        !string.IsNullOrWhiteSpace(x.MasterAccountId) &&
-                        !string.Equals(x.Status, "Inactive", StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-            }
+            packages = packageResult.Value
+                .Where(x =>
+                    !string.IsNullOrWhiteSpace(x.MasterAccountId) &&
+                    !string.Equals(x.Status, "Inactive", StringComparison.OrdinalIgnoreCase))
+                .ToList();
         }
+
+        Console.WriteLine(
+            $"[Sales Catalog] WORKSPACE | Branch={branchId} | " +
+            $"Products={products.Count} | Services={services.Count} | Packages={packages.Count} | " +
+            $"MemberCredit={(memberCreditResult.Success && memberCreditResult.Value is not null ? memberCreditResult.Value.Count : 0)}");
 
         // Product, Service and Package proxy records already carry their TaxCode
         // and IsTaxInclusive values. Resolve the configured rate once per unique
@@ -2285,6 +2287,13 @@
             .OrderBy(x => x.Type)
             .ThenBy(x => x.Name)
             .ToList();
+
+        Console.WriteLine(
+            $"[Sales Catalog] READY | Branch={branchId} | Total={catalog.Count} | " +
+            $"Product={catalog.Count(item => item.InventoryTypeId == 1)} | " +
+            $"Service={catalog.Count(item => item.InventoryTypeId == 3)} | " +
+            $"Package={catalog.Count(item => item.InventoryTypeId == 5)} | " +
+            $"MemberCredit={catalog.Count(item => item.InventoryTypeId == 7)}");
     }
 
     private async Task<IReadOnlyDictionary<string, decimal>> LoadCatalogTaxRatesAsync(
