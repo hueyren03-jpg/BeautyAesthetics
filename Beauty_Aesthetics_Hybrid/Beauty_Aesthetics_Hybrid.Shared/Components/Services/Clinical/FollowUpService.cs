@@ -40,10 +40,46 @@ public sealed class FollowUpService : IFollowUpService
                 result.ErrorMessage ?? "Unable to load follow-up history.");
         }
 
-        var records = result.Value
-            .Where(row => !string.IsNullOrWhiteSpace(row.CustomerVisitNoteID))
-            .Select(row => ToFollowUpRecord(row, customerId))
-            .Where(record => !string.IsNullOrWhiteSpace(record.Content))
+        var records = new List<FollowUpRecordDTO>();
+
+        foreach (var row in result.Value
+                     .Where(row => !string.IsNullOrWhiteSpace(row.CustomerVisitNoteID)))
+        {
+            var source = row;
+
+            // Some proxy responses can omit the medical detail columns.
+            // Hydrate the row through LoadRecord so history can restore
+            // FinancialDate + Symptoms + Diagnoses + RtfMessage completely.
+            if (string.IsNullOrWhiteSpace(row.Symptoms) ||
+                string.IsNullOrWhiteSpace(row.Diagnoses) ||
+                string.IsNullOrWhiteSpace(row.RtfMessage))
+            {
+                var fullRecord = await followUpAC.LoadRecordAsync(
+                    row.CustomerVisitNoteID,
+                    cancellationToken);
+
+                if (fullRecord.Success && fullRecord.Value is not null)
+                {
+                    source = fullRecord.Value;
+                    Console.WriteLine(
+                        $"[CustomerFollowUp] HISTORY HYDRATE PASS | Record={row.CustomerVisitNoteID}");
+                }
+                else
+                {
+                    Console.WriteLine(
+                        $"[CustomerFollowUp] HISTORY HYDRATE FALLBACK | Record={row.CustomerVisitNoteID} | " +
+                        $"Status={(int)fullRecord.StatusCode} | Error={fullRecord.ErrorMessage}");
+                }
+            }
+
+            var mapped = ToFollowUpRecord(source, customerId);
+            if (!string.IsNullOrWhiteSpace(mapped.Content))
+            {
+                records.Add(mapped);
+            }
+        }
+
+        records = records
             .OrderByDescending(record => record.Date)
             .ToList();
 
