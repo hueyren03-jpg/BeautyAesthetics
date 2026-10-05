@@ -63,7 +63,7 @@ public sealed class PointHistoryService : IPointHistoryService
             end,
             branchId,
             resolvePaymentMethods: false,
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
         await Task.WhenAll(balanceTask, customerTask, rulesTask, salesTask);
 
