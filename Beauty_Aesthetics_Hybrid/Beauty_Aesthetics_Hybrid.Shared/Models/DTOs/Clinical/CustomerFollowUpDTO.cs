@@ -3,19 +3,19 @@ namespace Beauty_Aesthetics_WebPos.Models.DTOs;
 public sealed class CustomerFollowUpDTO
 {
     public bool IsLoading { get; set; }
-    public string CustomerVisitNoteID { get; set; } = string.Empty;
-    public DateTime FinancialDate { get; set; } = DateTime.Now;
-    public string CreatedBy { get; set; } = string.Empty;
-    public DateTime CreatedDateTime { get; set; } = DateTime.Now;
-    public string ModifiedBy { get; set; } = string.Empty;
-    public DateTime ModifiedDateTime { get; set; } = DateTime.Now;
+    public string? CustomerVisitNoteID { get; set; }
+    public DateTime FinancialDate { get; set; }
+    public string? CreatedBy { get; set; }
+    public DateTime CreatedDateTime { get; set; }
+    public string? ModifiedBy { get; set; }
+    public DateTime ModifiedDateTime { get; set; }
     public string RtfMessage { get; set; } = string.Empty;
     public string CustomerID { get; set; } = string.Empty;
     public string BranchID { get; set; } = string.Empty;
     public string GroupID { get; set; } = string.Empty;
-    public string Symptoms { get; set; } = string.Empty;
-    public string Diagnoses { get; set; } = string.Empty;
-    public object SaveAction { get; set; } = 1;
+    public string? Symptoms { get; set; }
+    public string? Diagnoses { get; set; }
+    public int SaveAction { get; set; } = 1;
     public bool IsDirty { get; set; } = true;
 }
 
