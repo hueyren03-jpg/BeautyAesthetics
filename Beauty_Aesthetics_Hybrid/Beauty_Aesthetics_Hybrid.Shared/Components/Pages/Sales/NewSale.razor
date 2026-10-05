@@ -392,7 +392,7 @@
                         </div>
                         <button type="button"
                                 class="customer-balance-item customer-balance-button"
-                                title="View point history"
+                                title="View points, redemption details and history"
                                 disabled="@string.IsNullOrWhiteSpace(currentOrder.AccountId)"
                                 aria-haspopup="dialog"
                                 aria-expanded="@showPointHistory"
@@ -996,12 +996,12 @@
     <section class="credit-accounts-dialog credit-viewer-dialog"
              role="dialog"
              aria-modal="true"
-             aria-label="Point history">
+             aria-label="Point details">
         <header>
             <div>
                 <span class="credit-dialog-icon"><i class="bi bi-stars"></i></span>
                 <div>
-                    <h2>Point History</h2>
+                    <h2>Points</h2>
                     <small>@currentOrder.CustomerName</small>
                 </div>
             </div>
@@ -1010,27 +1010,82 @@
             </button>
         </header>
 
-        <div class="credit-wallet-summary" aria-label="Point history summary">
+        <div class="credit-wallet-summary" aria-label="Point balance summary">
             <div class="credit-wallet-metric">
                 <span class="credit-wallet-metric-icon"><i class="bi bi-stars"></i></span>
                 <span>
                     <small>Current Balance</small>
-                    <strong>@(pointHistorySnapshot is null ? FormatPointBalance() : $"{pointHistorySnapshot.CurrentPointBalance:N0} pts")</strong>
+                    <strong>@PointDialogCurrentBalance.ToString("0.##") pts</strong>
                 </span>
             </div>
             <div class="credit-wallet-metric selected">
-                <span class="credit-wallet-metric-icon"><i class="bi bi-plus-circle"></i></span>
+                <span class="credit-wallet-metric-icon"><i class="bi bi-bag-check"></i></span>
                 <span>
-                    <small>Earned in Range</small>
-                    <strong>@PointHistoryEarnedTotal.ToString("0.##") pts</strong>
+                    <small>Allocated This Bill</small>
+                    <strong>@PointDialogAllocated.ToString("0.##") pts</strong>
                 </span>
             </div>
             <div class="credit-wallet-metric remaining">
-                <span class="credit-wallet-metric-icon"><i class="bi bi-dash-circle"></i></span>
+                <span class="credit-wallet-metric-icon"><i class="bi bi-wallet2"></i></span>
                 <span>
-                    <small>Redeemed in Range</small>
-                    <strong>@PointHistoryRedeemedTotal.ToString("0.##") pts</strong>
+                    <small>Available Points</small>
+                    <strong>@PointDialogAvailable.ToString("0.##") pts</strong>
                 </span>
+            </div>
+        </div>
+
+        <div class="point-redemption-details">
+            <div class="point-redemption-heading">
+                <div>
+                    <strong>Current Bill Redemption</strong>
+                    <small>Items currently assigned to use points.</small>
+                </div>
+                <span>@PointDialogAllocated.ToString("0.##") pts allocated</span>
+            </div>
+
+            @if (!currentOrder.Items.Any(item => item.Points > 0m))
+            {
+                <div class="point-redemption-empty">
+                    <i class="bi bi-stars"></i>
+                    <span>No points are assigned to the current bill.</span>
+                </div>
+            }
+            else
+            {
+                <div class="credit-account-table-wrap point-redemption-table-wrap">
+                    <table class="credit-account-table point-redemption-table">
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th class="amount-cell">Qty</th>
+                                <th class="amount-cell">Points Redeemed</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var line in currentOrder.Items.Where(item => item.Points > 0m))
+                            {
+                                <tr>
+                                    <td data-label="Item">
+                                        <strong>@line.Name</strong>
+                                        @if (!string.IsNullOrWhiteSpace(line.Sku))
+                                        {
+                                            <small>@line.Sku</small>
+                                        }
+                                    </td>
+                                    <td class="amount-cell" data-label="Qty">@line.Quantity</td>
+                                    <td class="amount-cell" data-label="Points Redeemed">@line.Points.ToString("0.##") pts</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        <div class="point-history-heading">
+            <div>
+                <strong>Point History</strong>
+                <small>Earned @PointHistoryEarnedTotal.ToString("0.##") pts · Redeemed @PointHistoryRedeemedTotal.ToString("0.##") pts in selected range</small>
             </div>
         </div>
 
@@ -1750,6 +1805,12 @@
             .Sum(entry => entry.EarnedPoints!.Value) ?? 0m;
     private decimal PointHistoryRedeemedTotal =>
         pointHistorySnapshot?.Entries.Sum(entry => entry.RedeemedPoints) ?? 0m;
+    private decimal PointDialogCurrentBalance =>
+        Math.Max(0m, pointHistorySnapshot?.CurrentPointBalance ?? selectedCustomerPointBalance ?? 0m);
+    private decimal PointDialogAllocated =>
+        PointsAllocatedOnCurrentBill();
+    private decimal PointDialogAvailable =>
+        Math.Max(0m, PointDialogCurrentBalance - PointDialogAllocated);
     private decimal? selectedCustomerPackageBalance;
     private decimal? selectedCustomerCreditBalance;
     private List<RedeemableCreditDTO> redeemableCredits = new();
