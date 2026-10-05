@@ -1062,7 +1062,23 @@
 
             _hasUnsavedChanges = false;
             _lastSavedContent = content;
-            _currentlyViewingFollowUpId = null;
+
+            if (isUpdate)
+            {
+                var savedBackendId = string.IsNullOrWhiteSpace(saveResult.Value.RecordId)
+                    ? currentFollowUp?.BackendId ?? string.Empty
+                    : saveResult.Value.RecordId;
+
+                _currentlyViewingFollowUpId = ViewModel.FollowUpHistory
+                    .FirstOrDefault(item =>
+                        string.Equals(item.BackendId, savedBackendId, StringComparison.OrdinalIgnoreCase))
+                    ?.Id;
+            }
+            else
+            {
+                _currentlyViewingFollowUpId = null;
+            }
+
             _isSuccess = true;
             _statusMessage = isUpdate
                 ? "Follow-up updated successfully!"
