@@ -32,12 +32,9 @@ public sealed class PointHistoryService : IPointHistoryService
                 "Customer ID is required before point history can be loaded.");
         }
 
-        if (string.IsNullOrWhiteSpace(branchId))
-        {
-            return CustomerOperationResult<PointHistorySnapshotDTO>.Fail(
-                "Working branch is required before point history can be loaded.");
-        }
-
+        // Senang's point-ledger endpoint is customer-scoped and does not accept a branch
+        // parameter. Keep branchId only as UI/session context; do not block history loading
+        // when the branch context is unavailable.
         var start = fromDate.Date;
         var end = toDate.Date;
         if (end < start)
@@ -119,7 +116,8 @@ public sealed class PointHistoryService : IPointHistoryService
             .ToList();
 
         Console.WriteLine(
-            $"[Point Step 14] HISTORY PASS | Customer={customerId} | ContextBranch={branchId} | " +
+            $"[Point Step 14] HISTORY PASS | Customer={customerId} | " +
+            $"ContextBranch={(string.IsNullOrWhiteSpace(branchId) ? "NotRequired" : branchId)} | " +
             $"From={start:yyyy-MM-dd} | To={end:yyyy-MM-dd} | Entries={entries.Count} | " +
             $"CurrentBalance={balanceResult.Value.PointBalance:0.##} | " +
             $"Endpoint=/api/WebDashboard/GetMemberOtherBalanceDetail | BalanceType=Point | " +
