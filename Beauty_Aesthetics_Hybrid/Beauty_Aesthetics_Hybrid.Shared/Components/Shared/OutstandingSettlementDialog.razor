@@ -15,8 +15,9 @@
                     <i class="bi bi-receipt-cutoff"></i>
                 </span>
                 <div>
-                    <h2>Outstanding Settlement</h2>
-                    <p>@CustomerName · select one or multiple unpaid documents</p>
+                    <span class="outstanding-dialog-eyebrow">Customer Wallet</span>
+                    <h2>Outstanding</h2>
+                    <p>@CustomerName · choose one or more invoices to settle</p>
                 </div>
             </div>
             <button type="button"
@@ -29,22 +30,38 @@
         </header>
 
         <div class="outstanding-summary">
-            <div class="outstanding-summary-card">
-                <small>Total Outstanding</small>
-                <strong>RM @DisplayAmount(SummaryOutstanding ?? DocumentOutstandingTotal)</strong>
-            </div>
-            <div class="outstanding-summary-card">
-                <small>Selected Documents</small>
-                <strong>@SelectedDocumentCount</strong>
-            </div>
-            <div class="outstanding-summary-card">
-                <small>Amount to Settle</small>
-                <strong>RM @DisplayAmount(SelectedTotal)</strong>
-            </div>
-            <div class="outstanding-summary-card">
-                <small>Remaining After Selection</small>
-                <strong>RM @DisplayAmount(RemainingAfterSelection)</strong>
-            </div>
+            <article class="outstanding-summary-card primary">
+                <span class="outstanding-summary-icon"><i class="bi bi-wallet2"></i></span>
+                <div>
+                    <small>Total Outstanding</small>
+                    <strong>RM @DisplayAmount(SummaryOutstanding ?? DocumentOutstandingTotal)</strong>
+                    <span>Current unpaid balance</span>
+                </div>
+            </article>
+            <article class="outstanding-summary-card">
+                <span class="outstanding-summary-icon"><i class="bi bi-files"></i></span>
+                <div>
+                    <small>Selected Documents</small>
+                    <strong>@SelectedDocumentCount</strong>
+                    <span>Invoice@(SelectedDocumentCount == 1 ? "" : "s") selected</span>
+                </div>
+            </article>
+            <article class="outstanding-summary-card">
+                <span class="outstanding-summary-icon"><i class="bi bi-cash-coin"></i></span>
+                <div>
+                    <small>Amount to Settle</small>
+                    <strong>RM @DisplayAmount(SelectedTotal)</strong>
+                    <span>Continue to payment next</span>
+                </div>
+            </article>
+            <article class="outstanding-summary-card">
+                <span class="outstanding-summary-icon"><i class="bi bi-pie-chart"></i></span>
+                <div>
+                    <small>Remaining</small>
+                    <strong>RM @DisplayAmount(RemainingAfterSelection)</strong>
+                    <span>After this selection</span>
+                </div>
+            </article>
         </div>
 
         @if (IsLoading)
@@ -77,11 +94,11 @@
         else
         {
             <div class="outstanding-account-summary">
-                <span>
-                    <strong>@Documents.Count</strong>
-                    unpaid document@(Documents.Count == 1 ? "" : "s")
-                </span>
-                <span>Oldest financial date is shown first.</span>
+                <div>
+                    <strong>Unpaid Documents</strong>
+                    <span>Select an invoice, then adjust the settlement amount if needed.</span>
+                </div>
+                <span class="outstanding-document-count">@Documents.Count open</span>
             </div>
 
             @if (!string.IsNullOrWhiteSpace(_validationMessage))
@@ -174,7 +191,7 @@
         <footer>
             <div class="outstanding-dialog-note">
                 <i class="bi bi-info-circle"></i>
-                <span>Step 3 only selects outstanding documents and amounts. Payment is handled in the next step.</span>
+                <span>Selected invoices will continue to the normal payment screen.</span>
             </div>
             <div class="outstanding-dialog-actions">
                 <button type="button"
