@@ -88,6 +88,9 @@ public sealed record ThermalReceiptItemValues(
 
                 if (amount is null && price.HasValue && Number(line, "TaxPercentage") == 0m)
                     amount = quantity * price.Value - discount;
+                if (amount is null && price.HasValue &&
+                    Math.Abs(quantity * price.Value - discount) < 0.0001m)
+                    amount = 0m;
             }
 
             values.Add(new ThermalReceiptItemValues(sku, description, quantity,
@@ -100,7 +103,8 @@ public sealed record ThermalReceiptItemValues(
 
     private static IReadOnlyList<ThermalReceiptItemValues> FromOriginalSale(Transaction? sale) =>
         sale?.Items.Select(item => new ThermalReceiptItemValues(item.Sku ?? string.Empty,
-            item.Description ?? item.Name ?? string.Empty, item.Quantity, item.UnitPrice, item.TotalPrice))
+            string.IsNullOrWhiteSpace(item.Description) ? item.Name : item.Description,
+            item.Quantity, item.UnitPrice, item.TotalPrice))
             .ToList() ?? new List<ThermalReceiptItemValues>();
 
     private static JsonNode? Field(JsonObject line, string name) =>
