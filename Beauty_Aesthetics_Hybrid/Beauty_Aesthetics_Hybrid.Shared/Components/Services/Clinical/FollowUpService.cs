@@ -170,7 +170,7 @@ public sealed class FollowUpService : IFollowUpService
         }
 
         var now = DateTime.Now;
-        var actor = appState.UserEmail?.Trim() ?? string.Empty;
+        var actor = ResolveAuditUser();
 
         var payload = new CustomerFollowUpDTO
         {
@@ -197,12 +197,14 @@ public sealed class FollowUpService : IFollowUpService
             GroupID = string.IsNullOrWhiteSpace(groupId)
                 ? branchId.Trim()
                 : groupId.Trim(),
-            Symptoms = string.IsNullOrWhiteSpace(record.Symptoms)
-                ? existing?.Symptoms ?? string.Empty
-                : record.Symptoms,
-            Diagnoses = string.IsNullOrWhiteSpace(record.Diagnoses)
-                ? existing?.Diagnoses ?? string.Empty
-                : record.Diagnoses,
+            Symptoms = NonNullBackendText(
+                string.IsNullOrWhiteSpace(record.Symptoms)
+                    ? existing?.Symptoms
+                    : record.Symptoms),
+            Diagnoses = NonNullBackendText(
+                string.IsNullOrWhiteSpace(record.Diagnoses)
+                    ? existing?.Diagnoses
+                    : record.Diagnoses),
             SaveAction = "Changed",
             IsDirty = true
         };
@@ -322,6 +324,89 @@ public sealed class FollowUpService : IFollowUpService
             Symptoms = row.Symptoms ?? string.Empty,
             Diagnoses = row.Diagnoses ?? string.Empty
         };
+    }
+
+    private string ResolveAuditUser()
+    {
+        if (!string.IsNullOrWhiteSpace(appState.UserEmail))
+        {
+            return appState.UserEmail.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(appState.CurrentUserJson))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(appState.CurrentUserJson);
+                foreach (var key in new[]
+                {
+                    "email",
+                    "userName",
+                    "username",
+                    "displayName",
+                    "name",
+                    "employeeID",
+                    "employeeId",
+                    "userID",
+                    "userId",
+                    "id"
+                })
+                {
+                    var value = FindStringValue(document.RootElement, key);
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        return value.Trim();
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+            }
+        }
+
+        // CustomerFollowUp backend maps audit columns directly to string and
+        // throws when SQL returns DBNull. Always provide a non-empty actor.
+        return "POS";
+    }
+
+    private static string NonNullBackendText(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();
+
+    private static string? FindStringValue(JsonElement element, string propertyName)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase) &&
+                        property.Value.ValueKind == JsonValueKind.String &&
+                        !string.IsNullOrWhiteSpace(property.Value.GetString()))
+                    {
+                        return property.Value.GetString();
+                    }
+
+                    var nested = FindStringValue(property.Value, propertyName);
+                    if (!string.IsNullOrWhiteSpace(nested))
+                    {
+                        return nested;
+                    }
+                }
+                break;
+
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray())
+                {
+                    var nested = FindStringValue(item, propertyName);
+                    if (!string.IsNullOrWhiteSpace(nested))
+                    {
+                        return nested;
+                    }
+                }
+                break;
+        }
+
+        return null;
     }
 
     private static string ExtractId(JsonElement response)
