@@ -803,6 +803,10 @@ public sealed class CashSalesService : ICashSalesService
             pointStep13Snapshot,
             cancellationToken);
 
+        await VerifyPointStep16SavedReloadAsync(
+            transaction,
+            cancellationToken);
+
         // Keep the values submitted by the completed sale available to receipt
         // loading. Some backend LoadRecord responses contain the correct item
         // identity and quantity but return zero monetary fields, which otherwise
@@ -1601,6 +1605,17 @@ public sealed class CashSalesService : ICashSalesService
                     HttpStatusCode.BadRequest,
                     $"Point-redeemed item {First(item.Name, item.InventoryId, "item")} must have UnitPrice = 0.");
             }
+
+            if (Math.Abs(item.Discount) > 0.009m || Math.Abs(item.TaxAmount) > 0.009m)
+            {
+                Console.WriteLine(
+                    $"[Point Step 16] BLOCKED | Source=CashSalesService | Inventory={item.InventoryId} | " +
+                    $"Reason=PointLineMonetaryState | Discount={item.Discount:N2} | Tax={item.TaxAmount:N2}");
+
+                return ApiCallResult<bool>.Failure(
+                    HttpStatusCode.BadRequest,
+                    $"Point-redeemed item {First(item.Name, item.InventoryId, "item")} must not carry a discount or tax amount.");
+            }
         }
 
         var latestBalanceResult = await customerService.GetBalanceSummaryAsync(
@@ -1646,6 +1661,93 @@ public sealed class CashSalesService : ICashSalesService
             $"RemainingAfterSave={Math.Max(0m, latestBalance - totalPoints):0.##} | Lines={pointLines.Count}");
 
         return ApiCallResult<bool>.Ok(HttpStatusCode.OK, true);
+    }
+
+    private async Task VerifyPointStep16SavedReloadAsync(
+        Transaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var expectedPointLines = transaction.Items
+            .Where(item => item.Points > 0m)
+            .ToList();
+
+        if (expectedPointLines.Count == 0 ||
+            string.IsNullOrWhiteSpace(transaction.DocumentId))
+        {
+            return;
+        }
+
+        var reloadResult = await LoadTransactionAsync(
+            transaction.DocumentId,
+            5,
+            cancellationToken);
+
+        if (!reloadResult.Success || reloadResult.Value is null)
+        {
+            Console.WriteLine(
+                $"[Point Step 16] SAVED RELOAD WARNING | Document={transaction.DocumentId} | " +
+                $"Reason={reloadResult.ErrorMessage ?? "Backend reload failed"}");
+            return;
+        }
+
+        var expectedByInventory = expectedPointLines
+            .GroupBy(item => item.InventoryId ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => new
+                {
+                    Quantity = group.Sum(item => Math.Max(1, item.Quantity)),
+                    Points = Math.Round(
+                        group.Sum(item => Math.Max(0m, item.Points)),
+                        2,
+                        MidpointRounding.AwayFromZero)
+                },
+                StringComparer.OrdinalIgnoreCase);
+
+        var savedPointLines = reloadResult.Value.Items
+            .Where(item => item.Points > 0m)
+            .ToList();
+
+        var savedByInventory = savedPointLines
+            .GroupBy(item => item.InventoryId ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => new
+                {
+                    Quantity = group.Sum(item => Math.Max(1, item.Quantity)),
+                    Points = Math.Round(
+                        group.Sum(item => Math.Max(0m, item.Points)),
+                        2,
+                        MidpointRounding.AwayFromZero)
+                },
+                StringComparer.OrdinalIgnoreCase);
+
+        var linesMatch =
+            expectedByInventory.Count == savedByInventory.Count &&
+            expectedByInventory.All(expected =>
+                savedByInventory.TryGetValue(expected.Key, out var saved) &&
+                saved.Quantity == expected.Value.Quantity &&
+                Math.Abs(saved.Points - expected.Value.Points) <= 0.009m);
+
+        decimal? latestBalance = null;
+        if (!string.IsNullOrWhiteSpace(transaction.AccountId))
+        {
+            var balanceResult = await customerService.GetBalanceSummaryAsync(
+                transaction.AccountId,
+                cancellationToken);
+            if (balanceResult.Success && balanceResult.Value is not null)
+            {
+                latestBalance = Math.Max(0m, balanceResult.Value.PointBalance);
+            }
+        }
+
+        Console.WriteLine(
+            $"[Point Step 16] SAVED RELOAD {(linesMatch ? "PASS" : "WARNING")} | " +
+            $"Document={transaction.DocumentId} | Invoice={transaction.InvoiceNumber} | " +
+            $"ExpectedLines={expectedPointLines.Count} | SavedLines={savedPointLines.Count} | " +
+            $"ExpectedPoints={expectedPointLines.Sum(item => Math.Max(0m, item.Points)):0.##} | " +
+            $"SavedPoints={savedPointLines.Sum(item => Math.Max(0m, item.Points)):0.##} | " +
+            $"LatestBackendBalance={(latestBalance.HasValue ? latestBalance.Value.ToString("0.##") : "Unavailable")}");
     }
 
     private sealed class PointStep13Snapshot
