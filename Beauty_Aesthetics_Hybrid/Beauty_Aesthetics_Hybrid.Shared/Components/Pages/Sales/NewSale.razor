@@ -2676,6 +2676,9 @@
         // for the line, verified by the multi-quantity Step 2 backend test.
         item.Points = required;
         item.UnitPrice = 0m;
+        item.Discount = 0m;
+        item.CashDiscountId = string.Empty;
+        item.DiscountMemo = string.Empty;
 
         Console.WriteLine(
             $"[Point Step 5] LINE ASSIGNED | Source=Sales | Inventory={item.InventoryId} | " +
@@ -2743,7 +2746,9 @@
         {
             if (!IsPointRedemptionEligible(item) ||
                 Math.Abs(RequiredPointsFor(item) - item.Points) > 0.009m ||
-                Math.Abs(item.UnitPrice) > 0.009m)
+                Math.Abs(item.UnitPrice) > 0.009m ||
+                Math.Abs(item.Discount) > 0.009m ||
+                Math.Abs(item.TaxAmount) > 0.009m)
             {
                 if (showFeedback)
                 {
@@ -4529,6 +4534,10 @@
                 $"[Member Credit Step 37] PASS | Customer={currentOrder.AccountId} | " +
                 $"OldAssignmentsCleared=True | NewRedeemableAccounts={redeemableCredits.Count}");
 
+            Console.WriteLine(
+                $"[Point Step 16] CUSTOMER SWITCH PASS | From={previousCustomerId} | To={currentOrder.AccountId} | " +
+                $"ReleasedPoints={releasedPoints:0.##} | RemainingAllocated={PointsAllocatedOnCurrentBill():0.##}");
+
             if (releasedCredit > 0m)
             {
                 Feedback.Info(
@@ -4925,6 +4934,27 @@
             PendingOrderService.SaveOrUpdate(currentOrder);
         }
 
+        if (HasPointRedemption)
+        {
+            var heldPointValid = await RevalidatePointRedemptionsAsync(showFeedback: true);
+            if (!heldPointValid)
+            {
+                currentOrder.Payments.Clear();
+                PendingOrderService.SaveOrUpdate(currentOrder);
+                Console.WriteLine(
+                    $"[Point Step 16] HELD RESUME BLOCKED | Order={currentOrder.OrderNumber} | " +
+                    $"Customer={currentOrder.AccountId} | Allocated={PointsAllocatedOnCurrentBill():0.##}");
+            }
+            else
+            {
+                PendingOrderService.SaveOrUpdate(currentOrder);
+                Console.WriteLine(
+                    $"[Point Step 16] HELD RESUME PASS | Order={currentOrder.OrderNumber} | " +
+                    $"Customer={currentOrder.AccountId} | Allocated={PointsAllocatedOnCurrentBill():0.##} | " +
+                    $"LatestBalance={Math.Max(0m, selectedCustomerPointBalance ?? 0m):0.##}");
+            }
+        }
+
         if (branchChanged)
         {
             var validAllocations = currentOrder.Items
@@ -4970,6 +5000,14 @@
                 $"CreditLines={currentOrder.Items.Count(item => item.ActivityTypeId == 6)} | " +
                 $"CreditAccounts={heldAllocations.Select(allocation => allocation.MemberCreditAccountId).Distinct(StringComparer.OrdinalIgnoreCase).Count()} | " +
                 $"Allocated={heldAllocations.Sum(allocation => allocation.Amount):N2}");
+        }
+
+        if (HasPointRedemption)
+        {
+            Console.WriteLine(
+                $"[Point Step 16] HOLD | Order={currentOrder.OrderNumber} | Customer={currentOrder.AccountId} | " +
+                $"PointLines={currentOrder.Items.Count(item => item.Points > 0m)} | " +
+                $"Allocated={PointsAllocatedOnCurrentBill():0.##}");
         }
 
         PendingOrderService.SaveOrUpdate(currentOrder);
@@ -5308,7 +5346,7 @@
         CloseItemEditor();
     }
 
-    private void ChangeCartItemQuantity(TransactionItem item, int delta)
+    private async Task ChangeCartItemQuantity(TransactionItem item, int delta)
     {
         var newQty = item.Quantity + delta;
         if (newQty <= 0)
@@ -5316,36 +5354,66 @@
             RemoveItem(item);
             return;
         }
+
         if (item.Points > 0m)
         {
+            if (string.IsNullOrWhiteSpace(currentOrder.AccountId))
+            {
+                Feedback.Warning("Select a customer before changing a point-redeemed quantity.", "Customer required");
+                return;
+            }
+
+            // Point Step 16: quantity changes must use the latest backend balance,
+            // not the balance cached when points were first assigned.
+            var balanceResult = await CustomerService.GetBalanceSummaryAsync(currentOrder.AccountId);
+            if (!balanceResult.Success || balanceResult.Value is null)
+            {
+                Feedback.Error(
+                    balanceResult.ErrorMessage ?? "Unable to recheck the latest point balance.",
+                    "Point balance unavailable");
+                return;
+            }
+
+            selectedCustomerPointBalance = balanceResult.Value.PointBalance;
+            var latestBalance = Math.Max(0m, balanceResult.Value.PointBalance);
             var required = Math.Round(
                 Math.Max(0m, item.PointToRedeem) * newQty,
                 2,
                 MidpointRounding.AwayFromZero);
             var allocatedElsewhere = PointsAllocatedOnCurrentBill(item);
-            if (selectedCustomerPointBalance.HasValue &&
-                allocatedElsewhere + required - selectedCustomerPointBalance.Value > 0.009m)
+            var availableForThisLine = Math.Max(0m, latestBalance - allocatedElsewhere);
+
+            Console.WriteLine(
+                $"[Point Step 16] QUANTITY CHECK | Source=Sales | Customer={currentOrder.AccountId} | " +
+                $"Inventory={item.InventoryId} | OldQty={item.Quantity} | NewQty={newQty} | " +
+                $"LatestBalance={latestBalance:0.##} | AllocatedElsewhere={allocatedElsewhere:0.##} | " +
+                $"AvailableForLine={availableForThisLine:0.##} | Required={required:0.##}");
+
+            if (required - availableForThisLine > 0.009m)
             {
+                Console.WriteLine(
+                    $"[Point Step 16] QUANTITY BLOCKED | Source=Sales | Customer={currentOrder.AccountId} | " +
+                    $"Inventory={item.InventoryId} | NewQty={newQty} | Available={availableForThisLine:0.##} | Required={required:0.##}");
+
                 Feedback.Warning(
-                    $"Not enough points for quantity {newQty}. Available for this line: {Math.Max(0m, selectedCustomerPointBalance.Value - allocatedElsewhere):0.##} pts.",
+                    $"Not enough points for quantity {newQty}. Available for this line: {availableForThisLine:0.##} pts.",
                     "Not enough points");
                 return;
             }
 
             item.Quantity = newQty;
             item.Points = required;
+            item.Discount = 0m;
+            item.CashDiscountId = string.Empty;
+            item.DiscountMemo = string.Empty;
             RecalculateItemTaxAndTotal(item);
             currentOrder.Payments.Clear();
             PendingOrderService.SaveOrUpdate(currentOrder);
 
             Console.WriteLine(
-                $"[Point Step 2] QUANTITY | Item={item.InventoryId} | Qty={item.Quantity} | " +
-                $"LinePoints={item.Points:0.##} | Required={RequiredPointsFor(item):0.##}");
-
-            Console.WriteLine(
-                $"[Point Step 7] TOTAL ALLOCATION | Source=Sales | Customer={currentOrder.AccountId} | " +
-                $"Lines={currentOrder.Items.Count(candidate => candidate.Points > 0m)} | " +
-                $"Allocated={PointsAllocatedOnCurrentBill():0.##} | Change=Quantity");
+                $"[Point Step 16] QUANTITY PASS | Source=Sales | Customer={currentOrder.AccountId} | " +
+                $"Inventory={item.InventoryId} | Qty={item.Quantity} | LinePoints={item.Points:0.##} | " +
+                $"TotalAllocated={PointsAllocatedOnCurrentBill():0.##}");
             return;
         }
 
@@ -5421,6 +5489,10 @@
             .Where(item => item.ActivityTypeId == 6)
             .SelectMany(EffectiveLineCreditAllocations)
             .Sum(allocation => allocation.Amount);
+        var releasedPoints = Math.Round(
+            currentOrder.Items.Sum(item => Math.Max(0m, item.Points)),
+            2,
+            MidpointRounding.AwayFromZero);
 
         currentOrder.Items.Clear();
         currentOrder.Payments.Clear();
@@ -5430,6 +5502,12 @@
         {
             Console.WriteLine(
                 $"[Member Credit Step 34] CLEAR CART | Released={releasedCredit:N2}");
+        }
+
+        if (releasedPoints > 0m)
+        {
+            Console.WriteLine(
+                $"[Point Step 16] CLEAR CART | Customer={currentOrder.AccountId} | Released={releasedPoints:0.##}");
         }
 
         Feedback.Info("All items were removed from the cart.", "Cart cleared", 2400);
