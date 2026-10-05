@@ -124,7 +124,7 @@
                         <div class="wallet-card points-balance"
                              role="button"
                              tabindex="0"
-                             title="View point history"
+                             title="View points, redemption details and history"
                              @onclick="OpenPointHistoryAsync">
                             <div class="wallet-card-header">
                                 <i class="bi bi-gift"></i>
@@ -1677,7 +1677,7 @@
                 <div class="billing-credit-dialog__title">
                     <span class="billing-credit-dialog__icon"><i class="bi bi-stars"></i></span>
                     <div>
-                        <h3>Point History</h3>
+                        <h3>Points</h3>
                         <small>@PatientName</small>
                     </div>
                 </div>
@@ -1694,15 +1694,87 @@
                 <div class="billing-credit-summary">
                     <div>
                         <span>Current Balance</span>
-                        <strong>@(_pointHistorySnapshot is null ? FormatPointBalance(CustomerPointBalance) : $"{_pointHistorySnapshot.CurrentPointBalance:N0} pts")</strong>
+                        <strong>@_pointDialogCurrentBalance.ToString("0.##") pts</strong>
                     </div>
                     <div>
-                        <span>Earned in Range</span>
-                        <strong>@_pointHistoryEarnedTotal.ToString("0.##") pts</strong>
+                        <span>Allocated This Bill</span>
+                        <strong>@_pointDialogAllocated.ToString("0.##") pts</strong>
                     </div>
                     <div>
-                        <span>Redeemed in Range</span>
-                        <strong>@_pointHistoryRedeemedTotal.ToString("0.##") pts</strong>
+                        <span>Available Points</span>
+                        <strong>@_pointDialogAvailable.ToString("0.##") pts</strong>
+                    </div>
+                </div>
+
+                <div class="billing-point-redemption-details">
+                    <div class="billing-point-section-heading">
+                        <div>
+                            <strong>Current Bill Redemption</strong>
+                            <small>Items currently assigned to use points.</small>
+                        </div>
+                        <span>@_pointDialogAllocated.ToString("0.##") pts allocated</span>
+                    </div>
+
+                    @if (!HasBillingPointRedemption)
+                    {
+                        <div class="billing-point-empty">
+                            <i class="bi bi-stars"></i>
+                            <span>No points are assigned to the current bill.</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="table-wrapper billing-point-redemption-table-wrap">
+                            <table class="billing-table billing-point-redemption-table">
+                                <thead>
+                                    <tr>
+                                        <th>Type</th>
+                                        <th>Item</th>
+                                        <th>Qty</th>
+                                        <th>Points Redeemed</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var line in PrescriptionItems.Where(item => item.Points > 0m))
+                                    {
+                                        <tr>
+                                            <td>Product</td>
+                                            <td>
+                                                <strong>@line.Name</strong>
+                                                @if (!string.IsNullOrWhiteSpace(line.Sku))
+                                                {
+                                                    <small class="billing-line-code">@line.Sku</small>
+                                                }
+                                            </td>
+                                            <td>@line.Quantity</td>
+                                            <td>@line.Points.ToString("0.##") pts</td>
+                                        </tr>
+                                    }
+                                    @foreach (var line in ServiceItems.Where(item => item.Points > 0m))
+                                    {
+                                        <tr>
+                                            <td>Service</td>
+                                            <td>
+                                                <strong>@line.Name</strong>
+                                                @if (!string.IsNullOrWhiteSpace(line.Sku))
+                                                {
+                                                    <small class="billing-line-code">@line.Sku</small>
+                                                }
+                                            </td>
+                                            <td>@line.Quantity</td>
+                                            <td>@line.Points.ToString("0.##") pts</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+
+                <div class="billing-point-section-heading billing-point-history-heading">
+                    <div>
+                        <strong>Point History</strong>
+                        <small>Earned @_pointHistoryEarnedTotal.ToString("0.##") pts · Redeemed @_pointHistoryRedeemedTotal.ToString("0.##") pts in selected range</small>
                     </div>
                 </div>
 
@@ -2125,6 +2197,12 @@
             .Sum(entry => entry.EarnedPoints!.Value) ?? 0m;
     private decimal _pointHistoryRedeemedTotal =>
         _pointHistorySnapshot?.Entries.Sum(entry => entry.RedeemedPoints) ?? 0m;
+    private decimal _pointDialogCurrentBalance =>
+        Math.Max(0m, _pointHistorySnapshot?.CurrentPointBalance ?? CustomerPointBalance ?? 0m);
+    private decimal _pointDialogAllocated =>
+        BillingPointsAllocated();
+    private decimal _pointDialogAvailable =>
+        Math.Max(0m, _pointDialogCurrentBalance - _pointDialogAllocated);
     private decimal? CustomerPackageBalance { get; set; }
     private decimal? CustomerCreditBalance { get; set; }
     private bool _isCustomerBalanceLoading;
