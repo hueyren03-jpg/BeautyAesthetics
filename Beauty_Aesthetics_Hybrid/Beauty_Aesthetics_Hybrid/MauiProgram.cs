@@ -96,6 +96,7 @@ namespace Beauty_Aesthetics_Hybrid
             builder.Services.AddScoped<ARReceiptAC>();
 builder.Services.AddScoped<CustomerVisitNoteAC>();
 builder.Services.AddScoped<IMedicalCertificateService, MedicalCertificateService>();
+builder.Services.AddScoped<IFollowUpService, FollowUpService>();
             builder.Services.AddScoped<CustomerRatingAC>();
             builder.Services.AddScoped<CustomerService>();
             builder.Services.AddScoped<ICustomerService>(sp => sp.GetRequiredService<CustomerService>());

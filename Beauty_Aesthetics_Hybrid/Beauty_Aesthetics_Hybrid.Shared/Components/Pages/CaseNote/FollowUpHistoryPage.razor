@@ -9,6 +9,7 @@
 @inject AppFeedbackService Feedback
 @inject NavigationManager NavigationManager
 @inject FollowUpPageViewModel ViewModel
+@inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.IFollowUpService FollowUpService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext PatientContext
 
 <PageTitle>Follow Up History - Beauty Aesthetics</PageTitle>
@@ -246,6 +247,35 @@
         {
             Feedback.Error(result.ErrorMessage ?? "Unable to load the appointment patient.", "Patient not loaded");
         }
+
+        await LoadFollowUpHistoryAsync();
+    }
+
+    private async Task<bool> LoadFollowUpHistoryAsync()
+    {
+        var customerId = ViewModel.SelectedPatient?.Id?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(customerId))
+        {
+            return false;
+        }
+
+        var result = await FollowUpService.LoadByCustomerAsync(customerId);
+        if (!result.Success || result.Value is null)
+        {
+            Feedback.Error(
+                result.ErrorMessage ?? "Unable to load follow-up history.",
+                "Follow-up history not loaded");
+
+            Console.WriteLine(
+                $"[Follow Up API] HISTORY LOAD FAILED | Customer={customerId} | " +
+                $"Status={(int)result.StatusCode} | Error={result.ErrorMessage}");
+            return false;
+        }
+
+        ViewModel.ReplaceFollowUpHistory(result.Value);
+        Console.WriteLine(
+            $"[Follow Up API] HISTORY LOAD PASS | Customer={customerId} | Records={result.Value.Count}");
+        return true;
     }
 
     private bool _isDateFilterOpen = false;
@@ -287,20 +317,43 @@
     private async Task DeleteFollowUp(int followUpId)
     {
         bool confirmed = await JS.InvokeAsync<bool>("confirm", "Are you sure you want to delete this follow-up record?");
-        if (confirmed)
-        {
-            ViewModel.DeleteFollowUp(followUpId);
-            Feedback.Success("Follow-up record deleted successfully.", "Follow-up deleted");
-            if (ViewModel.CurrentlyViewingFollowUpId == followUpId)
-            {
-                ViewModel.CurrentlyViewingFollowUpId = null;
-            }
-            StateHasChanged();
-        }
-        else
+        if (!confirmed)
         {
             Feedback.Info("Follow-up deletion cancelled.", "Delete cancelled", 1800);
+            return;
         }
+
+        var followUp = ViewModel.FindFollowUp(followUpId);
+        if (followUp is null || string.IsNullOrWhiteSpace(followUp.BackendId))
+        {
+            Feedback.Error(
+                "The selected follow-up is missing its backend record ID. Reload the page and try again.",
+                "Follow-up not deleted");
+            return;
+        }
+
+        var result = await FollowUpService.DeleteAsync(followUp.BackendId);
+        if (!result.Success)
+        {
+            Feedback.Error(
+                result.ErrorMessage ?? "Unable to delete the follow-up.",
+                "Follow-up not deleted");
+            Console.WriteLine(
+                $"[Follow Up API] HISTORY DELETE FAILED | Record={followUp.BackendId} | " +
+                $"Status={(int)result.StatusCode} | Error={result.ErrorMessage}");
+            return;
+        }
+
+        if (ViewModel.CurrentlyViewingFollowUpId == followUpId)
+        {
+            ViewModel.CurrentlyViewingFollowUpId = null;
+        }
+
+        await LoadFollowUpHistoryAsync();
+        Feedback.Success("Follow-up record deleted successfully.", "Follow-up deleted");
+        Console.WriteLine(
+            $"[Follow Up API] HISTORY DELETE PASS | Record={followUp.BackendId} | Customer={followUp.PatientId}");
+        StateHasChanged();
     }
 
     private void SelectFollowUp(FollowUpPageViewModel.FollowUp followUp)
