@@ -249,8 +249,8 @@ public sealed class FollowUpService : IFollowUpService
             $"[CustomerFollowUp Beauty] {(isUpdate ? "UPDATE" : "CREATE")} | " +
             $"Customer={payload.CustomerID} | Record={payload.CustomerVisitNoteID} | " +
             $"FinancialDate={payload.FinancialDate:O} | Branch={payload.BranchID} | Group={payload.GroupID} | " +
-            $"SaveAction={payload.SaveAction} | SymptomsLength={payload.Symptoms.Length} | " +
-            $"DiagnosesLength={payload.Diagnoses.Length} | RtfLength={payload.RtfMessage.Length}");
+            $"SaveAction={payload.SaveAction} | SymptomsLength={payload.Symptoms?.Length ?? 0} | " +
+            $"DiagnosesLength={payload.Diagnoses?.Length ?? 0} | RtfLength={payload.RtfMessage.Length}");
 
         var response = isUpdate
             ? await followUpAC.UpdateAsync(payload, cancellationToken)
@@ -265,8 +265,8 @@ public sealed class FollowUpService : IFollowUpService
 
         record.BranchId = payload.BranchID;
         record.GroupId = payload.GroupID;
-        record.Symptoms = payload.Symptoms;
-        record.Diagnoses = payload.Diagnoses;
+        record.Symptoms = payload.Symptoms ?? string.Empty;
+        record.Diagnoses = payload.Diagnoses ?? string.Empty;
 
         if (!isUpdate)
         {
@@ -352,16 +352,6 @@ public sealed class FollowUpService : IFollowUpService
             Symptoms = row.Symptoms ?? string.Empty,
             Diagnoses = row.Diagnoses ?? string.Empty
         };
-    }
-
-    private string ResolveAuditUser()
-    {
-        if (!string.IsNullOrWhiteSpace(appState.UserEmail))
-        {
-            return appState.UserEmail.Trim();
-        }
-
-        return "POS";
     }
 
     private static string ExtractId(JsonElement response)
