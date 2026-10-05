@@ -24,7 +24,9 @@ public class FollowUpPageViewModel : INotifyPropertyChanged
         string PatientName,
         string? ImageUrl = null,
         bool IsPinned = false,
-        string BackendId = "");
+        string BackendId = "",
+        string Symptoms = "",
+        string Diagnoses = "");
 
     // Properties
     private Patient? _selectedPatient;
@@ -212,7 +214,9 @@ public class FollowUpPageViewModel : INotifyPropertyChanged
                 SelectedPatient?.Name ?? string.Empty,
                 ExtractFirstImage(record.Content),
                 pinnedByBackendId.Contains(record.RecordId),
-                record.RecordId));
+                record.RecordId,
+                record.Symptoms,
+                record.Diagnoses));
         }
 
         if (!string.IsNullOrWhiteSpace(selectedBackendId))
@@ -348,6 +352,8 @@ public class FollowUpPageViewModel : INotifyPropertyChanged
             f.PatientName.ToLower().Contains(query) ||
             f.Preview.ToLower().Contains(query) ||
             f.Content.ToLower().Contains(query) ||
+            f.Symptoms.ToLower().Contains(query) ||
+            f.Diagnoses.ToLower().Contains(query) ||
             f.Date.ToString("dd/MM/yyyy").Contains(query) ||
             f.Date.ToString("MMM dd, yyyy").ToLower().Contains(query) ||
             f.Date.ToString("MMMM").ToLower().Contains(query) ||
