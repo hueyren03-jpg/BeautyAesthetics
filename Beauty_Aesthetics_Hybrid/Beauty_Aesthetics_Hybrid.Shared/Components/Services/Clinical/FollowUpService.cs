@@ -198,41 +198,19 @@ public sealed class FollowUpService : IFollowUpService
         }
 
         var isUpdate = !string.IsNullOrWhiteSpace(record.RecordId);
-        CustomerFollowUpDTO? existing = null;
 
-        if (isUpdate)
-        {
-            var loadResult = await followUpAC.LoadRecordAsync(
-                record.RecordId,
-                cancellationToken);
-
-            if (!loadResult.Success || loadResult.Value is null)
-            {
-                return ApiCallResult<FollowUpRecordDTO>.Failure(
-                    loadResult.StatusCode,
-                    loadResult.ErrorMessage ??
-                    "Unable to load the follow-up before updating it.");
-            }
-
-            existing = loadResult.Value;
-        }
-
-        var now = DateTime.Now;
-        var actor = ResolveAuditUser();
-
+        // Beauty medical-aesthetics Follow Up:
+        // keep Symptoms/Diagnoses populated, but use the working backend action code.
+        // User requirement: SaveAction = 1 for BOTH Create and Update.
         var payload = new CustomerFollowUpDTO
         {
             IsLoading = false,
-            CustomerVisitNoteID = isUpdate ? record.RecordId.Trim() : string.Empty,
+            CustomerVisitNoteID = isUpdate ? record.RecordId.Trim() : null,
             FinancialDate = record.Date == default ? DateTime.Today : record.Date,
-            CreatedBy = isUpdate && existing is not null && !string.IsNullOrWhiteSpace(existing.CreatedBy)
-                ? existing.CreatedBy
-                : actor,
-            CreatedDateTime = isUpdate && existing is not null && existing.CreatedDateTime != default
-                ? existing.CreatedDateTime
-                : now,
-            ModifiedBy = actor,
-            ModifiedDateTime = now,
+            CreatedBy = null,
+            CreatedDateTime = default,
+            ModifiedBy = null,
+            ModifiedDateTime = default,
             RtfMessage = record.Content,
             CustomerID = record.CustomerId.Trim(),
             BranchID = branchId.Trim(),
@@ -241,7 +219,7 @@ public sealed class FollowUpService : IFollowUpService
                 : groupId.Trim(),
             Symptoms = record.Symptoms.Trim(),
             Diagnoses = record.Diagnoses.Trim(),
-            SaveAction = isUpdate ? "Changed" : 1,
+            SaveAction = 1,
             IsDirty = true
         };
 
