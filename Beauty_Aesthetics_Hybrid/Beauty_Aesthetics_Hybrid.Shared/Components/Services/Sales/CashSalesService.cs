@@ -19,7 +19,6 @@ namespace Beauty_Aesthetics_WebPos.Components.Services.Sales;
 public sealed class CashSalesService : ICashSalesService
 {
     private readonly CashSalesAC cashSalesAC;
-    private readonly InventoryAC inventoryAC;
     private readonly BranchAC branchAC;
     private readonly WebDashboardAC dashboardAC;
     private readonly AppFeedbackService feedback;
@@ -33,7 +32,6 @@ public sealed class CashSalesService : ICashSalesService
 
     public CashSalesService(
         CashSalesAC cashSalesAC,
-        InventoryAC inventoryAC,
         BranchAC branchAC,
         WebDashboardAC dashboardAC,
         AppFeedbackService feedback,
@@ -45,7 +43,6 @@ public sealed class CashSalesService : ICashSalesService
         IJSRuntime jsRuntime)
     {
         this.cashSalesAC = cashSalesAC;
-        this.inventoryAC = inventoryAC;
         this.branchAC = branchAC;
         this.dashboardAC = dashboardAC;
         this.feedback = feedback;
@@ -406,19 +403,11 @@ public sealed class CashSalesService : ICashSalesService
         }
 
         var resolvedDocumentTypeId = documentTypeId == 52 ? 52 : 5;
-        ApiCallResult<JsonObject>? loadResult = null;
-
         // Match Senang Retail: normal receipts default to type 5 and become
         // redemption statements only when a saved line is owned by type 52.
-        if (resolvedDocumentTypeId == 52)
+        if (resolvedDocumentTypeId == 5)
         {
-            loadResult = await cashSalesAC.LoadRedemptionRecordAsync(
-                documentId,
-                cancellationToken);
-        }
-        else
-        {
-            loadResult = await cashSalesAC.LoadRecordAsync(documentId, cancellationToken);
+            var loadResult = await cashSalesAC.LoadRecordAsync(documentId, cancellationToken);
             if (loadResult.Success && loadResult.Value is not null)
             {
                 var lines = loadResult.Value["lstDocumentLine"] as JsonArray;
@@ -430,35 +419,8 @@ public sealed class CashSalesService : ICashSalesService
             }
         }
 
-        // Receipt generation must be read-only for redemption documents.
-        // A saved redemption (DocumentTypeID 52) is already the accounting source
-        // of truth, so never run the legacy cash-sale repair/save path against it.
-        if (resolvedDocumentTypeId == 52)
-        {
-            if (loadResult?.Success != true || loadResult.Value is null)
-            {
-                return ApiCallResult<string>.Failure(
-                    loadResult?.StatusCode ?? HttpStatusCode.BadRequest,
-                    loadResult?.ErrorMessage ?? "Unable to load the completed redemption.");
-            }
-        }
-        else if (loadResult?.Success == true && loadResult.Value is not null)
-        {
-            // Keep the existing repair behavior for legacy normal cash-sale receipts only.
-            var repairResult = await RepairReceiptAmountsAsync(
-                loadResult.Value,
-                documentId,
-                resolvedDocumentTypeId,
-                MatchingCreatedTransaction(documentId),
-                cancellationToken);
-
-            if (!repairResult.Success)
-            {
-                return ApiCallResult<string>.Failure(
-                    repairResult.StatusCode,
-                    repairResult.ErrorMessage ?? "Unable to repair the receipt amounts.");
-            }
-        }
+        // Like Senang, downloading is read-only. Do not rewrite saved accounting
+        // records or make PDF generation depend on an amount-repair/save check.
 
         ApiCallResult<string> receiptResult;
         try
@@ -491,426 +453,18 @@ public sealed class CashSalesService : ICashSalesService
         return ApiCallResult<string>.Ok(receiptResult.StatusCode, receiptResult.Value);
     }
 
-    private async Task<ApiCallResult<bool>> RepairReceiptAmountsAsync(
-        JsonObject document,
-        string documentId,
-        int documentTypeId,
-        Transaction? fallbackTransaction,
-        CancellationToken cancellationToken)
-    {
-        var header = document["objDoc_CashSales"] as JsonObject;
-        var lines = document["lstDocumentLine"] as JsonArray;
-        if (header is null || lines is null)
-        {
-            return ApiCallResult<bool>.Ok(HttpStatusCode.OK, false);
-        }
 
-        var activeLines = lines
-            .OfType<JsonObject>()
-            .Where(line =>
-                IntegerIgnoreCase(line, "SaveAction") != 3 &&
-                !string.Equals(
-                    TextIgnoreCase(line, "SaveAction"),
-                    "Deleted",
-                    StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        if (activeLines.Count == 0)
-        {
-            return ApiCallResult<bool>.Ok(HttpStatusCode.OK, false);
-        }
-
-        var receiptTotal = 0m;
-        if (document["lstReceiptLines"] is JsonArray receipts)
-        {
-            receiptTotal = Math.Round(
-                receipts.OfType<JsonObject>().Sum(receipt =>
-                    Math.Max(
-                        0m,
-                        Number(receipt, "POSReceiptLineAmount") -
-                        Math.Abs(Number(receipt, "POSReceiptChangeAmount")))),
-                2,
-                MidpointRounding.AwayFromZero);
-        }
-
-        // LoadRecord does not consistently include lstReceiptLines. The thermal
-        // receipt endpoint loads those payment rows separately, which is why it
-        // can show Cash while the document header and item amounts are still 0.
-        // Use the same saved payment rows as the reliable total for repairing a
-        // legacy one-line receipt before requesting its PDF.
-        if (receiptTotal <= 0m)
-        {
-            var receiptLinesResult = await cashSalesAC.LoadReceiptLinesAsync(
-                documentId,
-                cancellationToken);
-
-            if (receiptLinesResult.Success && receiptLinesResult.Value is not null)
-            {
-                receiptTotal = Math.Round(
-                    receiptLinesResult.Value.Sum(receipt =>
-                        Math.Max(
-                            0m,
-                            receipt.POSReceiptLineAmount -
-                            Math.Abs(receipt.POSReceiptChangeAmount))),
-                    2,
-                    MidpointRounding.AwayFromZero);
-            }
-        }
-
-        if (receiptTotal <= 0m && fallbackTransaction is not null)
-        {
-            receiptTotal = Math.Round(
-                Math.Max(0m, fallbackTransaction.Amount),
-                2,
-                MidpointRounding.AwayFromZero);
-        }
-
-        var headerTotal = Math.Round(
-            Math.Max(0m, Number(header, "TotalAfterTax")),
-            2,
-            MidpointRounding.AwayFromZero);
-        var headerBeforeTax = Math.Max(0m, Number(header, "TotalBeforeTax"));
-        var headerTaxAmount = Math.Max(0m, Number(header, "TaxAmount"));
-        var headerTaxRate = headerBeforeTax > 0m && headerTaxAmount > 0m
-            ? Math.Round(
-                headerTaxAmount / headerBeforeTax,
-                4,
-                MidpointRounding.AwayFromZero)
-            : 0m;
-        if (headerTotal <= 0m && fallbackTransaction is not null)
-        {
-            headerTotal = Math.Round(
-                Math.Max(0m, fallbackTransaction.Amount),
-                2,
-                MidpointRounding.AwayFromZero);
-        }
-        var singleLineFallbackTotal = activeLines.Count == 1
-            ? Math.Max(headerTotal, receiptTotal)
-            : 0m;
-        var repairedAnyLine = false;
-        var inventoryPricingById =
-            new Dictionary<string, ReceiptInventoryPricing?>(StringComparer.OrdinalIgnoreCase);
-
-        for (var lineIndex = 0; lineIndex < activeLines.Count; lineIndex++)
-        {
-            var line = activeLines[lineIndex];
-            var fallbackItem = FindMatchingReceiptItem(
-                line,
-                lineIndex,
-                fallbackTransaction?.Items);
-            var inventoryId = First(
-                TextIgnoreCase(line, "InventoryID"),
-                TextIgnoreCase(line, "LineItemID"),
-                TextIgnoreCase(line, "InventoryItemAccountID"));
-            ReceiptInventoryPricing? inventoryPricing = null;
-            if (!string.IsNullOrWhiteSpace(inventoryId))
-            {
-                if (!inventoryPricingById.TryGetValue(inventoryId, out inventoryPricing))
-                {
-                    var inventoryResult = await inventoryAC.LoadRecordAsync(
-                        inventoryId,
-                        cancellationToken);
-                    if (inventoryResult.Success && inventoryResult.Value is not null)
-                    {
-                        inventoryPricing = new ReceiptInventoryPricing(
-                            Math.Max(0m, inventoryResult.Value.SalesPrice),
-                            inventoryResult.Value.IsTaxInclusive,
-                            inventoryResult.Value.TaxCodeID ?? string.Empty,
-                            inventoryResult.Value.UnitOfMeasureID ?? string.Empty);
-                    }
-
-                    inventoryPricingById[inventoryId] = inventoryPricing;
-                }
-            }
-            var quantity = Number(line, "Quantity");
-            if (quantity <= 0m)
-            {
-                quantity = Math.Max(
-                    1m,
-                    fallbackItem is null ? 1m : fallbackItem.Quantity);
-            }
-
-            var discount = Math.Max(
-                0m,
-                Math.Max(
-                    Number(line, "Discount"),
-                    Number(line, "DiscountAmount")));
-            if (discount <= 0m && fallbackItem is not null)
-            {
-                discount = Math.Max(0m, fallbackItem.Discount);
-            }
-            var unitPrice = Math.Max(0m, Number(line, "UnitPrice"));
-            if (unitPrice <= 0m && fallbackItem is not null)
-            {
-                unitPrice = Math.Max(0m, fallbackItem.UnitPrice);
-            }
-            if (unitPrice <= 0m && inventoryPricing is not null)
-            {
-                unitPrice = inventoryPricing.UnitPrice;
-            }
-            var beforeTax = Math.Max(
-                0m,
-                Math.Max(
-                    Number(line, "SubTotalBeforeGST"),
-                    Number(line, "ConvertedSubTotalBeforeGST")));
-            var taxAmount = Math.Max(
-                0m,
-                Math.Max(
-                    Number(line, "TaxAmount"),
-                    Number(line, "ConvertedTaxAmount")));
-            if (taxAmount <= 0m && fallbackItem is not null)
-            {
-                taxAmount = Math.Max(0m, fallbackItem.TaxAmount);
-            }
-            var lineTotal = Math.Max(
-                0m,
-                Math.Max(
-                    Number(line, "SubTotal"),
-                    Math.Max(
-                        Number(line, "Amount"),
-                        Number(line, "ConvertedAmount"))));
-            if (lineTotal <= 0m && fallbackItem is not null)
-            {
-                lineTotal = Math.Max(0m, fallbackItem.TotalPrice);
-            }
-            var storedTaxRate = Math.Max(0m, Number(line, "TaxPercentage"));
-            if (storedTaxRate <= 0m && fallbackItem is not null)
-            {
-                storedTaxRate = Math.Max(0m, fallbackItem.TaxPercentage);
-            }
-            if (storedTaxRate <= 0m &&
-                headerTaxRate > 0m &&
-                (!string.IsNullOrWhiteSpace(TextIgnoreCase(line, "TaxCodeID")) ||
-                 !string.IsNullOrWhiteSpace(inventoryPricing?.TaxCodeId)))
-            {
-                storedTaxRate = headerTaxRate;
-            }
-            var calculationTaxRate = storedTaxRate > 1m
-                ? storedTaxRate / 100m
-                : storedTaxRate;
-            var isTaxInclusive = Bool(line, "IsTaxInclusive") ||
-                                 fallbackItem?.IsTaxInclusive == true ||
-                                 inventoryPricing?.IsTaxInclusive == true;
-
-            if (beforeTax <= 0m && fallbackItem is not null && lineTotal > 0m)
-            {
-                beforeTax = Math.Max(
-                    0m,
-                    lineTotal - Math.Max(0m, fallbackItem.TaxAmount));
-            }
-
-            if (beforeTax <= 0m && unitPrice > 0m)
-            {
-                OrderLineTaxCalculator.ComputeLineAmounts(
-                    unitPrice,
-                    quantity,
-                    discount,
-                    calculationTaxRate,
-                    isTaxInclusive,
-                    out beforeTax,
-                    out taxAmount);
-                lineTotal = Math.Round(
-                    beforeTax + taxAmount,
-                    2,
-                    MidpointRounding.AwayFromZero);
-            }
-            else if (beforeTax <= 0m)
-            {
-                var recoverableTotal = lineTotal > 0m
-                    ? lineTotal
-                    : singleLineFallbackTotal;
-                if (recoverableTotal > 0m)
-                {
-                    beforeTax = calculationTaxRate > 0m
-                        ? Math.Round(
-                            recoverableTotal / (1m + calculationTaxRate),
-                            2,
-                            MidpointRounding.AwayFromZero)
-                        : recoverableTotal;
-                    taxAmount = Math.Round(
-                        Math.Max(0m, recoverableTotal - beforeTax),
-                        2,
-                        MidpointRounding.AwayFromZero);
-                    lineTotal = Math.Round(
-                        beforeTax + taxAmount,
-                        2,
-                        MidpointRounding.AwayFromZero);
-                }
-            }
-            else
-            {
-                if (taxAmount <= 0m && calculationTaxRate > 0m)
-                {
-                    taxAmount = Math.Round(
-                        beforeTax * calculationTaxRate,
-                        2,
-                        MidpointRounding.AwayFromZero);
-                }
-
-                if (lineTotal <= 0m)
-                {
-                    lineTotal = Math.Round(
-                        beforeTax + taxAmount,
-                        2,
-                        MidpointRounding.AwayFromZero);
-                }
-            }
-
-            if (unitPrice <= 0m && (beforeTax > 0m || lineTotal > 0m))
-            {
-                var priceBasis = isTaxInclusive && lineTotal > 0m
-                    ? lineTotal
-                    : beforeTax;
-                unitPrice = Math.Round(
-                    (priceBasis + discount) / quantity,
-                    2,
-                    MidpointRounding.AwayFromZero);
-            }
-
-            beforeTax = Math.Round(beforeTax, 2, MidpointRounding.AwayFromZero);
-            taxAmount = Math.Round(taxAmount, 2, MidpointRounding.AwayFromZero);
-            lineTotal = Math.Round(lineTotal, 2, MidpointRounding.AwayFromZero);
-            unitPrice = Math.Round(unitPrice, 2, MidpointRounding.AwayFromZero);
-
-            if (beforeTax <= 0m && lineTotal <= 0m && unitPrice <= 0m)
-            {
-                continue;
-            }
-
-            var changed = false;
-            changed |= SetDecimalIfDifferent(line, "Quantity", quantity);
-            changed |= SetDecimalIfDifferent(line, "UnitPrice", unitPrice);
-            changed |= SetDecimalIfDifferent(line, "Discount", discount);
-            changed |= SetDecimalIfDifferent(line, "DiscountAmount", discount);
-            changed |= SetDecimalIfDifferent(line, "SubTotalBeforeGST", beforeTax);
-            changed |= SetDecimalIfDifferent(line, "ConvertedSubTotalBeforeGST", beforeTax);
-            changed |= SetDecimalIfDifferent(line, "TaxableAmount", beforeTax);
-            changed |= SetDecimalIfDifferent(line, "ConvertedTaxableAmount", beforeTax);
-            changed |= SetDecimalIfDifferent(line, "TaxAmount", taxAmount);
-            changed |= SetDecimalIfDifferent(line, "ConvertedTaxAmount", taxAmount);
-            changed |= SetDecimalIfDifferent(line, "TaxPercentage", storedTaxRate);
-            changed |= SetDecimalIfDifferent(line, "SubTotal", lineTotal);
-            changed |= SetDecimalIfDifferent(line, "Amount", lineTotal);
-            changed |= SetDecimalIfDifferent(line, "ConvertedAmount", lineTotal);
-            changed |= SetBoolIfDifferent(line, "IsTaxInclusive", isTaxInclusive);
-
-            if (string.IsNullOrWhiteSpace(TextIgnoreCase(line, "TaxCodeID")) &&
-                !string.IsNullOrWhiteSpace(inventoryPricing?.TaxCodeId))
-            {
-                line["TaxCodeID"] = inventoryPricing.TaxCodeId;
-                changed = true;
-            }
-
-            if (string.IsNullOrWhiteSpace(TextIgnoreCase(line, "UnitOfMeasureID")) &&
-                !string.IsNullOrWhiteSpace(inventoryPricing?.UnitOfMeasureId))
-            {
-                line["UnitOfMeasureID"] = inventoryPricing.UnitOfMeasureId;
-                line["UnitOfMeasurementID"] = inventoryPricing.UnitOfMeasureId;
-                changed = true;
-            }
-
-            if (!changed)
-            {
-                continue;
-            }
-
-            line["DocumentID"] = documentId;
-            line["DocumentLineTypeID"] = Integer(line, "DocumentLineTypeID") == 0
-                ? 1
-                : Integer(line, "DocumentLineTypeID");
-            line["OwnerDocumentTypeID"] = documentTypeId;
-            line["SaveAction"] = "Changed";
-            line["IsDirty"] = true;
-
-            var lineSaveResult = await cashSalesAC.SaveDocumentLineAsync(
-                line,
-                cancellationToken);
-            if (!lineSaveResult.Success)
-            {
-                return ApiCallResult<bool>.Failure(
-                    lineSaveResult.StatusCode,
-                    lineSaveResult.ErrorMessage ?? "Unable to save the repaired receipt item amounts.");
-            }
-
-            repairedAnyLine = true;
-        }
-
-        var totalBeforeTax = Math.Round(
-            activeLines.Sum(line => Number(line, "SubTotalBeforeGST")),
-            2,
-            MidpointRounding.AwayFromZero);
-        var totalTax = Math.Round(
-            activeLines.Sum(line => Number(line, "TaxAmount")),
-            2,
-            MidpointRounding.AwayFromZero);
-        var rounding = Math.Round(
-            Number(header, "RoundingAmount"),
-            2,
-            MidpointRounding.AwayFromZero);
-        var totalAfterTax = Math.Round(
-            activeLines.Sum(line => Number(line, "SubTotal")) + rounding,
-            2,
-            MidpointRounding.AwayFromZero);
-        var serviceChargeBeforeTax = Math.Clamp(
-            Number(header, "TotalBeforeTax_ServiceCharge"),
-            0m,
-            totalBeforeTax);
-
-        var headerChanged = false;
-        headerChanged |= SetDecimalIfDifferent(header, "TotalBeforeTax", totalBeforeTax);
-        headerChanged |= SetDecimalIfDifferent(
-            header,
-            "TotalBeforeTax_NonServiceCharge",
-            Math.Max(0m, totalBeforeTax - serviceChargeBeforeTax));
-        headerChanged |= SetDecimalIfDifferent(
-            header,
-            "TotalBeforeTax_ServiceCharge",
-            serviceChargeBeforeTax);
-        headerChanged |= SetDecimalIfDifferent(header, "TaxableAmount", totalBeforeTax);
-        headerChanged |= SetDecimalIfDifferent(header, "TaxAmount", totalTax);
-        headerChanged |= SetDecimalIfDifferent(header, "TotalAfterTax", totalAfterTax);
-        headerChanged |= SetDecimalIfDifferent(header, "LocalTotalBeforeTax", totalBeforeTax);
-        headerChanged |= SetDecimalIfDifferent(header, "LocalTaxableAmount", totalBeforeTax);
-        headerChanged |= SetDecimalIfDifferent(header, "LocalTaxAmount", totalTax);
-        headerChanged |= SetDecimalIfDifferent(header, "LocalRoundingAmount", rounding);
-        headerChanged |= SetDecimalIfDifferent(header, "LocalTotalAfterTax", totalAfterTax);
-
-        if (headerChanged)
-        {
-            var now = DateTime.Now;
-            header["DocumentID"] = documentId;
-            header["DocumentTypeID"] = documentTypeId;
-            header["ModifiedDateTime"] = now;
-            header["UpdateTimeStamp"] = now;
-            header["SaveAction"] = "Changed";
-            header["IsDirty"] = true;
-
-            var headerSaveResult = await cashSalesAC.SaveHeaderAsync(
-                header,
-                cancellationToken);
-            if (!headerSaveResult.Success)
-            {
-                return ApiCallResult<bool>.Failure(
-                    headerSaveResult.StatusCode,
-                    headerSaveResult.ErrorMessage ?? "Unable to save the repaired receipt totals.");
-            }
-        }
-
-        return ApiCallResult<bool>.Ok(
-            HttpStatusCode.OK,
-            repairedAnyLine || headerChanged);
-    }
-
-    public Task<bool> DownloadReceiptPdfAsync(
+    public Task<ApiCallResult<bool>> DownloadReceiptPdfAsync(
         string documentId,
         CancellationToken cancellationToken = default) =>
         DownloadReceiptPdfAsync(documentId, 5, cancellationToken);
 
-    public async Task<bool> DownloadReceiptPdfAsync(
+    public async Task<ApiCallResult<bool>> DownloadReceiptPdfAsync(
         string documentId,
         int documentTypeId,
         CancellationToken cancellationToken = default)
     {
+        var stage = "requesting the receipt";
         try
         {
             var result = await RequestReceiptPdfAsync(
@@ -920,9 +474,13 @@ public sealed class CashSalesService : ICashSalesService
 
             if (!result.Success || string.IsNullOrWhiteSpace(result.Value))
             {
-                return false;
+                Console.WriteLine($"[Receipt PDF] DocumentID={documentId} | {result.ErrorMessage}");
+                return ApiCallResult<bool>.Failure(
+                    result.StatusCode,
+                    $"Receipt request failed (HTTP {(int)result.StatusCode}). {result.ErrorMessage ?? "The receipt PDF was empty."}");
             }
 
+            stage = "applying the EBI logo";
             var brandedPdf = await jsRuntime.InvokeAsync<string>(
                 "receiptPdfBranding.replaceLogo",
                 cancellationToken,
@@ -934,6 +492,7 @@ public sealed class CashSalesService : ICashSalesService
                 throw new InvalidOperationException("The EBI-branded receipt PDF was empty.");
             }
 
+            stage = "saving the PDF";
             var fileName = $"Thermal_Receipt_{documentId}.pdf";
             await fileDownloadService.DownloadBinaryFileAsync(
                 fileName,
@@ -941,12 +500,14 @@ public sealed class CashSalesService : ICashSalesService
                 "application/pdf",
                 cancellationToken);
 
-            return true;
+            return ApiCallResult<bool>.Ok(HttpStatusCode.OK, true);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Receipt download error: {ex.Message}");
-            return false;
+            Console.WriteLine($"[Receipt PDF] DocumentID={documentId} | Stage={stage} | {ex.Message}");
+            return ApiCallResult<bool>.Failure(
+                HttpStatusCode.InternalServerError,
+                $"Receipt download failed while {stage}. {ex.Message}");
         }
     }
 
@@ -1035,7 +596,6 @@ public sealed class CashSalesService : ICashSalesService
         }
 
         var documentLines = BuildDocumentLines(
-            document,
             transaction,
             gstTypeId,
             currencyId);
@@ -1535,8 +1095,10 @@ public sealed class CashSalesService : ICashSalesService
 
         return new TransactionItem
         {
-            InventoryId = Text(line, "InventoryID"),
+            InventoryId = First(Text(line, "LineItemID"), Text(line, "InventoryID"),
+                Text(line, "InventoryItemAccountID")) ?? string.Empty,
             Name = First(Text(line, "ItemName"), Text(line, "Description"), "Item")!,
+            Sku = Text(line, "LineItemDisplayCode"),
             Description = Text(line, "Description"),
             Remarks = Text(line, "RefCompanyName"),
             Category = inventoryType switch
@@ -1550,13 +1112,14 @@ public sealed class CashSalesService : ICashSalesService
             Quantity = (int)Math.Max(1, quantity),
             UnitPrice = unitPrice,
             TotalPrice = total != 0 ? total : quantity * unitPrice,
-            Discount = Number(line, "DiscountAmount"),
+            Discount = Math.Max(Number(line, "Discount"), Number(line, "DiscountAmount")),
             CashDiscountId = Text(line, "CashDiscountID"),
             DiscountMemo = Text(line, "Memo"),
             TaxCodeId = Text(line, "TaxCodeID"),
             TaxPercentage = Number(line, "TaxPercentage"),
             TaxAmount = Number(line, "TaxAmount"),
-            UnitOfMeasureId = Text(line, "UnitOfMeasureID"),
+            UnitOfMeasureId = First(Text(line, "UnitOfMeasurementID"), Text(line, "UnitOfMeasureID"))
+                              ?? string.Empty,
             IsTaxInclusive = Bool(line, "IsTaxInclusive"),
             Points = points,
             PointToRedeem = Math.Max(0m, Number(line, "PointToRedeem")),
@@ -2628,12 +2191,10 @@ public sealed class CashSalesService : ICashSalesService
     }
 
     private static JsonArray BuildDocumentLines(
-        JsonObject document,
         Transaction transaction,
         string gstTypeId,
         string currencyId)
     {
-        var template = document["ServiceChargeLine"] as JsonObject;
         var items = transaction.Items.Any()
             ? transaction.Items
             : new List<TransactionItem>
@@ -2660,7 +2221,6 @@ public sealed class CashSalesService : ICashSalesService
                 out var beforeTax,
                 out var lineTax,
                 out var lineTotal);
-            var line = template is null ? new JsonObject() : (JsonObject)template.DeepClone();
             var currentLineOrder = lineOrder++;
             var documentTypeId = transaction.DocumentTypeId == 52 ? 52 : 5;
             var unitOfMeasurementId = string.IsNullOrWhiteSpace(item.UnitOfMeasureId)
@@ -2669,19 +2229,53 @@ public sealed class CashSalesService : ICashSalesService
             item.TaxAmount = lineTax;
             item.TotalPrice = lineTotal;
 
-            line["DocumentLineID"] = currentLineOrder.ToString("D2");
-            line["DocumentID"] = string.Empty;
-            line["DocumentLineTypeID"] = 1;
-            line["OwnerDocumentTypeID"] = documentTypeId;
-            line["InventoryID"] = item.InventoryId;
-            line["LineItemID"] = item.InventoryId;
-            line["InventoryItemAccountID"] = item.InventoryId;
-            line["LineItemDisplayCode"] = item.Sku;
-            line["LineOrder"] = currentLineOrder;
-            line["Description"] = First(item.Description, item.Name, $"{transaction.Type} Item");
-            line["ItemName"] = First(item.Name, item.Description, $"{transaction.Type} Item");
-            line["Quantity"] = quantity;
-            line["UnitPrice"] = item.UnitPrice;
+            // Use the same typed sale-line construction as Senang's
+            // CompletePaymentAsync before adding this app's credit allocations.
+            var saleLine = new EBI.DM.DocumentLineTableDM
+            {
+                DocumentLineID = currentLineOrder.ToString("D2"),
+                DocumentLineTypeID = 1,
+                OwnerDocumentTypeID = documentTypeId,
+                LineOrder = currentLineOrder,
+                LineItemID = item.InventoryId,
+                InventoryItemAccountID = item.InventoryId,
+                Description = First(item.Description, item.Name, $"{transaction.Type} Item"),
+                Quantity = quantity,
+                UnitPrice = item.UnitPrice,
+                Discount = discount,
+                CashDiscountID = item.CashDiscountId,
+                Memo = item.DiscountMemo,
+                RefCompanyName = item.Remarks,
+                SubTotal = lineTotal,
+                SubTotalBeforeGST = beforeTax,
+                ConvertedSubTotalBeforeGST = beforeTax,
+                ConvertedAmount = lineTotal,
+                TaxCodeID = item.TaxCodeId,
+                GSTTypeID = gstTypeId,
+                TaxPercentage = item.TaxPercentage,
+                TaxAmount = lineTax,
+                ConvertedTaxAmount = lineTax,
+                IsTaxInclusive = item.IsTaxInclusive,
+                UnitOfMeasurementID = unitOfMeasurementId,
+                SKUName = unitOfMeasurementId,
+                InventoryTypeID = item.InventoryTypeId > 0
+                    ? item.InventoryTypeId
+                    : InventoryTypeFor(item.Category),
+                LineItemDisplayCode = item.Sku,
+                BranchID = transaction.BranchId,
+                EditBranchID = transaction.BranchId,
+                GroupID = transaction.GroupId,
+                FinancialDate = transaction.Date,
+                GSTTaxPointDate = documentTypeId == 52 ? DateTime.MinValue : transaction.Date,
+                CurrencyID = string.IsNullOrWhiteSpace(currencyId) ? "MYR" : currencyId,
+                ExchangeRate = 1m,
+                ActivityTypeID = item.ActivityTypeId <= 0 ? 1 : item.ActivityTypeId,
+                SaveAction = EBI.Enum.EntityState.Added,
+                IsDirty = true
+            };
+            var line = JsonSerializer.SerializeToNode(saleLine) as JsonObject
+                       ?? throw new InvalidOperationException("Unable to prepare the sale item.");
+
             line["Points"] = Math.Max(0m, item.Points);
 
             if (item.Points > 0m)
@@ -2693,33 +2287,6 @@ public sealed class CashSalesService : ICashSalesService
                     $"UnitPrice={item.UnitPrice:N2}");
             }
 
-            line["Discount"] = discount;
-            line["DiscountAmount"] = discount;
-            line["CashDiscountID"] = item.CashDiscountId;
-            line["Memo"] = item.DiscountMemo;
-            line["RefCompanyName"] = item.Remarks;
-            line["SubTotal"] = lineTotal;
-            line["SubTotalBeforeGST"] = beforeTax;
-            line["ConvertedSubTotalBeforeGST"] = beforeTax;
-            line["Amount"] = lineTotal;
-            line["ConvertedAmount"] = lineTotal;
-            line["TaxableAmount"] = beforeTax;
-            line["ConvertedTaxableAmount"] = beforeTax;
-            line["TaxPercentage"] = item.TaxPercentage;
-            line["TaxAmount"] = lineTax;
-            line["ConvertedTaxAmount"] = lineTax;
-            line["InventoryTypeID"] = item.InventoryTypeId > 0
-                ? item.InventoryTypeId
-                : InventoryTypeFor(item.Category);
-            line["UnitOfMeasureID"] = unitOfMeasurementId;
-            line["UnitOfMeasurementID"] = unitOfMeasurementId;
-            line["SKUName"] = unitOfMeasurementId;
-            line["TaxCodeID"] = item.TaxCodeId;
-            line["GSTTypeID"] = gstTypeId;
-            line["IsTaxInclusive"] = item.IsTaxInclusive;
-            line["ActivityTypeID"] = item.ActivityTypeId <= 0 ? 1 : item.ActivityTypeId;
-            line["AccountID"] = transaction.AccountId;
-            line["FinancialAccountID"] = string.Empty;
             line["MemberCreditAccountID"] = item.MemberCreditAllocations.Count > 1
                 ? string.Empty
                 : item.MemberCreditAccountId;
@@ -2742,17 +2309,6 @@ public sealed class CashSalesService : ICashSalesService
             }
             line["lstMembershipCredit"] = usedCredits;
 
-            line["BranchID"] = transaction.BranchId;
-            line["EditBranchID"] = transaction.BranchId;
-            line["GroupID"] = transaction.GroupId;
-            line["CurrencyID"] = string.IsNullOrWhiteSpace(currencyId) ? "MYR" : currencyId;
-            line["ExchangeRate"] = 1m;
-            line["FinancialDate"] = transaction.Date;
-            line["GSTTaxPointDate"] = documentTypeId == 52
-                ? DateTime.MinValue
-                : transaction.Date;
-            line["SaveAction"] = 1;
-            line["IsDirty"] = true;
             lines.Add(line);
         }
 
@@ -4870,50 +4426,6 @@ public sealed class CashSalesService : ICashSalesService
             : null;
     }
 
-    private static TransactionItem? FindMatchingReceiptItem(
-        JsonObject line,
-        int lineIndex,
-        IReadOnlyList<TransactionItem>? fallbackItems)
-    {
-        if (fallbackItems is null || fallbackItems.Count == 0)
-        {
-            return null;
-        }
-
-        var inventoryId = First(
-            TextIgnoreCase(line, "InventoryID"),
-            TextIgnoreCase(line, "LineItemID"),
-            TextIgnoreCase(line, "InventoryItemAccountID"));
-        if (!string.IsNullOrWhiteSpace(inventoryId))
-        {
-            var byInventory = fallbackItems.FirstOrDefault(item =>
-                string.Equals(
-                    item.InventoryId,
-                    inventoryId,
-                    StringComparison.OrdinalIgnoreCase));
-            if (byInventory is not null)
-            {
-                return byInventory;
-            }
-        }
-
-        var sku = First(
-            TextIgnoreCase(line, "LineItemDisplayCode"),
-            TextIgnoreCase(line, "SKUName"));
-        if (!string.IsNullOrWhiteSpace(sku))
-        {
-            var bySku = fallbackItems.FirstOrDefault(item =>
-                string.Equals(item.Sku, sku, StringComparison.OrdinalIgnoreCase));
-            if (bySku is not null)
-            {
-                return bySku;
-            }
-        }
-
-        return lineIndex < fallbackItems.Count
-            ? fallbackItems[lineIndex]
-            : null;
-    }
 
     private static void MergeMissingReceiptAmounts(
         Transaction target,
@@ -4982,38 +4494,6 @@ public sealed class CashSalesService : ICashSalesService
     }
 
     private static decimal Number(JsonObject? source, string name) => source?[name] is JsonValue value && value.TryGetValue<decimal>(out var number) ? number : 0;
-    private static bool SetBoolIfDifferent(
-        JsonObject target,
-        string name,
-        bool value)
-    {
-        if (target[name] is JsonValue currentValue &&
-            currentValue.TryGetValue<bool>(out var current) &&
-            current == value)
-        {
-            return false;
-        }
-
-        target[name] = value;
-        return true;
-    }
-
-    private static bool SetDecimalIfDifferent(
-        JsonObject target,
-        string name,
-        decimal value)
-    {
-        var rounded = Math.Round(value, 2, MidpointRounding.AwayFromZero);
-        if (target[name] is JsonValue currentValue &&
-            currentValue.TryGetValue<decimal>(out var current) &&
-            Math.Abs(current - rounded) < 0.005m)
-        {
-            return false;
-        }
-
-        target[name] = rounded;
-        return true;
-    }
 
     private static int Integer(JsonObject? source, string name) => source?[name] is JsonValue value && value.TryGetValue<int>(out var number) ? number : 0;
     private static int IntegerIgnoreCase(JsonObject? source, string name)
@@ -5048,12 +4528,6 @@ public sealed class CashSalesService : ICashSalesService
 
     private static bool Bool(JsonObject? source, string name) => source?[name] is JsonValue value && value.TryGetValue<bool>(out var result) && result;
     private static DateTime? DateValue(JsonObject? source, string name) => source?[name] is JsonValue value && value.TryGetValue<DateTime>(out var result) ? result : null;
-
-    private sealed record ReceiptInventoryPricing(
-        decimal UnitPrice,
-        bool IsTaxInclusive,
-        string TaxCodeId,
-        string UnitOfMeasureId);
 
     private static string? GetString(Dictionary<string, JsonElement>? values, params string[] names)
     {
