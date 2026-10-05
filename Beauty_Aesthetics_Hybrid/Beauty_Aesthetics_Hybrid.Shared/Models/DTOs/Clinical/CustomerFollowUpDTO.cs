@@ -15,7 +15,7 @@ public sealed class CustomerFollowUpDTO
     public string GroupID { get; set; } = string.Empty;
     public string Symptoms { get; set; } = string.Empty;
     public string Diagnoses { get; set; } = string.Empty;
-    public string SaveAction { get; set; } = "Changed";
+    public string SaveAction { get; set; } = "Added";
     public bool IsDirty { get; set; } = true;
 }
 
