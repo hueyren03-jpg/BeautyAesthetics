@@ -347,22 +347,13 @@
                     </div>
                 </div>
 
-                <div class="follow-up-clinical-fields">
-                    <div class="follow-up-clinical-field">
-                        <label for="follow-up-symptoms">Symptoms</label>
-                        <textarea id="follow-up-symptoms"
-                                  rows="2"
-                                  value="@_followUpSymptoms"
-                                  @oninput="OnSymptomsInput"
-                                  placeholder="Enter symptoms..."></textarea>
-                    </div>
-                    <div class="follow-up-clinical-field">
-                        <label for="follow-up-diagnoses">Diagnoses</label>
-                        <textarea id="follow-up-diagnoses"
-                                  rows="2"
-                                  value="@_followUpDiagnoses"
-                                  @oninput="OnDiagnosesInput"
-                                  placeholder="Enter diagnoses..."></textarea>
+                <div class="follow-up-schedule-row">
+                    <div class="follow-up-date-field">
+                        <label for="follow-up-date">Follow Up Date</label>
+                        <input id="follow-up-date"
+                               type="date"
+                               value="@_followUpDate.ToString("yyyy-MM-dd")"
+                               @onchange="OnFollowUpDateChanged" />
                     </div>
                 </div>
 
@@ -592,8 +583,7 @@
     // ===== STATUS & FEEDBACK =====
     private string _statusMessage = "";
     private bool _isSuccess = false;
-    private string _followUpSymptoms = string.Empty;
-    private string _followUpDiagnoses = string.Empty;
+    private DateTime _followUpDate = DateTime.Today;
     private CancellationTokenSource? _hideMessageCts;
 
     protected override async Task OnInitializedAsync()
@@ -950,16 +940,13 @@
         await ConfirmNewFollowUp();
     }
 
-    private void OnSymptomsInput(ChangeEventArgs e)
+    private void OnFollowUpDateChanged(ChangeEventArgs e)
     {
-        _followUpSymptoms = e.Value?.ToString() ?? string.Empty;
-        _hasUnsavedChanges = true;
-    }
-
-    private void OnDiagnosesInput(ChangeEventArgs e)
-    {
-        _followUpDiagnoses = e.Value?.ToString() ?? string.Empty;
-        _hasUnsavedChanges = true;
+        if (DateTime.TryParse(e.Value?.ToString(), out var parsed))
+        {
+            _followUpDate = parsed.Date;
+            _hasUnsavedChanges = true;
+        }
     }
 
     private async Task ConfirmNewFollowUp()
@@ -968,8 +955,7 @@
         _currentlyViewingFollowUpId = null;
         _hasUnsavedChanges = false;
         _lastSavedContent = "";
-        _followUpSymptoms = string.Empty;
-        _followUpDiagnoses = string.Empty;
+        _followUpDate = DateTime.Today;
         
         if (_isEditorReady)
         {
@@ -1001,21 +987,18 @@
         _hasUnsavedChanges = false;
         Feedback.Info($"Editing follow-up from {followUp.Date:MMM dd, yyyy}.", "Edit follow-up", 2200);
         _lastSavedContent = followUp.Content;
-
-        _followUpSymptoms = string.Empty;
-        _followUpDiagnoses = string.Empty;
+        _followUpDate = followUp.Date.Date;
 
         if (!string.IsNullOrWhiteSpace(followUp.BackendId))
         {
             var recordResult = await FollowUpService.LoadRecordAsync(followUp.BackendId);
             if (recordResult.Success && recordResult.Value is not null)
             {
-                _followUpSymptoms = recordResult.Value.Symptoms;
-                _followUpDiagnoses = recordResult.Value.Diagnoses;
+                _followUpDate = recordResult.Value.Date.Date;
 
                 Console.WriteLine(
                     $"[Follow Up API] LOAD RECORD PASS | Record={followUp.BackendId} | " +
-                    $"SymptomsLength={_followUpSymptoms.Length} | DiagnosesLength={_followUpDiagnoses.Length}");
+                    $"FinancialDate={_followUpDate:yyyy-MM-dd}");
             }
             else
             {
@@ -1092,10 +1075,8 @@
             {
                 RecordId = currentFollowUp?.BackendId ?? string.Empty,
                 CustomerId = ViewModel.SelectedPatient.Id,
-                Date = currentFollowUp?.Date ?? DateTime.Now,
-                Content = content,
-                Symptoms = _followUpSymptoms.Trim(),
-                Diagnoses = _followUpDiagnoses.Trim()
+                Date = _followUpDate.Date,
+                Content = content
             };
 
             Console.WriteLine(
@@ -1122,8 +1103,7 @@
 
             _hasUnsavedChanges = false;
             _lastSavedContent = content;
-            _followUpSymptoms = saveResult.Value.Symptoms;
-            _followUpDiagnoses = saveResult.Value.Diagnoses;
+            _followUpDate = saveResult.Value.Date.Date;
 
             if (isUpdate)
             {
