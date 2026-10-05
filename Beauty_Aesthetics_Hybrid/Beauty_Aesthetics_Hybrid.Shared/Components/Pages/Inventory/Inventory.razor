@@ -1359,57 +1359,6 @@
                         </div>
                     </div>
 
-                    <!-- UOM Conversion Card -->
-                    <div class="inventory-options__card">
-                        <div class="inventory-options__card-header">
-                            <h3>UOM Conversion</h3>
-                            <div class="inventory-options__header-actions">
-                            </div>
-                        </div>
-                        <div class="inventory-options__card-body">
-                            <div class="inventory-options__search">
-                                <input type="text" placeholder="Search..." value="@UomConversionSearch" @oninput="(ChangeEventArgs e) => { UomConversionSearch = e.Value?.ToString() ?? string.Empty; UomConversionsCurrentPage = 1; }" />
-                            </div>
-                            <table class="inventory-options__table">
-                                <thead>
-                                    <tr>
-                                        <th class='@GetSortHeaderClass(UomConversionSortColumn, UomConversionSortAscending, "FromUom")' @onclick="@(() => ToggleUomConversionSort("FromUom"))">
-                                            From UOM
-                                        </th>
-                                        <th class='@GetSortHeaderClass(UomConversionSortColumn, UomConversionSortAscending, "ToUom")' @onclick="@(() => ToggleUomConversionSort("ToUom"))">
-                                            To UOM
-                                        </th>
-                                        <th class='@GetSortHeaderClass(UomConversionSortColumn, UomConversionSortAscending, "ConversionFactor")' @onclick="@(() => ToggleUomConversionSort("ConversionFactor"))">
-                                            Conversion Factor
-                                        </th>
-                                        <th class="inventory-option-actions-column">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var uom in PaginatedUomConversions)
-                                    {
-                                        <tr>
-                                            <td>@uom.FromUom</td>
-                                            <td>@uom.ToUom</td>
-                                            <td class="inventory-plain-value">@uom.ConversionFactor</td>
-                                            <td class="inventory-option-actions-column" @onclick:stopPropagation="true">
-                                                <button type="button" class="product-row-action" title="View UOM conversion details" aria-label="View UOM conversion details" @onclick="() => ShowUomConversionDetails(uom)">
-                                                    <i class="bi bi-eye"></i>
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                            <Pagination CurrentPage="@UomConversionsCurrentPage"
-                                        ItemsPerPage="5"
-                                        TotalItems="@FilteredUomConversions.Count()"
-                                        OnPageChanged="@HandleUomConversionsPageChanged" />
-                            <div class="inventory-options__footer">
-                                Total items: @FilteredUomConversions.Count()
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
         }
@@ -5953,7 +5902,6 @@
     private int BrandsCurrentPage { get; set; } = 1;
     private int CategoriesCurrentPage { get; set; } = 1;
     private int SuppliersCurrentPage { get; set; } = 1;
-    private int UomConversionsCurrentPage { get; set; } = 1;
     private int PurchaseOrdersCurrentPage { get; set; } = 1;
     private int StockTransferCurrentPage { get; set; } = 1;
     private int StockTransferHistoryCurrentPage { get; set; } = 1;
@@ -6060,18 +6008,6 @@
             });
     }
 
-    private void ShowUomConversionDetails(UomConversionItem uom)
-    {
-        SelectedInventoryOptionDetails = new InventoryOptionDetailsModel(
-            "UOM Conversion Details",
-            "bi-arrow-left-right",
-            new()
-            {
-                new("From UOM", DisplayProductValue(uom.FromUom)),
-                new("To UOM", DisplayProductValue(uom.ToUom)),
-                new("Conversion Factor", DisplayProductValue(uom.ConversionFactor))
-            });
-    }
 
     private void CloseInventoryOptionDetails()
     {
@@ -7111,8 +7047,6 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
     private bool CategorySortAscending { get; set; } = true;
     private string? SupplierSortColumn { get; set; }
     private bool SupplierSortAscending { get; set; } = true;
-    private string? UomConversionSortColumn { get; set; }
-    private bool UomConversionSortAscending { get; set; } = true;
     private string? PurchaseOrderSortColumn { get; set; }
     private bool PurchaseOrderSortAscending { get; set; } = true;
     private string? StockTransferSortColumn { get; set; }
@@ -7147,7 +7081,6 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
     private string NewSupplierContactNumber { get; set; } = string.Empty;
     private string NewSupplierAddress { get; set; } = string.Empty;
     private string NewSupplierDescription { get; set; } = string.Empty;
-    private string UomConversionSearch { get; set; } = string.Empty;
 
     // Purchase Order state
     private bool IsAddPurchaseOrderFormVisible { get; set; } = false;
@@ -7232,29 +7165,6 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
         new("Liter", 15)
     };
 
-    private List<UomConversionItem> UomConversions { get; set; } = new()
-    {
-        new("Box", "Bottle", "1 box = 10 bottles"),
-        new("Liter", "Bottle", "1 liter = 2 bottles"),
-        new("Box", "Piece", "1 box = 12 pieces"),
-        new("Carton", "Box", "1 carton = 20 boxes"),
-        new("Pallet", "Carton", "1 pallet = 50 cartons"),
-        new("Gram", "Kilogram", "1000 grams = 1 kilogram"),
-        new("Milliliter", "Liter", "1000 ml = 1 liter"),
-        new("Piece", "Dozen", "12 pieces = 1 dozen"),
-        new("Dozen", "Gross", "12 dozen = 1 gross"),
-        new("Ounce", "Pound", "16 ounces = 1 pound"),
-        new("Tube", "Box", "1 box = 6 tubes"),
-        new("Packet", "Box", "1 box = 24 packets"),
-        new("Sachet", "Box", "1 box = 30 sachets"),
-        new("Vial", "Box", "1 box = 10 vials"),
-        new("Ampoule", "Box", "1 box = 5 ampoules"),
-        new("Jar", "Case", "1 case = 12 jars"),
-        new("Bottle", "Case", "1 case = 6 bottles"),
-        new("Can", "Case", "1 case = 24 cans"),
-        new("Tube", "Pack", "1 pack = 3 tubes"),
-        new("Sheet", "Pack", "1 pack = 10 sheets")
-    };
 
     private List<PurchaseOrderItem> PurchaseOrders { get; set; } = new()
     {
@@ -7290,7 +7200,6 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
     private record CategoryItem(string Id, string Name, string ExternalCode, bool Active);
     private record SupplierItem(string Name, string ContactNumber, string Address, string Description, int ProductCount);
     private record UomItem(string Name, int ProductCount);
-    private record UomConversionItem(string FromUom, string ToUom, string ConversionFactor);
     private record PurchaseOrderItem(
         string PoNo,
         DateTime Date,
@@ -7375,30 +7284,6 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
         }
     }
 
-    private IEnumerable<UomConversionItem> FilteredUomConversions
-    {
-        get
-        {
-            var items = string.IsNullOrWhiteSpace(UomConversionSearch)
-                ? UomConversions.AsEnumerable()
-                : UomConversions.Where(c =>
-                    c.FromUom.Contains(UomConversionSearch, StringComparison.OrdinalIgnoreCase) ||
-                    c.ToUom.Contains(UomConversionSearch, StringComparison.OrdinalIgnoreCase) ||
-                    c.ConversionFactor.Contains(UomConversionSearch, StringComparison.OrdinalIgnoreCase));
-
-            if (!string.IsNullOrEmpty(UomConversionSortColumn))
-            {
-                items = UomConversionSortColumn switch
-                {
-                    "FromUom" => UomConversionSortAscending ? items.OrderBy(c => c.FromUom) : items.OrderByDescending(c => c.FromUom),
-                    "ToUom" => UomConversionSortAscending ? items.OrderBy(c => c.ToUom) : items.OrderByDescending(c => c.ToUom),
-                    "ConversionFactor" => UomConversionSortAscending ? items.OrderBy(c => c.ConversionFactor) : items.OrderByDescending(c => c.ConversionFactor),
-                    _ => items
-                };
-            }
-            return items;
-        }
-    }
 
     private IEnumerable<PurchaseOrderItem> FilteredPurchaseOrders
     {
@@ -7492,13 +7377,6 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
         }
     }
 
-    private IEnumerable<UomConversionItem> PaginatedUomConversions
-    {
-        get
-        {
-            return FilteredUomConversions.Skip((UomConversionsCurrentPage - 1) * 5).Take(5);
-        }
-    }
 
     private IEnumerable<PurchaseOrderItem> PaginatedPurchaseOrders
     {
@@ -7566,19 +7444,6 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
         SuppliersCurrentPage = 1; // Reset to first page on sort change
     }
 
-    private void ToggleUomConversionSort(string column)
-    {
-        if (UomConversionSortColumn == column)
-        {
-            UomConversionSortAscending = !UomConversionSortAscending;
-        }
-        else
-        {
-            UomConversionSortColumn = column;
-            UomConversionSortAscending = true;
-        }
-        UomConversionsCurrentPage = 1; // Reset to first page on sort change
-    }
 
     private void HandleBrandsPageChanged(int page)
     {
@@ -7595,10 +7460,6 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
         SuppliersCurrentPage = page;
     }
 
-    private void HandleUomConversionsPageChanged(int page)
-    {
-        UomConversionsCurrentPage = page;
-    }
 
     private void HandleStockTransferPageChanged(int page)
     {
@@ -7966,10 +7827,6 @@ private StockTransferProduct ToStockTransferProduct(InventoryViewModel.Inventory
         Feedback.Success($"{supplierName} was added.", "Supplier added");
     }
 
-    private void ShowAddUomConversionForm()
-    {
-        Feedback.Warning("UOM conversion setup is not implemented yet.", "Action unavailable");
-    }
 
     private void ShowSupplierDetails(SupplierItem supplier)
     {
