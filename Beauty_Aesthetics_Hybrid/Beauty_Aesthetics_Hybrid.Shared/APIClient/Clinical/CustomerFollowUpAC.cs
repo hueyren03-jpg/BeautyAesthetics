@@ -12,7 +12,8 @@ public sealed class CustomerFollowUpAC
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
     private static readonly MediaTypeHeaderValue JsonPatchMediaType =
