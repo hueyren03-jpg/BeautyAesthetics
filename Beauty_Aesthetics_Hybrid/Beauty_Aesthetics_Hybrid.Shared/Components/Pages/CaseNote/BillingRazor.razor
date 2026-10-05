@@ -15,6 +15,7 @@
 @inject AppFeedbackService Feedback
 @inject Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext PatientContext
 @inject Beauty_Aesthetics_WebPos.Components.Services.Customers.ICustomerService CustomerService
+@inject Beauty_Aesthetics_WebPos.Components.Services.Customers.IPointHistoryService PointHistoryService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Customers.IMemberCreditWalletService MemberCreditWalletService
 @inject Beauty_Aesthetics_WebPos.Components.Services.Customers.IOutstandingBalanceService OutstandingBalanceService
 @inject Beauty_Aesthetics_WebPos.Components.Services.AppointmentService AppointmentService
@@ -120,10 +121,15 @@
                                     @onclick="OpenOutstandingSettlementAsync"></button>
                         </div>
 
-                        <div class="wallet-card points-balance">
+                        <div class="wallet-card points-balance"
+                             role="button"
+                             tabindex="0"
+                             title="View point history"
+                             @onclick="OpenPointHistoryAsync">
                             <div class="wallet-card-header">
                                 <i class="bi bi-gift"></i>
                                 <span>Point</span>
+                                <i class="bi bi-chevron-right" style="margin-left:auto;"></i>
                             </div>
                             <div class="wallet-amount">@FormatPointBalance(CustomerPointBalance)</div>
                         </div>
@@ -1662,6 +1668,132 @@
                              OnRefresh="@ReloadOutstandingDocumentsAsync"
                              OnConfirm="@ConfirmOutstandingSelection" />
 
+@if (_showPointHistory)
+{
+    <div class="modal-overlay" @onclick="ClosePointHistory">
+        <div class="modal-container billing-service-modal billing-credit-dialog"
+             @onclick:stopPropagation="true">
+            <div class="billing-credit-dialog__header">
+                <div class="billing-credit-dialog__title">
+                    <span class="billing-credit-dialog__icon"><i class="bi bi-stars"></i></span>
+                    <div>
+                        <h3>Point History</h3>
+                        <small>@PatientName</small>
+                    </div>
+                </div>
+                <button type="button"
+                        class="billing-credit-dialog__close"
+                        title="Close"
+                        aria-label="Close"
+                        @onclick="ClosePointHistory">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <div class="billing-credit-summary">
+                    <div>
+                        <span>Current Balance</span>
+                        <strong>@(_pointHistorySnapshot is null ? FormatPointBalance(CustomerPointBalance) : $"{_pointHistorySnapshot.CurrentPointBalance:N0} pts")</strong>
+                    </div>
+                    <div>
+                        <span>Earned in Range</span>
+                        <strong>@_pointHistoryEarnedTotal.ToString("0.##") pts</strong>
+                    </div>
+                    <div>
+                        <span>Redeemed in Range</span>
+                        <strong>@_pointHistoryRedeemedTotal.ToString("0.##") pts</strong>
+                    </div>
+                </div>
+
+                <div class="credit-selector-summary">
+                    <label>
+                        <span>From</span>
+                        <input type="date" @bind-value="_pointHistoryFrom" @bind-value:format="yyyy-MM-dd" />
+                    </label>
+                    <label>
+                        <span>To</span>
+                        <input type="date" @bind-value="_pointHistoryTo" @bind-value:format="yyyy-MM-dd" />
+                    </label>
+                    <button type="button"
+                            class="btn-modal-secondary"
+                            @onclick="ReloadPointHistoryAsync"
+                            disabled="@_isPointHistoryLoading">
+                        <i class="bi bi-arrow-clockwise"></i> Refresh
+                    </button>
+                </div>
+
+                @if (_isPointHistoryLoading)
+                {
+                    <div class="catalog-state">
+                        <span class="spinner-border spinner-border-sm"></span>
+                        <span>Loading point history...</span>
+                    </div>
+                }
+                else if (!string.IsNullOrWhiteSpace(_pointHistoryError))
+                {
+                    <div class="catalog-state catalog-state-error">
+                        <span>@_pointHistoryError</span>
+                        <button type="button" @onclick="ReloadPointHistoryAsync">Retry</button>
+                    </div>
+                }
+                else if (_pointHistorySnapshot is null || _pointHistorySnapshot.Entries.Count == 0)
+                {
+                    <div class="catalog-state">
+                        <i class="bi bi-clock-history"></i>
+                        <strong>No point movements found</strong>
+                        <span>No earned or redeemed point transaction was found for the selected date range.</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="table-wrapper">
+                        <table class="billing-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Invoice</th>
+                                    <th>Sale Amount</th>
+                                    <th>Earned</th>
+                                    <th>Redeemed</th>
+                                    <th>Net</th>
+                                    <th>Balance After</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var entry in _pointHistorySnapshot.Entries)
+                                {
+                                    <tr>
+                                        <td>@entry.FinancialDate.ToString("dd/MM/yyyy")</td>
+                                        <td>
+                                            <strong>@(string.IsNullOrWhiteSpace(entry.InvoiceNumber) ? entry.DocumentId : entry.InvoiceNumber)</strong>
+                                            @if (!string.IsNullOrWhiteSpace(entry.BranchId))
+                                            {
+                                                <small class="billing-line-code">@entry.BranchId</small>
+                                            }
+                                        </td>
+                                        <td>RM @entry.SaleAmount.ToString("N2")</td>
+                                        <td>@(entry.EarnedPoints.HasValue ? $"+{entry.EarnedPoints.Value:0.##}" : "—")</td>
+                                        <td>@(entry.RedeemedPoints > 0m ? $"-{entry.RedeemedPoints:0.##}" : "—")</td>
+                                        <td>@(entry.NetPoints.HasValue ? entry.NetPoints.Value.ToString("+0.##;-0.##;0") : "—")</td>
+                                        <td>@(entry.BalanceAfter.HasValue ? entry.BalanceAfter.Value.ToString("0.##") : "—")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+
+                <small>Historical balance-after is shown only when the backend provides it.</small>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" @onclick="ClosePointHistory">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (_showRedeemableCredits)
 {
     <div class="modal-overlay" @onclick="CloseRedeemableCredits">
@@ -1986,6 +2118,19 @@
     private readonly List<TransactionPayment> _outstandingSettlementPayments = new();
     private bool _isOutstandingPaymentMode;
     private decimal? CustomerPointBalance { get; set; }
+    private bool _showPointHistory;
+    private bool _isPointHistoryLoading;
+    private string? _pointHistoryError;
+    private PointHistorySnapshotDTO? _pointHistorySnapshot;
+    private DateTime _pointHistoryFrom = DateTime.Today.AddYears(-1);
+    private DateTime _pointHistoryTo = DateTime.Today;
+    private int _pointHistoryRequestVersion;
+    private decimal _pointHistoryEarnedTotal =>
+        _pointHistorySnapshot?.Entries
+            .Where(entry => entry.EarnedPoints.HasValue)
+            .Sum(entry => entry.EarnedPoints!.Value) ?? 0m;
+    private decimal _pointHistoryRedeemedTotal =>
+        _pointHistorySnapshot?.Entries.Sum(entry => entry.RedeemedPoints) ?? 0m;
     private decimal? CustomerPackageBalance { get; set; }
     private decimal? CustomerCreditBalance { get; set; }
     private bool _isCustomerBalanceLoading;
@@ -3921,6 +4066,11 @@
         _outstandingSettlementPayments.Clear();
         _isOutstandingPaymentMode = false;
         CustomerPointBalance = null;
+        _pointHistoryRequestVersion++;
+        _showPointHistory = false;
+        _isPointHistoryLoading = false;
+        _pointHistoryError = null;
+        _pointHistorySnapshot = null;
         CustomerPackageBalance = null;
         CustomerCreditBalance = null;
         _redeemableCredits.Clear();
@@ -4242,6 +4392,101 @@
             2800);
 
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OpenPointHistoryAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_billingCustomerId))
+        {
+            Feedback.Warning(
+                "Select a valid customer before viewing point history.",
+                "Customer required");
+            return;
+        }
+
+        _showPointHistory = true;
+        _pointHistoryError = null;
+        _pointHistorySnapshot = null;
+        await ReloadPointHistoryAsync();
+    }
+
+    private void ClosePointHistory()
+    {
+        _pointHistoryRequestVersion++;
+        _showPointHistory = false;
+        _isPointHistoryLoading = false;
+        _pointHistoryError = null;
+    }
+
+    private async Task ReloadPointHistoryAsync()
+    {
+        var customerId = _billingCustomerId?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(customerId))
+        {
+            return;
+        }
+
+        var branchId = AppState.SelectedBranchID?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(branchId))
+        {
+            branchId = BranchSession.CurrentBranch?.Id?.Trim() ?? string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(branchId))
+        {
+            _pointHistoryError = "Working branch is required before point history can be loaded.";
+            return;
+        }
+
+        var requestVersion = ++_pointHistoryRequestVersion;
+        _isPointHistoryLoading = true;
+        _pointHistoryError = null;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var result = await PointHistoryService.LoadHistoryAsync(
+                customerId,
+                branchId,
+                _pointHistoryFrom,
+                _pointHistoryTo);
+
+            if (requestVersion != _pointHistoryRequestVersion ||
+                !string.Equals(customerId, _billingCustomerId, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            if (!result.Success || result.Value is null)
+            {
+                _pointHistorySnapshot = null;
+                _pointHistoryError = result.ErrorMessage ?? "Unable to load point history.";
+                return;
+            }
+
+            _pointHistorySnapshot = result.Value;
+            CustomerPointBalance = result.Value.CurrentPointBalance;
+
+            Console.WriteLine(
+                $"[Point Step 14] UI PASS | Source=Billing | Customer={customerId} | " +
+                $"Entries={result.Value.Entries.Count} | CurrentBalance={result.Value.CurrentPointBalance:0.##}");
+        }
+        catch (Exception ex)
+        {
+            if (requestVersion == _pointHistoryRequestVersion)
+            {
+                _pointHistorySnapshot = null;
+                _pointHistoryError = $"Unable to load point history: {ex.Message}";
+            }
+        }
+        finally
+        {
+            if (requestVersion == _pointHistoryRequestVersion)
+            {
+                _isPointHistoryLoading = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
     }
 
     private async Task OpenRedeemableCredits()
