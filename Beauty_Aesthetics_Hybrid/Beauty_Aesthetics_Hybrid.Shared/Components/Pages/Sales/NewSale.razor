@@ -1006,221 +1006,17 @@
                              OnRefresh="@ReloadOutstandingDocumentsAsync"
                              OnConfirm="@ConfirmOutstandingSelection" />
 
-@if (showPointHistory)
-{
-    <div class="point-wallet-backdrop" @onclick="ClosePointHistory"></div>
-    <section class="point-wallet-dialog"
-             role="dialog"
-             aria-modal="true"
-             aria-label="Point wallet">
-        <header class="point-wallet-header">
-            <div class="point-wallet-title">
-                <span class="point-wallet-title-icon"><i class="bi bi-stars"></i></span>
-                <div>
-                    <span class="point-wallet-eyebrow">Customer Wallet</span>
-                    <h2>Points</h2>
-                    <small>@currentOrder.CustomerName</small>
-                </div>
-            </div>
-            <button type="button"
-                    class="point-wallet-close"
-                    title="Close"
-                    aria-label="Close point wallet"
-                    @onclick="ClosePointHistory">
-                <i class="bi bi-x-lg"></i>
-            </button>
-        </header>
-
-        <div class="point-wallet-balance-grid" aria-label="Point balance summary">
-            <article class="point-wallet-balance-card primary">
-                <span class="point-wallet-balance-icon"><i class="bi bi-wallet2"></i></span>
-                <div>
-                    <small>Available Points</small>
-                    <strong>@PointDialogAvailable.ToString("0.##")</strong>
-                    <span>Ready to use</span>
-                </div>
-            </article>
-            <article class="point-wallet-balance-card">
-                <span class="point-wallet-balance-icon"><i class="bi bi-stars"></i></span>
-                <div>
-                    <small>Current Balance</small>
-                    <strong>@PointDialogCurrentBalance.ToString("0.##")</strong>
-                    <span>Latest backend balance</span>
-                </div>
-            </article>
-            <article class="point-wallet-balance-card">
-                <span class="point-wallet-balance-icon"><i class="bi bi-bag-check"></i></span>
-                <div>
-                    <small>Used This Bill</small>
-                    <strong>@PointDialogAllocated.ToString("0.##")</strong>
-                    <span>Pending until sale completes</span>
-                </div>
-            </article>
-        </div>
-
-        <div class="point-wallet-content">
-            <section class="point-wallet-panel redemption-panel">
-                <div class="point-wallet-panel-header">
-                    <div>
-                        <span class="point-wallet-section-icon"><i class="bi bi-receipt"></i></span>
-                        <div>
-                            <h3>Current Bill Redemption</h3>
-                            <p>Items currently assigned to use points.</p>
-                        </div>
-                    </div>
-                    <span class="point-wallet-total-chip">@PointDialogAllocated.ToString("0.##") pts</span>
-                </div>
-
-                @if (!currentOrder.Items.Any(item => item.Points > 0m))
-                {
-                    <div class="point-wallet-empty compact">
-                        <span class="point-wallet-empty-icon"><i class="bi bi-stars"></i></span>
-                        <strong>No points used yet</strong>
-                        <p>Use points on an eligible product or service and it will appear here.</p>
-                    </div>
-                }
-                else
-                {
-                    <div class="point-redemption-list">
-                        @foreach (var line in currentOrder.Items.Where(item => item.Points > 0m))
-                        {
-                            <article class="point-redemption-row">
-                                <span class="point-redemption-icon"><i class="bi bi-stars"></i></span>
-                                <div class="point-redemption-copy">
-                                    <strong>@line.Name</strong>
-                                    <small>
-                                        @(string.IsNullOrWhiteSpace(line.Sku) ? line.Category : $"{line.Sku} · {line.Category}")
-                                        · Qty @line.Quantity
-                                    </small>
-                                </div>
-                                <div class="point-redemption-value">
-                                    <strong>@line.Points.ToString("0.##")</strong>
-                                    <span>points</span>
-                                </div>
-                            </article>
-                        }
-                    </div>
-                }
-            </section>
-
-            <section class="point-wallet-panel history-panel">
-                <div class="point-wallet-panel-header history-heading">
-                    <div>
-                        <span class="point-wallet-section-icon"><i class="bi bi-clock-history"></i></span>
-                        <div>
-                            <h3>Point History</h3>
-                            <p>Real movements from the backend point ledger.</p>
-                        </div>
-                    </div>
-                    <div class="point-history-totals">
-                        <span class="earned"><i class="bi bi-arrow-up-right"></i> +@PointHistoryEarnedTotal.ToString("0.##")</span>
-                        <span class="redeemed"><i class="bi bi-arrow-down-left"></i> -@PointHistoryRedeemedTotal.ToString("0.##")</span>
-                    </div>
-                </div>
-
-                <div class="point-history-toolbar">
-                    <label>
-                        <span>From</span>
-                        <input type="date" @bind-value="pointHistoryFrom" @bind-value:format="yyyy-MM-dd" />
-                    </label>
-                    <label>
-                        <span>To</span>
-                        <input type="date" @bind-value="pointHistoryTo" @bind-value:format="yyyy-MM-dd" />
-                    </label>
-                    <button type="button"
-                            class="point-history-refresh"
-                            @onclick="ReloadPointHistoryAsync"
-                            disabled="@isPointHistoryLoading">
-                        <i class="bi bi-arrow-clockwise @(isPointHistoryLoading ? "point-spin" : string.Empty)"></i>
-                        <span>@(isPointHistoryLoading ? "Loading" : "Refresh")</span>
-                    </button>
-                </div>
-
-                @if (isPointHistoryLoading)
-                {
-                    <div class="point-wallet-state">
-                        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
-                        <div>
-                            <strong>Loading point history</strong>
-                            <span>Fetching the latest point ledger...</span>
-                        </div>
-                    </div>
-                }
-                else if (!string.IsNullOrWhiteSpace(pointHistoryError))
-                {
-                    <div class="point-wallet-state error">
-                        <span class="point-wallet-state-icon"><i class="bi bi-exclamation-triangle"></i></span>
-                        <div>
-                            <strong>Unable to load history</strong>
-                            <span>@pointHistoryError</span>
-                        </div>
-                        <button type="button" @onclick="ReloadPointHistoryAsync">Retry</button>
-                    </div>
-                }
-                else if (pointHistorySnapshot is null || pointHistorySnapshot.Entries.Count == 0)
-                {
-                    <div class="point-wallet-empty">
-                        <span class="point-wallet-empty-icon"><i class="bi bi-clock-history"></i></span>
-                        <strong>No point movements</strong>
-                        <p>No earned or redeemed point transactions were found in this date range.</p>
-                    </div>
-                }
-                else
-                {
-                    <div class="point-history-table-wrap">
-                        <table class="point-history-table">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Invoice</th>
-                                    <th>Type</th>
-                                    <th class="number">Movement</th>
-                                    <th class="number">Balance</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var entry in pointHistorySnapshot.Entries)
-                                {
-                                    var isEarned = entry.EarnedPoints.HasValue;
-                                    <tr>
-                                        <td data-label="Date">
-                                            <strong>@entry.FinancialDate.ToString("dd MMM yyyy")</strong>
-                                            <small>@entry.FinancialDate.ToString("HH:mm")</small>
-                                        </td>
-                                        <td data-label="Invoice">
-                                            <strong>@(string.IsNullOrWhiteSpace(entry.InvoiceNumber) ? entry.DocumentId : entry.InvoiceNumber)</strong>
-                                        </td>
-                                        <td data-label="Type">
-                                            <span class="point-movement-type @(isEarned ? "earned" : "redeemed")">
-                                                <i class="bi @(isEarned ? "bi-arrow-up-right" : "bi-arrow-down-left")"></i>
-                                                @(isEarned ? "Earned" : "Redeemed")
-                                            </span>
-                                        </td>
-                                        <td class="number" data-label="Movement">
-                                            <strong class="point-movement-value @(isEarned ? "earned" : "redeemed")">
-                                                @entry.NetPoints.ToString("+0.##;-0.##;0")
-                                            </strong>
-                                            <span>pts</span>
-                                        </td>
-                                        <td class="number" data-label="Balance">
-                                            <strong>@entry.BalanceAfter.ToString("0.##")</strong>
-                                            <span>pts</span>
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                }
-            </section>
-        </div>
-
-        <footer class="point-wallet-footer">
-            <span><i class="bi bi-shield-check"></i> Live point history from the backend ledger</span>
-            <button type="button" @onclick="ClosePointHistory">Close</button>
-        </footer>
-    </section>
-}
+<CustomerPointsDialog IsOpen="@showPointHistory"
+                      Balance="@PointDialogCurrentBalance"
+                      Allocated="@PointDialogAllocated"
+                      BillLines="@(currentOrder.Items.Where(item => item.Points > 0m).Select(item => new PointWalletLine(item.Name, item.Sku ?? string.Empty, item.Quantity, item.Points)).ToList())"
+                      History="@pointHistorySnapshot"
+                      @bind-FromDate="pointHistoryFrom"
+                      @bind-ToDate="pointHistoryTo"
+                      IsLoading="@isPointHistoryLoading"
+                      ErrorMessage="@pointHistoryError"
+                      OnClose="@ClosePointHistory"
+                      OnRefresh="@ReloadPointHistoryAsync" />
 
 @* Item Quantity & Discount Editor Dialog *@
 @if (showRedeemableCredits)
@@ -1902,18 +1698,10 @@
     private DateTime pointHistoryFrom = DateTime.Today.AddYears(-1);
     private DateTime pointHistoryTo = DateTime.Today;
     private int pointHistoryRequestVersion;
-    private decimal PointHistoryEarnedTotal =>
-        pointHistorySnapshot?.Entries
-            .Where(entry => entry.EarnedPoints.HasValue)
-            .Sum(entry => entry.EarnedPoints!.Value) ?? 0m;
-    private decimal PointHistoryRedeemedTotal =>
-        pointHistorySnapshot?.Entries.Sum(entry => entry.RedeemedPoints) ?? 0m;
     private decimal PointDialogCurrentBalance =>
         Math.Max(0m, pointHistorySnapshot?.CurrentPointBalance ?? selectedCustomerPointBalance ?? 0m);
     private decimal PointDialogAllocated =>
         PointsAllocatedOnCurrentBill();
-    private decimal PointDialogAvailable =>
-        Math.Max(0m, PointDialogCurrentBalance - PointDialogAllocated);
     private decimal? selectedCustomerPackageBalance;
     private decimal? selectedCustomerCreditBalance;
     private List<RedeemableCreditDTO> redeemableCredits = new();

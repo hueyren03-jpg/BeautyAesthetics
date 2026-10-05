@@ -1,0 +1,33 @@
+@namespace Beauty_Aesthetics_WebPos.Components.Shared
+
+<div class="wallet-frame-overlay" style="--wallet-frame-width: @Width; --wallet-frame-layer: @Layer;" @onclick="Close">
+    <section class="wallet-frame" role="dialog" aria-modal="true" aria-labelledby="@TitleId" tabindex="-1" @ref="_dialog" @onkeydown="HandleKey" @onclick:stopPropagation="true">
+        <BillingWalletFormHeader Title="@Title" TitleId="@TitleId" Icon="@Icon" CloseDisabled="@CloseDisabled" OnClose="Close" />
+        <div class="wallet-frame-content">
+            @ChildContent
+        </div>
+        <div class="wallet-frame-footer">
+            @Footer
+        </div>
+    </section>
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public string TitleId { get; set; } = string.Empty;
+    [Parameter] public string Icon { get; set; } = string.Empty;
+    [Parameter] public string Width { get; set; } = "1040px";
+    [Parameter] public int Layer { get; set; } = 2147483300;
+    [Parameter] public bool CloseDisabled { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    private ElementReference _dialog;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await _dialog.FocusAsync();
+    }
+    private Task Close() => CloseDisabled ? Task.CompletedTask : OnClose.InvokeAsync();
+    private Task HandleKey(KeyboardEventArgs args) => args.Key == "Escape" ? Close() : Task.CompletedTask;
+}

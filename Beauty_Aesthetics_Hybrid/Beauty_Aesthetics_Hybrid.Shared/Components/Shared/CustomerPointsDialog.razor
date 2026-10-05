@@ -1,0 +1,146 @@
+@namespace Beauty_Aesthetics_WebPos.Components.Shared
+@using Beauty_Aesthetics_WebPos.Models.DTOs
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+
+@if (IsOpen)
+{
+    <WalletDialogFrame Title="Points" TitleId="customer-points-title" Icon="bi-stars" Width="880px" OnClose="OnClose">
+    <ChildContent>
+    <div class="points-content">
+        <dl class="points-balances" aria-label="Point balances">
+            <div class="points-balances-available"><dt>Available</dt><dd>@Number(Math.Max(0m, Balance - Allocated)) <span>pts</span></dd></div>
+            <div><dt>Balance</dt><dd>@Number(Balance) <span>pts</span></dd></div>
+            <div><dt>This Bill</dt><dd>@Number(Allocated) <span>pts</span></dd></div>
+        </dl>
+
+        <nav class="points-tabs" aria-label="Point views">
+            <button type="button" aria-pressed="@(!_showBill)" @onclick="() => _showBill = false">History</button>
+            <button type="button" aria-pressed="@_showBill" @onclick="() => _showBill = true">This Bill <span>@BillLines.Count</span></button>
+        </nav>
+
+        @if (_showBill)
+        {
+            <div class="points-scroll" tabindex="0" role="region" aria-label="Points used on this bill">
+                @if (BillLines.Count == 0)
+                {
+                    <div class="points-state">No points used.</div>
+                }
+                else
+                {
+                    <ul class="points-bill-lines">
+                        @foreach (var line in BillLines)
+                        {
+                            <li>
+                                <div class="points-line-copy">
+                                    <strong>@line.Name</strong>
+                                    @if (!string.IsNullOrWhiteSpace(line.Sku)) { <span>@line.Sku</span> }
+                                    <span>Qty @Number(line.Quantity)</span>
+                                </div>
+                                <strong class="points-line-amount">@Number(line.Points) <span>pts</span></strong>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="points-date-filter">
+                <label><span>From</span><input type="date" @bind:get="FromDate" @bind:set="SetFromDate" @bind:format="yyyy-MM-dd" /></label>
+                <label><span>To</span><input type="date" @bind:get="ToDate" @bind:set="SetToDate" @bind:format="yyyy-MM-dd" /></label>
+                <button type="button" aria-label="Refresh point history" title="Refresh" disabled="@IsLoading" @onclick="OnRefresh">
+                    @if (IsLoading) { <span class="spinner-border spinner-border-sm" aria-hidden="true"></span> }
+                    else { <i class="bi bi-arrow-clockwise" aria-hidden="true"></i> }
+                    <span class="points-refresh-label">Refresh</span>
+                </button>
+            </div>
+            <div class="points-history-summary">
+                <span class="points-earned">Earned +@Number(Entries.Sum(entry => entry.EarnedPoints ?? 0m))</span>
+                <span class="points-redeemed">Redeemed -@Number(Entries.Sum(entry => entry.RedeemedPoints))</span>
+            </div>
+
+            <div class="points-scroll" tabindex="0" role="region" aria-label="Point history" aria-busy="@IsLoading">
+                @if (IsLoading)
+                {
+                    <div class="points-state" role="status"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span>Loading history...</div>
+                }
+                else if (!string.IsNullOrWhiteSpace(ErrorMessage))
+                {
+                    <div class="points-state points-error" role="alert"><span>@ErrorMessage</span><button type="button" @onclick="OnRefresh">Retry</button></div>
+                }
+                else if (Entries.Count == 0)
+                {
+                    <div class="points-state">No point movements.</div>
+                }
+                else
+                {
+                    <table class="points-desktop-history">
+                        <thead><tr><th>Date</th><th>Invoice</th><th>Type</th><th class="points-number">Movement</th><th class="points-number">Balance</th></tr></thead>
+                        <tbody>
+                            @foreach (var entry in Entries)
+                            {
+                                <tr>
+                                    <td>@entry.FinancialDate.ToString("dd MMM yyyy")<small>@entry.FinancialDate.ToString("HH:mm")</small></td>
+                                    <td>@Invoice(entry)</td>
+                                    <td><span class="points-status @MovementClass(entry)">@MovementType(entry)</span></td>
+                                    <td class="points-number @MovementClass(entry)">@Movement(entry.NetPoints) pts</td>
+                                    <td class="points-number">@Number(entry.BalanceAfter) pts</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    <ul class="points-mobile-history">
+                        @foreach (var entry in Entries)
+                        {
+                            <li>
+                                <div class="points-entry-heading"><strong>@Invoice(entry)</strong><span class="points-status @MovementClass(entry)">@MovementType(entry)</span></div>
+                                <time datetime="@entry.FinancialDate.ToString("s")">@entry.FinancialDate.ToString("dd MMM yyyy · HH:mm")</time>
+                                <dl>
+                                    <div><dt>Movement</dt><dd class="@MovementClass(entry)">@Movement(entry.NetPoints) <span>pts</span></dd></div>
+                                    <div><dt>Balance</dt><dd>@Number(entry.BalanceAfter) <span>pts</span></dd></div>
+                                </dl>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        }
+
+    </div>
+    </ChildContent>
+    <Footer><footer class="points-footer"><button type="button" @onclick="OnClose">Close</button></footer></Footer>
+    </WalletDialogFrame>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public decimal Balance { get; set; }
+    [Parameter] public decimal Allocated { get; set; }
+    [Parameter] public IReadOnlyList<PointWalletLine> BillLines { get; set; } = Array.Empty<PointWalletLine>();
+    [Parameter] public PointHistorySnapshotDTO? History { get; set; }
+    [Parameter] public DateTime FromDate { get; set; }
+    [Parameter] public DateTime ToDate { get; set; }
+    [Parameter] public EventCallback<DateTime> FromDateChanged { get; set; }
+    [Parameter] public EventCallback<DateTime> ToDateChanged { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnRefresh { get; set; }
+
+    private bool _showBill;
+    private bool _wasOpen;
+    private IReadOnlyList<PointHistoryEntryDTO> Entries => History is null ? Array.Empty<PointHistoryEntryDTO>() : History.Entries;
+    protected override void OnParametersSet()
+    {
+        if (IsOpen && !_wasOpen) _showBill = false;
+        _wasOpen = IsOpen;
+    }
+    private static string Number(decimal value) => value.ToString("#,##0.##");
+    private static string Movement(decimal value) => value.ToString("+#,##0.##;-#,##0.##;0");
+    private static string Invoice(PointHistoryEntryDTO entry) => string.IsNullOrWhiteSpace(entry.InvoiceNumber) ? entry.DocumentId : entry.InvoiceNumber;
+    private static string MovementClass(PointHistoryEntryDTO entry) => entry.NetPoints > 0m ? "points-earned" : entry.NetPoints < 0m ? "points-redeemed" : "points-neutral";
+    private static string MovementType(PointHistoryEntryDTO entry) => entry.NetPoints > 0m ? "Earned" : entry.NetPoints < 0m ? "Redeemed" : "Adjustment";
+    private Task SetFromDate(DateTime date) => FromDateChanged.InvokeAsync(date);
+    private Task SetToDate(DateTime date) => ToDateChanged.InvokeAsync(date);
+}

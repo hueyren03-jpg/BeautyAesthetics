@@ -111,36 +111,23 @@ public sealed class MemberCreditService : IMemberCreditService
         var full = fullResult.Value;
         var fullInventory = full.ObjInventory;
 
-        var configuredCredits = (full.MembershipCredits ?? fullInventory?.MembershipCredits ?? [])
-            .Where(item =>
-                !string.IsNullOrWhiteSpace(item.MemberTypeId) &&
-                !string.Equals(item.SaveAction, "Deleted", StringComparison.OrdinalIgnoreCase))
-            .GroupBy(item => item.MemberTypeId.Trim(), StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.Last())
+        // Package setup, details and purchase use the same API assignments.
+        // A MemberTypeID identifies the granted credit account, not the buyer's tier.
+        var isPackage = fullInventory?.InventoryTypeId == 5 || record.InventoryTypeID == 5;
+        var allocations = InventoryMembershipCreditMapper.Read(full, record, allowLegacyPrimaryCredit: !isPackage)
+            .Select(credit => new MembershipViewModel.MemberCreditAllocation(
+                credit.MemberTypeId, credit.MemberCredit))
             .ToList();
-
-        var allocations = configuredCredits
-            .Select(item => new MembershipViewModel.MemberCreditAllocation(
-                item.MemberTypeId.Trim(),
-                Math.Max(0m, item.MemberCredit)))
-            .ToList();
-
-        if (allocations.Count == 0)
-        {
-            allocations = ParseMembershipCredits(GetInventoryString(record, "MembershipCredit")).ToList();
-        }
 
         var creditValue = allocations.FirstOrDefault()?.CreditAmount
-            ?? Math.Max(
+            ?? (isPackage ? 0m : Math.Max(
                 0m,
                 fullInventory?.MemberMainAccountCredit
-                    ?? Convert.ToDecimal(record.MemberMainAccountCredit));
+                    ?? Convert.ToDecimal(record.MemberMainAccountCredit)));
 
-        var expiryDays = fullInventory is not null && fullInventory.MemberExpiryDays > 0
-            ? fullInventory.MemberExpiryDays
-            : fullInventory is not null
-                ? Math.Max(0, fullInventory.ValidityDays)
-                : Math.Max(0, record.ValidityDays);
+        // Senang uses MemberExpiryDays for credit, independently of package-item validity.
+        // Zero means no fixed credit expiry; do not fall back to ValidityDays.
+        var expiryDays = InventoryMembershipCreditMapper.ReadExpiryDays(full, record);
 
         return ApiCallResult<MembershipViewModel.MemberCredit>.Ok(
             baseResult.StatusCode,

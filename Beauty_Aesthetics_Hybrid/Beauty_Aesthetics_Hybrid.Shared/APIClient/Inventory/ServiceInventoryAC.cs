@@ -195,7 +195,8 @@ public sealed class ServiceInventoryAC
             inventoryPayload[property.Name] = property.Value.Clone();
         }
 
-        inventoryPayload["lstMembershipCredit"] = inventory.MembershipCredits;
+        inventoryPayload["lstMembershipCredit"] = inventory.UseEncodedMembershipCreditOnly
+            ? null : inventory.MembershipCredits;
 
         var payload = new
         {

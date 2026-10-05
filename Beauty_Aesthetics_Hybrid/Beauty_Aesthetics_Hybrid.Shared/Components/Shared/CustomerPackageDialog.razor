@@ -7,15 +7,50 @@
 @inject ServiceInventoryAC InventoryAC
 @inject IGstTaxRateService TaxService
 @inject ProductImageService Images
+@inject IPackageService PackageService
+@implements IDisposable
 
-<div class="package-overlay" @onclick="Close">
-    <section class="package-dialog" role="dialog" aria-modal="true" aria-labelledby="customer-package-title" @onclick:stopPropagation="true">
-        <header>
-            <div><h2 id="customer-package-title">Customer Packages</h2><p>@CustomerName</p></div>
-            <button type="button" class="package-close" aria-label="Close packages" @onclick="Close"><i class="bi bi-x-lg"></i></button>
-        </header>
+<WalletDialogFrame Title="@(view == "buy" ? "Buy Package" : "Packages")" TitleId="customer-package-title" Icon="bi-box2-heart" CloseDisabled="@busy" Layer="2147483100" OnClose="Close">
+    <ChildContent>
+    <div class="package-content @(historyId is not null && view == "owned" ? "package-show-history" : string.Empty)">
+        @if (AllowPurchase)
+        {
+            <nav class="package-tabs" aria-label="Package options">
+                <button type="button" aria-pressed="@(view == "owned")" @onclick="ShowOwned">Owned packages</button>
+                <button type="button" aria-pressed="@(view == "buy")" @onclick="ShowPurchases">Buy package</button>
+            </nav>
+        }
+        <div class="package-toolbar">
+            <label class="package-search"><i class="bi bi-search"></i><input type="search" aria-label="Search packages" placeholder="Search packages" @bind="search" @bind:event="oninput" /></label>
+            @if (view == "owned")
+            {
+                <button type="button" class="package-filter" aria-pressed="@availableOnly" @onclick="() => availableOnly = !availableOnly">Available</button>
+            }
+        </div>
+        <div class="package-workspace @(historyId is not null ? "has-history" : "")">
         <div class="package-body">
-            @if (loading)
+            @if (view == "buy")
+            {
+                @if (catalogueLoading) { <p role="status">Loading packages…</p> }
+                else if (catalogueError is not null) { <p class="package-error" role="alert">@catalogueError</p><button type="button" @onclick="LoadCatalogue">Retry</button> }
+                else if (!FilteredPurchases.Any()) { <p>No packages found.</p> }
+                else
+                {
+                    @foreach (var package in FilteredPurchases)
+                    {
+                        <button type="button" class="package-purchase-row @(selectedPurchase?.MasterAccountId == package.MasterAccountId ? "selected" : "")"
+                                aria-pressed="@(selectedPurchase?.MasterAccountId == package.MasterAccountId)" disabled="@busy" @onclick="() => SelectPurchase(package)">
+                            <span class="package-picture">
+                                @if (PurchaseImage(package) is { Length: > 0 } purchaseImage) { <img src="@purchaseImage" alt="" @onerror="() => brokenImages.Add(package.MasterAccountId)" /> }
+                                else { <i class="bi bi-box2-heart"></i> }
+                            </span>
+                            <span class="package-details"><strong>@package.Name</strong><small>@package.Sku</small><span>@(package.Lines?.Sum(line => line.Quantity).ToString("0.##") ?? package.ServicesCount.ToString()) items</span></span>
+                            <span class="package-purchase-amount"><strong class="package-price">RM @package.Price.ToString("N2")</strong><i class="bi @(selectedPurchase?.MasterAccountId == package.MasterAccountId ? "bi-check-circle-fill" : "bi-circle")" aria-hidden="true"></i></span>
+                        </button>
+                    }
+                }
+            }
+            else if (loading)
             {
                 <p role="status">Loading packages…</p>
             }
@@ -30,30 +65,34 @@
             }
             else
             {
-                @foreach (var package in packages)
+                @if (!FilteredPackages.Any()) { <p>No packages found.</p> }
+                @foreach (var package in FilteredPackages)
                 {
-                    <article class="package-card @(selected?.AutoID == package.AutoID ? "selected" : "")">
+                    <article class="package-card @(selected?.AutoID == package.AutoID ? "selected" : "")" @onclick="() => Select(package)">
                         <button type="button" class="package-select" aria-pressed="@(selected?.AutoID == package.AutoID)"
-                                @onclick="() => Select(package)">
-                            <img src="@Images.ResolveImageUrl(package.InventoryID, null, null)" alt="" />
+                                disabled="@busy" @onclick="() => Select(package)" @onclick:stopPropagation="true">
+                            <span class="package-picture">
+                                @if (PackageImage(package.InventoryID) is { Length: > 0 } ownedImage) { <img src="@ownedImage" alt="" @onerror="() => brokenImages.Add(package.InventoryID ?? string.Empty)" /> }
+                                else { <i class="bi bi-box2-heart"></i> }
+                            </span>
                             <div class="package-details">
-                                <strong>@package.Description</strong><span>@package.PackageName</span><small>@package.AutoID</small>
+                                <strong>@package.Description</strong><span>@package.PackageName</span><small>@package.PackageCode</small>
                             </div>
-                            <span class="package-status @(CanRedeem(package) ? "available" : "unavailable")">@(Expired(package) ? "Expired" : Available(package) < 1m ? "Used" : CanRedeem(package) ? "Available" : "Unavailable")</span>
+                            <span class="package-status @(Expired(package) ? "expired" : CanRedeem(package) ? "available" : "unavailable")">@(Expired(package) ? "Expired" : Available(package) < 1m ? "Used" : CanRedeem(package) ? "Available" : "Unavailable")</span>
                         </button>
                         <dl>
-                            <div><dt>Purchased</dt><dd>@package.QuantityPurchased.ToString("0.##")</dd></div>
                             <div><dt>Remaining</dt><dd>@Available(package).ToString("0.##")</dd></div>
                             <div><dt>Expiry</dt><dd>@(package.ExpiryDate.Year > 1900 ? package.ExpiryDate.ToString("dd/MM/yyyy") : "—")</dd></div>
+                            <div class="package-history-cell"><button type="button" class="package-history" disabled="@busy" @onclick="() => LoadHistory(package)" @onclick:stopPropagation="true"><i class="bi bi-clock-history"></i> History</button></div>
                         </dl>
-                        <button type="button" class="package-history" @onclick="() => LoadHistory(package)">History <i class="bi bi-clock-history"></i></button>
                     </article>
                 }
             }
-            @if (historyId is not null)
+        </div>
+            @if (historyId is not null && view == "owned")
             {
                 <section class="package-history-panel">
-                    <div class="package-history-title"><strong>Redemption History</strong><button type="button" aria-label="Close history" @onclick="CloseHistory"><i class="bi bi-x-lg"></i></button></div>
+                    <div class="package-history-title"><strong>Redemption History</strong><button type="button" aria-label="Back to packages" @onclick="CloseHistory"><i class="bi bi-arrow-left"></i></button></div>
                     <small>@historyId</small>
                     @if (historyLoading) { <p>Loading…</p> }
                     else if (!string.IsNullOrWhiteSpace(historyError)) { <p role="alert">@historyError</p> }
@@ -67,26 +106,42 @@
                     }
                 </section>
             }
-            @if (!string.IsNullOrWhiteSpace(actionError)) { <p class="package-error" role="alert">@actionError</p> }
         </div>
-        <footer>
-            @if (AllowRedeem && selected is not null)
+    </div>
+    </ChildContent>
+    <Footer>
+        <footer class="package-footer">
+            @if (!string.IsNullOrWhiteSpace(actionError)) { <p class="package-error" role="alert">@actionError</p> }
+            @if (historyId is not null && view == "owned")
             {
-                <label>Quantity <input type="number" min="1" max="@decimal.Floor(Available(selected))" step="1" @bind="quantity" /></label>
-                <button type="button" class="package-redeem" disabled="@(busy || !CanRedeem(selected))" @onclick="Redeem">@(busy ? "Loading…" : "Redeem")</button>
+                <button type="button" class="package-close-footer" @onclick="CloseHistory">Back to Packages</button>
+            }
+            else if ((view == "buy" && selectedPurchase is not null) || (view == "owned" && AllowRedeem && selected is not null && CanRedeem(selected)))
+            {
+                <div class="package-footer-selection"><strong>@(view == "buy" ? selectedPurchase?.Name : selected?.Description)</strong><small>@(view == "buy" ? $"RM {(selectedPurchase!.Price * quantity):N2}" : $"{Available(selected!):0.##} remaining")</small></div>
+                <div class="package-footer-actions"><div class="package-quantity" aria-label="Quantity">
+                    <button type="button" aria-label="Decrease quantity" disabled="@(busy || quantity <= 1)" @onclick="() => quantity--"><i class="bi bi-dash"></i></button>
+                    <input type="number" aria-label="Quantity" min="1" max="@(view == "owned" && selected is not null ? decimal.Floor(Available(selected)).ToString() : null)" step="1" disabled="@busy" @bind="quantity" />
+                    <button type="button" aria-label="Increase quantity" disabled="@(busy || (view == "owned" && selected is not null && quantity >= Available(selected)))" @onclick="() => quantity++"><i class="bi bi-plus"></i></button>
+                </div><button type="button" class="package-redeem" disabled="@(busy || quantity < 1 || (view == "owned" && (selected is null || !CanRedeem(selected) || quantity > Available(selected))))" @onclick="SubmitSelection">@(busy ? "Loading…" : view == "buy" ? "Add Package" : "Apply Sessions")</button></div>
             }
             else
             {
                 <button type="button" class="package-close-footer" @onclick="Close">Close</button>
             }
         </footer>
-    </section>
-</div>
+    </Footer>
+</WalletDialogFrame>
 
 @code {
     [Parameter] public string CustomerId { get; set; } = string.Empty;
     [Parameter] public string CustomerName { get; set; } = string.Empty;
     [Parameter] public bool AllowRedeem { get; set; }
+    [Parameter] public bool AllowPurchase { get; set; }
+    [Parameter] public bool CompactLayout { get; set; }
+    [Parameter] public string BranchId { get; set; } = string.Empty;
+    [Parameter] public string StartView { get; set; } = "owned";
+    [Parameter] public EventCallback<TransactionItem> OnPurchase { get; set; }
     [Parameter] public IReadOnlyDictionary<string, decimal> ReservedQuantities { get; set; } = new Dictionary<string, decimal>();
     [Parameter] public EventCallback<TransactionItem> OnRedeem { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
@@ -98,15 +153,37 @@
     private bool loading, busy, historyLoading;
     private int quantity = 1;
     private int historyVersion;
+    private string view = "owned", search = string.Empty;
+    private bool availableOnly, catalogueLoading;
+    private string? catalogueError;
+    private IReadOnlyList<InventoryPackageSummary> catalogue = [];
+    private InventoryPackageSummary? selectedPurchase;
+    private bool disposed;
+    private readonly CancellationTokenSource lifetime = new();
+    private readonly Dictionary<string, string> packageImages = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> brokenImages = new(StringComparer.OrdinalIgnoreCase);
+    private string PackageImage(string? id) => string.IsNullOrWhiteSpace(id) || brokenImages.Contains(id) ? string.Empty :
+        packageImages.TryGetValue(id, out var image) ? image : Images.ResolveImageUrl(id, null, null);
+    private string PurchaseImage(InventoryPackageSummary package) => brokenImages.Contains(package.MasterAccountId) ? string.Empty :
+        Images.ResolveImageUrl(package.MasterAccountId, package.ImagePath, package.ImageFileName);
+    private IEnumerable<PackageBalanceDetailDTO> FilteredPackages => packages
+        .Where(package => (!availableOnly || CanRedeem(package)) && Matches(package.Description, package.PackageName, package.PackageCode, package.AutoID))
+        .OrderByDescending(CanRedeem).ThenBy(package => package.ExpiryDate);
+    private IEnumerable<InventoryPackageSummary> FilteredPurchases => catalogue.Where(package => Matches(package.Name, package.Sku));
+    private bool Matches(params string?[] values) => string.IsNullOrWhiteSpace(search) || values.Any(value => value?.Contains(search, StringComparison.OrdinalIgnoreCase) == true);
 
     protected override async Task OnParametersSetAsync()
     {
         if (loadedCustomerId != CustomerId)
         {
             loadedCustomerId = CustomerId;
-            await Reload();
+            view = AllowPurchase && StartView == "buy" ? "buy" : "owned";
+            if (view == "buy") await Task.WhenAll(Reload(), LoadCatalogue());
+            else await Reload();
         }
     }
+
+    public void Dispose() { disposed = true; lifetime.Cancel(); lifetime.Dispose(); }
 
     private async Task Reload()
     {
@@ -116,12 +193,33 @@
         CloseHistory();
         try
         {
-            var result = await CustomerService.GetPackagesAsync(CustomerId);
+            var result = await CustomerService.GetPackagesAsync(CustomerId, lifetime.Token);
             packages = result.Value ?? [];
             if (!result.Success) error = result.ErrorMessage ?? "Unable to load packages.";
         }
         catch { error = "Unable to load packages."; }
         finally { loading = false; }
+        if (disposed || view != "owned") return;
+        await InvokeAsync(StateHasChanged);
+        foreach (var batch in packages.Select(package => package.InventoryID).Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase).Where(id => !packageImages.ContainsKey(id!) && string.IsNullOrWhiteSpace(PackageImage(id))).Chunk(4))
+        {
+            await Task.WhenAll(batch.Select(LoadPackageImage));
+            if (disposed) return;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadPackageImage(string? id)
+    {
+        if (disposed || string.IsNullOrWhiteSpace(id)) return;
+        try
+        {
+            var result = await InventoryAC.LoadRecordAsync(id, lifetime.Token);
+            if (result.Success && result.Value is not null)
+                packageImages[id] = Images.ResolveImageUrl(id, result.Value.ImagePath, result.Value.ImageFileName);
+        }
+        catch { /* An unavailable picture must not block selection or history. */ }
     }
 
     private static bool Expired(PackageBalanceDetailDTO package) => package.ExpiryDate.Year > 1900 && package.ExpiryDate.Date < DateTime.Today;
@@ -129,12 +227,54 @@
         package.NetBalanceAfterUtilised - (ReservedQuantities.TryGetValue(package.AutoID ?? string.Empty, out var used) ? used : 0m));
     private bool CanRedeem(PackageBalanceDetailDTO package) => package.IsRedeemable != false && !Expired(package) && Available(package) >= 1m &&
         !string.IsNullOrWhiteSpace(package.AutoID) && !string.IsNullOrWhiteSpace(package.InventoryID) && !string.IsNullOrWhiteSpace(package.PackageID);
-    private void Select(PackageBalanceDetailDTO package) { if (busy) return; selected = package; quantity = 1; actionError = null; }
+    private void Select(PackageBalanceDetailDTO package) { if (busy) return; selected = package; quantity = 1; actionError = null; CloseHistory(); }
     private Task Close() => busy ? Task.CompletedTask : OnClose.InvokeAsync();
     private void CloseHistory() { historyVersion++; historyId = null; history = []; historyLoading = false; }
+    private async Task ShowOwned() { if (busy) return; view = "owned"; search = string.Empty; actionError = null; await Reload(); }
+    private async Task ShowPurchases() { if (busy) return; view = "buy"; search = string.Empty; actionError = null; CloseHistory(); if (catalogue.Count == 0) await LoadCatalogue(); }
+    private void SelectPurchase(InventoryPackageSummary package) { if (busy) return; selectedPurchase = package; quantity = 1; actionError = null; }
+    private async Task LoadCatalogue()
+    {
+        catalogueLoading = true; catalogueError = null;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(BranchId)) { catalogueError = "Select a branch first."; return; }
+            var result = await PackageService.LoadPackagesAsync(Array.Empty<Beauty_Aesthetics_WebPos.Components.ViewModels.ServiceViewModel.ServiceItem>(), BranchId, lifetime.Token);
+            catalogue = result.Value?.Where(package => package.IsActive && !string.Equals(package.Status, "Inactive", StringComparison.OrdinalIgnoreCase)).ToList() ?? [];
+            if (!result.Success) catalogueError = result.ErrorMessage ?? "Unable to load packages.";
+        }
+        catch { catalogueError = "Unable to load packages."; }
+        finally { catalogueLoading = false; }
+    }
+    private async Task SubmitSelection()
+    {
+        if (view == "owned") { await Redeem(); return; }
+        if (busy || !AllowPurchase || selectedPurchase is null || quantity < 1) return;
+        busy = true; actionError = null;
+        try
+        {
+            var package = selectedPurchase;
+            var item = new TransactionItem {
+                InventoryId = package.MasterAccountId, Name = package.Name, Sku = package.Sku,
+                Description = package.SalesDescription, Category = "Package", InventoryTypeId = 5,
+                ImageUrl = Images.ResolveImageUrl(package.MasterAccountId, package.ImagePath, package.ImageFileName),
+                Quantity = quantity, UnitPrice = package.Price, UnitOfMeasureId = package.UnitOfMeasure,
+                TaxCodeId = package.TaxCode, IsTaxInclusive = package.IsTaxInclusive,
+                TaxPercentage = await TaxService.GetRateForTaxCodeAsync(package.TaxCode, lifetime.Token)
+            };
+            OrderLineTaxCalculator.ComputeLineAmounts(item.UnitPrice, item.Quantity, 0m, item.TaxPercentage, item.IsTaxInclusive, out var beforeTax, out var tax);
+            item.TaxAmount = tax; item.TotalPrice = beforeTax + tax;
+            if (!disposed) await OnPurchase.InvokeAsync(item);
+        }
+        catch { actionError = "Unable to add the package."; }
+        finally { busy = false; }
+    }
 
     private async Task LoadHistory(PackageBalanceDetailDTO package)
     {
+        if (busy) return;
+        selected = package;
+        quantity = 1;
         var version = ++historyVersion;
         historyId = package.AutoID;
         historyError = null;
@@ -142,7 +282,7 @@
         historyLoading = true;
         try
         {
-            var result = await CustomerService.GetPackageHistoryAsync(package.AutoID ?? string.Empty);
+            var result = await CustomerService.GetPackageHistoryAsync(package.AutoID ?? string.Empty, lifetime.Token);
             if (version != historyVersion) return;
             history = result.Value ?? [];
             if (!result.Success) historyError = result.ErrorMessage ?? "Unable to load history.";
@@ -159,7 +299,7 @@
         busy = true;
         try
         {
-            var result = await InventoryAC.LoadRecordAsync(selected.InventoryID!);
+            var result = await InventoryAC.LoadRecordAsync(selected.InventoryID!, lifetime.Token);
             if (!result.Success || result.Value is null)
             { actionError = result.ErrorMessage ?? "Unable to load the package item."; return; }
             var inventory = result.Value;
@@ -177,12 +317,12 @@
                 ActivityTypeId = selected.ActivityTypeID == 4 ? 5 : 2,
                 UnitOfMeasureId = inventory.UnitOfMeasureID ?? "UNIT", TaxCodeId = inventory.TaxCodeID ?? string.Empty,
                 IsTaxInclusive = inventory.IsTaxInclusive,
-                TaxPercentage = await TaxService.GetRateForTaxCodeAsync(inventory.TaxCodeID)
+                TaxPercentage = await TaxService.GetRateForTaxCodeAsync(inventory.TaxCodeID, lifetime.Token)
             };
             OrderLineTaxCalculator.ComputeLineAmounts(item.UnitPrice, quantity, 0m, item.TaxPercentage, item.IsTaxInclusive, out var beforeTax, out var tax);
             item.TaxAmount = tax;
             item.TotalPrice = beforeTax + tax;
-            await OnRedeem.InvokeAsync(item);
+            if (!disposed) await OnRedeem.InvokeAsync(item);
         }
         catch { actionError = "Unable to add the package item."; }
         finally { busy = false; }

@@ -4,65 +4,14 @@
 
 @if (IsOpen)
 {
-    <div class="outstanding-dialog-backdrop" @onclick="CloseAsync"></div>
-    <section class="outstanding-dialog"
-             role="dialog"
-             aria-modal="true"
-             aria-label="Outstanding settlement">
-        <header>
-            <div class="outstanding-dialog-title">
-                <span class="outstanding-dialog-icon">
-                    <i class="bi bi-receipt-cutoff"></i>
-                </span>
-                <div>
-                    <span class="outstanding-dialog-eyebrow">Customer Wallet</span>
-                    <h2>Outstanding</h2>
-                    <p>@CustomerName · choose one or more invoices to settle</p>
-                </div>
-            </div>
-            <button type="button"
-                    class="outstanding-icon-button"
-                    title="Close"
-                    aria-label="Close"
-                    @onclick="CloseAsync">
-                <i class="bi bi-x-lg"></i>
-            </button>
-        </header>
-
-        <div class="outstanding-summary">
-            <article class="outstanding-summary-card primary">
-                <span class="outstanding-summary-icon"><i class="bi bi-wallet2"></i></span>
-                <div>
-                    <small>Total Outstanding</small>
-                    <strong>RM @DisplayAmount(SummaryOutstanding ?? DocumentOutstandingTotal)</strong>
-                    <span>Current unpaid balance</span>
-                </div>
-            </article>
-            <article class="outstanding-summary-card">
-                <span class="outstanding-summary-icon"><i class="bi bi-files"></i></span>
-                <div>
-                    <small>Selected Documents</small>
-                    <strong>@SelectedDocumentCount</strong>
-                    <span>Invoice@(SelectedDocumentCount == 1 ? "" : "s") selected</span>
-                </div>
-            </article>
-            <article class="outstanding-summary-card">
-                <span class="outstanding-summary-icon"><i class="bi bi-cash-coin"></i></span>
-                <div>
-                    <small>Amount to Settle</small>
-                    <strong>RM @DisplayAmount(SelectedTotal)</strong>
-                    <span>Continue to payment next</span>
-                </div>
-            </article>
-            <article class="outstanding-summary-card">
-                <span class="outstanding-summary-icon"><i class="bi bi-pie-chart"></i></span>
-                <div>
-                    <small>Remaining</small>
-                    <strong>RM @DisplayAmount(RemainingAfterSelection)</strong>
-                    <span>After this selection</span>
-                </div>
-            </article>
-        </div>
+    <WalletDialogFrame Title="Outstanding" TitleId="outstanding-form-title" Icon="bi-receipt-cutoff" Width="1180px" Layer="2147483200" OnClose="CloseAsync">
+    <ChildContent>
+    <div class="outstanding-content">
+        <dl class="outstanding-form-totals" aria-label="Outstanding amounts">
+            <div class="outstanding-total-balance"><dt>Outstanding</dt><dd>RM @DisplayAmount(SummaryOutstanding ?? DocumentOutstandingTotal)</dd></div>
+            <div><dt>Settlement</dt><dd>RM @DisplayAmount(SelectedTotal)</dd></div>
+            <div><dt>Remaining</dt><dd>RM @DisplayAmount(RemainingAfterSelection)</dd></div>
+        </dl>
 
         @if (IsLoading)
         {
@@ -87,18 +36,16 @@
         {
             <div class="outstanding-dialog-state">
                 <i class="bi bi-check-circle"></i>
-                <strong>No unpaid outstanding documents</strong>
-                <span>This customer currently has no settlement lines with an outstanding amount.</span>
+                <strong>No unpaid invoices.</strong>
             </div>
         }
         else
         {
             <div class="outstanding-account-summary">
                 <div>
-                    <strong>Unpaid Documents</strong>
-                    <span>Select an invoice, then adjust the settlement amount if needed.</span>
+                    <strong>Invoices</strong>
                 </div>
-                <span class="outstanding-document-count">@Documents.Count open</span>
+                <span class="outstanding-document-count">@SelectedDocumentCount selected / @Documents.Count</span>
             </div>
 
             @if (!string.IsNullOrWhiteSpace(_validationMessage))
@@ -110,7 +57,7 @@
             }
 
             <div class="outstanding-table-wrap">
-                <table class="outstanding-table">
+                <table class="outstanding-table" data-pos-touch="off">
                     <thead>
                         <tr>
                             <th class="outstanding-select-col"></th>
@@ -135,15 +82,17 @@
                                 role="button"
                                 tabindex="0"
                                 aria-pressed="@selected"
-                                title="@(selected ? "Click row to deselect this outstanding document" : "Click row to select this outstanding document")"
                                 @onclick="() => ToggleDocument(document, !selected)"
                                 @onkeydown="(KeyboardEventArgs e) => HandleRowKeyDown(document, selected, e)">
                                 <td class="outstanding-select-cell" data-label="Select">
-                                    <input type="checkbox"
-                                           checked="@selected"
-                                           disabled="@(document.RemainingAmount <= 0m)"
-                                           @onclick:stopPropagation="true"
-                                           @onchange="(ChangeEventArgs e) => ToggleDocument(document, IsChecked(e))" />
+                                    <label class="outstanding-select-toggle" @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
+                                        <input type="checkbox"
+                                               aria-label="@($"Select {DisplayDocumentNumber(document)}")"
+                                               checked="@selected"
+                                               disabled="@(document.RemainingAmount <= 0m)"
+                                               @onclick:stopPropagation="true"
+                                               @onchange="(ChangeEventArgs e) => ToggleDocument(document, IsChecked(e))" />
+                                    </label>
                                 </td>
                                 <td class="outstanding-document-cell" data-label="Document">
                                     <strong>@DisplayDocumentNumber(document)</strong>
@@ -160,10 +109,13 @@
                                 <td class="outstanding-settle-cell"
                                     data-label="Settle Amount"
                                     @onclick:stopPropagation="true"
+                                    @onkeydown:stopPropagation="true"
                                     @onclick="() => HandleSettlementCellClick(document, selected)">
                                     <div class="outstanding-amount-input">
                                         <span>RM</span>
                                         <input type="number"
+                                               aria-label="@($"Settlement amount for {DisplayDocumentNumber(document)}")"
+                                               inputmode="decimal"
                                                min="0"
                                                step="0.01"
                                                max="@FormatInputAmount(MaxSelectableFor(document))"
@@ -188,11 +140,10 @@
             </div>
         }
 
-        <footer>
-            <div class="outstanding-dialog-note">
-                <i class="bi bi-info-circle"></i>
-                <span>Selected invoices will continue to the normal payment screen.</span>
-            </div>
+    </div>
+    </ChildContent>
+    <Footer>
+        <footer class="outstanding-footer">
             <div class="outstanding-dialog-actions">
                 <button type="button"
                         class="outstanding-secondary-action"
@@ -209,16 +160,18 @@
                         class="outstanding-primary-action"
                         disabled="@(Documents.Count == 0 || SelectedTotal <= 0m || SelectedTotal > SelectionCap)"
                         @onclick="ConfirmAsync">
-                    Confirm Selection
+                    <span>Continue</span>
                     <strong>RM @DisplayAmount(SelectedTotal)</strong>
                 </button>
             </div>
         </footer>
-    </section>
+    </Footer>
+    </WalletDialogFrame>
 }
 
 @code {
     [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public bool CompactLayout { get; set; }
     [Parameter] public string CustomerId { get; set; } = string.Empty;
     [Parameter] public string CustomerName { get; set; } = string.Empty;
     [Parameter] public decimal? SummaryOutstanding { get; set; }

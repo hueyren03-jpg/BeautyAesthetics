@@ -103,60 +103,6 @@
                         </div>
                     </div>
 
-                    <!-- Customer balances: follows the actual member balance model -->
-                    <div class="wallet-strip customer-balance-strip" style="margin-top: 10px;">
-                        <div class="wallet-card customer-wallet-card outstanding-wallet-card outstanding-balance billing-outstanding-button outstanding-clickable-field">
-                            <div class="wallet-card-header">
-                                <i class="bi bi-currency-exchange"></i>
-                                <span>Outstanding Balance</span>
-                                <i class="bi bi-chevron-right wallet-card-chevron"></i>
-                            </div>
-                            <div class="wallet-amount">@FormatMoneyBalance(CustomerOutstandingBalance)</div>
-                            <button type="button"
-                                    class="outstanding-field-click-target"
-                                    title="View outstanding documents"
-                                    aria-label="View outstanding documents"
-                                    aria-haspopup="dialog"
-                                    aria-expanded="@_showOutstandingSettlement"
-                                    @onclick:stopPropagation="true"
-                                    @onclick="OpenOutstandingSettlementAsync"></button>
-                        </div>
-
-                        <div class="wallet-card points-balance"
-                             role="button"
-                             tabindex="0"
-                             title="View points, redemption details and history"
-                             @onclick="OpenPointHistoryAsync">
-                            <div class="wallet-card-header">
-                                <i class="bi bi-gift"></i>
-                                <span>Point</span>
-                                <i class="bi bi-chevron-right" style="margin-left:auto;"></i>
-                            </div>
-                            <div class="wallet-amount">@FormatPointBalance(CustomerPointBalance)</div>
-                        </div>
-
-                        <button type="button" class="wallet-card package-balance" aria-haspopup="dialog" @onclick="OpenCustomerPackages">
-                            <div class="wallet-card-header">
-                                <i class="bi bi-box2-heart"></i>
-                                <span>Package</span>
-                                <i class="bi bi-chevron-right" style="margin-left:auto;"></i>
-                            </div>
-                            <div class="wallet-amount">@FormatPackageBalance(CustomerPackageBalance)</div>
-                        </button>
-
-                        <div class="wallet-card customer-wallet-card credit-wallet-card-trigger credit-balance"
-                             role="button"
-                             tabindex="0"
-                             title="View redeemable Member Credit accounts"
-                             @onclick="OpenRedeemableCredits">
-                            <div class="wallet-card-header">
-                                <i class="bi bi-credit-card-2-front"></i>
-                                <span>Credit</span>
-                                <i class="bi bi-chevron-right wallet-card-chevron"></i>
-                            </div>
-                            <div class="wallet-amount">@FormatNumericBalance(CustomerCreditBalance)</div>
-                        </div>
-                    </div>
                 </div>
             </div>
 
@@ -177,6 +123,34 @@
                         </div>
                     </div>
                 </div>
+
+                @if (_billingStep == "summary")
+                {
+                    <section class="billing-wallet-overview" aria-label="Patient balances">
+                        <div class="billing-wallet-actions" aria-busy="@_isCustomerBalanceLoading">
+                            <button type="button" class="billing-wallet-action" aria-haspopup="dialog" aria-expanded="@_showOutstandingSettlement" @onclick="OpenOutstandingSettlementAsync">
+                                <span class="billing-wallet-action-icon"><i class="bi bi-receipt-cutoff" aria-hidden="true"></i></span>
+                                <span class="billing-wallet-action-copy"><span>Outstanding</span><strong>@FormatMoneyBalance(CustomerOutstandingBalance)</strong></span>
+                                <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                            </button>
+                            <button type="button" class="billing-wallet-action" aria-haspopup="dialog" aria-expanded="@_showPointHistory" @onclick="OpenPointHistoryAsync">
+                                <span class="billing-wallet-action-icon"><i class="bi bi-stars" aria-hidden="true"></i></span>
+                                <span class="billing-wallet-action-copy"><span>Points</span><strong>@FormatPointBalance(CustomerPointBalance)</strong></span>
+                                <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                            </button>
+                            <button type="button" class="billing-wallet-action" aria-haspopup="dialog" aria-expanded="@showCustomerPackageDialog" @onclick="OpenCustomerPackages">
+                                <span class="billing-wallet-action-icon"><i class="bi bi-box2-heart" aria-hidden="true"></i></span>
+                                <span class="billing-wallet-action-copy"><span>Packages</span><strong>@FormatPackageBalance(CustomerPackageBalance)</strong></span>
+                                <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                            </button>
+                            <button type="button" class="billing-wallet-action" aria-haspopup="dialog" aria-expanded="@_showRedeemableCredits" @onclick="OpenRedeemableCredits">
+                                <span class="billing-wallet-action-icon"><i class="bi bi-credit-card-2-front" aria-hidden="true"></i></span>
+                                <span class="billing-wallet-action-copy"><span>Member Credit</span><strong>@FormatMoneyBalance(CustomerCreditBalance)</strong></span>
+                                <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </section>
+                }
 
                 <!-- Billing Content -->
                 <div class="billing-content @(_billingStep == "payment" ? "billing-content--payment-step" : "billing-content--summary-step")">
@@ -406,7 +380,7 @@
                             </div>
                         </div>
 
-                        <div class="billing-section">
+                        <div class="billing-section billing-member-credit-purchases">
                             <div class="section-header">
                                 <h3>Member Credit</h3>
                                 <div class="header-actions" style="display:flex; gap:8px;">
@@ -414,7 +388,7 @@
                                             class="btn-add-prescription btn-add-service"
                                             @onclick="OpenMemberCreditPickerModal">
                                         <i class="bi bi-plus-lg"></i>
-                                        <span>Member Credit</span>
+                                        <span>Buy Credit</span>
                                     </button>
                                 </div>
                             </div>
@@ -433,12 +407,12 @@
                                     <tbody>
                                         @if (MemberCreditItems.Count == 0)
                                         {
-                                            <tr class="empty-row"><td colspan="6">No member credit added.</td></tr>
+                                            <tr class="empty-row"><td colspan="6">No credit added.</td></tr>
                                         }
                                         @foreach (var credit in MemberCreditItems)
                                         {
                                             <tr>
-                                                <td>
+                                                <td data-label="Member Credit">
                                                     <span>@credit.Name</span>
                                                     @if (!string.IsNullOrWhiteSpace(credit.Sku))
                                                     {
@@ -451,9 +425,9 @@
                                                         </small>
                                                     }
                                                 </td>
-                                                <td>@credit.Quantity</td>
-                                                <td>RM @credit.UnitPrice.ToString("N2")</td>
-                                                <td>
+                                                <td data-label="Qty">@credit.Quantity</td>
+                                                <td data-label="Unit Price">RM @credit.UnitPrice.ToString("N2")</td>
+                                                <td data-label="Discount">
                                                     <button class="btn-discount-cell" @onclick="() => OpenDiscountModal(credit)">
                                                         @if (credit.Discount > 0m)
                                                         {
@@ -465,11 +439,12 @@
                                                         }
                                                     </button>
                                                 </td>
-                                                <td>RM @credit.LineTotalAfterTax.ToString("N2")</td>
-                                                <td>
+                                                <td data-label="Total">RM @credit.LineTotalAfterTax.ToString("N2")</td>
+                                                <td class="billing-credit-purchase-remove">
                                                     <button type="button"
                                                             class="btn-delete-mode"
                                                             title="Remove Member Credit"
+                                                            aria-label="@($"Remove {credit.Name}")"
                                                             @onclick="() => RemoveMemberCreditItem(credit)">
                                                         <i class="bi bi-trash"></i>
                                                     </button>
@@ -480,6 +455,41 @@
                                 </table>
                             </div>
                         </div>
+
+                        <section class="billing-section billing-packages">
+                            <div class="section-header">
+                                <h3>Packages</h3>
+                                <div class="billing-package-actions">
+                                    <button type="button" disabled="@(!CanBuyBillingPackage)" @onclick="OpenBillingPackagePurchase"><i class="bi bi-plus-lg"></i> Buy Package</button>
+                                    <button type="button" disabled="@(!CanRedeemBillingPackage)" @onclick="OpenCustomerPackages"><i class="bi bi-box2-heart"></i> Redeem</button>
+                                </div>
+                            </div>
+                            @if (BillingPackageItems.Count == 0)
+                            {
+                                <div class="billing-package-empty">No packages added.</div>
+                            }
+                            @foreach (var item in BillingPackageItems)
+                            {
+                                <article class="billing-package-line">
+                                    @if (!string.IsNullOrWhiteSpace(item.ImageUrl)) { <img src="@item.ImageUrl" alt="" /> }
+                                    else { <span class="billing-package-picture"><i class="bi bi-box2-heart"></i></span> }
+                                    <div class="billing-package-copy"><strong>@item.Name</strong><small>@item.Sku</small>
+                                        @if (item.IsPackageRedemption) { <span class="billing-package-status">@item.Quantity redeemed</span><small>@item.SourceDocumentLineId</small> }
+                                        else { <small>RM @item.UnitPrice.ToString("N2") each</small> }
+                                    </div>
+                                    @if (!item.IsPackageRedemption)
+                                    {
+                                        <div class="billing-package-stepper">
+                                            <button type="button" aria-label="Decrease package quantity" disabled="@(IsAppointmentPaymentLocked || _isProcessingPayment || item.Quantity <= 1)" @onclick="() => ChangeBillingPackageQuantity(item, -1)"><i class="bi bi-dash"></i></button>
+                                            <span>@item.Quantity</span>
+                                            <button type="button" aria-label="Increase package quantity" disabled="@(IsAppointmentPaymentLocked || _isProcessingPayment)" @onclick="() => ChangeBillingPackageQuantity(item, 1)"><i class="bi bi-plus"></i></button>
+                                        </div>
+                                    }
+                                    <strong class="billing-package-amount">@(item.IsPackageRedemption ? "Covered" : $"RM {PackageLineTotal(item):N2}")</strong>
+                                    <button type="button" class="billing-package-remove" aria-label="@($"Remove {item.Name}")" disabled="@(IsAppointmentPaymentLocked || _isProcessingPayment)" @onclick="() => RemoveBillingPackageItem(item)"><i class="bi bi-trash"></i></button>
+                                </article>
+                            }
+                        </section>
 
                         <div class="billing-section mc-section">
                             <div class="section-header">
@@ -561,9 +571,13 @@
                                     </div>
                                 }
                                 <div class="summary-divider"></div>
+                                @if (HasBillingPackageRedemption)
+                                {
+                                    <div class="summary-row"><span>Package Sessions</span><span>-RM @BillingPackageCoveredAmount.ToString("N2")</span></div>
+                                }
                                 <div class="summary-row total-row">
                                     <span>Total Payable</span>
-                                    <span>RM @TotalPayable.ToString("N2")</span>
+                                    <span>RM @BillingAmountDue.ToString("N2")</span>
                                 </div>
                             </div>
                         </div>
@@ -596,11 +610,15 @@
                                         <div class="payment-panel-heading">
                                             <div class="payment-panel-icon"><i class="bi bi-credit-card-2-front"></i></div>
                                             <div>
-                                                <h4>Payment Method</h4>
+                                                <h4>@(HasBillingPackageRedemption && CanCompleteBillingWithoutTender ? "Package Redemption" : "Payment Method")</h4>
                                             </div>
                                         </div>
 
-                                        @if (_isPaymentMethodsLoading)
+                                        @if (HasBillingPackageRedemption && CanCompleteBillingWithoutTender)
+                                        {
+                                            <div class="billing-package-covered"><i class="bi bi-check-circle"></i><span>Covered by package</span></div>
+                                        }
+                                        else if (_isPaymentMethodsLoading)
                                         {
                                             <div class="payment-method-loading">
                                                 <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
@@ -741,7 +759,6 @@
                                         <div>
                                             <span>Payment Summary</span>
                                         </div>
-                                        <span class="payment-review-status @BillingStatusCss">@BillingStatusText</span>
                                     </div>
 
                                     <div class="payment-review-total">
@@ -785,6 +802,10 @@
                                             {
                                                 <div><span>Rounding</span><strong>@($"{(RoundingAmount >= 0m ? "+" : "-")}RM {Math.Abs(RoundingAmount):N2}")</strong></div>
                                             }
+                                            @if (HasBillingPackageRedemption)
+                                            {
+                                                <div><span>Package Sessions</span><strong>-RM @BillingPackageCoveredAmount.ToString("N2")</strong></div>
+                                            }
                                         }
                                     </div>
 
@@ -798,6 +819,8 @@
                                         </div>
                                     </div>
 
+                                    @if (!(HasBillingPackageRedemption && CanCompleteBillingWithoutTender))
+                                    {
                                     <div class="payment-amount-entry">
                                         <label for="billing-amount-received">Amount Received</label>
                                         <div class="payment-amount-input-wrap">
@@ -813,6 +836,7 @@
                                         </div>
                                     </div>
 
+                                    }
                                     <div class="payment-result-grid">
                                         <div class="payment-result-box">
                                             <span>@(_isOutstandingPaymentMode ? "Remaining" : "Outstanding")</span>
@@ -826,10 +850,10 @@
 
                                     <button type="button"
                                             class="payment-confirm-button"
-                                            disabled="@(_isProcessingPayment || (!_isOutstandingPaymentMode && IsAppointmentPaymentLocked) || (ActiveBillingPayments.Count == 0 && !IsFullyPointRedeemedBillingSale) || (_isOutstandingPaymentMode ? Math.Abs(BillingPaidAmount - PaymentTotalPayable) > 0.009m : BillingPaidAmount < PaymentTotalPayable))"
+                                            disabled="@(_isProcessingPayment || (!_isOutstandingPaymentMode && IsAppointmentPaymentLocked) || (ActiveBillingPayments.Count == 0 && !CanCompleteBillingWithoutTender) || (_isOutstandingPaymentMode ? Math.Abs(BillingPaidAmount - PaymentTotalPayable) > 0.009m : BillingPaidAmount < PaymentTotalPayable))"
                                         @onclick="OnConfirmPaymentClicked">
                                         <span>
-                                            <strong>@(_isOutstandingPaymentMode ? "Continue" : "Pay") RM @PaymentTotalPayable.ToString("N2")</strong>
+                                            <strong>@(_isOutstandingPaymentMode ? "Continue" : CanCompleteBillingWithoutTender && HasBillingPackageRedemption ? "Complete Redemption" : $"Pay RM {PaymentTotalPayable:N2}")</strong>
                                         </span>
                                         <i class="bi bi-arrow-right-circle-fill"></i>
                                     </button>
@@ -846,305 +870,195 @@
 
 @if (_showPrescriptionModal)
 {
-    <div class="modal-overlay" @onclick="ClosePrescriptionModal">
-        <div class="modal-container billing-prescription-modal" @onclick:stopPropagation="true">
-            <div class="modal-header modal-header-info">
-                <i class="bi bi-capsule"></i>
-                <h3>Add Prescription Item</h3>
-            </div>
-            <div class="modal-body prescription-modal-body">
-                <div class="prescription-layout-grid">
-                    <!-- Left Panel: Search & List -->
-                    <div class="prescription-left-panel">
-                        <!-- Search Bar -->
-                        <div class="service-search-bar">
-                            <i class="bi bi-search"></i>
-                            <input class="service-search-input"
-                                   type="text"
-                                   placeholder="Search by name or code"
-                                   value="@PrescriptionViewModel.SearchTerm"
-                                   @oninput="HandlePrescriptionSearch" />
-                        </div>
-
-                        <!-- Category Filter Dropdown -->
-                        <div class="filter-dropdown-container">
-                            <button class="btn-filter-dropdown" @onclick="ToggleCategoryDropdown">
-                                <span>@(string.IsNullOrEmpty(PrescriptionViewModel.SelectedCategory) ? "All Categories" : PrescriptionViewModel.SelectedCategory)</span>
-                                <i class="bi bi-chevron-down"></i>
-                            </button>
-                            <div class="filter-dropdown-menu @(_showCategoryDropdown ? "show" : "")">
-                                <div class="filter-dropdown-item @(string.IsNullOrEmpty(PrescriptionViewModel.SelectedCategory) ? "active" : "")"
-                                     @onclick="() => SetDrugCategory(string.Empty)">
-                                    All Categories
-                                </div>
-                                @foreach (var cat in PrescriptionViewModel.AvailableCategories)
-                                {
-                                    <div class="filter-dropdown-item @(PrescriptionViewModel.SelectedCategory == cat ? "active" : "")"
-                                         @onclick="() => SetDrugCategory(cat)">
-                                        @cat
-                                    </div>
-                                }
-                            </div>
-                        </div>
-
-                        <!-- Inventory product list -->
-                        <div class="drug-selection-list">
-                            @if (_isProductCatalogLoading)
-                            {
-                                <div class="catalog-state"><span class="spinner-border spinner-border-sm"></span> Loading inventory items...</div>
-                            }
-                            else if (!string.IsNullOrWhiteSpace(_productCatalogError))
-                            {
-                                <div class="catalog-state catalog-state-error">
-                                    <span>@_productCatalogError</span>
-                                    <button type="button" @onclick="LoadProductCatalogAsync">Retry</button>
-                                </div>
-                            }
-                            else if (!PrescriptionViewModel.FilteredDrugs.Any())
-                            {
-                                <div class="catalog-state">No inventory items found.</div>
-                            }
-                            else
-                            {
-                                @foreach (var drug in PrescriptionViewModel.FilteredDrugs)
-                                {
-                                    var isOutOfStock = drug.StockQuantity.HasValue && drug.StockQuantity.Value <= 0;
-                                    <div class="drug-selection-row @(PrescriptionViewModel.SelectedDrugToAdd?.InventoryId == drug.InventoryId ? "selected" : "") @(isOutOfStock ? "disabled" : "")"
-                                         @onclick="() => SelectDrug(drug)">
-                                        <div class="drug-icon">
-                                            @if (!string.IsNullOrWhiteSpace(ResolveCatalogImage(drug.InventoryId, drug.ImagePath, drug.ImageFileName)))
-                                            {
-                                                <img src="@ResolveCatalogImage(drug.InventoryId, drug.ImagePath, drug.ImageFileName)" alt="" loading="lazy" />
-                                            }
-                                            else
-                                            {
-                                                <i class="bi bi-box-seam"></i>
-                                            }
-                                        </div>
-                                        <div class="drug-info">
-                                            <h4>@drug.Name</h4>
-                                            <div class="drug-meta">
-                                                <span>@drug.DrugCode</span>
-                                                <span class="dot">•</span>
-                                                <span>@drug.Category</span>
-                                                <span class="dot">•</span>
-                                                <span>@(drug.StockQuantity.HasValue ? $"Stock {drug.StockQuantity.Value:N0}" : "Stock unavailable")</span>
-                                            </div>
-                                        </div>
-                                        <div class="drug-list-price">RM @drug.Price.ToString("N2")</div>
-                                        <div class="drug-action">
-                                            @if (PrescriptionViewModel.SelectedDrugToAdd?.InventoryId == drug.InventoryId)
-                                            {
-                                                <i class="bi bi-check-circle-fill text-success"></i>
-                                            }
-                                        </div>
-                                    </div>
-                                }
-                            }
-                        </div>
-
-
+    <div class="rx-overlay" @onclick="ClosePrescriptionModal">
+        <section class="rx-dialog @(PrescriptionViewModel.SelectedDrugToAdd is not null ? "rx-has-selection" : string.Empty)" role="dialog" aria-modal="true" aria-labelledby="rx-title" @onclick:stopPropagation="true" @onkeydown="HandlePrescriptionKeyDown">
+            <BillingWalletFormHeader Title="@(_editingPrescriptionItem is null ? "Add Prescription Item" : "Edit Prescription Item")" TitleId="rx-title" Icon="bi-capsule" OnClose="ClosePrescriptionModal" />
+            <div class="rx-workspace">
+                <section class="rx-catalog" aria-label="Inventory items">
+                    <div class="rx-search">
+                        <i class="bi bi-search" aria-hidden="true"></i>
+                        <input type="search" aria-label="Search inventory" placeholder="Search name or code" value="@PrescriptionViewModel.SearchTerm" @oninput="HandlePrescriptionSearch" />
                     </div>
-
-                    <!-- Right Panel: Form -->
-                    <div class="prescription-right-panel">
-                        @if (PrescriptionViewModel.SelectedDrugToAdd != null)
+                    <select class="rx-category" aria-label="Category" value="@PrescriptionViewModel.SelectedCategory" @onchange="(ChangeEventArgs e) => SetDrugCategory(e.Value?.ToString() ?? string.Empty)">
+                        <option value="">All Categories</option>
+                        @foreach (var category in PrescriptionViewModel.AvailableCategories)
                         {
-                            <div class="prescription-form-panel">
-                                <div class="selected-drug-summary">
-                                    <div class="drug-name-row">
-                                        <div class="drug-title-block">
-                                            <div class="label-with-action">
-                                                <span class="field-label">Selected Item</span>
-                                                <button class="btn-inline-action btn-inline-clear"
-                                                        type="button"
-                                                        title="Clear selected drug"
-                                                        aria-label="Clear selected drug"
-                                                        @onclick="CancelPrescriptionDrugSelection">
-                                                    <i class="bi bi-x-circle"></i>
-                                                    <span>Clear</span>
-                                                </button>
-                                            </div>
-                                            <h4>@PrescriptionViewModel.SelectedDrugToAdd.Name</h4>
-                                            <p>SKU: @PrescriptionViewModel.SelectedDrugToAdd.DrugCode · RM @PrescriptionViewModel.SelectedDrugToAdd.Price.ToString("N2")</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="prescription-form-grid">
-                                    <div class="form-row">
-                                        <label class="form-label">Dosage</label>
-                                        <input type="number"
-                                               class="form-control"
-                                               step="0.01"
-                                               min="0"
-                                               @bind="PrescriptionViewModel.NewDrugQuantity" />
-                                    </div>
-                                    <div class="form-row">
-                                        <div class="form-label-row">
-                                            <div class="label-with-action">
-                                                <label class="form-label">Frequency</label>
-                                                <button class="btn-inline-action"
-                                                        type="button"
-                                                        title="@(_manualFrequency ? "Switch to dropdown" : "Switch to manual entry")"
-                                                        @onclick="ToggleManualFrequency">
-                                                    <i class="bi @(_manualFrequency ? "bi-list-check" : "bi-pencil-square")"></i>
-                                                    <span>Edit</span>
-                                                </button>
-                                            </div>
-                                        </div>
-                                        @if (_manualFrequency)
-                                        {
-                                            <input class="form-control"
-                                                   type="text"
-                                                   @bind="PrescriptionViewModel.NewDrugFrequency"
-                                                   placeholder="Enter frequency" />
-                                        }
-                                        else
-                                        {
-                                            <div class="custom-dropdown-wrapper form-dropdown">
-                                                <div class="custom-dropdown-trigger @(_isFrequencyDropdownOpen ? "open" : "")" @onclick="ToggleFrequencyDropdown">
-                                                    <span>@(string.IsNullOrEmpty(PrescriptionViewModel.NewDrugFrequency) ? "- SELECT FREQUENCY -" : PrescriptionViewModel.NewDrugFrequency)</span>
-                                                    <i class="bi bi-chevron-down dropdown-arrow"></i>
-                                                </div>
-                                                @if (_isFrequencyDropdownOpen)
-                                                {
-                                                    <div class="custom-dropdown-menu">
-                                                        @foreach (var freq in PrescriptionViewModel.FrequencyOptions)
-                                                        {
-                                                            <div class="dropdown-item @(PrescriptionViewModel.NewDrugFrequency == freq ? "selected" : "")" @onclick="@(() => SelectFrequency(freq))">
-                                                                @freq
-                                                            </div>
-                                                        }
-                                                    </div>
-                                                }
-                                            </div>
-                                        }
-                                    </div>
-                                    <div class="form-row">
-                                        <div class="form-label-row">
-                                            <div class="label-with-action">
-                                                <label class="form-label">Duration</label>
-                                                <button class="btn-inline-action"
-                                                        type="button"
-                                                        title="@(_manualDuration ? "Switch to dropdown" : "Switch to manual entry")"
-                                                        @onclick="ToggleManualDuration">
-                                                    <i class="bi @(_manualDuration ? "bi-list-check" : "bi-pencil-square")"></i>
-                                                    <span>Edit</span>
-                                                </button>
-                                            </div>
-                                        </div>
-                                        @if (_manualDuration)
-                                        {
-                                            <input class="form-control"
-                                                   type="text"
-                                                   @bind="PrescriptionViewModel.NewDrugDuration"
-                                                   placeholder="Enter duration" />
-                                        }
-                                        else
-                                        {
-                                            <div class="custom-dropdown-wrapper form-dropdown">
-                                                <div class="custom-dropdown-trigger @(_isDurationDropdownOpen ? "open" : "")" @onclick="ToggleDurationDropdown">
-                                                    <span>@(string.IsNullOrEmpty(PrescriptionViewModel.NewDrugDuration) ? "- SELECT -" : PrescriptionViewModel.NewDrugDuration)</span>
-                                                    <i class="bi bi-chevron-down dropdown-arrow"></i>
-                                                </div>
-                                                @if (_isDurationDropdownOpen)
-                                                {
-                                                    <div class="custom-dropdown-menu">
-                                                        @foreach (var duration in PrescriptionViewModel.DurationOptions)
-                                                        {
-                                                            <div class="dropdown-item @(PrescriptionViewModel.NewDrugDuration == duration ? "selected" : "")" @onclick="@(() => SelectDuration(duration))">
-                                                                @duration
-                                                            </div>
-                                                        }
-                                                    </div>
-                                                }
-                                            </div>
-                                        }
-                                    </div>
-                                    <div class="form-row">
-                                        <div class="form-label-row">
-                                            <div class="label-with-action">
-                                                <label class="form-label">Reason</label>
-                                                <button class="btn-inline-action"
-                                                        type="button"
-                                                        title="@(_manualReason ? "Switch to dropdown" : "Switch to manual entry")"
-                                                        @onclick="ToggleManualReason">
-                                                    <i class="bi @(_manualReason ? "bi-list-check" : "bi-pencil-square")"></i>
-                                                    <span>Edit</span>
-                                                </button>
-                                            </div>
-                                        </div>
-                                        @if (_manualReason)
-                                        {
-                                            <input class="form-control"
-                                                   type="text"
-                                                   @bind="PrescriptionViewModel.NewDrugReason"
-                                                   placeholder="Enter reason" />
-                                        }
-                                        else
-                                        {
-                                            <div class="custom-dropdown-wrapper form-dropdown">
-                                                <div class="custom-dropdown-trigger @(_isReasonDropdownOpen ? "open" : "")" @onclick="ToggleReasonDropdown">
-                                                    <span>@(string.IsNullOrEmpty(PrescriptionViewModel.NewDrugReason) ? "- SELECT REASON -" : PrescriptionViewModel.NewDrugReason)</span>
-                                                    <i class="bi bi-chevron-down dropdown-arrow"></i>
-                                                </div>
-                                                @if (_isReasonDropdownOpen)
-                                                {
-                                                    <div class="custom-dropdown-menu">
-                                                        @foreach (var reason in PrescriptionViewModel.ReasonOptions)
-                                                        {
-                                                            <div class="dropdown-item @(PrescriptionViewModel.NewDrugReason == reason ? "selected" : "")" @onclick="@(() => SelectReason(reason))">
-                                                                @reason
-                                                            </div>
-                                                        }
-                                                    </div>
-                                                }
-                                            </div>
-                                        }
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Notes</label>
-                                        <textarea class="form-control form-textarea"
-                                                  rows="3"
-                                                  @bind="PrescriptionViewModel.NewDrugNotes"
-                                                  placeholder="Add notes"></textarea>
-                                    </div>
-                                </div>
-
-                            </div>
+                            <option value="@category">@category</option>
+                        }
+                    </select>
+                    <div class="rx-catalog-list" aria-busy="@_isProductCatalogLoading">
+                        @if (_isProductCatalogLoading)
+                        {
+                            <p class="rx-state" role="status"><span class="spinner-border spinner-border-sm"></span>Loading items…</p>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(_productCatalogError))
+                        {
+                            <div class="rx-state rx-error" role="alert"><span>@_productCatalogError</span><button type="button" @onclick="LoadProductCatalogAsync">Retry</button></div>
+                        }
+                        else if (!PrescriptionViewModel.FilteredDrugs.Any())
+                        {
+                            <p class="rx-state">No items found.</p>
                         }
                         else
                         {
-                            <div class="prescription-placeholder">
-                                <div class="placeholder-content">
-                                    <i class="bi bi-capsule-pill"></i>
-                                </div>
-                            </div>
+                            @foreach (var drug in PrescriptionViewModel.FilteredDrugs)
+                            {
+                                var unavailable = !drug.IsActive || (drug.StockQuantity.HasValue && drug.StockQuantity.Value <= 0);
+                                <button type="button" class="rx-item @(PrescriptionViewModel.SelectedDrugToAdd?.InventoryId == drug.InventoryId ? "rx-selected" : string.Empty)" aria-pressed="@(PrescriptionViewModel.SelectedDrugToAdd?.InventoryId == drug.InventoryId)" disabled="@unavailable" @onclick="() => SelectDrug(drug)">
+                                    <span class="rx-picture">
+                                        @if (!string.IsNullOrWhiteSpace(ResolveCatalogImage(drug.InventoryId, drug.ImagePath, drug.ImageFileName)))
+                                        {
+                                            <img src="@ResolveCatalogImage(drug.InventoryId, drug.ImagePath, drug.ImageFileName)" alt="" loading="lazy" />
+                                        }
+                                        else { <i class="bi bi-box-seam"></i> }
+                                    </span>
+                                    <span class="rx-item-copy"><strong>@drug.Name</strong><small>@drug.DrugCode</small><span>@drug.Category</span></span>
+                                    <span class="rx-item-amount">RM @drug.Price.ToString("N2")</span>
+                                    <span class="rx-stock @(unavailable ? "rx-stock-empty" : string.Empty)">@(drug.StockQuantity.HasValue ? $"Stock {drug.StockQuantity.Value:N0}" : "Stock unavailable")</span>
+                                </button>
+                            }
                         }
                     </div>
-                </div>
-
-
-
-                @if (!string.IsNullOrEmpty(_prescriptionStatusMessage))
-                {
-                    <div class="status-message @(_prescriptionStatusIsSuccess ? "status-success" : "status-error")">
-                        <i class="bi @(_prescriptionStatusIsSuccess ? "bi-check-circle-fill" : "bi-exclamation-circle-fill")"></i>
-                        <span>@_prescriptionStatusMessage</span>
-                    </div>
-                }
+                </section>
+                <section class="rx-details" aria-label="Prescription details" @onclick="ClosePrescriptionOptions">
+                    @if (PrescriptionViewModel.SelectedDrugToAdd is { } selectedDrug)
+                    {
+                        <div class="rx-selected-item">
+                            <div><strong>@selectedDrug.Name</strong><span>@selectedDrug.DrugCode</span><span>RM @selectedDrug.Price.ToString("N2")</span></div>
+                            <button type="button" class="rx-change" @onclick="CancelPrescriptionDrugSelection"><i class="bi bi-arrow-left-right"></i> Change</button>
+                        </div>
+                        <div class="rx-fields">
+                            <div class="rx-field">
+                                <label for="rx-dosage">Dosage</label>
+                                <input id="rx-dosage" type="number" inputmode="decimal" step="0.01" min="0" @bind="PrescriptionViewModel.NewDrugQuantity" />
+                            </div>
+                            <div class="rx-field">
+                                <div class="rx-field-heading"><label for="rx-frequency">Frequency</label>
+                                    <button type="button" class="rx-entry-mode" aria-label="@(_manualFrequency ? "Choose frequency" : "Enter frequency")" aria-pressed="@_manualFrequency" @onclick="ToggleManualFrequency"><i class="bi @(_manualFrequency ? "bi-list-check" : "bi-pencil-square")"></i></button>
+                                </div>
+                                @if (_manualFrequency)
+                                {
+                                    <input id="rx-frequency" type="text" @bind="PrescriptionViewModel.NewDrugFrequency" />
+                                }
+                                else
+                                {
+<div class="rx-option-picker">
+                                        <button id="rx-frequency" type="button" class="rx-option-trigger" aria-expanded="@(_openPrescriptionOption == PrescriptionOption.Frequency)" aria-controls="rx-frequency-choices" @onclick="ToggleFrequencyOptions" @onclick:stopPropagation="true">
+                                            <span>@(string.IsNullOrWhiteSpace(PrescriptionViewModel.NewDrugFrequency) ? "Select frequency" : PrescriptionViewModel.NewDrugFrequency)</span>
+                                            <i class="bi bi-chevron-down" aria-hidden="true"></i>
+                                        </button>
+                                        @if (_openPrescriptionOption == PrescriptionOption.Frequency)
+                                        {
+                                            <div id="rx-frequency-choices" class="rx-option-choices" role="group" aria-label="Frequency choices" @onclick:stopPropagation="true">
+                                                @foreach (var option in PrescriptionViewModel.FrequencyOptions)
+                                                {
+                                                    <button type="button" aria-pressed="@(PrescriptionViewModel.NewDrugFrequency == option)" @onclick="() => SelectFrequency(option)">
+                                                        <span>@option</span>
+                                                        @if (PrescriptionViewModel.NewDrugFrequency == option) { <i class="bi bi-check-lg" aria-hidden="true"></i> }
+                                                    </button>
+                                                }
+                                                @if (PrescriptionViewModel.FrequencyOptions.Count == 0)
+                                                {
+                                                    <span class="rx-no-options">No choices available</span>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            <div class="rx-field">
+                                <div class="rx-field-heading"><label for="rx-duration">Duration</label>
+                                    <button type="button" class="rx-entry-mode" aria-label="@(_manualDuration ? "Choose duration" : "Enter duration")" aria-pressed="@_manualDuration" @onclick="ToggleManualDuration"><i class="bi @(_manualDuration ? "bi-list-check" : "bi-pencil-square")"></i></button>
+                                </div>
+                                @if (_manualDuration)
+                                {
+                                    <input id="rx-duration" type="text" @bind="PrescriptionViewModel.NewDrugDuration" />
+                                }
+                                else
+                                {
+<div class="rx-option-picker">
+                                        <button id="rx-duration" type="button" class="rx-option-trigger" aria-expanded="@(_openPrescriptionOption == PrescriptionOption.Duration)" aria-controls="rx-duration-choices" @onclick="ToggleDurationOptions" @onclick:stopPropagation="true">
+                                            <span>@(string.IsNullOrWhiteSpace(PrescriptionViewModel.NewDrugDuration) ? "Select duration" : PrescriptionViewModel.NewDrugDuration)</span>
+                                            <i class="bi bi-chevron-down" aria-hidden="true"></i>
+                                        </button>
+                                        @if (_openPrescriptionOption == PrescriptionOption.Duration)
+                                        {
+                                            <div id="rx-duration-choices" class="rx-option-choices" role="group" aria-label="Duration choices" @onclick:stopPropagation="true">
+                                                @foreach (var option in PrescriptionViewModel.DurationOptions)
+                                                {
+                                                    <button type="button" aria-pressed="@(PrescriptionViewModel.NewDrugDuration == option)" @onclick="() => SelectDuration(option)">
+                                                        <span>@option</span>
+                                                        @if (PrescriptionViewModel.NewDrugDuration == option) { <i class="bi bi-check-lg" aria-hidden="true"></i> }
+                                                    </button>
+                                                }
+                                                @if (PrescriptionViewModel.DurationOptions.Count == 0)
+                                                {
+                                                    <span class="rx-no-options">No choices available</span>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            <div class="rx-field">
+                                <div class="rx-field-heading"><label for="rx-reason">Reason</label>
+                                    <button type="button" class="rx-entry-mode" aria-label="@(_manualReason ? "Choose reason" : "Enter reason")" aria-pressed="@_manualReason" @onclick="ToggleManualReason"><i class="bi @(_manualReason ? "bi-list-check" : "bi-pencil-square")"></i></button>
+                                </div>
+                                @if (_manualReason)
+                                {
+                                    <input id="rx-reason" type="text" @bind="PrescriptionViewModel.NewDrugReason" />
+                                }
+                                else
+                                {
+<div class="rx-option-picker">
+                                        <button id="rx-reason" type="button" class="rx-option-trigger" aria-expanded="@(_openPrescriptionOption == PrescriptionOption.Reason)" aria-controls="rx-reason-choices" @onclick="ToggleReasonOptions" @onclick:stopPropagation="true">
+                                            <span>@(string.IsNullOrWhiteSpace(PrescriptionViewModel.NewDrugReason) ? "Select reason" : PrescriptionViewModel.NewDrugReason)</span>
+                                            <i class="bi bi-chevron-down" aria-hidden="true"></i>
+                                        </button>
+                                        @if (_openPrescriptionOption == PrescriptionOption.Reason)
+                                        {
+                                            <div id="rx-reason-choices" class="rx-option-choices" role="group" aria-label="Reason choices" @onclick:stopPropagation="true">
+                                                @foreach (var option in PrescriptionViewModel.ReasonOptions)
+                                                {
+                                                    <button type="button" aria-pressed="@(PrescriptionViewModel.NewDrugReason == option)" @onclick="() => SelectReason(option)">
+                                                        <span>@option</span>
+                                                        @if (PrescriptionViewModel.NewDrugReason == option) { <i class="bi bi-check-lg" aria-hidden="true"></i> }
+                                                    </button>
+                                                }
+                                                @if (PrescriptionViewModel.ReasonOptions.Count == 0)
+                                                {
+                                                    <span class="rx-no-options">No choices available</span>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            <div class="rx-field rx-notes">
+                                <label for="rx-notes">Notes</label>
+                                <textarea id="rx-notes" rows="2" @bind="PrescriptionViewModel.NewDrugNotes"></textarea>
+                            </div>
+                        </div>
+                        @if (_showPrescriptionValidationError)
+                        {
+                            <p class="rx-error" role="alert">Frequency, duration and reason are required.</p>
+                        }
+                    }
+                    else
+                    {
+                        <p class="rx-state">Select an item</p>
+                    }
+                    @if (!string.IsNullOrEmpty(_prescriptionStatusMessage))
+                    {
+                        <p class="@(_prescriptionStatusIsSuccess ? "rx-success" : "rx-error")" role="status">@_prescriptionStatusMessage</p>
+                    }
+                </section>
             </div>
-            <div class="modal-footer">
-                <button class="btn-modal-cancel" type="button" @onclick="ClosePrescriptionModal">
-                    <i class="bi bi-x-circle"></i>
-                    <span>Cancel</span>
-                </button>
-                <button class="btn-modal-confirm" type="button" @onclick="AddSinglePrescriptionDrug" disabled="@(PrescriptionViewModel.SelectedDrugToAdd == null || _isProductCatalogLoading)">
-                    <i class="bi bi-plus-lg"></i>
-                    <span>Add Item</span>
-                </button>
-            </div>
-        </div>
+            <footer class="rx-footer">
+                <button type="button" @onclick="ClosePrescriptionModal">Cancel</button>
+                <button type="button" class="rx-save" @onclick="AddSinglePrescriptionDrug" disabled="@(PrescriptionViewModel.SelectedDrugToAdd == null || _isProductCatalogLoading)">@(_editingPrescriptionItem is null ? "Add Item" : "Save Changes")</button>
+            </footer>
+        </section>
     </div>
 }
 
@@ -1225,11 +1139,11 @@
                 <h3>Confirm Payment</h3>
             </div>
             <div class="modal-body">
-                <p>Complete this payment using <strong>@PaymentMethodDisplay</strong>?</p>
+                <p>@(CanCompleteBillingWithoutTender && HasBillingPackageRedemption ? "Complete this package redemption?" : $"Complete this payment using {PaymentMethodDisplay}?")</p>
                 <div class="payment-summary-box">
                     <div class="summary-detail-row">
                         <span class="summary-label">Total Payable:</span>
-                        <strong class="summary-value">RM @TotalPayable.ToString("N2")</strong>
+                        <strong class="summary-value">RM @BillingAmountDue.ToString("N2")</strong>
                     </div>
                     <div class="summary-detail-row">
                         <span class="summary-label">Amount Received:</span>
@@ -1272,7 +1186,7 @@
                 <div class="payment-summary-box">
                     <div class="summary-detail-row">
                         <span class="summary-label">Total Payable:</span>
-                        <strong class="summary-value">RM @TotalPayable.ToString("N2")</strong>
+                        <strong class="summary-value">RM @BillingAmountDue.ToString("N2")</strong>
                     </div>
                     <div class="summary-detail-row">
                         <span class="summary-label">Amount Received:</span>
@@ -1334,7 +1248,7 @@
                 <div class="amount-comparison">
                     <div class="amount-row">
                         <span>Total Payable:</span>
-                        <strong>RM @TotalPayable.ToString("N2")</strong>
+                        <strong>RM @BillingAmountDue.ToString("N2")</strong>
                     </div>
                     <div class="amount-row">
                         <span>Amount Received:</span>
@@ -1342,7 +1256,7 @@
                     </div>
                     <div class="amount-row shortage">
                         <span>Shortage:</span>
-                        <strong class="text-danger">RM @((TotalPayable - (AmountReceived ?? 0m)).ToString("N2"))</strong>
+                        <strong class="text-danger">RM @Math.Max(0m, BillingAmountDue - (AmountReceived ?? 0m)).ToString("N2")</strong>
                     </div>
                 </div>
             </div>
@@ -1582,18 +1496,16 @@
 
 @if (_showMemberCreditPickerModal)
 {
-    <div class="modal-overlay" @onclick="CloseMemberCreditPickerModal">
-        <div class="modal-container billing-service-modal" @onclick:stopPropagation="true">
-            <div class="modal-header modal-header-info">
-                <i class="bi bi-wallet2"></i>
-                <h3>Select Member Credit</h3>
-            </div>
+    <div class="modal-overlay billing-wallet-overlay" @onclick="CloseMemberCreditPickerModal">
+        <div class="modal-container billing-service-modal billing-credit-picker billing-wallet-dialog" role="dialog" aria-modal="true" aria-labelledby="billing-buy-credit-title" @onclick:stopPropagation="true">
+            <BillingWalletFormHeader Title="Buy Member Credit" TitleId="billing-buy-credit-title" Icon="bi-wallet2" OnClose="CloseMemberCreditPickerModal" />
             <div class="modal-body">
                 <div class="service-search-bar">
                     <i class="bi bi-search"></i>
                     <input type="text"
                            class="service-search-input"
-                           placeholder="Search member credit..."
+                           aria-label="Search Member Credit"
+                           placeholder="Search Member Credit"
                            value="@_memberCreditSearchQuery"
                            @oninput="UpdateMemberCreditSearch" />
                 </div>
@@ -1612,32 +1524,27 @@
                     }
                     else if (!FilteredMemberCreditCatalog.Any())
                     {
-                        <div class="catalog-state">No active member credit is available for this branch.</div>
+                        <div class="catalog-state">No Member Credit available.</div>
                     }
                     else
                     {
                         @foreach (var credit in FilteredMemberCreditCatalog)
                         {
-                            <div class="service-catalog-row @(_loadingMemberCreditId == credit.MasterAccountId ? "loading" : string.Empty)"
+                            <button type="button" class="service-catalog-row @(_loadingMemberCreditId == credit.MasterAccountId ? "loading" : string.Empty)"
+                                 aria-label="@($"Add {credit.Name}, RM {credit.Price:N2}")" disabled="@(!string.IsNullOrWhiteSpace(_loadingMemberCreditId))"
                                  @onclick="() => AddMemberCreditFromCatalogAsync(credit)">
-                                <div class="service-icon">
-                                    <i class="bi bi-wallet2"></i>
-                                </div>
-                                <div class="service-info">
-                                    <h4>@credit.Name</h4>
-                                    <div class="service-meta">
+                                <span class="service-icon">
+                                    <i class="bi bi-wallet2" aria-hidden="true"></i>
+                                </span>
+                                <span class="service-info">
+                                    <strong>@credit.Name</strong>
+                                    <span class="service-meta">
                                         <span>@credit.Code</span>
-                                        <span class="dot">•</span>
                                         <span>@FormatMemberCreditRates(credit)</span>
-                                    </div>
-                                </div>
-                                <div class="service-price">RM @credit.Price.ToString("N2")</div>
-                                <button type="button"
-                                        class="btn-add-service-item"
-                                        aria-label="Add @credit.Name"
-                                        disabled="@(_loadingMemberCreditId == credit.MasterAccountId)"
-                                        @onclick:stopPropagation="true"
-                                        @onclick="() => AddMemberCreditFromCatalogAsync(credit)">
+                                    </span>
+                                </span>
+                                <span class="service-price">RM @credit.Price.ToString("N2")</span>
+                                <span class="billing-credit-picker-add" aria-hidden="true">
                                     @if (_loadingMemberCreditId == credit.MasterAccountId)
                                     {
                                         <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
@@ -1646,13 +1553,13 @@
                                     {
                                         <i class="bi bi-plus-lg"></i>
                                     }
-                                </button>
-                            </div>
+                                </span>
+                            </button>
                         }
                     }
                 </div>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer billing-credit-dialog__footer">
                 <button class="btn-modal-cancel" @onclick="CloseMemberCreditPickerModal">Close</button>
             </div>
         </div>
@@ -1660,6 +1567,7 @@
 }
 
 <OutstandingSettlementDialog IsOpen="@_showOutstandingSettlement"
+                             CompactLayout="true"
                              CustomerId="@_billingCustomerId"
                              CustomerName="@PatientName"
                              SummaryOutstanding="@CustomerOutstandingBalance"
@@ -1671,265 +1579,30 @@
                              OnRefresh="@ReloadOutstandingDocumentsAsync"
                              OnConfirm="@ConfirmOutstandingSelection" />
 
-@if (_showPointHistory)
-{
-    <div class="point-wallet-backdrop" @onclick="ClosePointHistory"></div>
-    <section class="point-wallet-dialog"
-             role="dialog"
-             aria-modal="true"
-             aria-label="Point wallet">
-        <header class="point-wallet-header">
-            <div class="point-wallet-title">
-                <span class="point-wallet-title-icon"><i class="bi bi-stars"></i></span>
-                <div>
-                    <span class="point-wallet-eyebrow">Customer Wallet</span>
-                    <h2>Points</h2>
-                    <small>@PatientName</small>
-                </div>
-            </div>
-            <button type="button"
-                    class="point-wallet-close"
-                    title="Close"
-                    aria-label="Close point wallet"
-                    @onclick="ClosePointHistory">
-                <i class="bi bi-x-lg"></i>
-            </button>
-        </header>
-
-        <div class="point-wallet-balance-grid" aria-label="Point balance summary">
-            <article class="point-wallet-balance-card primary">
-                <span class="point-wallet-balance-icon"><i class="bi bi-wallet2"></i></span>
-                <div>
-                    <small>Available Points</small>
-                    <strong>@_pointDialogAvailable.ToString("0.##")</strong>
-                    <span>Ready to use</span>
-                </div>
-            </article>
-            <article class="point-wallet-balance-card">
-                <span class="point-wallet-balance-icon"><i class="bi bi-stars"></i></span>
-                <div>
-                    <small>Current Balance</small>
-                    <strong>@_pointDialogCurrentBalance.ToString("0.##")</strong>
-                    <span>Latest backend balance</span>
-                </div>
-            </article>
-            <article class="point-wallet-balance-card">
-                <span class="point-wallet-balance-icon"><i class="bi bi-bag-check"></i></span>
-                <div>
-                    <small>Used This Bill</small>
-                    <strong>@_pointDialogAllocated.ToString("0.##")</strong>
-                    <span>Pending until sale completes</span>
-                </div>
-            </article>
-        </div>
-
-        <div class="point-wallet-content">
-            <section class="point-wallet-panel redemption-panel">
-                <div class="point-wallet-panel-header">
-                    <div>
-                        <span class="point-wallet-section-icon"><i class="bi bi-receipt"></i></span>
-                        <div>
-                            <h3>Current Bill Redemption</h3>
-                            <p>Products and services currently assigned to use points.</p>
-                        </div>
-                    </div>
-                    <span class="point-wallet-total-chip">@_pointDialogAllocated.ToString("0.##") pts</span>
-                </div>
-
-                @if (!HasBillingPointRedemption)
-                {
-                    <div class="point-wallet-empty compact">
-                        <span class="point-wallet-empty-icon"><i class="bi bi-stars"></i></span>
-                        <strong>No points used yet</strong>
-                        <p>Use points on an eligible product or service and it will appear here.</p>
-                    </div>
-                }
-                else
-                {
-                    <div class="point-redemption-list">
-                        @foreach (var line in PrescriptionItems.Where(item => item.Points > 0m))
-                        {
-                            <article class="point-redemption-row">
-                                <span class="point-redemption-icon"><i class="bi bi-capsule"></i></span>
-                                <div class="point-redemption-copy">
-                                    <strong>@line.Name</strong>
-                                    <small>
-                                        Product@(string.IsNullOrWhiteSpace(line.Sku) ? string.Empty : $" · {line.Sku}") · Qty @line.Quantity
-                                    </small>
-                                </div>
-                                <div class="point-redemption-value">
-                                    <strong>@line.Points.ToString("0.##")</strong>
-                                    <span>points</span>
-                                </div>
-                            </article>
-                        }
-                        @foreach (var line in ServiceItems.Where(item => item.Points > 0m))
-                        {
-                            <article class="point-redemption-row">
-                                <span class="point-redemption-icon"><i class="bi bi-heart-pulse"></i></span>
-                                <div class="point-redemption-copy">
-                                    <strong>@line.Name</strong>
-                                    <small>
-                                        Service@(string.IsNullOrWhiteSpace(line.Sku) ? string.Empty : $" · {line.Sku}") · Qty @line.Quantity
-                                    </small>
-                                </div>
-                                <div class="point-redemption-value">
-                                    <strong>@line.Points.ToString("0.##")</strong>
-                                    <span>points</span>
-                                </div>
-                            </article>
-                        }
-                    </div>
-                }
-            </section>
-
-            <section class="point-wallet-panel history-panel">
-                <div class="point-wallet-panel-header history-heading">
-                    <div>
-                        <span class="point-wallet-section-icon"><i class="bi bi-clock-history"></i></span>
-                        <div>
-                            <h3>Point History</h3>
-                            <p>Real movements from the backend point ledger.</p>
-                        </div>
-                    </div>
-                    <div class="point-history-totals">
-                        <span class="earned"><i class="bi bi-arrow-up-right"></i> +@_pointHistoryEarnedTotal.ToString("0.##")</span>
-                        <span class="redeemed"><i class="bi bi-arrow-down-left"></i> -@_pointHistoryRedeemedTotal.ToString("0.##")</span>
-                    </div>
-                </div>
-
-                <div class="point-history-toolbar">
-                    <label>
-                        <span>From</span>
-                        <input type="date" @bind-value="_pointHistoryFrom" @bind-value:format="yyyy-MM-dd" />
-                    </label>
-                    <label>
-                        <span>To</span>
-                        <input type="date" @bind-value="_pointHistoryTo" @bind-value:format="yyyy-MM-dd" />
-                    </label>
-                    <button type="button"
-                            class="point-history-refresh"
-                            @onclick="ReloadPointHistoryAsync"
-                            disabled="@_isPointHistoryLoading">
-                        <i class="bi bi-arrow-clockwise @(_isPointHistoryLoading ? "point-spin" : string.Empty)"></i>
-                        <span>@(_isPointHistoryLoading ? "Loading" : "Refresh")</span>
-                    </button>
-                </div>
-
-                @if (_isPointHistoryLoading)
-                {
-                    <div class="point-wallet-state">
-                        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
-                        <div>
-                            <strong>Loading point history</strong>
-                            <span>Fetching the latest point ledger...</span>
-                        </div>
-                    </div>
-                }
-                else if (!string.IsNullOrWhiteSpace(_pointHistoryError))
-                {
-                    <div class="point-wallet-state error">
-                        <span class="point-wallet-state-icon"><i class="bi bi-exclamation-triangle"></i></span>
-                        <div>
-                            <strong>Unable to load history</strong>
-                            <span>@_pointHistoryError</span>
-                        </div>
-                        <button type="button" @onclick="ReloadPointHistoryAsync">Retry</button>
-                    </div>
-                }
-                else if (_pointHistorySnapshot is null || _pointHistorySnapshot.Entries.Count == 0)
-                {
-                    <div class="point-wallet-empty">
-                        <span class="point-wallet-empty-icon"><i class="bi bi-clock-history"></i></span>
-                        <strong>No point movements</strong>
-                        <p>No earned or redeemed point transactions were found in this date range.</p>
-                    </div>
-                }
-                else
-                {
-                    <div class="point-history-table-wrap">
-                        <table class="point-history-table">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Invoice</th>
-                                    <th>Type</th>
-                                    <th class="number">Movement</th>
-                                    <th class="number">Balance</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var entry in _pointHistorySnapshot.Entries)
-                                {
-                                    var isEarned = entry.EarnedPoints.HasValue;
-                                    <tr>
-                                        <td data-label="Date">
-                                            <strong>@entry.FinancialDate.ToString("dd MMM yyyy")</strong>
-                                            <small>@entry.FinancialDate.ToString("HH:mm")</small>
-                                        </td>
-                                        <td data-label="Invoice">
-                                            <strong>@(string.IsNullOrWhiteSpace(entry.InvoiceNumber) ? entry.DocumentId : entry.InvoiceNumber)</strong>
-                                        </td>
-                                        <td data-label="Type">
-                                            <span class="point-movement-type @(isEarned ? "earned" : "redeemed")">
-                                                <i class="bi @(isEarned ? "bi-arrow-up-right" : "bi-arrow-down-left")"></i>
-                                                @(isEarned ? "Earned" : "Redeemed")
-                                            </span>
-                                        </td>
-                                        <td class="number" data-label="Movement">
-                                            <strong class="point-movement-value @(isEarned ? "earned" : "redeemed")">
-                                                @entry.NetPoints.ToString("+0.##;-0.##;0")
-                                            </strong>
-                                            <span>pts</span>
-                                        </td>
-                                        <td class="number" data-label="Balance">
-                                            <strong>@entry.BalanceAfter.ToString("0.##")</strong>
-                                            <span>pts</span>
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                }
-            </section>
-        </div>
-
-        <footer class="point-wallet-footer">
-            <span><i class="bi bi-shield-check"></i> Live point history from the backend ledger</span>
-            <button type="button" @onclick="ClosePointHistory">Close</button>
-        </footer>
-    </section>
-}
+<CustomerPointsDialog IsOpen="@_showPointHistory"
+                      Balance="@_pointDialogCurrentBalance"
+                      Allocated="@_pointDialogAllocated"
+                      BillLines="@(PrescriptionItems.Where(item => item.Points > 0m).Select(item => new PointWalletLine(item.Name, item.Sku ?? string.Empty, item.Quantity, item.Points)).Concat(ServiceItems.Where(item => item.Points > 0m).Select(item => new PointWalletLine(item.Name, item.Sku ?? string.Empty, item.Quantity, item.Points))).ToList())"
+                      History="@_pointHistorySnapshot"
+                      @bind-FromDate="_pointHistoryFrom"
+                      @bind-ToDate="_pointHistoryTo"
+                      IsLoading="@_isPointHistoryLoading"
+                      ErrorMessage="@_pointHistoryError"
+                      OnClose="@ClosePointHistory"
+                      OnRefresh="@ReloadPointHistoryAsync" />
 
 @if (_showRedeemableCredits)
 {
-    <div class="modal-overlay" @onclick="CloseRedeemableCredits">
-        <div class="modal-container billing-service-modal billing-credit-dialog credit-wallet-dialog @(!string.IsNullOrWhiteSpace(_selectedHistoryCreditId) ? "has-credit-history" : string.Empty)"
-             @onclick:stopPropagation="true">
-            <div class="billing-credit-dialog__header">
-                <div class="billing-credit-dialog__title credit-wallet-title">
-                    <span class="billing-credit-dialog__icon"><i class="bi bi-credit-card-2-front"></i></span>
-                    <div>
-                        <span class="credit-wallet-eyebrow">Customer Wallet</span>
-                        <h3>Member Credit</h3>
-                        <small>@PatientName</small>
-                    </div>
-                </div>
-                <button type="button"
-                        class="billing-credit-dialog__close"
-                        title="Close"
-                        aria-label="Close"
-                        @onclick="CloseRedeemableCredits">
-                    <i class="bi bi-x-lg"></i>
-                </button>
-            </div>
+    <div class="modal-overlay billing-wallet-overlay" @onclick="CloseRedeemableCredits">
+        <div class="modal-container billing-service-modal billing-credit-dialog credit-wallet-dialog billing-wallet-dialog @(!string.IsNullOrWhiteSpace(_selectedHistoryCreditId) ? "has-credit-history" : string.Empty)"
+             role="dialog" aria-modal="true" aria-labelledby="billing-member-credit-title" @onclick:stopPropagation="true">
+            <BillingWalletFormHeader Title="Member Credit" TitleId="billing-member-credit-title" Icon="bi-credit-card-2-front" OnClose="CloseRedeemableCredits" />
             <div class="modal-body">
                 @if (_isRedeemableCreditsLoading)
                 {
                     <div class="catalog-state">
                         <span class="spinner-border spinner-border-sm"></span>
-                        <span>Loading redeemable credit accounts...</span>
+                        <span>Loading accounts...</span>
                     </div>
                 }
                 else if (!string.IsNullOrWhiteSpace(_redeemableCreditsError))
@@ -1944,55 +1617,44 @@
                     <div class="catalog-state">
                         <i class="bi bi-wallet"></i>
                         <strong>No redeemable Member Credit</strong>
-                        <span>This customer has no available Member Credit account for the current date.</span>
                     </div>
                 }
                 else
                 {
-                    <div class="billing-credit-summary credit-wallet-summary-grid">
-                        <div class="primary">
-                            <small>Total Credit</small>
-                            <strong>RM @(_redeemableCredits.Sum(x => x.NetBalanceAfterUtilised).ToString("N2"))</strong>
-                        </div>
-                        <div>
-                            <small>Available Accounts</small>
-                            <strong>@_redeemableCredits.Count</strong>
-                        </div>
+                    <div class="billing-credit-account-toolbar">
+                        <label class="billing-credit-account-search"><i class="bi bi-search" aria-hidden="true"></i><input type="search" aria-label="Search credit accounts" placeholder="Search account or member type" @bind="_billingCreditAccountSearch" @bind:event="oninput" /></label>
+                        <span>@_redeemableCredits.Count accounts</span>
                     </div>
+                    <div class="billing-credit-total-row"><span>Available Credit</span><strong>RM @(_redeemableCredits.Sum(x => x.NetBalanceAfterUtilised).ToString("N2"))</strong></div>
+                    @if (!FilteredBillingCreditAccounts.Any())
+                    {
+                        <div class="catalog-state billing-credit-no-results">No matching accounts.</div>
+                    }
                     <div class="table-wrapper billing-credit-table-wrap billing-credit-desktop">
                         <table class="billing-table billing-credit-table">
                             <thead>
                                 <tr>
-                                    <th>Credit Account</th>
-                                    <th>Purchase Date</th>
-                                    <th>Document</th>
-                                    <th>Member Type</th>
-                                    <th>Purchased Via</th>
+                                    <th>Account</th>
+                                    <th>Purchase</th>
                                     <th>Expiry</th>
-                                    <th>Original</th>
                                     <th>Balance</th>
-                                    <th>Status</th>
-                                    <th>History</th>
+                                    <th><span class="visually-hidden">History</span></th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var credit in _redeemableCredits)
+                                @foreach (var credit in FilteredBillingCreditAccounts)
                                 {
                                     <tr>
-                                        <td><strong>@credit.ARAPOutstandingID</strong></td>
-                                        <td>@FormatRedeemableCreditDate(credit.FinancialDate)</td>
-                                        <td>@(string.IsNullOrWhiteSpace(credit.DisplayCode) ? "—" : credit.DisplayCode)</td>
-                                        <td>@(string.IsNullOrWhiteSpace(credit.MemberTypeID) ? "—" : credit.MemberTypeID)</td>
-                                        <td>@(string.IsNullOrWhiteSpace(credit.ItemDescription) ? "—" : credit.ItemDescription)</td>
+                                        <td><strong>@credit.ARAPOutstandingID</strong><small>@(string.IsNullOrWhiteSpace(credit.MemberTypeID) ? "—" : credit.MemberTypeID)</small><span class="billing-credit-status">Redeemable</span></td>
+                                        <td><strong>@(string.IsNullOrWhiteSpace(credit.ItemDescription) ? "—" : credit.ItemDescription)</strong><small>@(string.IsNullOrWhiteSpace(credit.DisplayCode) ? "—" : credit.DisplayCode)</small><small>@FormatRedeemableCreditDate(credit.FinancialDate)</small></td>
                                         <td>@FormatRedeemableCreditDate(credit.DueDate)</td>
-                                        <td>RM @credit.TotalAmount.ToString("N2")</td>
-                                        <td><strong>RM @credit.NetBalanceAfterUtilised.ToString("N2")</strong></td>
-                                        <td><span class="billing-credit-status">Redeemable</span></td>
+                                        <td><strong>RM @credit.NetBalanceAfterUtilised.ToString("N2")</strong><small>Original RM @credit.TotalAmount.ToString("N2")</small></td>
                                         <td>
                                             <button type="button"
                                                     class="billing-credit-history-btn"
+                                                    aria-label="@($"History for {credit.ARAPOutstandingID}")"
                                                     @onclick="() => LoadCreditRedemptionHistoryAsync(credit)">
-                                                History
+                                                <i class="bi bi-clock-history" aria-hidden="true"></i> History
                                             </button>
                                         </td>
                                     </tr>
@@ -2002,7 +1664,7 @@
                     </div>
 
                     <div class="billing-credit-mobile-list" aria-label="Member Credit accounts">
-                        @foreach (var credit in _redeemableCredits)
+                        @foreach (var credit in FilteredBillingCreditAccounts)
                         {
                             <article class="billing-credit-mobile-card">
                                 <div class="billing-credit-mobile-card__header">
@@ -2010,7 +1672,7 @@
                                         <strong>@credit.ARAPOutstandingID</strong>
                                         <span>@(string.IsNullOrWhiteSpace(credit.DisplayCode) ? "No document" : credit.DisplayCode)</span>
                                     </div>
-                                    <span class="billing-credit-status">Redeemable</span>
+                                    <span class="billing-credit-mobile-balance">RM @credit.NetBalanceAfterUtilised.ToString("N2")</span>
                                 </div>
                                 <dl>
                                     <div><dt>Purchase</dt><dd>@FormatRedeemableCreditDate(credit.FinancialDate)</dd></div>
@@ -2018,10 +1680,11 @@
                                     <div><dt>Member Type</dt><dd>@(string.IsNullOrWhiteSpace(credit.MemberTypeID) ? "—" : credit.MemberTypeID)</dd></div>
                                     <div><dt>Purchased Via</dt><dd>@(string.IsNullOrWhiteSpace(credit.ItemDescription) ? "—" : credit.ItemDescription)</dd></div>
                                     <div><dt>Original</dt><dd>RM @credit.TotalAmount.ToString("N2")</dd></div>
-                                    <div><dt>Balance</dt><dd class="billing-credit-mobile-balance">RM @credit.NetBalanceAfterUtilised.ToString("N2")</dd></div>
+                                    <div><dt>Status</dt><dd><span class="billing-credit-status">Redeemable</span></dd></div>
                                 </dl>
                                 <button type="button"
                                         class="billing-credit-history-btn"
+                                        aria-label="@($"History for {credit.ARAPOutstandingID}")"
                                         @onclick="() => LoadCreditRedemptionHistoryAsync(credit)">
                                     <i class="bi bi-clock-history"></i>
                                     <span>History</span>
@@ -2043,7 +1706,7 @@
                                         title="Back to Member Credit accounts"
                                         aria-label="Back to Member Credit accounts"
                                         @onclick="CloseCreditRedemptionHistory">
-                                    <i class="bi bi-x-lg"></i>
+                                    <i class="bi bi-arrow-left"></i><span>Back</span>
                                 </button>
                             </div>
 
@@ -2064,7 +1727,7 @@
                             else if (_creditRedemptionHistory.Count == 0)
                             {
                                 <div class="catalog-state">
-                                    <span>No redemption history found for this Member Credit account.</span>
+                                    <span>No redemptions.</span>
                                 </div>
                             }
                             else
@@ -2162,18 +1825,24 @@
 
 @if (showCustomerPackageDialog)
 {
-    <CustomerPackageDialog CustomerId="@_billingCustomerId" CustomerName="@PatientName" OnClose="CloseCustomerPackages" />
+    <CustomerPackageDialog CustomerId="@_billingCustomerId" CustomerName="@PatientName" BranchId="@(BranchSession.CurrentBranch?.Id ?? AppState.SelectedBranchID ?? string.Empty)"
+                           CompactLayout="true" StartView="@billingPackageView" AllowPurchase="@CanBuyBillingPackage" AllowRedeem="@CanRedeemBillingPackage"
+                           ReservedQuantities="@BillingReservedPackageQuantities" OnPurchase="AddBillingPackagePurchase" OnRedeem="QueueBillingPackageRedemption" OnClose="CloseCustomerPackages" />
+}
+
+@if (pendingPackageRedemption is not null)
+{
+    <div class="billing-package-confirm-overlay">
+        <section class="billing-package-confirm" role="dialog" aria-modal="true" aria-labelledby="billing-package-confirm-title">
+            <h3 id="billing-package-confirm-title">Apply Package Sessions</h3>
+            <strong>@pendingPackageRedemption.Name</strong>
+            <p>Replace @Math.Min(MatchingBillingQuantity(pendingPackageRedemption), pendingPackageRedemption.Quantity) billed item(s) with @pendingPackageRedemption.Quantity package session(s)?</p>
+            <div><button type="button" @onclick="() => pendingPackageRedemption = null">Cancel</button><button type="button" class="primary" @onclick="ConfirmBillingPackageRedemption">Apply Sessions</button></div>
+        </section>
+    </div>
 }
 
 @code {
-    private bool showCustomerPackageDialog;
-
-    private void OpenCustomerPackages()
-    {
-        if (!string.IsNullOrWhiteSpace(_billingCustomerId)) showCustomerPackageDialog = true;
-    }
-
-    private void CloseCustomerPackages() => showCustomerPackageDialog = false;
     [SupplyParameterFromQuery(Name = "customerId")]
     public string? CustomerId { get; set; }
 
@@ -2248,22 +1917,19 @@
     private DateTime _pointHistoryFrom = DateTime.Today.AddYears(-1);
     private DateTime _pointHistoryTo = DateTime.Today;
     private int _pointHistoryRequestVersion;
-    private decimal _pointHistoryEarnedTotal =>
-        _pointHistorySnapshot?.Entries
-            .Where(entry => entry.EarnedPoints.HasValue)
-            .Sum(entry => entry.EarnedPoints!.Value) ?? 0m;
-    private decimal _pointHistoryRedeemedTotal =>
-        _pointHistorySnapshot?.Entries.Sum(entry => entry.RedeemedPoints) ?? 0m;
     private decimal _pointDialogCurrentBalance =>
         Math.Max(0m, _pointHistorySnapshot?.CurrentPointBalance ?? CustomerPointBalance ?? 0m);
     private decimal _pointDialogAllocated =>
         BillingPointsAllocated();
-    private decimal _pointDialogAvailable =>
-        Math.Max(0m, _pointDialogCurrentBalance - _pointDialogAllocated);
     private decimal? CustomerPackageBalance { get; set; }
     private decimal? CustomerCreditBalance { get; set; }
     private bool _isCustomerBalanceLoading;
     private List<RedeemableCreditDTO> _redeemableCredits = new();
+    private string _billingCreditAccountSearch = string.Empty;
+    private IEnumerable<RedeemableCreditDTO> FilteredBillingCreditAccounts => _redeemableCredits.Where(credit =>
+        string.IsNullOrWhiteSpace(_billingCreditAccountSearch) ||
+        new[] { credit.ARAPOutstandingID, credit.MemberTypeID, credit.DisplayCode, credit.ItemDescription }
+            .Any(value => value?.Contains(_billingCreditAccountSearch.Trim(), StringComparison.OrdinalIgnoreCase) == true));
     private bool _isRedeemableCreditsLoading;
     private string? _redeemableCreditsError;
     private bool _showRedeemableCredits;
@@ -2278,9 +1944,6 @@
 
     private string FormatPointBalance(decimal? value) =>
         _isCustomerBalanceLoading ? "Loading..." : value.HasValue ? $"{value.Value:N0} pts" : "—";
-
-    private string FormatNumericBalance(decimal? value) =>
-        _isCustomerBalanceLoading ? "Loading..." : value.HasValue ? value.Value.ToString("N2") : "—";
 
     private string FormatPackageBalance(decimal? value) =>
         _isCustomerBalanceLoading
@@ -2308,7 +1971,8 @@
     private decimal GrossSubtotal =>
         PrescriptionItems.Sum(i => i.UnitPrice * Math.Max(1, i.Quantity)) +
         ServiceItems.Sum(s => s.UnitPrice * Math.Max(1, s.Quantity)) +
-        MemberCreditItems.Sum(c => c.UnitPrice * Math.Max(1, c.Quantity));
+        MemberCreditItems.Sum(c => c.UnitPrice * Math.Max(1, c.Quantity)) +
+        BillingPackageItems.Sum(item => item.UnitPrice * Math.Max(1, item.Quantity));
 
     private BillingTotals CurrentBillingTotals => CalculateBillingTotals();
     private decimal SubtotalBeforeTax => CurrentBillingTotals.SubtotalBeforeTax;
@@ -2468,7 +2132,7 @@
     private decimal PaymentTotalPayable =>
         _isOutstandingPaymentMode
             ? OutstandingSettlementPaymentAmount
-            : TotalPayable;
+            : BillingAmountDue;
 
     private decimal OutstandingAmount =>
         Math.Max(0m, PaymentTotalPayable - (AmountReceived ?? 0m));
@@ -2507,6 +2171,15 @@
     private bool _manualFrequency;
     private bool _manualDuration;
     private bool _manualReason;
+    private enum PrescriptionOption { Frequency, Duration, Reason }
+    private PrescriptionOption? _openPrescriptionOption;
+
+    private void ClosePrescriptionOptions() => _openPrescriptionOption = null;
+    private void TogglePrescriptionOptions(PrescriptionOption option) =>
+        _openPrescriptionOption = _openPrescriptionOption == option ? null : option;
+    private void ToggleFrequencyOptions() => TogglePrescriptionOptions(PrescriptionOption.Frequency);
+    private void ToggleDurationOptions() => TogglePrescriptionOptions(PrescriptionOption.Duration);
+    private void ToggleReasonOptions() => TogglePrescriptionOptions(PrescriptionOption.Reason);
 
     private static CaseNotePrescriptionViewModel CreateBillingPrescriptionViewModel()
     {
@@ -2537,7 +2210,7 @@
             : BillingPayments;
 
     private IEnumerable<CashSalesPaymentTypeDTO> VisibleBillingPaymentMethods =>
-        _isOutstandingPaymentMode || HasBillingPointRedemption
+        _isOutstandingPaymentMode || HasBillingPointRedemption || HasBillingPackageRedemption
             ? AvailablePaymentMethods.Where(method => method.POSPaymentTypeID != -10)
             : AvailablePaymentMethods;
 
@@ -2640,6 +2313,7 @@
 
     private async Task ToggleBillingProductPointRedemptionAsync(BillingItem item)
     {
+        if (HasBillingPackageRedemption) { Feedback.Warning("Complete package redemption before using points.", "Separate transaction required"); return; }
         var index = PrescriptionItems.IndexOf(item);
         if (index < 0)
         {
@@ -2786,6 +2460,7 @@
 
     private async Task ToggleBillingServicePointRedemptionAsync(BillingService item)
     {
+        if (HasBillingPackageRedemption) { Feedback.Warning("Complete package redemption before using points.", "Separate transaction required"); return; }
         var index = ServiceItems.IndexOf(item);
         if (index < 0)
         {
@@ -3049,6 +2724,7 @@
 
     private async Task OpenMemberCreditPickerModal()
     {
+        if (HasBillingPackageRedemption) { Feedback.Warning("Complete package redemption before buying Member Credit.", "Separate transaction required"); return; }
         if (string.IsNullOrWhiteSpace(_billingCustomerId))
         {
             Feedback.Warning("Select a valid customer before adding Member Credit.", "Customer required");
@@ -3076,6 +2752,7 @@
 
     private async Task AddMemberCreditFromCatalogAsync(MembershipViewModel.MemberCredit credit)
     {
+        if (HasBillingPackageRedemption) return;
         if (string.IsNullOrWhiteSpace(_billingCustomerId))
         {
             Feedback.Warning("Select a valid customer before adding Member Credit.", "Customer required");
@@ -3336,6 +3013,7 @@
 
     private void ResetPrescriptionModal()
     {
+        ClosePrescriptionOptions();
         _manualFrequency = false;
         _manualDuration = false;
         _manualReason = false;
@@ -3347,19 +3025,14 @@
         PrescriptionViewModel.ClearSelection();
     }
 
-    private bool _showCategoryDropdown = false;
-
     private void HandlePrescriptionSearch(ChangeEventArgs e)
     {
         PrescriptionViewModel.SearchTerm = e.Value?.ToString() ?? string.Empty;
     }
 
-    private void ToggleCategoryDropdown() => _showCategoryDropdown = !_showCategoryDropdown;
-
     private void SetDrugCategory(string category)
     {
         PrescriptionViewModel.SelectedCategory = category;
-        _showCategoryDropdown = false;
     }
 
     private void SelectDrug(CaseNotePrescriptionViewModel.Drug drug)
@@ -3371,6 +3044,7 @@
         }
 
         PrescriptionViewModel.SelectDrugToAdd(drug);
+        ClosePrescriptionOptions();
         _showPrescriptionValidationError = false;
     }
 
@@ -3381,6 +3055,7 @@
 
     private void CancelPrescriptionDrugSelection()
     {
+        ClosePrescriptionOptions();
         PrescriptionViewModel.SelectedDrugToAdd = null;
         _manualFrequency = false;
         _manualDuration = false;
@@ -3616,6 +3291,15 @@
 
         // 3. Close Modal & Reset
         ClosePrescriptionModal();
+    }
+
+    private void HandlePrescriptionKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            if (_openPrescriptionOption.HasValue) ClosePrescriptionOptions();
+            else ClosePrescriptionModal();
+        }
     }
 
     private void ClosePrescriptionModal()
@@ -3979,6 +3663,7 @@
         var result = await PatientContext.LoadAsync(requestedKey);
         if (result.Success && result.Value is not null)
         {
+            if (!string.Equals(_billingCustomerId, result.Value.SystemID, StringComparison.OrdinalIgnoreCase)) ClearBillingPackages();
             PatientName = Beauty_Aesthetics_WebPos.Components.Services.Clinical.ClinicalPatientContext.GetDisplayName(result.Value);
             PatientBirthday = result.Value.DateOfBirth?.ToString("dd/MM/yyyy") ?? "-";
             PatientPhone = string.IsNullOrWhiteSpace(result.Value.ContactNumber1) ? "-" : result.Value.ContactNumber1;
@@ -3994,6 +3679,7 @@
         }
         else
         {
+            ClearBillingPackages();
             _billingCustomerId = string.Empty;
             _loadedBillingCustomerKey = requestedKey;
             await LoadCustomerBalancesAsync(null);
@@ -4094,7 +3780,7 @@
             }
 
             AvailablePaymentMethods = result.Value
-                .Where(method => method.POSPaymentTypeID != 0 &&
+                .Where(method => method.POSPaymentTypeID is not (0 or -5) &&
                                  !string.IsNullOrWhiteSpace(method.POSPaymentTypeName))
                 .ToList();
 
@@ -4178,7 +3864,7 @@
 
     private string PaymentMethodDisplay =>
         ActiveBillingPayments.Count == 0
-            ? "Not selected"
+            ? HasBillingPackageRedemption && !_isOutstandingPaymentMode ? "Package Sessions" : "Not selected"
             : string.Join(
                 " + ",
                 ActiveBillingPayments
@@ -4631,6 +4317,7 @@
         }
 
         _showRedeemableCredits = true;
+        _billingCreditAccountSearch = string.Empty;
         _selectedHistoryCreditId = string.Empty;
         _creditRedemptionHistory.Clear();
         _creditHistoryError = null;
@@ -5156,14 +4843,14 @@
             return;
         }
 
-        if (_isPaymentMethodsLoading && !IsFullyPointRedeemedBillingSale)
+        if (_isPaymentMethodsLoading && !CanCompleteBillingWithoutTender)
         {
             _paymentValidationError = "Payment methods are still loading.";
             Feedback.Warning(_paymentValidationError, "Payment not ready");
             return;
         }
 
-        if (BillingPayments.Count == 0 && !IsFullyPointRedeemedBillingSale)
+        if (BillingPayments.Count == 0 && !CanCompleteBillingWithoutTender)
         {
             _paymentValidationError = "Select a payment method and enter an amount before confirming.";
             Feedback.Warning(_paymentValidationError, "Payment method required");
@@ -5188,16 +4875,16 @@
             return;
         }
 
-        if (BillingPaidAmount < TotalPayable)
+        if (BillingPaidAmount < BillingAmountDue)
         {
             _showInsufficientAmountModal = true;
             Feedback.Warning(
-                $"Add RM {(TotalPayable - BillingPaidAmount):N2} more before completing the sale.",
+                $"Add RM {(BillingAmountDue - BillingPaidAmount):N2} more before completing the sale.",
                 "Payment incomplete");
             return;
         }
 
-        if (PrescriptionItems.Count == 0 && ServiceItems.Count == 0 && MemberCreditItems.Count == 0)
+        if (PrescriptionItems.Count == 0 && ServiceItems.Count == 0 && MemberCreditItems.Count == 0 && BillingPackageItems.Count == 0)
         {
             _paymentValidationError = "Add at least one billing item, service, or Member Credit before payment.";
             Feedback.Warning(_paymentValidationError, "Billing is empty");
@@ -5232,11 +4919,11 @@
 
         SynchronizeBillingPaymentTotals();
 
-        if (!IsFullyPointRedeemedBillingSale &&
-            (AmountReceived is null || AmountReceived < TotalPayable))
+        if (!CanCompleteBillingWithoutTender &&
+            (AmountReceived is null || AmountReceived < BillingAmountDue))
         {
             Feedback.Warning(
-                $"Add RM {Math.Max(0m, TotalPayable - (AmountReceived ?? 0m)):N2} more before completing the sale.",
+                $"Add RM {Math.Max(0m, BillingAmountDue - (AmountReceived ?? 0m)):N2} more before completing the sale.",
                 "Payment incomplete");
             return;
         }
@@ -5324,7 +5011,7 @@
 
             AppState.LastSaleDocumentId = completedTransaction.DocumentId;
             AppState.LastReceiptNo = completedTransaction.InvoiceNumber;
-            AppState.LastPaidAmount = AmountReceived ?? TotalPayable;
+            AppState.LastPaidAmount = AmountReceived ?? BillingAmountDue;
             AppState.LastPaymentMethod = PaymentMethodDisplay;
             AppState.LastCompletedTransaction = completedTransaction;
             AppState.LastPaymentReturnUrl = PatientContext.WithCustomer("/case-notes");
@@ -5379,7 +5066,7 @@
         {
             // Point Step 11: Case Note Billing point redemption is always a
             // normal Cash Sale, matching New Sales and Senang.
-            DocumentTypeId = 5,
+            DocumentTypeId = HasBillingPackageRedemption ? 52 : 5,
             AccountId = _billingCustomerId,
             BranchId = branchId,
             GroupId = branchGroupId,
@@ -5388,7 +5075,8 @@
             CustomerContact = PatientPhone == "-" ? string.Empty : PatientPhone,
             ReferenceNumber = AppointmentId?.Trim() ?? string.Empty,
             Branch = AppState.CurrentBranch?.Name ?? branchId,
-            Type = MemberCreditItems.Count > 0 && PrescriptionItems.Count == 0 && ServiceItems.Count == 0
+            Type = BillingPackageItems.Count > 0 ? PrescriptionItems.Count + ServiceItems.Count + MemberCreditItems.Count > 0 ? "Mixed" : HasBillingPackageRedemption ? "Package Redemption" : "Package"
+                : MemberCreditItems.Count > 0 && PrescriptionItems.Count == 0 && ServiceItems.Count == 0
                 ? "Member Credit"
                 : PrescriptionItems.Count > 0 && ServiceItems.Count == 0 && MemberCreditItems.Count == 0
                     ? "Product"
@@ -5397,7 +5085,7 @@
                         : "Mixed",
             ItemCount = PrescriptionItems.Sum(item => item.Quantity) +
                         ServiceItems.Sum(item => item.Quantity) +
-                        MemberCreditItems.Sum(item => item.Quantity),
+                        MemberCreditItems.Sum(item => item.Quantity) + BillingPackageItems.Sum(item => item.Quantity),
             Amount = TotalPayable,
             Subtotal = SubtotalBeforeTax,
             Tax = TaxAmount,
@@ -5489,6 +5177,7 @@
             IsTaxInclusive = item.IsTaxInclusive
         }));
 
+        items.AddRange(BillingPackageItems.Select(CopyBillingPackageItem));
         ApplyBillDiscountToTransactionItems(items);
         return items;
     }
@@ -5506,7 +5195,7 @@
                 Item = item,
                 NetBeforeBillDiscount = Math.Max(0m, item.UnitPrice * Math.Max(1, item.Quantity) - item.Discount)
             })
-            .Where(entry => entry.NetBeforeBillDiscount > 0m)
+            .Where(entry => !entry.Item.IsPackageRedemption && entry.NetBeforeBillDiscount > 0m)
             .ToList();
 
         if (eligible.Count == 0)
@@ -5583,16 +5272,20 @@
             item.TaxRate,
             item.IsTaxInclusive)));
 
+        lines.AddRange(BillingPackageItems.Select(item => new BillingTaxLine(
+            item.UnitPrice, Math.Max(1, item.Quantity), item.Discount, item.TaxPercentage, item.IsTaxInclusive, item.IsPackageRedemption)));
+
         if (lines.Count == 0)
         {
             return new BillingTotals(0m, 0m, 0m, 0m);
         }
 
         var netBeforeBillDiscount = lines
-            .Select(line => Math.Max(0m, line.UnitPrice * line.Quantity - line.Discount))
+            .Select(line => line.IsPackageRedemption ? 0m : Math.Max(0m, line.UnitPrice * line.Quantity - line.Discount))
             .ToArray();
         var remainingBase = netBeforeBillDiscount.Sum();
         var remainingBillDiscount = Math.Min(Math.Max(0m, BillDiscount), remainingBase);
+        var lastDiscountLine = Array.FindLastIndex(netBeforeBillDiscount, value => value > 0m);
 
         decimal subtotalBeforeTax = 0m;
         decimal totalTax = 0m;
@@ -5601,7 +5294,7 @@
         {
             var line = lines[index];
             var lineBase = netBeforeBillDiscount[index];
-            var billAllocation = index == lines.Count - 1 || remainingBase <= 0m
+            var billAllocation = index == lastDiscountLine || remainingBase <= 0m
                 ? remainingBillDiscount
                 : Math.Round(
                     remainingBillDiscount * lineBase / remainingBase,
@@ -5632,8 +5325,10 @@
         subtotalBeforeTax = Math.Round(subtotalBeforeTax, 2, MidpointRounding.AwayFromZero);
         totalTax = Math.Round(totalTax, 2, MidpointRounding.AwayFromZero);
         var beforeRounding = subtotalBeforeTax + totalTax;
-        var roundedTotal = Math.Round(beforeRounding * 20m, MidpointRounding.AwayFromZero) / 20m;
-        var rounding = Math.Round(roundedTotal - beforeRounding, 2, MidpointRounding.AwayFromZero);
+        var cashDue = Math.Max(0m, beforeRounding - BillingPackageCoveredAmount);
+        var roundedCash = Math.Round(cashDue * 20m, MidpointRounding.AwayFromZero) / 20m;
+        var rounding = Math.Round(roundedCash - cashDue, 2, MidpointRounding.AwayFromZero);
+        var roundedTotal = beforeRounding + rounding;
 
         return new BillingTotals(subtotalBeforeTax, totalTax, rounding, roundedTotal);
     }
@@ -6249,6 +5944,7 @@
     // Billing payment calculator mirrors Sales > New Sale behavior.
     private void OpenBillingPaymentCalculator(CashSalesPaymentTypeDTO method)
     {
+        if (method.POSPaymentTypeID == -5 || (HasBillingPackageRedemption && method.POSPaymentTypeID == -10)) return;
         if (HasBillingPointRedemption && method.POSPaymentTypeID == -10)
         {
             Console.WriteLine(
@@ -6472,9 +6168,6 @@
     // Custom Dropdown Logic
     private bool _isPaymentMethodDropdownOpen = false;
     private bool _isCollectorDropdownOpen = false;
-    private bool _isFrequencyDropdownOpen = false;
-    private bool _isDurationDropdownOpen = false;
-    private bool _isReasonDropdownOpen = false;
 
     private void TogglePaymentMethodDropdown()
     {
@@ -6534,42 +6227,24 @@
         return employee.IsServiceStaff ? "Service staff" : "Active staff";
     }
 
-    private void ToggleFrequencyDropdown()
-    {
-        _isFrequencyDropdownOpen = !_isFrequencyDropdownOpen;
-        StateHasChanged();
-    }
-
     private void SelectFrequency(string frequency)
     {
         PrescriptionViewModel.NewDrugFrequency = frequency;
-        _isFrequencyDropdownOpen = false;
-        StateHasChanged();
-    }
-
-    private void ToggleDurationDropdown()
-    {
-        _isDurationDropdownOpen = !_isDurationDropdownOpen;
+        ClosePrescriptionOptions();
         StateHasChanged();
     }
 
     private void SelectDuration(string duration)
     {
         PrescriptionViewModel.NewDrugDuration = duration;
-        _isDurationDropdownOpen = false;
-        StateHasChanged();
-    }
-
-    private void ToggleReasonDropdown()
-    {
-        _isReasonDropdownOpen = !_isReasonDropdownOpen;
+        ClosePrescriptionOptions();
         StateHasChanged();
     }
 
     private void SelectReason(string reason)
     {
         PrescriptionViewModel.NewDrugReason = reason;
-        _isReasonDropdownOpen = false;
+        ClosePrescriptionOptions();
         StateHasChanged();
     }
 
@@ -6629,7 +6304,7 @@
                 Math.Max(0m,
                     PrescriptionItems.Sum(item => item.LineTotal) +
                     ServiceItems.Sum(item => item.LineTotal) +
-                    MemberCreditItems.Sum(item => item.LineTotal)),
+                    MemberCreditItems.Sum(item => item.LineTotal) + BillingPackageItems.Where(item => !item.IsPackageRedemption).Sum(item => item.UnitPrice * item.Quantity)),
             _ => 0m
         };
     }
@@ -6890,7 +6565,8 @@
         decimal Quantity,
         decimal Discount,
         decimal TaxRate,
-        bool IsTaxInclusive);
+        bool IsTaxInclusive,
+        bool IsPackageRedemption = false);
 
     private sealed record BillingTotals(
         decimal SubtotalBeforeTax,

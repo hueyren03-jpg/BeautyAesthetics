@@ -48,6 +48,39 @@ public sealed class PackageService : IPackageService
         Console.WriteLine(
             $"[Sales Catalog] PACKAGE | Branch={normalizedBranchId} | Records={result.Value.Count} | Packages={packageHeaders.Count}");
 
+        return await LoadPackageSummariesAsync(
+            packageHeaders, services, result.StatusCode, cancellationToken);
+    }
+
+    public async Task<ApiCallResult<InventoryPackageSummary>> LoadPackageAsync(
+        string masterAccountId,
+        IReadOnlyCollection<ServiceViewModel.ServiceItem> services,
+        CancellationToken cancellationToken = default)
+    {
+        var header = await serviceInventoryAC.LoadRecordAsync(masterAccountId, cancellationToken);
+        if (!header.Success || header.Value is null)
+        {
+            return ApiCallResult<InventoryPackageSummary>.Failure(
+                header.StatusCode,
+                header.ErrorMessage ?? "Unable to refresh the package record.");
+        }
+
+        var result = await LoadPackageSummariesAsync(
+            [header.Value], services, header.StatusCode, cancellationToken, requireFullRecord: true);
+        var package = result.Value?.FirstOrDefault();
+        return result.Success && package is not null
+            ? ApiCallResult<InventoryPackageSummary>.Ok(result.StatusCode, package)
+            : ApiCallResult<InventoryPackageSummary>.Failure(
+                result.StatusCode, result.ErrorMessage ?? "Unable to refresh the full package record.");
+    }
+
+    private async Task<ApiCallResult<IReadOnlyList<InventoryPackageSummary>>> LoadPackageSummariesAsync(
+        IReadOnlyCollection<InventoryDM> packageHeaders,
+        IReadOnlyCollection<ServiceViewModel.ServiceItem> services,
+        HttpStatusCode statusCode,
+        CancellationToken cancellationToken,
+        bool requireFullRecord = false)
+    {
         var serviceById = services
             .Where(service => !string.IsNullOrWhiteSpace(service.MasterAccountId))
             .GroupBy(service => service.MasterAccountId!, StringComparer.OrdinalIgnoreCase)
@@ -60,15 +93,23 @@ public sealed class PackageService : IPackageService
                 ? await serviceInventoryAC.LoadFullAsync(header.MasterAccountID, cancellationToken)
                 : null;
 
+            if (requireFullRecord && (fullRecord?.Success != true || fullRecord.Value is null))
+            {
+                return ApiCallResult<IReadOnlyList<InventoryPackageSummary>>.Failure(
+                    fullRecord?.StatusCode ?? HttpStatusCode.NotFound,
+                    fullRecord?.ErrorMessage ?? "Unable to refresh the full package record.");
+            }
+
             var package = fullRecord?.Success == true
                 ? fullRecord.Value?.ObjInventory
                 : null;
-            var packageLines = package?.PackageLines
+            var packageLines = (package?.PackageLines
                 ?? fullRecord?.Value?.PackageLines
-                ?? [];
-            var membershipCredits = package?.MembershipCredits
-                ?? fullRecord?.Value?.MembershipCredits
-                ?? [];
+                ?? [])
+                .Where(line => !line.IsVoided)
+                .ToList();
+            var membershipCredits = InventoryMembershipCreditMapper.Read(
+                fullRecord?.Value, header, allowLegacyPrimaryCredit: false);
             var serviceIds = packageLines
                 .Where(line => !string.IsNullOrWhiteSpace(line.InventoryId))
                 .Select(line => line.InventoryId!)
@@ -88,7 +129,7 @@ public sealed class PackageService : IPackageService
                         or System.Text.Json.JsonValueKind.Undefined
                         ? null
                         : line.AutoId.ToString(),
-                    GetFirstObjectString(line, "UOM", "UnitOfMeasureID", "UnitOfMeasure", "UnitOfMeasureName")))
+                    line.PackageId))
                 .ToList();
 
             var totalDuration = packageLines
@@ -107,9 +148,7 @@ public sealed class PackageService : IPackageService
                 packagePoints = GetInventoryDecimal(header, "Points");
             }
 
-            var packageRemarks = package is not null
-                ? GetInventoryString(package, "Remarks")
-                : null;
+            var packageRemarks = package?.Remarks;
             if (string.IsNullOrWhiteSpace(packageRemarks))
             {
                 packageRemarks = GetInventoryString(header, "Remarks");
@@ -139,25 +178,20 @@ public sealed class PackageService : IPackageService
                 header.AvailableTimeFrom,
                 header.AvailableTimeTo,
                 header.eInvoiceClassificationCode ?? string.Empty,
-                header.ImagePath ?? string.Empty,
-                header.ImageFileName ?? string.Empty,
+                package?.ImagePath ?? header.ImagePath ?? string.Empty,
+                package?.ImageFileName ?? header.ImageFileName ?? string.Empty,
                 FirstNonEmpty(package?.ItemGroupName, header.ItemGroupName) ?? string.Empty,
                 string.Equals(
                     FirstNonEmpty(package?.AccountStatus, header.AccountStatus, "Active"),
                     "Active",
                     StringComparison.OrdinalIgnoreCase),
-                FirstNonEmpty(package?.VendorItemCode, header.VendorItemCode) ?? string.Empty,
                 FirstNonEmpty(package?.UnitOfMeasureId, header.UnitOfMeasureName, header.UnitOfMeasureID, "unit") ?? "unit",
-                package is not null && package.ValidityDays != 0 ? package.ValidityDays : header.ValidityDays,
-                package is not null && package.MemberExpiryDays != 0
-                    ? package.MemberExpiryDays
-                    : GetInventoryInt(header, "MemberExpiryDays"),
+                package?.ValidityDays ?? header.ValidityDays,
+                InventoryMembershipCreditMapper.ReadExpiryDays(fullRecord?.Value, header),
                 FirstNonEmpty(
                     package?.TriggeredMemberTypeId,
                     GetInventoryString(header, "TriggeredMemberTypeID")) ?? string.Empty,
-                package is not null && package.MemberMainAccountCredit != 0
-                    ? package.MemberMainAccountCredit
-                    : GetInventoryDecimal(header, "MemberMainAccountCredit"),
+                package?.MemberMainAccountCredit ?? GetInventoryDecimal(header, "MemberMainAccountCredit"),
                 lineSummaries,
                 packagePoints,
                 GetPackagePolicy(
@@ -168,25 +202,22 @@ public sealed class PackageService : IPackageService
                 GetPackageTerm(packageRemarks, 2),
                 GetPackagePriceLimit(packageRemarks, "MIN_PRICE"),
                 GetPackagePriceLimit(packageRemarks, "MAX_PRICE"),
-                package is not null && package.PurchasePrice != 0m
-                    ? package.PurchasePrice
-                    : header.PurchasePrice,
-                FirstNonEmpty(package?.TaxCodeId, header.TaxCodeID) ?? string.Empty,
+                package?.PurchasePrice ?? header.PurchasePrice,
+                package?.TaxCodeId ?? header.TaxCodeID ?? string.Empty,
                 package is not null ? package.IsTaxInclusive : header.IsTaxInclusive,
-                membershipCredits
-                    .Where(credit => !string.IsNullOrWhiteSpace(credit.MemberTypeId))
-                    .Select(credit => new InventoryMembershipCreditSummary(
-                        credit.MemberTypeId,
-                        Math.Max(0m, credit.MemberCredit)))
-                    .ToList()));
+                membershipCredits,
+                FirstNonEmpty(package?.ItemGroupId, GetInventoryString(header, "ItemGroupID")) ?? string.Empty,
+                fullRecord?.Value?.Branches?.Where(branch => !string.IsNullOrWhiteSpace(branch.BranchId))
+                    .Select(branch => new InventoryPackageBranchEdit(
+                        branch.BranchId!, branch.GroupId ?? string.Empty, branch.IsEnabled)).ToList()));
         }
 
         return ApiCallResult<IReadOnlyList<InventoryPackageSummary>>.Ok(
-            result.StatusCode,
+            statusCode,
             summaries.OrderBy(package => package.Name).ToList());
     }
 
-    public async Task<ApiCallResult<bool>> CreatePackageAsync(
+    public async Task<ApiCallResult<InventoryPackageSaveOutcome>> CreatePackageAsync(
         InventoryPackageEdit package,
         string branchId = "hq",
         CancellationToken cancellationToken = default,
@@ -199,22 +230,60 @@ public sealed class PackageService : IPackageService
             normalizedBranchId,
             package.Price,
             NormalizeBranchGroupId(branchGroupId, normalizedBranchId),
-            "Added",
             package.MembershipCredits,
-            isUpdate: false);
-        var result = ToSaveResult(
-            await serviceInventoryAC.CreateFullAsync(request, cancellationToken),
-            "Unable to create package.");
+            isUpdate: false,
+            branches: package.Branches);
 
-        if (result.Success)
-            feedback.Success("Package created successfully.", "Package created");
-        else
-            feedback.Error(result.ErrorMessage ?? "Unable to create package.", "Package not created");
+        // Senang creates the header first, then saves its items against the returned ID.
+        var lines = record.lstPackage.ToList();
+        record.lstPackage.Clear();
+        var headerResult = await serviceInventoryAC.CreateFullAsync(request, cancellationToken);
+        if (!headerResult.Success)
+        {
+            return ApiCallResult<InventoryPackageSaveOutcome>.Failure(
+                headerResult.StatusCode, headerResult.ErrorMessage ?? "Unable to create package.");
+        }
 
-        return result;
+        var recordId = headerResult.Value?.Id;
+        if (string.IsNullOrWhiteSpace(recordId))
+        {
+            return ApiCallResult<InventoryPackageSaveOutcome>.Ok(headerResult.StatusCode,
+                new(null, false, "Package header saved without a returned ID. Reload packages before editing it."));
+        }
+
+        if (lines.Count > 0)
+        {
+            record.MasterAccountID = recordId;
+            record.SaveAction = EntityState.Changed;
+            record.IsDirty = true;
+            foreach (var line in lines)
+            {
+                line.PackageID = recordId;
+                record.lstPackage.Add(line);
+            }
+            request.Branches.Clear();
+            try
+            {
+                var itemResult = await serviceInventoryAC.CreateFullAsync(request, cancellationToken);
+                if (!itemResult.Success)
+                {
+                    return ApiCallResult<InventoryPackageSaveOutcome>.Ok(itemResult.StatusCode,
+                        new(recordId, false, itemResult.ErrorMessage ?? "Package items could not be saved. Retry Save."));
+                }
+            }
+            catch (Exception ex)
+            {
+                // Never retry header creation after its ID has been allocated.
+                return ApiCallResult<InventoryPackageSaveOutcome>.Ok(headerResult.StatusCode,
+                    new(recordId, false, $"Package items could not be confirmed. Retry Save. {ex.Message}"));
+            }
+        }
+
+        feedback.Success("Package created successfully.", "Package created");
+        return ApiCallResult<InventoryPackageSaveOutcome>.Ok(headerResult.StatusCode, new(recordId, true));
     }
 
-    public async Task<ApiCallResult<bool>> UpdatePackageAsync(
+    public async Task<ApiCallResult<InventoryPackageSaveOutcome>> UpdatePackageAsync(
         InventoryPackageEdit package,
         string branchId = "hq",
         CancellationToken cancellationToken = default,
@@ -222,7 +291,7 @@ public sealed class PackageService : IPackageService
     {
         if (string.IsNullOrWhiteSpace(package.MasterAccountId))
         {
-            return ApiCallResult<bool>.Failure(
+            return ApiCallResult<InventoryPackageSaveOutcome>.Failure(
                 HttpStatusCode.BadRequest,
                 "The selected package has no record ID.");
         }
@@ -230,7 +299,7 @@ public sealed class PackageService : IPackageService
         var loadResult = await serviceInventoryAC.LoadFullAsync(package.MasterAccountId, cancellationToken);
         if (!loadResult.Success || loadResult.Value is null)
         {
-            return ApiCallResult<bool>.Failure(
+            return ApiCallResult<InventoryPackageSaveOutcome>.Failure(
                 loadResult.StatusCode,
                 loadResult.ErrorMessage ?? "Unable to load the package before updating it.");
         }
@@ -247,6 +316,12 @@ public sealed class PackageService : IPackageService
             ? "Active"
             : loadedPackage.AccountStatus;
         record.BranchID = FirstNonEmpty(loadedPackage?.BranchId, normalizedBranchId);
+        // Preserve inventory metadata that is not editable in the package form.
+        record.VendorItemCode = loadedPackage?.VendorItemCode;
+        record.UnitOfMeasureID = FirstNonEmpty(loadedPackage?.UnitOfMeasureId, record.UnitOfMeasureID);
+        record.UnitOfMeasureName = record.UnitOfMeasureID;
+        SetInventoryProperty(record, "TriggeredMemberTypeID", loadedPackage?.TriggeredMemberTypeId ?? string.Empty);
+        SetInventoryProperty(record, "MemberMainAccountCredit", loadedPackage?.MemberMainAccountCredit ?? 0m);
         record.lstPackage.Clear();
 
         foreach (var loadedLine in loadedLines)
@@ -261,9 +336,10 @@ public sealed class PackageService : IPackageService
             normalizedBranchId,
             package.Price,
             NormalizeBranchGroupId(branchGroupId, normalizedBranchId),
-            "Changed",
             package.MembershipCredits,
-            isUpdate: true);
+            isUpdate: true,
+            branches: package.Branches,
+            existingBranches: loadResult.Value.Branches);
 
         var result = ToSaveResult(
             await serviceInventoryAC.UpdateFullAsync(request, cancellationToken),
@@ -274,7 +350,9 @@ public sealed class PackageService : IPackageService
         else
             feedback.Error(result.ErrorMessage ?? "Unable to update package.", "Package not updated");
 
-        return result;
+        return result.Success
+            ? ApiCallResult<InventoryPackageSaveOutcome>.Ok(result.StatusCode, new(package.MasterAccountId, true))
+            : ApiCallResult<InventoryPackageSaveOutcome>.Failure(result.StatusCode, result.ErrorMessage ?? "Unable to update package.");
     }
 
     public async Task<ApiCallResult<bool>> DeletePackageAsync(
@@ -305,7 +383,8 @@ public sealed class PackageService : IPackageService
             AvailableTimeFrom = TimeSpan.Zero,
             AvailableTimeTo = new TimeSpan(23, 59, 59),
             QuantityFactor = 1,
-            UnitOfMeasureID = "UNIT",
+            UnitOfMeasureID = "unit",
+            UnitOfMeasureName = "unit",
             ValidityDays = 8888,
             MemberCreditSettlementRatio = 1,
             KitchenCopies = 1,
@@ -333,15 +412,11 @@ public sealed class PackageService : IPackageService
             : package.Policy.Trim();
         record.DisplayCode = package.Sku.Trim();
         record.ItemGroupName = package.Section?.Trim() ?? string.Empty;
+        SetInventoryProperty(record, "ItemGroupID", package.ItemGroupId?.Trim() ?? string.Empty);
         record.SalesPrice = Math.Max(0, package.Price);
         record.PurchasePrice = Math.Max(0, package.Cost);
         record.TaxCodeID = package.TaxCode?.Trim() ?? string.Empty;
         record.IsTaxInclusive = package.IsTaxInclusive;
-        record.VendorItemCode = package.Barcode?.Trim() ?? string.Empty;
-        record.UnitOfMeasureID = string.IsNullOrWhiteSpace(package.UnitOfMeasure)
-            ? "unit"
-            : package.UnitOfMeasure.Trim();
-        record.UnitOfMeasureName = record.UnitOfMeasureID;
         record.ImagePath = string.IsNullOrWhiteSpace(package.ImagePath)
             ? null
             : package.ImagePath.Trim();
@@ -350,8 +425,11 @@ public sealed class PackageService : IPackageService
             : package.ImageFileName.Trim();
         record.ValidityDays = Math.Max(0, package.ValidityDays);
         SetInventoryProperty(record, "MemberExpiryDays", Math.Max(0, package.MemberExpiryDays));
-        SetInventoryProperty(record, "TriggeredMemberTypeID", package.TriggeredMemberTypeId?.Trim() ?? string.Empty);
-        SetInventoryProperty(record, "MemberMainAccountCredit", Math.Max(0, package.MemberMainAccountCredit));
+        if (!isUpdate)
+        {
+            SetInventoryProperty(record, "TriggeredMemberTypeID", package.TriggeredMemberTypeId?.Trim() ?? string.Empty);
+            SetInventoryProperty(record, "MemberMainAccountCredit", Math.Max(0, package.MemberMainAccountCredit));
+        }
         SetInventoryProperty(record, "Points", Math.Max(0m, package.Points));
         SetInventoryProperty(
             record,
@@ -363,7 +441,7 @@ public sealed class PackageService : IPackageService
                 package.TermCondition2,
                 package.TermCondition3));
         record.BranchID = branchId;
-        record.HasPackage = (package.Lines?.Count ?? package.Services.Count) > 0;
+        record.HasPackage = true;
         record.AccountStatus = package.IsActive ? "Active" : "Inactive";
         record.IsSold = true;
         record.SaveAction = isUpdate ? EntityState.Changed : EntityState.Added;
@@ -383,22 +461,32 @@ public sealed class PackageService : IPackageService
                     false))
                 .ToList();
 
-        var selectedIds = editedLines
-            .Select(line => line.InventoryId)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var retainedLines = new HashSet<Inventory_PackageItemDM>();
 
         record.lstPackage ??= new System.Collections.ObjectModel.ObservableCollection<Inventory_PackageItemDM>();
         record.lstPackage.Clear();
 
         foreach (var lineEdit in editedLines)
         {
-            var existing = existingLines.FirstOrDefault(line =>
-                string.Equals(line.InventoryID, lineEdit.InventoryId, StringComparison.OrdinalIgnoreCase));
+            var existing = string.IsNullOrWhiteSpace(lineEdit.AutoId) ? null : existingLines.FirstOrDefault(line =>
+                string.Equals(line.AutoID?.ToString(), lineEdit.AutoId, StringComparison.OrdinalIgnoreCase));
+            // A retry after a partial create can already have persisted Added rows.
+            if (existing is null && package.ResumeIncompleteCreate && string.IsNullOrWhiteSpace(lineEdit.AutoId))
+            {
+                existing = existingLines.FirstOrDefault(line => !line.IsVoided && !retainedLines.Contains(line) &&
+                    string.Equals(line.InventoryID, lineEdit.InventoryId, StringComparison.OrdinalIgnoreCase) &&
+                    line.Quantity == lineEdit.Quantity && line.UnitPrice == lineEdit.UnitPrice);
+            }
+            if (existing is not null)
+            {
+                retainedLines.Add(existing);
+            }
 
             var quantity = Math.Max(1m, lineEdit.Quantity);
             var unitPrice = Math.Max(0m, lineEdit.UnitPrice);
 
             var line = existing ?? new Inventory_PackageItemDM();
+            line.PackageID = FirstNonEmpty(lineEdit.PackageId, record.MasterAccountID);
             line.InventoryID = lineEdit.InventoryId;
             line.Description = lineEdit.Description;
             line.Quantity = quantity;
@@ -413,21 +501,13 @@ public sealed class PackageService : IPackageService
             line.IsVoided = false;
             line.IsConfirmed = true;
             line.PackageQuantityTypeID = 0;
-            SetFirstObjectProperty(
-                line,
-                string.IsNullOrWhiteSpace(lineEdit.UnitOfMeasure) ? "unit" : lineEdit.UnitOfMeasure.Trim(),
-                "UOM",
-                "UnitOfMeasureID",
-                "UnitOfMeasure",
-                "UnitOfMeasureName");
             line.SaveAction = existing is null ? EntityState.Added : EntityState.Changed;
             line.IsDirty = true;
             record.lstPackage.Add(line);
         }
 
         foreach (var removedLine in existingLines.Where(line =>
-                     !string.IsNullOrWhiteSpace(line.InventoryID) &&
-                     !selectedIds.Contains(line.InventoryID)))
+                     !line.IsVoided && !retainedLines.Contains(line)))
         {
             removedLine.SaveAction = EntityState.Deleted;
             removedLine.IsDirty = true;
@@ -466,9 +546,10 @@ public sealed class PackageService : IPackageService
         string branchId,
         decimal price,
         string branchGroupId,
-        string saveAction,
         IReadOnlyCollection<InventoryMembershipCreditEdit>? membershipCredits,
-        bool isUpdate)
+        bool isUpdate,
+        IReadOnlyCollection<InventoryPackageBranchEdit>? branches = null,
+        IReadOnlyList<InventoryPackageBranchLoadDTO>? existingBranches = null)
     {
         var credits = (membershipCredits ?? [])
             .Where(credit => !string.IsNullOrWhiteSpace(credit.MemberTypeId))
@@ -483,29 +564,41 @@ public sealed class PackageService : IPackageService
             })
             .ToList();
 
-        // Keep the legacy scalar fields populated for API deployments that still read them.
-        var firstCredit = credits.FirstOrDefault(credit =>
-            !string.Equals(credit.SaveAction, "Deleted", StringComparison.OrdinalIgnoreCase));
-        SetInventoryProperty(record, "TriggeredMemberTypeID", firstCredit?.MemberTypeId ?? string.Empty);
-        SetInventoryProperty(record, "MemberMainAccountCredit", firstCredit?.MemberCredit ?? 0m);
+        // Credit grants and the non-credit membership trigger are separate in Senang.
+        SetInventoryProperty(record, "MembershipCredit", InventoryMembershipCreditMapper.Encode(credits));
+
+        var branchEdits = (branches ?? [new InventoryPackageBranchEdit(branchId, branchGroupId, true)])
+            .Where(branch => !string.IsNullOrWhiteSpace(branch.BranchId))
+            .GroupBy(branch => branch.BranchId.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.Last()).ToList();
+        // Preserve branches outside this session's available branch list.
+        foreach (var existing in existingBranches ?? [])
+        {
+            if (!string.IsNullOrWhiteSpace(existing.BranchId) && !branchEdits.Any(branch =>
+                string.Equals(branch.BranchId, existing.BranchId, StringComparison.OrdinalIgnoreCase)))
+            {
+                branchEdits.Add(new(existing.BranchId, existing.GroupId ?? string.Empty, existing.IsEnabled));
+            }
+        }
 
         return new InventoryPackageRequestDTO
         {
             ObjInventory = record,
             MembershipCredits = credits,
-            Branches =
-            [
+            UseEncodedMembershipCreditOnly = true,
+            Branches = branchEdits.Select(branch =>
                 new InventoryBranchDTO
                 {
                     MasterAccountId = record.MasterAccountID,
-                    BranchId = branchId,
+                    BranchId = NormalizeBranchId(branch.BranchId),
                     BranchPrice = price,
-                    IsEnabled = true,
-                    GroupId = branchGroupId,
-                    SaveAction = saveAction,
+                    IsEnabled = branch.IsEnabled,
+                    GroupId = NormalizeBranchGroupId(branch.GroupId, branch.BranchId),
+                    SaveAction = isUpdate && existingBranches?.Any(existing => string.Equals(
+                        existing.BranchId, branch.BranchId, StringComparison.OrdinalIgnoreCase)) == true
+                        ? "Changed" : "Added",
                     IsDirty = true
-                }
-            ]
+                }).ToList()
         };
     }
 
@@ -544,12 +637,6 @@ public sealed class PackageService : IPackageService
         return value?.ToString();
     }
 
-    private static int GetInventoryInt(object record, string propertyName)
-    {
-        var value = record.GetType().GetProperty(propertyName)?.GetValue(record);
-        return value is null ? 0 : Convert.ToInt32(value);
-    }
-
     private static decimal GetInventoryDecimal(object record, string propertyName)
     {
         var value = record.GetType().GetProperty(propertyName)?.GetValue(record);
@@ -575,60 +662,6 @@ public sealed class PackageService : IPackageService
             ? value
             : Convert.ChangeType(value, targetType);
         property.SetValue(record, converted);
-    }
-
-    private static string GetFirstObjectString(object source, params string[] propertyNames)
-    {
-        foreach (var propertyName in propertyNames)
-        {
-            var property = source.GetType().GetProperty(propertyName);
-            if (property is null || !property.CanRead)
-            {
-                continue;
-            }
-
-            var value = property.GetValue(source)?.ToString();
-            if (!string.IsNullOrWhiteSpace(value))
-            {
-                return value;
-            }
-        }
-
-        return "unit";
-    }
-
-    private static void SetFirstObjectProperty(object target, object? value, params string[] propertyNames)
-    {
-        foreach (var propertyName in propertyNames)
-        {
-            var property = target.GetType().GetProperty(propertyName);
-            if (property is null || !property.CanWrite)
-            {
-                continue;
-            }
-
-            try
-            {
-                var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-                var converted = value is null || targetType.IsInstanceOfType(value)
-                    ? value
-                    : Convert.ChangeType(value, targetType, System.Globalization.CultureInfo.InvariantCulture);
-                property.SetValue(target, converted);
-                return;
-            }
-            catch (InvalidCastException)
-            {
-            }
-            catch (FormatException)
-            {
-            }
-            catch (OverflowException)
-            {
-            }
-            catch (ArgumentException)
-            {
-            }
-        }
     }
 
     private static string GetPackagePolicy(string? salesDescription, string? packageName)

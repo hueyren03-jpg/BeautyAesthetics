@@ -77,6 +77,11 @@
         root.classList.remove("pos-mobile", "pos-tablet", "pos-desktop");
         root.classList.add("pos-" + getViewportKind());
         root.dataset.posViewport = getViewportKind();
+        // Keep forms above the phone keyboard, including visual viewport panning.
+        var viewport = window.visualViewport;
+        var unzoomed = viewport && Math.abs(viewport.scale - 1) < 0.01;
+        root.style.setProperty("--pos-dialog-height", (unzoomed ? viewport.height : window.innerHeight) + "px");
+        root.style.setProperty("--pos-dialog-top", (unzoomed ? viewport.offsetTop : 0) + "px");
         syncHeaderMetrics();
     }
 
@@ -105,5 +110,6 @@
 
     if (window.visualViewport) {
         window.visualViewport.addEventListener("resize", scheduleRefresh, { passive: true });
+        window.visualViewport.addEventListener("scroll", scheduleRefresh, { passive: true });
     }
 })();

@@ -217,6 +217,24 @@
             return;
         }
 
+        // Self-managed responsive forms must not receive wide-table sizing,
+        // extra scroll wrappers or generated row actions.
+        if (table.closest("[data-pos-touch='off']")) {
+            // Also release helper styles if the form was already enhanced.
+            if (table.classList.contains(tableClass)) {
+                table.classList.remove(tableClass);
+                table.style.removeProperty("--pos-touch-table-min-width");
+                Array.from(table.tBodies).forEach(body => {
+                    Array.from(body.rows).forEach(clearGeneratedRowAccessibility);
+                });
+                const wrapper = table.parentElement;
+                if (wrapper?.classList.contains(wrapperClass) && wrapper.querySelectorAll("table").length === 1) {
+                    wrapper.classList.remove(wrapperClass);
+                }
+            }
+            return;
+        }
+
         table.classList.add(tableClass);
         setReadableTouchWidth(table);
         enhanceTableRows(table);

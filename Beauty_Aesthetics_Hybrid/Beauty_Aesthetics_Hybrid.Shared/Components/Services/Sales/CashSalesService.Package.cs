@@ -33,8 +33,8 @@ public sealed partial class CashSalesService
 
             var contents = (inventory.PackageLines ?? result.Value?.PackageLines ?? [])
                 .Where(item => !item.IsVoided && !string.IsNullOrWhiteSpace(item.InventoryId)).ToList();
-            if (contents.Count == 0)
-                return (false, $"'{purchase.Item.Name}' has no included items. Edit the package first.", series, time);
+            // Senang packages may contain items, Member Credit, or both.
+            // Check for an empty package after its credit grants have also been built.
             if (documentLines[purchase.Index] is not JsonObject line)
                 return (false, "Unable to match the package to its sale line.", series, time);
 
@@ -141,6 +141,25 @@ public sealed partial class CashSalesService
                 Math.Abs(Number(receipt, "POSReceiptLineAmount") - group.Sum(item => item.TotalPrice)) > 0.009m)
                 return (false, "Package redemption quantity or settlement does not match the selected sessions.");
         }
+        return (true, string.Empty);
+    }
+
+    private static (bool Success, string ErrorMessage) ValidatePurchasedPackageBenefits(
+        Transaction transaction, JsonArray lines)
+    {
+        if (transaction.DocumentTypeId == 52) return (true, string.Empty);
+
+        foreach (var entry in transaction.Items.Select((item, index) => (Item: item, Index: index))
+                     .Where(entry => entry.Item.InventoryTypeId == 5))
+        {
+            if (entry.Index >= lines.Count || lines[entry.Index] is not JsonObject line ||
+                !new[] { "lstCashSales_Series_UnconsumedItem", "lstCashSales_UnconsumedTime", "lstARAPOutstanding_MemberCredit" }
+                    .Any(key => line[key] is JsonArray { Count: > 0 }))
+            {
+                return (false, $"'{entry.Item.Name}' has no assigned items or Member Credit. Edit the package first.");
+            }
+        }
+
         return (true, string.Empty);
     }
 

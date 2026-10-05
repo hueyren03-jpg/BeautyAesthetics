@@ -10,13 +10,18 @@ public interface IPackageService
         string branchId = "hq",
         CancellationToken cancellationToken = default);
 
-    Task<ApiCallResult<bool>> CreatePackageAsync(
+    Task<ApiCallResult<InventoryPackageSummary>> LoadPackageAsync(
+        string masterAccountId,
+        IReadOnlyCollection<ServiceViewModel.ServiceItem> services,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiCallResult<InventoryPackageSaveOutcome>> CreatePackageAsync(
         InventoryPackageEdit package,
         string branchId = "hq",
         CancellationToken cancellationToken = default,
         string branchGroupId = "");
 
-    Task<ApiCallResult<bool>> UpdatePackageAsync(
+    Task<ApiCallResult<InventoryPackageSaveOutcome>> UpdatePackageAsync(
         InventoryPackageEdit package,
         string branchId = "hq",
         CancellationToken cancellationToken = default,
@@ -35,7 +40,12 @@ public sealed record InventoryPackageLineSummary(
     bool IsDeferred,
     int InventoryTypeId = 3,
     string? AutoId = null,
-    string UnitOfMeasure = "unit");
+    string? PackageId = null);
+
+public sealed record InventoryPackageBranchEdit(string BranchId, string GroupId, bool IsEnabled);
+
+// A partial create retains the generated ID so retrying saves the existing header.
+public sealed record InventoryPackageSaveOutcome(string? MasterAccountId, bool IsComplete, string? ErrorMessage = null);
 
 public sealed record InventoryPackageSummary(
     string MasterAccountId,
@@ -58,7 +68,6 @@ public sealed record InventoryPackageSummary(
     string ImageFileName = "",
     string Section = "",
     bool IsActive = true,
-    string Barcode = "",
     string UnitOfMeasure = "unit",
     int ValidityDays = 0,
     int MemberExpiryDays = 0,
@@ -75,7 +84,9 @@ public sealed record InventoryPackageSummary(
     decimal Cost = 0m,
     string TaxCode = "",
     bool IsTaxInclusive = false,
-    IReadOnlyList<InventoryMembershipCreditSummary>? MembershipCredits = null);
+    IReadOnlyList<InventoryMembershipCreditSummary>? MembershipCredits = null,
+    string ItemGroupId = "",
+    IReadOnlyList<InventoryPackageBranchEdit>? Branches = null);
 
 public sealed record InventoryMembershipCreditSummary(
     string MemberTypeId,
@@ -94,7 +105,8 @@ public sealed record InventoryPackageLineEdit(
     decimal Quantity,
     decimal UnitPrice,
     bool IsDeferred,
-    string UnitOfMeasure = "unit");
+    string? AutoId = null,
+    string? PackageId = null);
 
 public sealed record InventoryPackageEdit(
     string? MasterAccountId,
@@ -104,8 +116,6 @@ public sealed record InventoryPackageEdit(
     IReadOnlyCollection<ServiceViewModel.ServiceItem> Services,
     string Section = "",
     bool IsActive = true,
-    string Barcode = "",
-    string UnitOfMeasure = "unit",
     int ValidityDays = 0,
     int MemberExpiryDays = 0,
     string TriggeredMemberTypeId = "",
@@ -123,6 +133,9 @@ public sealed record InventoryPackageEdit(
     decimal Cost = 0m,
     string TaxCode = "",
     bool IsTaxInclusive = false,
-    IReadOnlyCollection<InventoryMembershipCreditEdit>? MembershipCredits = null);
+    IReadOnlyCollection<InventoryMembershipCreditEdit>? MembershipCredits = null,
+    string ItemGroupId = "",
+    IReadOnlyCollection<InventoryPackageBranchEdit>? Branches = null,
+    bool ResumeIncompleteCreate = false);
 
 

@@ -13,6 +13,9 @@ public sealed class InventoryPackageRequestDTO
     public List<InventoryMembershipCreditDTO> MembershipCredits { get; set; } = new();
 
     [JsonIgnore]
+    public bool UseEncodedMembershipCreditOnly { get; set; }
+
+    [JsonIgnore]
     public List<InventoryProductSkuDTO> SellingUnits { get; set; } = new();
 
     [JsonPropertyName("PointToRedeem")]
@@ -96,6 +99,21 @@ public sealed class InventoryPackageLoadRecordDTO
     [JsonPropertyName("itemGroupName")]
     public string? ItemGroupName { get; set; }
 
+    [JsonPropertyName("itemGroupID")]
+    public string? ItemGroupId { get; set; }
+
+    [JsonPropertyName("imagePath")]
+    public string? ImagePath { get; set; }
+
+    [JsonPropertyName("imageFileName")]
+    public string? ImageFileName { get; set; }
+
+    [JsonPropertyName("remarks")]
+    public string? Remarks { get; set; }
+
+    [JsonPropertyName("membershipCredit")]
+    public string? MembershipCredit { get; set; }
+
     [JsonPropertyName("unitOfMeasureID")]
     public string? UnitOfMeasureId { get; set; }
 
@@ -103,13 +121,13 @@ public sealed class InventoryPackageLoadRecordDTO
     public int ValidityDays { get; set; }
 
     [JsonPropertyName("memberExpiryDays")]
-    public int MemberExpiryDays { get; set; }
+    public int? MemberExpiryDays { get; set; }
 
     [JsonPropertyName("triggeredMemberTypeID")]
     public string? TriggeredMemberTypeId { get; set; }
 
     [JsonPropertyName("memberMainAccountCredit")]
-    public decimal MemberMainAccountCredit { get; set; }
+    public decimal? MemberMainAccountCredit { get; set; }
 
     [JsonPropertyName("lstMembershipCredit")]
     public List<InventoryMembershipCreditDTO>? MembershipCredits { get; set; }

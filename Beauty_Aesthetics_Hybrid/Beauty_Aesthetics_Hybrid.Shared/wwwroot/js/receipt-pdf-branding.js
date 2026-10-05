@@ -213,20 +213,29 @@
                 minimumFractionDigits: patch.money ? 2 : 0,
                 maximumFractionDigits: patch.money ? 2 : 3
             });
-            const anchor = patch.align === "right" ? entry.x + entry.width : entry.x + entry.width / 2;
-            const availableWidth = patch.align === "right" ? anchor - patch.left - 1 :
-                2 * Math.min(anchor - patch.left - 1, patch.right - anchor - 1);
-            const size = Math.min(entry.size || 8,
-                availableWidth / font.widthOfTextAtSize(text, 1));
-            const width = font.widthOfTextAtSize(text, size);
-            const x = patch.align === "right" ? anchor - width : anchor - width / 2;
-            if (x < patch.left || x + width > patch.right) {
-                throw new Error("A receipt amount is too wide for the existing item column.");
+            const left = Math.max(0, patch.left);
+            const right = Math.min(page.getSize().width, patch.right);
+            if (!Number.isFinite(left) || !Number.isFinite(right) || right <= left) {
+                throw new Error("The receipt item column has invalid bounds.");
             }
+
+            // A dash may sit at the edge of the inferred column. Its position
+            // is an alignment preference, not the width available for a number.
+            // Fit against the whole column, then keep the text inside its bounds.
+            const padding = Math.min(1, (right - left) / 4);
+            const availableWidth = right - left - 2 * padding;
+            const originalSize = Number.isFinite(entry.size) && entry.size > 0 ? entry.size : 8;
+            // Leave a small fitting tolerance for floating-point text metrics.
+            const size = Math.min(originalSize,
+                availableWidth * 0.99 / font.widthOfTextAtSize(text, 1));
+            const width = font.widthOfTextAtSize(text, size);
+            const anchor = patch.align === "right" ? entry.x + entry.width : entry.x + entry.width / 2;
+            const preferredX = patch.align === "right" ? anchor - width : anchor - width / 2;
+            const x = Math.max(left + padding, Math.min(preferredX, right - padding - width));
             // Replace only the dash, at its original baseline. All other report
             // content (including tax, balances and redemption history) is intact.
-            page.drawRectangle({ x: entry.x - 0.5, y: entry.y - entry.size * 0.25,
-                width: entry.width + 1, height: entry.size * 1.25,
+            page.drawRectangle({ x: entry.x - 0.5, y: entry.y - originalSize * 0.25,
+                width: entry.width + 1, height: originalSize * 1.25,
                 color: window.PDFLib.rgb(1, 1, 1) });
             page.drawText(text, { x, y: entry.y, size, font, color: window.PDFLib.rgb(0, 0, 0) });
         }

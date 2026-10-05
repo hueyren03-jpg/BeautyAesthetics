@@ -689,6 +689,12 @@ public sealed partial class CashSalesService : ICashSalesService
         }
 
         document["lstARAPOutstanding_MemberCredit"] = memberCreditBuild.RootCredits;
+        var packageBenefitsValidation = ValidatePurchasedPackageBenefits(transaction, documentLines);
+        if (!packageBenefitsValidation.Success)
+        {
+            return ApiCallResult<Transaction>.Failure(
+                HttpStatusCode.BadRequest, packageBenefitsValidation.ErrorMessage);
+        }
         ApplyPackageActualValues(transaction, documentLines, packageBuild.Series, packageBuild.Time, memberCreditBuild.RootCredits);
 
         var singleCreditVerification = await CaptureSingleMemberCreditRedemptionAsync(
@@ -2516,9 +2522,9 @@ public sealed partial class CashSalesService : ICashSalesService
 
         var memberCreditIndexes = transaction.Items
             .Select((item, index) => new { Item = item, Index = index })
-            .Where(entry =>
-                entry.Item.InventoryTypeId is 5 or 7 ||
-                string.Equals(entry.Item.Category, "Member Credit", StringComparison.OrdinalIgnoreCase))
+            // Senang grants credit only for Package (5) and Top Up (7) purchases.
+            // A product's category/name must never turn it into a credit purchase.
+            .Where(entry => entry.Item.InventoryTypeId is 5 or 7)
             .ToList();
 
         if (memberCreditIndexes.Count == 0)
@@ -2537,6 +2543,10 @@ public sealed partial class CashSalesService : ICashSalesService
         foreach (var entry in memberCreditIndexes)
         {
             var item = entry.Item;
+            if (item.Quantity <= 0)
+            {
+                return (false, $"'{item.Name}' must have a positive purchase quantity.", rootCredits);
+            }
             if (string.IsNullOrWhiteSpace(item.InventoryId))
             {
                 return (
@@ -2597,7 +2607,7 @@ public sealed partial class CashSalesService : ICashSalesService
             }
 
             var lineCredits = new JsonArray();
-            var quantity = Math.Max(1, item.Quantity);
+            var quantity = item.Quantity;
             var settlementRatio = creditSetup.SettlementRatio > 0m
                 ? creditSetup.SettlementRatio
                 : 1m;
@@ -2607,6 +2617,9 @@ public sealed partial class CashSalesService : ICashSalesService
 
             foreach (var allocation in allocations)
             {
+                // Follow Senang's AddMemberCreditToRow: grant every configured
+                // MemberTypeID to the purchasing customer, at amount x quantity.
+                // Do not replace it with, or filter it by, the customer's existing tier.
                 var totalCredit = allocation.CreditAmount * quantity;
                 var credit = new JsonObject
                 {
