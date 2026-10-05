@@ -78,6 +78,13 @@ namespace Beauty_Aesthetics_WebPos.Components.Pages
         private void OpenReportParameter(ReportItem report)
         {
             SelectedReport = report;
+
+            if (report.Title is "Point Balance" or "Member Point Movement")
+            {
+                nav.NavigateTo("/PointReport");
+                return;
+            }
+
             isSelectedReportParameterOpen = true;
             feedback.Info($"Configure parameters for {report.Title}.", "Report selected", 2200);
         }
