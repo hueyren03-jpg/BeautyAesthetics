@@ -35,7 +35,8 @@ public sealed class ProductInventoryService : IProductInventoryService
         string branchId = "HQ",
         CancellationToken cancellationToken = default)
     {
-        var result = await inventoryAC.LoadProxyAsync(null, cancellationToken);
+        var normalizedBranchId = NormalizeBranchId(branchId);
+        var result = await inventoryAC.LoadProxyAsync(normalizedBranchId, cancellationToken);
         if (!result.Success || result.Value is null)
         {
             return ApiCallResult<IReadOnlyList<InventoryViewModel.InventoryItem>>.Failure(
@@ -56,13 +57,16 @@ public sealed class ProductInventoryService : IProductInventoryService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        Console.WriteLine(
+            $"[Sales Catalog] PRODUCT | Branch={normalizedBranchId} | Records={result.Value.Count} | Products={products.Count}");
+
         if (inventoryIds.Count > 0)
         {
             var today = DateTime.Today;
             var balanceResult = await inventoryAC.GetStockBalanceByBranchAndByItemAsync(
                 new StockBalanceRequestDTO
                 {
-                    BranchID = NormalizeBranchId(branchId),
+                    BranchID = normalizedBranchId,
                     InventoryIDs = string.Join(",", inventoryIds),
                     FinancialDate = today,
                     EndDate = today,
