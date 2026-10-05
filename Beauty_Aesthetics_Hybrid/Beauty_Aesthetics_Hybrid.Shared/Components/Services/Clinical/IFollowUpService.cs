@@ -9,6 +9,16 @@ public interface IFollowUpService
         string customerId,
         CancellationToken cancellationToken = default);
 
+    Task<ApiCallResult<IReadOnlyList<FollowUpRecordDTO>>> LoadByBranchAsync(
+        DateTime startDate,
+        DateTime endDate,
+        string branchId,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiCallResult<FollowUpRecordDTO>> LoadRecordAsync(
+        string recordId,
+        CancellationToken cancellationToken = default);
+
     Task<ApiCallResult<FollowUpRecordDTO>> SaveAsync(
         FollowUpRecordDTO record,
         string branchId,
