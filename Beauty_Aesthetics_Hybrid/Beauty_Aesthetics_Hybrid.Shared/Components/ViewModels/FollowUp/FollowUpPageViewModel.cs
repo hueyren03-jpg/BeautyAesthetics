@@ -292,7 +292,9 @@ public class FollowUpPageViewModel : INotifyPropertyChanged
                 content,
                 preview,
                 followUp.PatientName,
-                imageUrl
+                imageUrl,
+                followUp.IsPinned,
+                followUp.BackendId
             );
 
             // Direct index assignment is faster than IndexOf + assignment
@@ -325,7 +327,8 @@ public class FollowUpPageViewModel : INotifyPropertyChanged
                 followUp.Preview,
                 followUp.PatientName,
                 followUp.ImageUrl,
-                !followUp.IsPinned // Toggle the pin status
+                !followUp.IsPinned, // Toggle the pin status
+                followUp.BackendId
             );
 
             // Replace old follow-up with updated one
