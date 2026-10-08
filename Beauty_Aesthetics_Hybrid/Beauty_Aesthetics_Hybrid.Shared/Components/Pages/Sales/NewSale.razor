@@ -70,7 +70,7 @@
                 <span class="sale-page-icon"><i class="bi bi-bag-plus"></i></span>
                 <div class="sale-title-copy">
                     <h1>@(currentOrder.IsRedemptionMode ? "Select Redemption Items" : "Select Items")</h1>
-                    <p>@(string.IsNullOrWhiteSpace(currentOrder.CustomerName) ? "Customer" : currentOrder.CustomerName) · @currentOrder.OrderNumber</p>
+                    <p>Order @currentOrder.OrderNumber</p>
                 </div>
 
             }
@@ -356,7 +356,7 @@
     @* ========================================= 5. STAGE 3: CART / SELECT ITEMS ========================================= *@
     else if (stage == SaleStage.Cart)
     {
-        <section class="sale-workspace">
+        <section class="sale-workspace refined-sale-workspace">
             <div class="catalog-column">
                 @* Customer Info Bar *@
                 <section class="customer-strip">
@@ -364,13 +364,8 @@
                         <i class="bi bi-person-fill"></i>
                     </div>
                     <div class="customer-copy">
-                        <div class="customer-order-tag">
-                            <span>Order: <strong>@currentOrder.OrderNumber</strong></span>
-                            <span class="dot-separator">•</span>
-                            <span>Outlet: <strong>@currentOrder.BranchName</strong></span>
-                        </div>
                         <strong>@currentOrder.CustomerName</strong>
-                        <small>@(string.IsNullOrWhiteSpace(currentOrder.CustomerContact) ? "No contact" : currentOrder.CustomerContact) | @currentOrder.MembershipType</small>
+                        <small>@(string.IsNullOrWhiteSpace(currentOrder.CustomerContact) ? currentOrder.MembershipType : $"{currentOrder.CustomerContact} · {currentOrder.MembershipType}")</small>
                     </div>
 
                     <div class="customer-balance-summary" aria-label="Selected customer balances">
@@ -450,16 +445,15 @@
                             <button type="button"
                                     class="@(string.IsNullOrEmpty(selectedType) ? "active" : null)"
                                     @onclick="() => SelectType(string.Empty)">
-                                All (@AvailableCatalogItems.Count())
+                                All
                             </button>
                             @foreach (var type in ItemTypes)
                             {
-                                var typeCount = AvailableCatalogItems.Count(x => string.Equals(x.Type, type, StringComparison.OrdinalIgnoreCase));
                                 <button type="button"
                                         class="@(selectedType == type ? "active" : null)"
                                         @onclick="() => SelectType(type)">
                                     <i class="bi @TypeIcon(type)"></i>
-                                    @type (@typeCount)
+                                    @type
                                 </button>
                             }
                         </div>
@@ -493,19 +487,14 @@
                                 <button type="button" class="catalog-item" @onclick="() => OpenItemEditor(item)">
                                     <img src="@ItemImage(item.Type, item.ImageUrl)" alt="" />
                                     <span class="catalog-item-copy">
-                                        <small>@item.Type</small>
-                                        <strong>@item.Name</strong>
-                                        <span>@item.Sku</span>
-                                        @if (!string.IsNullOrWhiteSpace(item.TaxCodeId))
+                                        @if (string.IsNullOrWhiteSpace(selectedType))
                                         {
-                                            <small>
-                                                Tax @item.TaxCodeId
-                                                @if (item.TaxPercentage > 0m)
-                                                {
-                                                    <text> · @((item.TaxPercentage * 100m).ToString("0.##"))%</text>
-                                                }
-                                                · @(item.IsTaxInclusive ? "Inclusive" : "Exclusive")
-                                            </small>
+                                            <small>@item.Type</small>
+                                        }
+                                        <strong title="@item.Name">@item.Name</strong>
+                                        @if (!string.IsNullOrWhiteSpace(item.Sku))
+                                        {
+                                            <span>@item.Sku</span>
                                         }
                                         <b>MYR @item.Price.ToString("N2")</b>
                                     </span>
@@ -564,22 +553,10 @@
                                 <img src="@ItemImage(item.Category, item.ImageUrl)" alt="" />
                                 <div class="cart-item-info">
                                     <strong>@item.Name</strong>
-                                    <span>@item.Category@(string.IsNullOrWhiteSpace(item.Sku) ? string.Empty : $" · {item.Sku}") | MYR @item.UnitPrice.ToString("N2") each</span>
+                                    <span>@(string.IsNullOrWhiteSpace(item.Sku) ? item.Category : item.Sku) · MYR @item.UnitPrice.ToString("N2") / unit</span>
                                     @if (item.Discount > 0)
                                     {
                                         <small class="discount-badge">- MYR @item.Discount.ToString("N2") disc.</small>
-                                    }
-                                    @if (!string.IsNullOrWhiteSpace(item.TaxCodeId))
-                                    {
-                                        <small class="discount-badge">
-                                            Tax @item.TaxCodeId
-                                            @if (item.TaxPercentage > 0m)
-                                            {
-                                                <text> · @((item.TaxPercentage * 100m).ToString("0.##"))%</text>
-                                            }
-                                            · @(item.IsTaxInclusive ? "Inclusive" : "Exclusive")
-                                            · MYR @item.TaxAmount.ToString("N2")
-                                        </small>
                                     }
                                     @if (!currentOrder.IsRedemptionMode &&
                                          item.AllowPointRedemption &&
@@ -678,9 +655,11 @@
                 }
 
                 <footer>
-                    <div><span>Gross Subtotal</span><strong>MYR @currentOrder.Subtotal.ToString("N2")</strong></div>
-                    <div><span>Discount</span><strong>- MYR @currentOrder.Discount.ToString("N2")</strong></div>
-                    <div><span>Subtotal Before Tax</span><strong>MYR @currentOrder.SubtotalBeforeTax.ToString("N2")</strong></div>
+                    <div><span>Subtotal</span><strong>MYR @currentOrder.Subtotal.ToString("N2")</strong></div>
+                    @if (currentOrder.Discount > 0m)
+                    {
+                        <div><span>Discount</span><strong>- MYR @currentOrder.Discount.ToString("N2")</strong></div>
+                    }
                     @if (currentOrder.Tax > 0m)
                     {
                         <div><span>Tax</span><strong>MYR @currentOrder.Tax.ToString("N2")</strong></div>
@@ -734,11 +713,11 @@
     @* ========================================= 6. STAGE 4: PAYMENT ========================================= *@
     else if (stage == SaleStage.Payment)
     {
-        <section class="payment-workspace">
+        <section class="payment-workspace refined-payment-workspace">
             <div class="payment-column">
                 <div class="section-heading">
                     <div>
-                        <h2>@(isOutstandingPaymentMode ? "Outstanding Payment Method" : "Payment Method")</h2>
+                        <h2>Choose payment method</h2>
                     </div>
                 </div>
 
@@ -750,10 +729,6 @@
                             <span class="payment-method-icon"><i class="bi @PaymentIcon(method.POSPaymentTypeName)"></i></span>
                             <span class="payment-method-copy">
                                 <strong>@method.POSPaymentTypeName</strong>
-                                @if (allocation is not null)
-                                {
-                                    <small>MYR @allocation.Amount.ToString("N2")</small>
-                                }
                             </span>
                             @if (allocation is not null)
                             {
@@ -770,7 +745,7 @@
                             <div>
                                 <span>Payment Breakdown</span>
                             </div>
-                            <b>MYR @PaidAmount.ToString("N2") collected</b>
+                            <span class="payment-breakdown-count">@ActivePaymentLines.Count @(ActivePaymentLines.Count == 1 ? "method" : "methods")</span>
                         </header>
                         @foreach (var payment in ActivePaymentLines)
                         {
@@ -778,7 +753,6 @@
                                 <span class="payment-symbol"><i class="bi @PaymentIcon(payment.PaymentMethod)"></i></span>
                                 <div>
                                     <strong>@payment.PaymentMethod</strong>
-                                    <small>@(Remaining > 0 ? $"MYR {Remaining:N2} remaining" : "Covered")</small>
                                 </div>
                                 <b>MYR @payment.Amount.ToString("N2")</b>
                                 <button type="button" title="Edit payment" @onclick="() => EditPayment(payment)"><i class="bi bi-pencil"></i></button>
@@ -799,7 +773,7 @@
                     <span class="panel-icon"><i class="bi bi-receipt"></i></span>
                     <div>
                         <h2>@(isOutstandingPaymentMode ? "Outstanding Settlement" : "Order Summary")</h2>
-                        <p>@(isOutstandingPaymentMode ? $"{outstandingSettlementSelections.Count} selected document(s)" : currentOrder.OrderNumber)</p>
+                        <p>@(isOutstandingPaymentMode ? $"{outstandingSettlementSelections.Count} selected document(s)" : $"{currentOrder.ItemCount} {(currentOrder.ItemCount == 1 ? "item" : "items")}")</p>
                     </div>
                 </header>
 
@@ -808,7 +782,6 @@
                     <div>
                         <span>Customer</span>
                         <strong>@currentOrder.CustomerName</strong>
-                        <small>@currentOrder.CustomerContact | @currentOrder.MembershipType</small>
                     </div>
                 </div>
 
@@ -833,17 +806,18 @@
                     }
                     else
                     {
-                        @foreach (var item in currentOrder.Items)
-                        {
-                            <div>
-                                <img src="@ItemImage(item.Category, item.ImageUrl)" alt="" />
-                                <span>
-                                    <strong>@item.Name</strong>
-                                    <small>@item.Category | Qty @item.Quantity</small>
-                                </span>
-                                <b>MYR @item.TotalPrice.ToString("N2")</b>
+                        <details class="payment-item-review">
+                            <summary>Review @currentOrder.ItemCount @(currentOrder.ItemCount == 1 ? "item" : "items") <i class="bi bi-chevron-down"></i></summary>
+                            <div class="payment-review-list">
+                                @foreach (var item in currentOrder.Items)
+                                {
+                                    <div class="payment-review-row">
+                                        <span>@item.Name <small>× @item.Quantity</small></span>
+                                        <strong>MYR @item.TotalPrice.ToString("N2")</strong>
+                                    </div>
+                                }
                             </div>
-                        }
+                        </details>
                     }
                 </div>
 
@@ -855,9 +829,11 @@
                     }
                     else
                     {
-                        <div><span>Gross Subtotal</span><strong>MYR @currentOrder.Subtotal.ToString("N2")</strong></div>
-                        <div><span>Discount</span><strong>- MYR @currentOrder.Discount.ToString("N2")</strong></div>
-                        <div><span>Subtotal Before Tax</span><strong>MYR @currentOrder.SubtotalBeforeTax.ToString("N2")</strong></div>
+                        <div><span>Subtotal</span><strong>MYR @currentOrder.Subtotal.ToString("N2")</strong></div>
+                        @if (currentOrder.Discount > 0m)
+                        {
+                            <div><span>Discount</span><strong>- MYR @currentOrder.Discount.ToString("N2")</strong></div>
+                        }
                         @if (currentOrder.Tax > 0m)
                         {
                             <div><span>Tax</span><strong>MYR @currentOrder.Tax.ToString("N2")</strong></div>
@@ -877,7 +853,10 @@
                         <span>Remaining</span>
                         <strong>MYR @Remaining.ToString("N2")</strong>
                     </div>
-                    <div class="change"><span>Change</span><strong>MYR @Change.ToString("N2")</strong></div>
+                    @if (Change > 0m)
+                    {
+                        <div class="change"><span>Change</span><strong>MYR @Change.ToString("N2")</strong></div>
+                    }
                 </div>
 
                 <button type="button"
