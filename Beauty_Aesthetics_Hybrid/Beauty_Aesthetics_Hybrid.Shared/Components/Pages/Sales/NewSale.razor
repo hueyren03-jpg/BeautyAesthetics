@@ -67,10 +67,9 @@
                 <button type="button" class="icon-button" title="Back to pending orders" @onclick="BackToPendingOrdersFromCart">
                     <i class="bi bi-arrow-left"></i>
                 </button>
-                <span class="sale-page-icon"><i class="bi bi-bag-plus"></i></span>
+                
                 <div class="sale-title-copy">
                     <h1>@(currentOrder.IsRedemptionMode ? "Select Redemption Items" : "Select Items")</h1>
-                    <p>Order @currentOrder.OrderNumber</p>
                 </div>
 
             }
@@ -79,7 +78,7 @@
                 <button type="button" class="icon-button" title="@(isOutstandingPaymentMode ? "Back to outstanding selection" : "Back to cart")" @onclick="BackToCart">
                     <i class="bi bi-arrow-left"></i>
                 </button>
-                <span class="sale-page-icon"><i class="bi bi-credit-card"></i></span>
+                
                 <div>
                     <h1>@(isOutstandingPaymentMode ? "Outstanding Payment" : "Payment")</h1>
                 </div>
@@ -90,16 +89,14 @@
         {
             <div class="sale-mode-slot" aria-label="Sales mode selector">
                 <button type="button"
-                        class="senang-mode-toggle"
+                        class="beauty-sale-mode"
                         @onclick="ToggleRedemptionModeAsync"
                         disabled="@string.IsNullOrWhiteSpace(currentOrder.AccountId)"
+                        aria-pressed="@currentOrder.IsRedemptionMode"
                         title="@(currentOrder.IsRedemptionMode ? "Switch to Sales mode" : "Switch to Redemption mode")"
                         aria-label="@(currentOrder.IsRedemptionMode ? "Switch to Sales mode" : "Switch to Redemption mode")">
-                    <span class="senang-toggle-pill @(currentOrder.IsRedemptionMode ? "redemption" : "sales")"
-                          aria-hidden="true">
-                        <span class="senang-toggle-circle"></span>
-                        <span class="senang-toggle-label">@(currentOrder.IsRedemptionMode ? "R" : "S")</span>
-                    </span>
+                    <span class="beauty-sale-mode-option @(!currentOrder.IsRedemptionMode ? "active" : null)">Sales</span>
+                    <span class="beauty-sale-mode-option @(currentOrder.IsRedemptionMode ? "active" : null)">Redemption</span>
                 </button>
             </div>
         }
@@ -484,7 +481,7 @@
                         <div class="catalog-grid">
                             @foreach (var item in FilteredItems)
                             {
-                                <button type="button" class="catalog-item" @onclick="() => OpenItemEditor(item)">
+                                <button type="button" class="catalog-item" aria-label="Select @item.Name" @onclick="() => OpenItemEditor(item)">
                                     <img src="@ItemImage(item.Type, item.ImageUrl)" alt="" />
                                     <span class="catalog-item-copy">
                                         @if (string.IsNullOrWhiteSpace(selectedType))
@@ -642,11 +639,9 @@
                                     }
                                     <button type="button" class="edit-action" title="Edit item" aria-label="Edit @item.Name" @onclick="() => EditCartItem(item)">
                                         <i class="bi bi-pencil"></i>
-                                        <span>Edit</span>
                                     </button>
                                     <button type="button" class="remove" title="Delete item" aria-label="Delete @item.Name" @onclick="() => RemoveItem(item)">
                                         <i class="bi bi-trash"></i>
-                                        <span>Delete</span>
                                     </button>
                                 </div>
                             </article>
@@ -655,15 +650,6 @@
                 }
 
                 <footer>
-                    <div><span>Subtotal</span><strong>MYR @currentOrder.Subtotal.ToString("N2")</strong></div>
-                    @if (currentOrder.Discount > 0m)
-                    {
-                        <div><span>Discount</span><strong>- MYR @currentOrder.Discount.ToString("N2")</strong></div>
-                    }
-                    @if (currentOrder.Tax > 0m)
-                    {
-                        <div><span>Tax</span><strong>MYR @currentOrder.Tax.ToString("N2")</strong></div>
-                    }
                     <div class="cart-total"><span>Total</span><strong>MYR @currentOrder.Total.ToString("N2")</strong></div>
                     @if (currentOrder.IsRedemptionMode && RedeemedCreditAmount > 0m)
                     {
@@ -743,9 +729,8 @@
                     <section class="split-payments" aria-label="Added payments">
                         <header>
                             <div>
-                                <span>Payment Breakdown</span>
+                                <span>Payments added</span>
                             </div>
-                            <span class="payment-breakdown-count">@ActivePaymentLines.Count @(ActivePaymentLines.Count == 1 ? "method" : "methods")</span>
                         </header>
                         @foreach (var payment in ActivePaymentLines)
                         {
@@ -762,10 +747,13 @@
                     </section>
                 }
 
-                <label class="notes-field">
-                    <span>Receipt Notes</span>
-                    <textarea @bind="currentOrder.Notes" placeholder="Notes"></textarea>
-                </label>
+                <details class="payment-notes-details">
+                    <summary>Receipt notes <span>(optional)</span><i class="bi bi-chevron-down" aria-hidden="true"></i></summary>
+                    <label class="notes-field">
+                        <span class="visually-hidden">Receipt notes</span>
+                        <textarea @bind="currentOrder.Notes" placeholder="Add a note to the receipt"></textarea>
+                    </label>
+                </details>
             </div>
 
             <aside class="order-panel">
@@ -851,11 +839,14 @@
                     {
                         <div><span>Package Sessions</span><strong>- MYR @RedeemedPackageAmount.ToString("N2")</strong></div>
                     }
-                    <div><span>Amount Received</span><strong>MYR @PaidAmount.ToString("N2")</strong></div>
-                    <div class="remaining @(Remaining > 0 ? "due" : "covered")">
-                        <span>Remaining</span>
-                        <strong>MYR @Remaining.ToString("N2")</strong>
-                    </div>
+                    @if (ActivePaymentLines.Count > 0 || IsFullyPointRedeemedSale || IsFullyCoveredRedemption)
+                    {
+                        <div><span>Amount Received</span><strong>MYR @PaidAmount.ToString("N2")</strong></div>
+                        <div class="remaining @(Remaining > 0 ? "due" : "covered")">
+                            <span>Remaining</span>
+                            <strong>MYR @Remaining.ToString("N2")</strong>
+                        </div>
+                    }
                     @if (Change > 0m)
                     {
                         <div class="change"><span>Change</span><strong>MYR @Change.ToString("N2")</strong></div>
@@ -1485,14 +1476,6 @@
                        disabled="@(SelectedDraftDiscountRule is { IsOpenDiscount: false })" />
             </label>
         </div>
-
-        @if (DraftTaxAmount > 0m)
-        {
-            <div class="item-dialog-total">
-                <span>Tax</span>
-                <strong>MYR @DraftTaxAmount.ToString("N2")</strong>
-            </div>
-        }
 
         <div class="item-dialog-total">
             <span>Line Total</span>
