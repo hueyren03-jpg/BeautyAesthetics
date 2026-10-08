@@ -261,7 +261,7 @@
         }
         else
         {
-            <section class="customer-selection-page">
+            <section class="customer-selection-page refined-customer-selection">
                 <div class="customer-selection-controls">
                     <div class="customer-search">
                         <i class="bi bi-search"></i>
@@ -553,7 +553,7 @@
                                 <img src="@ItemImage(item.Category, item.ImageUrl)" alt="" />
                                 <div class="cart-item-info">
                                     <strong>@item.Name</strong>
-                                    <span>@(string.IsNullOrWhiteSpace(item.Sku) ? item.Category : item.Sku) · MYR @item.UnitPrice.ToString("N2") / unit</span>
+                                    <span>MYR @item.UnitPrice.ToString("N2") / unit</span>
                                     @if (item.Discount > 0)
                                     {
                                         <small class="discount-badge">- MYR @item.Discount.ToString("N2") disc.</small>
@@ -773,7 +773,10 @@
                     <span class="panel-icon"><i class="bi bi-receipt"></i></span>
                     <div>
                         <h2>@(isOutstandingPaymentMode ? "Outstanding Settlement" : "Order Summary")</h2>
-                        <p>@(isOutstandingPaymentMode ? $"{outstandingSettlementSelections.Count} selected document(s)" : $"{currentOrder.ItemCount} {(currentOrder.ItemCount == 1 ? "item" : "items")}")</p>
+                        @if (!isOutstandingPaymentMode)
+                        {
+                            <p>Order @currentOrder.OrderNumber</p>
+                        }
                     </div>
                 </header>
 
@@ -1483,10 +1486,13 @@
             </label>
         </div>
 
-        <div class="item-dialog-total">
-            <span>Tax</span>
-            <strong>MYR @DraftTaxAmount.ToString("N2")</strong>
-        </div>
+        @if (DraftTaxAmount > 0m)
+        {
+            <div class="item-dialog-total">
+                <span>Tax</span>
+                <strong>MYR @DraftTaxAmount.ToString("N2")</strong>
+            </div>
+        }
 
         <div class="item-dialog-total">
             <span>Line Total</span>
